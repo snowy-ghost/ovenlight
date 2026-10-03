@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image/color"
 	"image/png"
 	"log"
 	"net/http"
@@ -80,7 +81,14 @@ func validateFeedback(req feedbackRequest) (string, []byte, error) {
 	if err != nil {
 		return "", nil, errors.New("the screenshot must be a PNG")
 	}
-	if cfg.Width > maxScreenshotSide || cfg.Height > maxScreenshotSide || cfg.Width*cfg.Height > maxScreenshotPixels {
+	// A 16-bit PNG decodes to 8 bytes a pixel, twice an 8-bit one, so it may have half the
+	// pixels: decoding takes at most maxScreenshotPixels*4 bytes either way.
+	perPixel := 4
+	switch cfg.ColorModel {
+	case color.RGBA64Model, color.NRGBA64Model, color.Gray16Model:
+		perPixel = 8
+	}
+	if cfg.Width > maxScreenshotSide || cfg.Height > maxScreenshotSide || cfg.Width*cfg.Height*perPixel > maxScreenshotPixels*4 {
 		return "", nil, errors.New("the screenshot's dimensions are implausible")
 	}
 	// Decoding all of it rejects a valid header followed by anything else.

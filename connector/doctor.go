@@ -431,6 +431,9 @@ func runDoctor(cfg *Config, stateDir, configPath string) []Check {
 	} else {
 		checks = append(checks, Check{ID: "daemon", Status: statusOK, Message: fmt.Sprintf("running (pid %d)", reply.PID)})
 	}
+	if c := updateCheck(); c != nil {
+		checks = append(checks, *c)
+	}
 	if len(cfg.Apps) == 0 {
 		return append(checks, Check{ID: "apps", Status: statusWarn, Message: "no apps are published",
 			Fix: `ovenlight publish --port <n> --name "<App Name>"`, Actor: actorAgent})

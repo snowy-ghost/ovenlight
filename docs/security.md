@@ -348,6 +348,10 @@ itself runs without administrator rights.
 - **The iPhone app** doesn't upload logs: its embedded Tailscale library is built with
   log upload turned off, for the owner's node and every guest's
   ([development.md](development.md#tailscalekit)).
+- `ovenlight doctor`, in a release build, reads `https://ovenlight.app/connector/latest.json`
+  to say when a newer connector is out and to fail when this one has a security problem a
+  newer one fixes. It is a plain GET with no cookies, query or identifiers; nothing else in
+  the connector contacts ovenlight.app.
 - `ovenlight run` clears the environment variables that would set tsnet's login, control
   server or log target, unless `OVENLIGHT_DEV=1`. The apps it runs never get them from
   your login shell.

@@ -145,6 +145,9 @@ func sameOriginPath(base *url.URL, ref string) (string, bool) {
 	if p == "" {
 		p = "/"
 	}
+	if strings.HasPrefix(p, "//") {
+		return "", false // read as a link, //host/x names another host
+	}
 	if u.RawQuery != "" {
 		p += "?" + u.RawQuery
 	}

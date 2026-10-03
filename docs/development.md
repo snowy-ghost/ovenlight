@@ -93,6 +93,12 @@ that system's build links. It builds with the Go version on `connector/go.mod`'s
 line (through `GOTOOLCHAIN`), as CI does, and refuses a tree with uncommitted changes
 unless `--unsigned`.
 
+After publishing a release, update `site/connector/latest.json` and deploy the site:
+`{"latest": "<version>", "secure": "<oldest version without a known security problem>"}`.
+`ovenlight doctor` reads it to tell people about updates, and fails while they run a
+version older than `secure`, so raise `secure` with any release that fixes a security
+problem.
+
 Notarization uses an App Store Connect API key, named by the environment variables
 `ASC_KEY_ID`, `ASC_ISSUER_ID` and `ASC_KEY_PATH`. Over SSH, unlock the login keychain
 first.
