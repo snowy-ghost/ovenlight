@@ -1,0 +1,117 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  connector:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: connector
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: connector/go.mod
+          cache-dependency-path: connector/go.sum
+      - name: gofmt
+        if: runner.os == 'Linux'
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "gofmt needed:"
+            echo "$unformatted"
+            exit 1
+          fi
+      - run: go vet ./...
+      - run: go vet -tags e2e ./e2e
+      - name: go vet (darwin/arm64, cgo off)
+        if: runner.os == 'Linux'
+        run: GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go vet ./...
+      - name: go test -race
+        if: runner.os == 'Linux'
+        run: go test -race -count=1 ./...
+      # The race detector needs cgo and a C compiler, which this runner doesn't promise.
+      - name: go test
+        if: runner.os == 'Windows'
+        run: go test -count=1 ./...
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
+
+  # The install scripts, as a user runs them: install, a crash and restart, reinstall,
+  # uninstall --purge. On Windows the script builds from source.
+  install:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: connector/go.mod
+          cache-dependency-path: connector/go.sum
+      - name: Linux
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          # A user systemd that keeps running, as on a server with linger.
+          sudo loginctl enable-linger "$USER"
+          XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          export XDG_RUNTIME_DIR
+          for _ in $(seq 30); do systemctl --user show-environment >/dev/null 2>&1 && break; sleep 1; done
+          running() { ~/.local/state/ovenlight/bin/ovenlight status | grep -q '^Connector: running'; }
+          connector/install.sh
+          sleep 3 && running
+          kill -9 "$(systemctl --user show -p MainPID --value ovenlight)"
+          sleep 15 && running
+          connector/install.sh
+          sleep 3 && running
+          connector/uninstall.sh --purge
+          test ! -e ~/.local/state/ovenlight
+          ! systemctl --user is-active ovenlight
+      - name: Windows
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $o = "$env:LOCALAPPDATA\ovenlight\bin\ovenlight.exe"
+          function Check($ok, $what) { if (-not $ok) { throw $what } }
+          function Running { [bool](& $o status | Select-String '^Connector: running') }
+          powershell -ExecutionPolicy Bypass -File connector\install.ps1
+          Check ($LASTEXITCODE -eq 0) 'install failed'
+          Check (Running) 'not running after install'
+          Stop-Process -Name ovenlight -Force
+          for ($i = 0; $i -lt 45 -and -not (Running); $i++) { Start-Sleep 2 }
+          Check (Running) 'not restarted within 90 s'
+          powershell -ExecutionPolicy Bypass -File connector\install.ps1
+          Check ($LASTEXITCODE -eq 0) 'reinstall failed'
+          powershell -ExecutionPolicy Bypass -File connector\uninstall.ps1 --purge
+          Check ($LASTEXITCODE -eq 0) 'uninstall failed'
+          Check (-not (Get-ScheduledTask ovenlight -ErrorAction SilentlyContinue)) 'task left behind'
+          Check (-not (Test-Path "$env:LOCALAPPDATA\ovenlight")) 'folder left behind'
+
+  e2e:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: connector
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: connector/go.mod
+          cache-dependency-path: connector/go.sum
+      - run: go install github.com/juanfont/headscale/cmd/headscale@v0.29.4
+      - run: OVENLIGHT_E2E_HEADSCALE="$(go env GOPATH)/bin/headscale" go test -tags e2e ./e2e -v -count=1 -timeout 15m

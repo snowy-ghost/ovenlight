@@ -1,0 +1,10 @@
+{
+	"acls": [
+		{"action": "accept", "src": ["autogroup:member"], "dst": ["autogroup:member:*"]},
+		{"action": "accept", "src": ["*"], "dst": ["ipset:lab:22"]},
+		{"action": "accept", "src": ["*"], "dst": ["100.64.0.1-100.64.0.9:22"]},
+		{"action": "accept", "src": ["*"], "dst": ["autogroup:future:*"]},
+		{"action": "accept", "src": ["*"], "dst": ["[fd7a:115c:a1e0::1]:22", "100.101.102.103:22"]},
+		{"action": "accept", "src": ["*"], "dst": ["192.168.1.0/24:80"]},
+	],
+}

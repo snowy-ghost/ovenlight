@@ -1,0 +1,26 @@
+== refusal
+Ovenlight won't change this policy on its own:
+  - acls rule 2 lets ["*"] reach ["ipset:lab:22"], guest devices included; Ovenlight narrows on its own only a rule that lets everything reach everything
+  - acls rule 3 lets ["*"] reach ["100.64.0.1-100.64.0.9:22"], guest devices included; Ovenlight narrows on its own only a rule that lets everything reach everything
+  - acls rule 4 lets ["*"] reach ["autogroup:future:*"], guest devices included; Ovenlight narrows on its own only a rule that lets everything reach everything
+  - acls rule 5 lets ["*"] reach ["[fd7a:115c:a1e0::1]:22", "100.101.102.103:22"], guest devices included; Ovenlight narrows on its own only a rule that lets everything reach everything
+  - acls rule 6 lets ["*"] reach ["192.168.1.0/24:80"], guest devices included; Ovenlight narrows on its own only a rule that lets everything reach everything
+
+Suggested manual edit:
+  In the admin console (Access controls), change acls rule 2:
+    source: replace "*" with ["autogroup:member"]
+  so your own devices, tagged devices and routes keep their access and guest devices get none.
+  In the admin console (Access controls), change acls rule 3:
+    source: replace "*" with ["autogroup:member"]
+  so your own devices, tagged devices and routes keep their access and guest devices get none.
+  In the admin console (Access controls), change acls rule 4:
+    source: replace "*" with ["autogroup:member"]
+  so your own devices, tagged devices and routes keep their access and guest devices get none.
+  In the admin console (Access controls), change acls rule 5:
+    source: replace "*" with ["autogroup:member"]
+  so your own devices, tagged devices and routes keep their access and guest devices get none.
+  In the admin console (Access controls), change acls rule 6:
+    source: replace "*" with ["autogroup:member"]
+  so your own devices, tagged devices and routes keep their access and guest devices get none.
+  If a rule above lets guest devices or unknown sources reach more, remove or narrow it.
+  Then run the same ovenlight command again.

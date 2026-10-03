@@ -1,0 +1,18 @@
+{
+	// Ovenlight: tags for shared app nodes and the guests invited to them (ovenlight setup-sharing).
+	"tagOwners": {
+		"tag:ovenlight-app-coach": ["autogroup:admin"],
+		"tag:ovenlight-guest-coach": ["autogroup:admin"],
+		"tag:ovenlight-app-notes": ["autogroup:admin"],
+		"tag:ovenlight-guest-notes": ["autogroup:admin"],
+	},
+	"grants": [
+		{"src": ["autogroup:member"], "dst": ["autogroup:member"], "ip": ["*"]},
+		// Ovenlight: you reach your shared app nodes, and their admin port 8443 (ovenlight setup-sharing).
+		{"src": ["old@example.com"], "dst": ["tag:ovenlight-app-coach", "tag:ovenlight-app-notes"], "ip": ["tcp:443", "tcp:8443"]},
+		// Ovenlight: guests invited to coach reach only its node, on port 443.
+		{"src": ["tag:ovenlight-guest-coach"], "dst": ["tag:ovenlight-app-coach"], "ip": ["tcp:443"]},
+		// Ovenlight: guests invited to notes reach only its node, on port 443.
+		{"src": ["tag:ovenlight-guest-notes"], "dst": ["tag:ovenlight-app-notes"], "ip": ["tcp:443"]},
+	],
+}

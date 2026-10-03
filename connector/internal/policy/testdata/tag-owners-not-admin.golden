@@ -1,0 +1,8 @@
+== refusal
+Ovenlight won't change this policy on its own:
+  - tagOwners lets "alex@example.com" apply tag:ovenlight-app-coach, so they could tag a device as that app's node and receive its guests; set its owners to ["autogroup:admin"]
+  - tagOwners lets "autogroup:admin", "group:family" apply tag:ovenlight-guest-coach, so they could tag a device as a guest of that app; set its owners to ["autogroup:admin"]
+
+Suggested manual edit:
+  Make the changes above in the admin console (Access controls).
+  Then run the same ovenlight command again.

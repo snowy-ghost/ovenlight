@@ -1,0 +1,100 @@
+== report
+change: Add tagOwners for tag:ovenlight-app-coach, tag:ovenlight-guest-coach, tag:ovenlight-app-notes, tag:ovenlight-guest-notes (owner autogroup:admin).
+change: Narrow grants rule 1 from everything reaching everything to autogroup:member reaching autogroup:member, so guest devices neither inherit it nor see your devices.
+change: Add one rule to grants: alex@example.com may reach tag:ovenlight-app-coach, tag:ovenlight-app-notes on ports 443 and 8443, as a tagged node is no longer one of your own devices.
+change: Add one rule to grants: tag:ovenlight-guest-coach may reach only tag:ovenlight-app-coach:443.
+change: Add one rule to grants: tag:ovenlight-guest-notes may reach only tag:ovenlight-app-notes:443.
+note: "*" also covered people you share devices with from their own tailnets (autogroup:shared); they aren't in autogroup:member. If you share devices that way, add their access back explicitly.
+== diff
+--- current policy
++++ proposed policy
+@@ -1,5 +1,13 @@
+ // Example/default ACLs for unrestricted connections.
+ {
++	// Ovenlight: tags for shared app nodes and the guests invited to them (ovenlight setup-sharing).
++	"tagOwners": {
++		"tag:ovenlight-app-coach": ["autogroup:admin"],
++		"tag:ovenlight-guest-coach": ["autogroup:admin"],
++		"tag:ovenlight-app-notes": ["autogroup:admin"],
++		"tag:ovenlight-guest-notes": ["autogroup:admin"],
++	},
++
+ 	// Declare static groups of users. Use autogroup:admin to give
+ 	// administrators access to tagged devices.
+ 	// "groups": {
+@@ -16,7 +24,13 @@
+ 	"grants": [
+ 		// Allow all connections.
+ 		// Comment this section out if you want to define specific restrictions.
+-		{"src": ["*"], "dst": ["*"], "ip": ["*"]},
++		{"src": ["autogroup:member"], "dst": ["autogroup:member"], "ip": ["*"]},
++		// Ovenlight: you reach your shared app nodes, and their admin port 8443 (ovenlight setup-sharing).
++		{"src": ["alex@example.com"], "dst": ["tag:ovenlight-app-coach", "tag:ovenlight-app-notes"], "ip": ["tcp:443", "tcp:8443"]},
++		// Ovenlight: guests invited to coach reach only its node, on port 443.
++		{"src": ["tag:ovenlight-guest-coach"], "dst": ["tag:ovenlight-app-coach"], "ip": ["tcp:443"]},
++		// Ovenlight: guests invited to notes reach only its node, on port 443.
++		{"src": ["tag:ovenlight-guest-notes"], "dst": ["tag:ovenlight-app-notes"], "ip": ["tcp:443"]},
+ 
+ 		// Allow users in "group:example" to access "tag:example", but only from
+ 		// devices that are running macOS and have enabled Tailscale client auto-updating.
+== proposed
+// Example/default ACLs for unrestricted connections.
+{
+	// Ovenlight: tags for shared app nodes and the guests invited to them (ovenlight setup-sharing).
+	"tagOwners": {
+		"tag:ovenlight-app-coach": ["autogroup:admin"],
+		"tag:ovenlight-guest-coach": ["autogroup:admin"],
+		"tag:ovenlight-app-notes": ["autogroup:admin"],
+		"tag:ovenlight-guest-notes": ["autogroup:admin"],
+	},
+
+	// Declare static groups of users. Use autogroup:admin to give
+	// administrators access to tagged devices.
+	// "groups": {
+	//	"group:example": ["alice@example.com", "bob@example.com"],
+	// },
+
+	// Define the tags which can be applied to devices and by which users.
+	// "tagOwners": {
+	//	"tag:example": ["autogroup:admin"],
+	// },
+
+	// Define grants that govern access for users, groups, autogroups, tags,
+	// Tailscale IP addresses, and subnet ranges.
+	"grants": [
+		// Allow all connections.
+		// Comment this section out if you want to define specific restrictions.
+		{"src": ["autogroup:member"], "dst": ["autogroup:member"], "ip": ["*"]},
+		// Ovenlight: you reach your shared app nodes, and their admin port 8443 (ovenlight setup-sharing).
+		{"src": ["alex@example.com"], "dst": ["tag:ovenlight-app-coach", "tag:ovenlight-app-notes"], "ip": ["tcp:443", "tcp:8443"]},
+		// Ovenlight: guests invited to coach reach only its node, on port 443.
+		{"src": ["tag:ovenlight-guest-coach"], "dst": ["tag:ovenlight-app-coach"], "ip": ["tcp:443"]},
+		// Ovenlight: guests invited to notes reach only its node, on port 443.
+		{"src": ["tag:ovenlight-guest-notes"], "dst": ["tag:ovenlight-app-notes"], "ip": ["tcp:443"]},
+
+		// Allow users in "group:example" to access "tag:example", but only from
+		// devices that are running macOS and have enabled Tailscale client auto-updating.
+		// {"src": ["group:example"], "dst": ["tag:example"], "ip": ["*"], "srcPosture":["posture:autoUpdateMac"]},
+	],
+
+	// Define users and devices that can use Tailscale SSH.
+	"ssh": [
+		// Allow all users to SSH into their own devices in check mode.
+		// Comment this section out if you want to define specific restrictions.
+		{
+			"action": "check",
+			"src":    ["autogroup:member"],
+			"dst":    ["autogroup:self"],
+			"users":  ["autogroup:nonroot", "root"],
+		},
+	],
+
+	// Test access rules every time they're saved.
+	// "tests": [
+	//	{
+	//		"src": "alice@example.com",
+	//		"accept": ["tag:example"],
+	//		"deny": ["100.101.102.103:443"],
+	//	},
+	// ],
+}

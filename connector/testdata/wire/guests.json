@@ -1,0 +1,73 @@
+{
+  "guests": [
+    {
+      "deviceId": "nSamPhone",
+      "person": "7c2e91a4d0",
+      "name": "Sam",
+      "app": "coach",
+      "deviceName": "sam-iphone",
+      "inviteId": "a1b2c3d4e5",
+      "claimedAt": "2026-09-27T12:04:05.123456789-07:00"
+    },
+    {
+      "deviceId": "nSamPad",
+      "person": "7c2e91a4d0",
+      "name": "Sam",
+      "app": "coach",
+      "deviceName": "sam-ipad",
+      "inviteId": "b2c3d4e5f6",
+      "claimedAt": "2026-09-28T12:04:05.123456789-07:00"
+    },
+    {
+      "deviceId": "nLeePhone",
+      "person": "5d6e7f8091",
+      "name": "Lee",
+      "app": "coach",
+      "deviceName": "lee-iphone",
+      "inviteId": "f6a7b8c9d0",
+      "claimedAt": "2026-09-27T12:04:05.123456789-07:00",
+      "removedAt": "2026-09-30T12:04:05.123456789-07:00",
+      "removedWhy": "removed by the owner",
+      "deviceGone": true
+    }
+  ],
+  "invites": [
+    {
+      "id": "c3d4e5f6a7",
+      "to": "Kim",
+      "person": "e5f6a7b8c9",
+      "app": "coach",
+      "state": "sent",
+      "requestedBy": "ovenlight",
+      "created": "2026-10-01T12:04:05.123456789-07:00",
+      "expires": "2026-10-02T12:04:05.123456789-07:00"
+    },
+    {
+      "id": "d4e5f6a7b8",
+      "to": "App Review",
+      "person": "0a1b2c3d4e",
+      "app": "coach",
+      "state": "sent",
+      "requestedBy": "terminal",
+      "created": "2026-10-01T12:04:05.123456789-07:00",
+      "expires": "2026-10-08T12:04:05.123456789-07:00",
+      "review": true
+    }
+  ],
+  "unclaimed": [
+    {
+      "id": "5550002",
+      "nodeId": "nStray",
+      "name": "iphone.tail1.ts.net",
+      "hostname": "iphone",
+      "authorized": true,
+      "created": "2026-09-29T08:12:44Z",
+      "os": "iOS",
+      "tags": [
+        "tag:ovenlight-guest-coach"
+      ]
+    }
+  ],
+  "lastSync": "2026-10-01T12:04:05.123456789-07:00",
+  "syncError": "tailscale api: GET /api/v2/tailnet/-/devices: 401 Unauthorized: API token invalid; run `ovenlight auth set` with a new token"
+}

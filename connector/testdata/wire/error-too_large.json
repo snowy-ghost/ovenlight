@@ -1,0 +1,4 @@
+{
+  "error": "the note is longer than 4000 characters",
+  "code": "too_large"
+}

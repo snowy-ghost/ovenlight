@@ -1,0 +1,8 @@
+{
+  "role": "owner",
+  "user": "Alex",
+  "userId": "alex@example.com",
+  "app": "coach",
+  "appName": "Interview Coach",
+  "owner": "Alex"
+}

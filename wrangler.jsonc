@@ -1,0 +1,11 @@
+// The ovenlight.app website: static files in site/, served by Cloudflare (Workers static
+// assets, the current form of Pages). Deploy from the repo root with `npx wrangler deploy`.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ovenlight-site",
+  "compatibility_date": "2026-10-01",
+  // No request logs: the site promises no tracking.
+  "observability": { "enabled": false },
+  "assets": { "directory": "site" },
+  "routes": [{ "pattern": "ovenlight.app", "custom_domain": true }]
+}

@@ -1,0 +1,51 @@
+== report
+change: Add tagOwners for tag:ovenlight-app-notes, tag:ovenlight-guest-notes (owner autogroup:admin).
+change: Let alex@example.com reach tag:ovenlight-app-notes on ports 443 and 8443 through acls rule 2.
+change: Add one rule to grants: tag:ovenlight-guest-notes may reach only tag:ovenlight-app-notes:443.
+== diff
+--- current policy
++++ proposed policy
+@@ -1,13 +1,20 @@
+ {
++	"grants": [
++		// Ovenlight: guests invited to notes reach only its node, on port 443.
++		{"src": ["tag:ovenlight-guest-notes"], "dst": ["tag:ovenlight-app-notes"], "ip": ["tcp:443"]},
++	],
++
+ 	// Ovenlight: tags for shared app nodes and the guests invited to them (ovenlight setup-sharing).
+ 	"tagOwners": {
+ 		"tag:ovenlight-app-coach": ["autogroup:admin"],
+ 		"tag:ovenlight-guest-coach": ["autogroup:admin"],
++		"tag:ovenlight-app-notes": ["autogroup:admin"],
++		"tag:ovenlight-guest-notes": ["autogroup:admin"],
+ 	},
+ 	"acls": [
+ 		{"action": "accept", "src": ["autogroup:member"], "dst": ["autogroup:self:*"]},
+ 		// Ovenlight: you reach your shared app nodes, and their admin port 8443 (ovenlight setup-sharing).
+-		{"action": "accept", "src": ["alex@example.com"], "dst": ["tag:ovenlight-app-coach:443,8443"]},
++		{"action": "accept", "src": ["alex@example.com"], "dst": ["tag:ovenlight-app-coach:443,8443", "tag:ovenlight-app-notes:443,8443"]},
+ 		// Ovenlight: guests invited to coach reach only its node, on port 443.
+ 		{"action": "accept", "src": ["tag:ovenlight-guest-coach"], "dst": ["tag:ovenlight-app-coach:443"]},
+ 	],
+== proposed
+{
+	"grants": [
+		// Ovenlight: guests invited to notes reach only its node, on port 443.
+		{"src": ["tag:ovenlight-guest-notes"], "dst": ["tag:ovenlight-app-notes"], "ip": ["tcp:443"]},
+	],
+
+	// Ovenlight: tags for shared app nodes and the guests invited to them (ovenlight setup-sharing).
+	"tagOwners": {
+		"tag:ovenlight-app-coach": ["autogroup:admin"],
+		"tag:ovenlight-guest-coach": ["autogroup:admin"],
+		"tag:ovenlight-app-notes": ["autogroup:admin"],
+		"tag:ovenlight-guest-notes": ["autogroup:admin"],
+	},
+	"acls": [
+		{"action": "accept", "src": ["autogroup:member"], "dst": ["autogroup:self:*"]},
+		// Ovenlight: you reach your shared app nodes, and their admin port 8443 (ovenlight setup-sharing).
+		{"action": "accept", "src": ["alex@example.com"], "dst": ["tag:ovenlight-app-coach:443,8443", "tag:ovenlight-app-notes:443,8443"]},
+		// Ovenlight: guests invited to coach reach only its node, on port 443.
+		{"action": "accept", "src": ["tag:ovenlight-guest-coach"], "dst": ["tag:ovenlight-app-coach:443"]},
+	],
+}

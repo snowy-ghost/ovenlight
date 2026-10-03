@@ -1,0 +1,90 @@
+name: Ovenlight
+options:
+  bundleIdPrefix: com.snowyghost
+  deploymentTarget:
+    iOS: "18.1"  # TailscaleKit.framework minimum
+  createIntermediateGroups: true
+  # Xcode treats an Icon Composer document as one file, not a folder of resources.
+  fileTypes:
+    icon:
+      file: true
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    DEVELOPMENT_TEAM: A84T8TANK8
+    CODE_SIGN_STYLE: Automatic
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+targets:
+  Ovenlight:
+    type: application
+    platform: iOS
+    sources:
+      - Ovenlight/Sources
+      - Ovenlight/Resources
+    dependencies:
+      # Built by scripts/build-tailscalekit.sh (gitignored): the embedded tailnet node.
+      - framework: Frameworks/TailscaleKit.xcframework
+        embed: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.snowyghost.ovenlight
+        TARGETED_DEVICE_FAMILY: "1"
+        GENERATE_INFOPLIST_FILE: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+    # Universal links: https://ovenlight.app/join opens invites (the site's
+    # apple-app-site-association lists this app for that path only).
+    entitlements:
+      path: Ovenlight/Ovenlight.entitlements
+      properties:
+        com.apple.developer.associated-domains:
+          - applinks:ovenlight.app
+    info:
+      path: Ovenlight/Info.plist
+      properties:
+        CFBundleDisplayName: Ovenlight
+        CFBundleName: Ovenlight
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        # Plain system background, so launch hands off to the lock screen without a flash.
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        CFBundleURLTypes:
+          - CFBundleURLName: com.snowyghost.ovenlight
+            CFBundleURLSchemes: [ovenlight]
+        NSCameraUsageDescription: Ovenlight uses the camera to scan invite codes, and apps you open can use it when you allow them.
+        NSFaceIDUsageDescription: Ovenlight uses Face ID so only you can open your apps.
+        NSLocalNetworkUsageDescription: Ovenlight uses your local network to find a faster, direct path to the computers your apps run on.
+        NSMicrophoneUsageDescription: Apps you open in Ovenlight can record audio when you ask them to, for example to grade a spoken answer.
+        # WebKit's long-press Save to Photos on a page's image.
+        NSPhotoLibraryAddUsageDescription: Ovenlight saves images you choose from your apps to your photo library.
+        # App-bound domains get service workers and offline support. Max 10 entries; an
+        # entry covers its subdomains unless the domain is on the Public Suffix List.
+        # ts.net is on the list, so the tailnet's own domain is registrable and covers
+        # every node in it (each published app is its own node).
+        WKAppBoundDomains:
+          - tailabc123.ts.net
+  OvenlightTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - OvenlightTests
+    dependencies:
+      - target: Ovenlight
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.snowyghost.ovenlight.tests
+schemes:
+  Ovenlight:
+    build:
+      targets:
+        Ovenlight: all
+        OvenlightTests: [test]
+    test:
+      targets:
+        - OvenlightTests

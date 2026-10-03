@@ -1,0 +1,7 @@
+{
+	"acls": [
+		{"action": "accept", "src": ["autogroup:member"], "dst": ["*:*"]},
+		{"action": "accept", "src": ["autogroup:tagged"], "dst": ["tag:monitoring:9100"]},
+		{"action": "accept", "src": ["tag:ovenlight-guest-coach"], "dst": ["*:*"]},
+	],
+}

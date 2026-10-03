@@ -1,0 +1,11 @@
+== refusal
+Ovenlight won't change this policy on its own:
+  - acls rule 1 lets ["*"] reach ["*:*"], guest devices included; narrowing it to autogroup:member reaching autogroup:member would also cut off rules that use tags as a source (acls rule 2)
+
+Suggested manual edit:
+  In the admin console (Access controls), change acls rule 1:
+    source: replace "*" with ["autogroup:member", "tag:ci"]
+    destination: ["autogroup:member:*", "tag:ci:*"]
+  so your own devices, tagged devices and routes keep their access and guest devices get none.
+  If a rule above lets guest devices or unknown sources reach more, remove or narrow it.
+  Then run the same ovenlight command again.

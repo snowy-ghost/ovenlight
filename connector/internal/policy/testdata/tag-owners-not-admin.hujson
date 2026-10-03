@@ -1,0 +1,11 @@
+{
+	"tagOwners": {
+		"tag:ovenlight-app-coach": ["alex@example.com"],
+		"tag:ovenlight-guest-coach": ["autogroup:admin", "group:family"],
+		"tag:ovenlight-guest-notes": ["autogroup:owner"],
+	},
+	"acls": [
+		{"action": "accept", "src": ["autogroup:member"], "dst": ["autogroup:member:*"]},
+		{"action": "accept", "src": ["tag:ovenlight-guest-coach"], "dst": ["tag:ovenlight-app-coach:443"]},
+	],
+}

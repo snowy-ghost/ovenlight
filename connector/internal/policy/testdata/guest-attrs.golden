@@ -1,0 +1,12 @@
+== refusal
+Ovenlight won't change this policy on its own:
+  - nodeAttrs entry 1 gives ["funnel"] to "*", which may include guest devices; change its target to autogroup:member, or the users, groups and tags that need it
+  - nodeAttrs entry 3 gives ["drive:share"] to "autogroup:tagged", "tailnet-half", which may include guest devices; change its target to autogroup:member, or the users, groups and tags that need it
+  - autoApprovers.routes["10.0.0.0/24"] lists "tag:ovenlight-guest-coach", which may include guest devices, so a guest device could have what it advertises (routes, an exit node) approved automatically and carry your traffic; list only the users, groups or tags of your own devices there
+  - autoApprovers.routes["192.168.0.0/16"] lists "autogroup:future", which may include guest devices, so a guest device could have what it advertises (routes, an exit node) approved automatically and carry your traffic; list only the users, groups or tags of your own devices there
+  - autoApprovers.exitNode lists "autogroup:danger-all", which may include guest devices, so a guest device could have what it advertises (routes, an exit node) approved automatically and carry your traffic; list only the users, groups or tags of your own devices there
+  - autoApprovers.services["svc:web"] lists "*", which may include guest devices, so a guest device could have what it advertises (routes, an exit node) approved automatically and carry your traffic; list only the users, groups or tags of your own devices there
+
+Suggested manual edit:
+  Make the changes above in the admin console (Access controls).
+  Then run the same ovenlight command again.

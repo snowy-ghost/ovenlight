@@ -1,0 +1,12 @@
+{
+	"grants": [
+		{"src": ["*"], "dst": ["*"], "ip": ["*"]},
+	],
+	"nodeAttrs": [
+		{"target": ["autogroup:member"], "attr": ["mullvad"]},
+		{"target": ["tag:router", "alex@example.com"], "attr": ["funnel"]},
+	],
+	"autoApprovers": {
+		"exitNode": ["alex@example.com"],
+	},
+}

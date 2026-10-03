@@ -1,0 +1,51 @@
+== report
+change: Add tagOwners for tag:ovenlight-app-coach, tag:ovenlight-guest-coach (owner autogroup:admin).
+change: Add one rule to grants: alex@example.com may reach tag:ovenlight-app-coach on ports 443 and 8443, as a tagged node is no longer one of your own devices.
+change: Add one rule to grants: tag:ovenlight-guest-coach may reach only tag:ovenlight-app-coach:443.
+note: acls rule 2 and acls rule 3 and acls rule 4 and acls rule 5 let their sources reach guest devices, so guests see those devices' names and addresses as peers (they still can't connect to them). Narrow their destinations if that matters to you.
+== diff
+--- current policy
++++ proposed policy
+@@ -1,4 +1,16 @@
+ {
++	// Ovenlight: tags for shared app nodes and the guests invited to them (ovenlight setup-sharing).
++	"tagOwners": {
++		"tag:ovenlight-app-coach": ["autogroup:admin"],
++		"tag:ovenlight-guest-coach": ["autogroup:admin"],
++	},
++	"grants": [
++		// Ovenlight: you reach your shared app nodes, and their admin port 8443 (ovenlight setup-sharing).
++		{"src": ["alex@example.com"], "dst": ["tag:ovenlight-app-coach"], "ip": ["tcp:443", "tcp:8443"]},
++		// Ovenlight: guests invited to coach reach only its node, on port 443.
++		{"src": ["tag:ovenlight-guest-coach"], "dst": ["tag:ovenlight-app-coach"], "ip": ["tcp:443"]},
++	],
++
+ 	"groups": {
+ 		"group:ops": ["alex@example.com"],
+ 	},
+== proposed
+{
+	// Ovenlight: tags for shared app nodes and the guests invited to them (ovenlight setup-sharing).
+	"tagOwners": {
+		"tag:ovenlight-app-coach": ["autogroup:admin"],
+		"tag:ovenlight-guest-coach": ["autogroup:admin"],
+	},
+	"grants": [
+		// Ovenlight: you reach your shared app nodes, and their admin port 8443 (ovenlight setup-sharing).
+		{"src": ["alex@example.com"], "dst": ["tag:ovenlight-app-coach"], "ip": ["tcp:443", "tcp:8443"]},
+		// Ovenlight: guests invited to coach reach only its node, on port 443.
+		{"src": ["tag:ovenlight-guest-coach"], "dst": ["tag:ovenlight-app-coach"], "ip": ["tcp:443"]},
+	],
+
+	"groups": {
+		"group:ops": ["alex@example.com"],
+	},
+	"acls": [
+		{"action": "accept", "src": ["autogroup:member"], "dst": ["autogroup:member:*"]},
+		{"action": "accept", "src": ["group:ops"], "dst": ["ipset:lab:22"]},
+		{"action": "accept", "src": ["group:ops"], "dst": ["100.64.0.1-100.64.0.9:22"]},
+		{"action": "accept", "src": ["group:ops"], "dst": ["[fd7a:115c:a1e0::1]:22"]},
+		{"action": "accept", "src": ["autogroup:admin"], "dst": ["autogroup:future:*"]},
+		{"action": "accept", "src": ["group:ops"], "dst": ["autogroup:self:*", "192.168.1.0/24:80"]},
+	],
+}

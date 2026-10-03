@@ -1,0 +1,15 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["A84T8TANK8.com.snowyghost.ovenlight"],
+        "components": [
+          {
+            "/": "/join*",
+            "comment": "Ovenlight invite links open the app; the invite rides in the fragment"
+          }
+        ]
+      }
+    ]
+  }
+}

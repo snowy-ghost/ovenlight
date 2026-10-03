@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- The invite, key included, is in this page's fragment (#...), which browsers never send
+     to a server. This policy keeps it here: only join.js runs (not scripts Cloudflare
+     injects), and nothing may be fetched, beaconed or posted. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'; frame-src 'none'">
+<meta name="referrer" content="no-referrer">
+<!-- The public TestFlight link, once there is one. Empty: the page offers the App Store
+     badge instead. -->
+<meta name="ovenlight-testflight" content="">
+<title>You're invited to an app on Ovenlight</title>
+<meta name="description" content="Open this invite on your iPhone to join with Ovenlight.">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Ovenlight">
+<meta property="og:title" content="You're invited to an app on Ovenlight">
+<meta property="og:description" content="Open this invite on your iPhone to join with Ovenlight.">
+<meta property="og:image" content="https://ovenlight.app/og-invite.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="The Ovenlight wordmark on its rack, lit by a soft cone of warm light from above.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="You're invited to an app on Ovenlight">
+<meta name="twitter:description" content="Open this invite on your iPhone to join with Ovenlight.">
+<meta name="twitter:image" content="https://ovenlight.app/og-invite.jpg">
+
+<meta name="theme-color" content="#faf5ee" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#19110d" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/icon-180.png">
+<style>
+  /* The CSP allows inline styles only, so this page carries its own copy of the
+     site's tokens (style.css) rather than linking the shared stylesheet. */
+  :root {
+    color-scheme: light dark;
+    --bg: #faf5ee; --paper: #fffcf7; --ink: #231711; --ink-body: #3b2c23; --ink-soft: #6b5a4e;
+    --line: #e7dacb; --ember: #a8400c; --link: #a8400c; --on-ember: #fff;
+    --light-core: 255, 187, 119; --glow: 246, 150, 70; --glow-strength: 0.7;
+    --shadow: 74, 34, 10;
+    --serif: ui-serif, "New York", "Iowan Old Style", Georgia, serif;
+    --sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #19110d; --paper: #241913; --ink: #f8eee4; --ink-body: #e8dbcf; --ink-soft: #b9a596;
+      --line: #3b2b21; --ember: #dc6c28; --link: #ec9256; --on-ember: #1a0c04;
+      --light-core: 255, 227, 181; --glow: 232, 120, 44; --glow-strength: 0.8;
+      --shadow: 0, 0, 0;
+    }
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+  body {
+    margin: 0; min-height: 100vh; display: flex; flex-direction: column;
+    background: var(--bg); color: var(--ink-body);
+    font-family: var(--sans); font-size: 1.0625rem; line-height: 1.55;
+    -webkit-font-smoothing: antialiased; overflow-x: hidden;
+  }
+  img { display: block; max-width: 100%; height: auto; }
+  a { color: var(--link); text-underline-offset: 0.18em; }
+  :focus-visible { outline: 2px solid var(--ember); outline-offset: 3px; }
+  [hidden] { display: none !important; }
+  .wrap { width: 100%; max-width: 30rem; margin: 0 auto; padding: 0 1rem; }
+
+  header.site { position: relative; z-index: 1; }
+  header.site .wrap { display: flex; align-items: center; min-height: 4rem; max-width: 70rem; }
+  @media (min-width: 37.5em) { header.site .wrap, footer.site .wrap { padding-left: 1.5rem; padding-right: 1.5rem; } }
+  @media (min-width: 64em) { header.site .wrap, footer.site .wrap { padding-left: 2.5rem; padding-right: 2.5rem; } }
+  .brand { display: inline-flex; align-items: center; gap: 0.6rem; color: var(--ink); }
+  .brand img { width: 1.75rem; height: 1.75rem; }
+  .brand-name { font-family: var(--serif); font-weight: 600; font-size: 1.1875rem; letter-spacing: -0.01em; }
+  .brand-by { color: var(--ink-soft); font-size: 0.875rem; }
+
+  /* The oven light, as on the rest of the site, falling on the invite from the top of its card. */
+  .lamp { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: -1; }
+  .lamp-beam {
+    position: absolute; top: 0; left: 50%; width: 30rem; height: 24rem;
+    transform: translateX(-50%); filter: blur(2.25rem); opacity: var(--glow-strength);
+  }
+  .lamp-beam::before {
+    content: ""; position: absolute; inset: 0;
+    clip-path: polygon(calc(50% - 3rem) 0, calc(50% + 3rem) 0, 100% 100%, 0 100%);
+    background: linear-gradient(rgba(var(--light-core), 0.8), rgba(var(--glow), 0.34) 48%, rgba(var(--glow), 0));
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .lamp-beam { animation: warm 2.2s 0.2s cubic-bezier(0.2, 0.6, 0.2, 1) both; }
+  }
+  @keyframes warm { from { opacity: 0; } to { opacity: var(--glow-strength); } }
+
+  main { flex: 1; padding: 1.5rem 0 3.5rem; }
+  @media (min-width: 37.5em) { main { padding-top: 3.5rem; } }
+  .invite-card {
+    position: relative; isolation: isolate; overflow: hidden;
+    text-align: center; padding: 3.5rem 1.5rem 1.75rem; border-radius: 1.75rem;
+    background: var(--paper); border: 1px solid var(--line);
+    box-shadow: 0 1.5rem 3rem -1.5rem rgba(var(--shadow), 0.3);
+  }
+  @media (min-width: 30em) { .invite-card { padding: 4rem 2.25rem 2rem; } }
+  img.mark {
+    width: 5.5rem; height: 5.5rem; margin: 0 auto; border-radius: 1.3rem;
+    box-shadow: 0 1rem 2rem -0.6rem rgba(var(--glow), 0.65);
+  }
+  h1 {
+    font-family: var(--serif); font-weight: 600; color: var(--ink);
+    font-size: clamp(1.625rem, 1.3rem + 1.6vw, 2rem); line-height: 1.2; letter-spacing: -0.01em;
+    margin: 1.5rem 0 0.5rem; overflow-wrap: anywhere; text-wrap: balance;
+  }
+  p { margin: 0.5rem 0 0; text-wrap: pretty; }
+  .for { color: var(--ink); font-weight: 600; }
+  .about { color: var(--ink-soft); }
+  .btn {
+    display: block; width: 100%; margin: 1.75rem 0 0; padding: 0.95rem 1.25rem; border-radius: 999px;
+    font-weight: 600; font-size: 1.0625rem; text-decoration: none; text-align: center;
+  }
+  .primary {
+    background: var(--ember); color: var(--on-ember);
+    box-shadow: 0 0.75rem 1.5rem -0.75rem rgba(var(--glow), 0.9);
+  }
+  .primary:active, .store:active { transform: translateY(1px); }
+  .secondary { background: var(--bg); color: var(--ink); border: 1px solid var(--line); margin-top: 0.6rem; }
+  /* Apple's official badge artwork, unmodified (black on light, white on dark). */
+  .store { display: block; width: max-content; margin: 1.75rem auto 0; border-radius: 0.75rem; line-height: 0; }
+  .store img { width: 12rem; }
+  .have { margin-top: 1.75rem; padding-top: 1.5rem; border-top: 1px solid var(--line); color: var(--ink); font-weight: 600; }
+  .note { font-size: 0.9375rem; color: var(--ink-soft); margin-top: 1.25rem; }
+  footer.site { border-top: 1px solid var(--line); color: var(--ink-soft); font-size: 0.875rem; }
+  footer.site .wrap {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem 2rem;
+    padding-top: 2rem; padding-bottom: 2.5rem; max-width: 70rem;
+  }
+  footer.site nav { display: flex; flex-wrap: wrap; gap: 0.25rem 1.5rem; }
+  footer.site a { color: var(--ink-soft); text-decoration: none; }
+  footer.site a:hover { color: var(--ink); text-decoration: underline; }
+</style>
+</head>
+<body>
+<header class="site">
+  <div class="wrap">
+    <div class="brand"><img src="/icon.svg" width="28" height="28" alt=""><span class="brand-name">Ovenlight</span><span class="brand-by">by Snowy Ghost</span></div>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+    <div class="invite-card">
+      <div class="lamp" aria-hidden="true"><span class="lamp-beam"></span></div>
+      <img class="mark" src="/icon.svg" width="88" height="88" alt="">
+      <h1 id="title">You're invited to an app on Ovenlight</h1>
+      <p class="for" id="for" hidden></p>
+      <p class="about">Ovenlight opens web apps that friends run on their own computers, and keeps them behind Face ID or your passcode.</p>
+      <p class="note" id="elsewhere" hidden>Ovenlight is for iPhone. Open this invite link on your iPhone to join.</p>
+      <p class="note" id="missing" hidden>This link is incomplete. Ask for it again and copy the whole link.</p>
+
+      <a class="store" id="ask" href="https://apps.apple.com/app/id6817561066">
+        <picture>
+          <source srcset="/images/app-store-badge-white.svg" media="(prefers-color-scheme: dark)">
+          <img src="/images/app-store-badge-black.svg" width="150" height="50" alt="Download on the App Store">
+        </picture>
+      </a>
+      <a class="btn primary" id="testflight" href="#" hidden>Get Ovenlight on TestFlight</a>
+
+      <div id="invite" hidden>
+        <p class="note">Once Ovenlight is installed, open the invite link again.</p>
+        <p class="have">Already have Ovenlight?</p>
+        <a class="btn secondary" id="open" href="#">Open in Ovenlight</a>
+        <p class="note">The invite works once, on one iPhone, and expires after 24 hours, so open it soon. This page doesn't send your invite anywhere.</p>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer class="site">
+  <div class="wrap">
+    <span>&copy; Snowy Ghost LLC</span>
+    <nav aria-label="Footer">
+      <a href="/support">Support</a>
+      <a href="/privacy">Privacy Policy</a>
+      <a href="https://snowyghost.com">Snowy Ghost</a>
+    </nav>
+  </div>
+</footer>
+<script src="/join.js"></script>
+</body>
+</html>

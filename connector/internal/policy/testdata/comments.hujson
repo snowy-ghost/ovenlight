@@ -1,0 +1,22 @@
+/* Home tailnet policy. Edited by hand; keep the comments. */
+{ // top of file
+	// People.
+	"groups": {
+		"group:home": ["alex@example.com"], // me
+	},
+
+	/* Access rules. */
+	"acls": [
+		// Me, everywhere.
+		{
+			"action": "accept",
+			"src":    ["group:home"],
+			"dst":    ["*:*"],
+		}, // end of my rule
+
+		// Old rule, kept for reference:
+		// {"action": "accept", "src": ["*"], "dst": ["*:*"]},
+	],
+	// Trailing comment inside the root object.
+}
+// Trailing comment after the root object.

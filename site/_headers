@@ -1,0 +1,29 @@
+# Cloudflare Pages joins the values of a header set by more than one matching
+# rule, so each header below is set by one rule only.
+
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+
+# iOS rejects the association file unless it is JSON; Cloudflare would serve
+# this extensionless file as application/octet-stream.
+/.well-known/apple-app-site-association
+  Content-Type: application/json
+
+# The invite, key included, rides in the join page's fragment. The same policy
+# as the page's own meta tag: only join.js runs (no scripts Cloudflare injects),
+# and nothing may be fetched, beaconed or posted. frame-ancestors only works as
+# a header.
+/join*
+  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'; frame-src 'none'; frame-ancestors 'none'
+  Referrer-Policy: no-referrer
+
+# The home, support and privacy pages run no script and fetch nothing from elsewhere,
+# so nothing injected into them (Cloudflare's analytics beacon, say) can run either:
+# the site promises no analytics or tracking.
+/
+  Content-Security-Policy: default-src 'none'; script-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'none'
+/support
+  Content-Security-Policy: default-src 'none'; script-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'none'
+/privacy
+  Content-Security-Policy: default-src 'none'; script-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'none'

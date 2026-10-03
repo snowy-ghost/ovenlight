@@ -1,0 +1,4 @@
+{
+  "error": "not invited: this device already belongs to another guest",
+  "code": "other_person"
+}

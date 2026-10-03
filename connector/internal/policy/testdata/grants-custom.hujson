@@ -1,0 +1,13 @@
+{
+	"groups": {
+		"group:eng": ["alex@example.com"],
+	},
+	"tagOwners": {
+		"tag:server": ["group:eng"], // build boxes
+	},
+	"grants": [
+		{"src": ["group:eng"], "dst": ["tag:server"], "ip": ["*"]},
+		{"src": ["autogroup:member"], "dst": ["autogroup:self"], "ip": ["*"]}, // everyone reaches their own devices
+		{"src": ["tag:server"], "dst": ["tag:server"], "ip": ["tcp:5432"]},
+	],
+}

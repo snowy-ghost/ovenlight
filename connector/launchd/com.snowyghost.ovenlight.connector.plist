@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Template: install.sh replaces __BIN__, __LOG__ and __STDERR_LOG__ and installs it to ~/Library/LaunchAgents. -->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.snowyghost.ovenlight.connector</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>__BIN__</string>
+        <string>run</string>
+        <string>--log</string>
+        <string>__LOG__</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+    <key>Umask</key>
+    <integer>63</integer> <!-- 077: files it creates are yours alone -->
+    <!-- The connector writes its own log (run --log); these keep what bypasses it, such as a panic. -->
+    <key>StandardOutPath</key>
+    <string>__STDERR_LOG__</string>
+    <key>StandardErrorPath</key>
+    <string>__STDERR_LOG__</string>
+</dict>
+</plist>

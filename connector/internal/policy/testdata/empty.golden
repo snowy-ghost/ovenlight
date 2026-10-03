@@ -1,0 +1,36 @@
+== report
+change: Add tagOwners for tag:ovenlight-app-coach, tag:ovenlight-guest-coach (owner autogroup:admin).
+change: Add one rule to grants: alex@example.com may reach tag:ovenlight-app-coach on ports 443 and 8443, as a tagged node is no longer one of your own devices.
+change: Add one rule to grants: tag:ovenlight-guest-coach may reach only tag:ovenlight-app-coach:443.
+== diff
+--- current policy
++++ proposed policy
+@@ -1,1 +1,13 @@
+-{}
++{
++	// Ovenlight: tags for shared app nodes and the guests invited to them (ovenlight setup-sharing).
++	"tagOwners": {
++		"tag:ovenlight-app-coach": ["autogroup:admin"],
++		"tag:ovenlight-guest-coach": ["autogroup:admin"],
++	},
++	"grants": [
++		// Ovenlight: you reach your shared app nodes, and their admin port 8443 (ovenlight setup-sharing).
++		{"src": ["alex@example.com"], "dst": ["tag:ovenlight-app-coach"], "ip": ["tcp:443", "tcp:8443"]},
++		// Ovenlight: guests invited to coach reach only its node, on port 443.
++		{"src": ["tag:ovenlight-guest-coach"], "dst": ["tag:ovenlight-app-coach"], "ip": ["tcp:443"]},
++	],
++}
+== proposed
+{
+	// Ovenlight: tags for shared app nodes and the guests invited to them (ovenlight setup-sharing).
+	"tagOwners": {
+		"tag:ovenlight-app-coach": ["autogroup:admin"],
+		"tag:ovenlight-guest-coach": ["autogroup:admin"],
+	},
+	"grants": [
+		// Ovenlight: you reach your shared app nodes, and their admin port 8443 (ovenlight setup-sharing).
+		{"src": ["alex@example.com"], "dst": ["tag:ovenlight-app-coach"], "ip": ["tcp:443", "tcp:8443"]},
+		// Ovenlight: guests invited to coach reach only its node, on port 443.
+		{"src": ["tag:ovenlight-guest-coach"], "dst": ["tag:ovenlight-app-coach"], "ip": ["tcp:443"]},
+	],
+}

@@ -1,0 +1,13 @@
+{
+	"tagOwners": {
+		"tag:server": ["tag:ovenlight-guest-coach"],
+		"tag:ci": ["group:eng", "autogroup:tagged"],
+		"tag:printer": ["alex@example.com", "tag:server"],
+	},
+	"acls": [
+		{"action": "accept", "src": ["autogroup:member"], "dst": ["autogroup:member:*"]},
+	],
+	"nodeAttrs": [
+		{"target": ["*"], "app": {"tailscale.com/app-connectors": [{"name": "github", "connectors": ["tag:ovenlight-guest-coach"], "domains": ["github.com"]}]}},
+	],
+}

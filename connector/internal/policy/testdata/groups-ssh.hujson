@@ -1,0 +1,23 @@
+{
+  "groups": {
+    "group:family": ["alex@example.com", "sam@example.com"],
+    "group:admins": ["alex@example.com"]
+  },
+  "hosts": {
+    "nas": "100.101.102.103",
+    "home-lan": "192.168.1.0/24"
+  },
+  "acls": [
+    {"action": "accept", "src": ["group:admins"], "dst": ["*:*"]},
+    {"action": "accept", "src": ["group:family"], "dst": ["nas:445", "home-lan:80,443"]},
+    {"action": "accept", "users": ["sam@example.com"], "ports": ["autogroup:self:*"]}
+  ],
+  "ssh": [
+    {
+      "action": "accept",
+      "src": ["group:admins"],
+      "dst": ["autogroup:self"],
+      "users": ["autogroup:nonroot"]
+    }
+  ]
+}

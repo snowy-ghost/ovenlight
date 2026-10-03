@@ -1,0 +1,44 @@
+{
+  "removed": [
+    {
+      "deviceId": "nSamPhone",
+      "person": "7c2e91a4d0",
+      "name": "Sam",
+      "app": "coach",
+      "deviceName": "sam-iphone",
+      "inviteId": "a1b2c3d4e5",
+      "claimedAt": "2026-09-27T12:04:05.123456789-07:00",
+      "removedAt": "2026-10-02T12:04:05.123456789-07:00",
+      "removedWhy": "removed by the owner"
+    },
+    {
+      "deviceId": "nSamPad",
+      "person": "7c2e91a4d0",
+      "name": "Sam",
+      "app": "coach",
+      "deviceName": "sam-ipad",
+      "inviteId": "b2c3d4e5f6",
+      "claimedAt": "2026-09-28T12:04:05.123456789-07:00",
+      "removedAt": "2026-10-02T12:04:05.123456789-07:00",
+      "removedWhy": "removed by the owner"
+    }
+  ],
+  "deletedDevices": [
+    "nSamPhone"
+  ],
+  "retaggedDevices": [
+    "nSamPad"
+  ],
+  "canceledInvites": [
+    {
+      "id": "b3c4d5e6f7",
+      "to": "Sam",
+      "person": "7c2e91a4d0",
+      "app": "coach",
+      "state": "canceled",
+      "requestedBy": "ovenlight",
+      "created": "2026-10-01T12:04:05.123456789-07:00",
+      "expires": "2026-10-02T12:04:05.123456789-07:00"
+    }
+  ]
+}

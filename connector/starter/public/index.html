@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <!-- viewport-fit=cover: the page runs edge to edge in Ovenlight and pads itself with the
+       safe-area insets (styles.css). -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <!-- The status bar takes these colors. Keep them equal to --bg in styles.css. -->
+  <meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+  <title>{{name}}</title>
+  <!-- Ovenlight takes the app's icon and color from the manifest. Its URLs stay relative:
+       the connector reads them from 127.0.0.1, not from your tailnet name. -->
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <main id="screen"></main>
+  <noscript>{{name}} needs JavaScript.</noscript>
+</body>
+</html>

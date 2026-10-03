@@ -1,0 +1,10 @@
+== refusal
+Ovenlight won't change this policy on its own:
+  - acls rule 1 lets ["*"] reach ["*:22"], guest devices included; Ovenlight narrows on its own only a rule that lets everything reach everything
+
+Suggested manual edit:
+  In the admin console (Access controls), change acls rule 1:
+    source: replace "*" with ["autogroup:member"]
+  so your own devices, tagged devices and routes keep their access and guest devices get none.
+  If a rule above lets guest devices or unknown sources reach more, remove or narrow it.
+  Then run the same ovenlight command again.

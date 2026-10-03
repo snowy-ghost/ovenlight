@@ -1,0 +1,9 @@
+== refusal
+Ovenlight won't change this policy on its own:
+  - tagOwners lets "autogroup:tagged" apply tag:ci, and a device can take on the tags its own tags own, so a guest device could become tag:ci; remove "autogroup:tagged" from its owners
+  - tagOwners lets "tag:ovenlight-guest-coach" apply tag:server, and a device can take on the tags its own tags own, so a guest device could become tag:server; remove "tag:ovenlight-guest-coach" from its owners
+  - nodeAttrs entry 1 runs App Connectors on "tag:ovenlight-guest-coach", which may include guest devices, so a guest device could carry your traffic to those domains; list only the tags of your own connectors there
+
+Suggested manual edit:
+  Make the changes above in the admin console (Access controls).
+  Then run the same ovenlight command again.

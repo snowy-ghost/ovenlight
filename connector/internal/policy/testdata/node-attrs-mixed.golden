@@ -1,0 +1,9 @@
+== refusal
+Ovenlight won't change this policy on its own:
+  - nodeAttrs entry 1 gives ["funnel", "mullvad"] to "*", which may include guest devices; change its target to autogroup:member, or the users, groups and tags that need it
+  - nodeAttrs entry 2 gives ["app:tailscale.com/cap/drive"] to "autogroup:tagged", which may include guest devices; change its target to autogroup:member, or the users, groups and tags that need it
+  - nodeAttrs entry 3 gives ["ipPool"] to "*", which may include guest devices; change its target to autogroup:member, or the users, groups and tags that need it
+
+Suggested manual edit:
+  Make the changes above in the admin console (Access controls).
+  Then run the same ovenlight command again.

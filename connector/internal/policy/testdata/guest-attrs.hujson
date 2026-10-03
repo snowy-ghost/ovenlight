@@ -1,0 +1,23 @@
+{
+	"hosts": {
+		"tailnet-half": "100.64.0.0/11",
+	},
+	"acls": [
+		{"action": "accept", "src": ["autogroup:member"], "dst": ["autogroup:member:*"]},
+	],
+	"nodeAttrs": [
+		{"target": ["*"], "attr": ["funnel"]},
+		{"target": ["autogroup:member"], "attr": ["mullvad"]},
+		{"target": ["autogroup:tagged", "tailnet-half"], "attr": ["drive:share"]},
+	],
+	"autoApprovers": {
+		"routes": {
+			"10.0.0.0/24": ["tag:router", "tag:ovenlight-guest-coach"],
+			"192.168.0.0/16": ["autogroup:future"],
+		},
+		"exitNode": ["autogroup:danger-all"],
+		"services": {
+			"svc:web": ["*"],
+		},
+	},
+}

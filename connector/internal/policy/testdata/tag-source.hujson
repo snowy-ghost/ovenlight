@@ -1,0 +1,6 @@
+{
+	"acls": [
+		{"action": "accept", "src": ["*"], "dst": ["*:*"]},
+		{"action": "accept", "src": ["tag:ci"], "dst": ["tag:deploy:22"]},
+	],
+}

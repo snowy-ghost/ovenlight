@@ -1,0 +1,4 @@
+{
+  "error": "the admin API is for the owner only",
+  "code": "owner_only"
+}

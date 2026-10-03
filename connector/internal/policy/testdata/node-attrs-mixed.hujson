@@ -1,0 +1,11 @@
+{
+	"acls": [
+		{"action": "accept", "src": ["autogroup:member"], "dst": ["autogroup:member:*"]},
+	],
+	"nodeAttrs": [
+		{"target": ["*"], "attr": ["nextdns:abc123", "funnel", "mullvad"]},
+		{"target": ["autogroup:tagged"], "app": {"tailscale.com/app-connectors": [], "tailscale.com/cap/drive": []}},
+		{"target": ["*"], "ipPool": ["100.80.0.0/16"]},
+		{"target": ["autogroup:member"], "attr": ["funnel", "drive:share", "drive:access"]},
+	],
+}

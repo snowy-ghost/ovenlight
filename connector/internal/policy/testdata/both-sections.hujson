@@ -1,0 +1,9 @@
+{
+	"acls": [
+		{"action": "accept", "src": ["autogroup:member"], "dst": ["autogroup:self:*"]},
+	],
+	"grants": [
+		{"src": ["group:a"], "dst": ["tag:x"], "ip": ["*"]},
+		{"src": ["group:b"], "dst": ["tag:y"], "ip": ["443"]},
+	],
+}

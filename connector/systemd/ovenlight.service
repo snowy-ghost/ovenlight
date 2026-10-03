@@ -1,0 +1,14 @@
+# Installed by install.sh, which fills in the paths below, as
+# ~/.config/systemd/user/ovenlight.service.
+[Unit]
+Description=Ovenlight connector
+
+[Service]
+ExecStart="__BIN__" run --log "__LOG__" --config "__CONFIG__" --state "__STATE__"
+Restart=always
+RestartSec=10
+# 077: files it creates are yours alone.
+UMask=0077
+
+[Install]
+WantedBy=default.target

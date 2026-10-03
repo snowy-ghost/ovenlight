@@ -1,0 +1,6 @@
+{
+	// Everyone reaches the members' devices, nothing else.
+	"acls": [
+		{"action": "accept", "src": ["*"], "dst": ["autogroup:member:*"]},
+	],
+}

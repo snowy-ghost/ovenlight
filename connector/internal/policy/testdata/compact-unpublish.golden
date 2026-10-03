@@ -1,0 +1,10 @@
+== report
+change: Stop sharing notes: remove tag:ovenlight-app-notes and tag:ovenlight-guest-notes, the rule between them, and tag:ovenlight-app-notes from acls rule 2.
+== diff
+--- current policy
++++ proposed policy
+@@ -1,1 +1,1 @@
+-{"tagOwners": { "tag:ovenlight-app-coach": ["autogroup:admin"], "tag:ovenlight-guest-coach": ["autogroup:admin"], "tag:ovenlight-app-notes": ["autogroup:admin"], "tag:ovenlight-guest-notes": ["autogroup:admin"] }, "acls":[{"action":"accept","src":["autogroup:member"],"dst":["autogroup:member:*"]}, {"action": "accept", "src": ["alex@example.com"], "dst": ["tag:ovenlight-app-coach:443,8443", "tag:ovenlight-app-notes:443,8443"]}, {"action": "accept", "src": ["tag:ovenlight-guest-coach"], "dst": ["tag:ovenlight-app-coach:443"]}, {"action": "accept", "src": ["tag:ovenlight-guest-notes"], "dst": ["tag:ovenlight-app-notes:443"]}]}
++{"tagOwners": { "tag:ovenlight-app-coach": ["autogroup:admin"], "tag:ovenlight-guest-coach": ["autogroup:admin"] }, "acls":[{"action":"accept","src":["autogroup:member"],"dst":["autogroup:member:*"]}, {"action": "accept", "src": ["alex@example.com"], "dst": ["tag:ovenlight-app-coach:443,8443"]}, {"action": "accept", "src": ["tag:ovenlight-guest-coach"], "dst": ["tag:ovenlight-app-coach:443"]}]}
+== proposed
+{"tagOwners": { "tag:ovenlight-app-coach": ["autogroup:admin"], "tag:ovenlight-guest-coach": ["autogroup:admin"] }, "acls":[{"action":"accept","src":["autogroup:member"],"dst":["autogroup:member:*"]}, {"action": "accept", "src": ["alex@example.com"], "dst": ["tag:ovenlight-app-coach:443,8443"]}, {"action": "accept", "src": ["tag:ovenlight-guest-coach"], "dst": ["tag:ovenlight-app-coach:443"]}]}

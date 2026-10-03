@@ -1,0 +1,6 @@
+== refusal
+Ovenlight won't change this policy on its own:
+  - tag:ovenlight-app-notes would go, but the policy still uses it outside the rules Ovenlight manages
+
+Suggested manual edit:
+  Remove those uses in the admin console (Access controls), then run the command again.

@@ -1,0 +1,17 @@
+{
+  "invite": {
+    "id": "c3d4e5f6a7",
+    "to": "Kim",
+    "person": "e5f6a7b8c9",
+    "app": "coach",
+    "state": "sent",
+    "requestedBy": "ovenlight",
+    "created": "2026-09-28T12:04:05.123456789-07:00",
+    "expires": "2026-09-29T12:04:05.123456789-07:00"
+  },
+  "link": "https://ovenlight.app/join#app=coach\u0026control=https%3A%2F%2Fcontrolplane.tailscale.com\u0026host=coach.tail1.ts.net\u0026invite=c3d4e5f6a7\u0026key=tskey-auth-kExample1CNTRL-ExampleSecretNotReal\u0026name=Interview+Coach\u0026owner=Alex\u0026to=Kim\u0026v=1",
+  "appLink": "ovenlight://join?app=coach\u0026control=https%3A%2F%2Fcontrolplane.tailscale.com\u0026host=coach.tail1.ts.net\u0026invite=c3d4e5f6a7\u0026key=tskey-auth-kExample1CNTRL-ExampleSecretNotReal\u0026name=Interview+Coach\u0026owner=Alex\u0026to=Kim\u0026v=1",
+  "appName": "Interview Coach",
+  "owner": "Alex",
+  "message": "I'm sharing Interview Coach with you in Ovenlight, an iPhone app. Open this link on your iPhone within 24 hours to join: https://ovenlight.app/join#app=coach\u0026control=https%3A%2F%2Fcontrolplane.tailscale.com\u0026host=coach.tail1.ts.net\u0026invite=c3d4e5f6a7\u0026key=tskey-auth-kExample1CNTRL-ExampleSecretNotReal\u0026name=Interview+Coach\u0026owner=Alex\u0026to=Kim\u0026v=1"
+}

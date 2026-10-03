@@ -1,0 +1,8 @@
+{
+	"tagOwners": {
+		"tag:server": ["autogroup:admin"],
+	},
+	"acls": [
+		{"action": "accept", "src": ["*"], "dst": ["*:*"]},
+	],
+}

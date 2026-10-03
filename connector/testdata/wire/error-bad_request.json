@@ -1,0 +1,4 @@
+{
+  "error": "send {\"to\": \"Name\", \"app\": \"slug\"} or {\"person\": \"id\", \"app\": \"slug\"}",
+  "code": "bad_request"
+}

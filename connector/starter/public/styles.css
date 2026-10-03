@@ -1,0 +1,237 @@
+/* Looks and behaves like an iPhone app inside Ovenlight. */
+
+:root {
+  color-scheme: light dark;
+  --bg: #f2f2f7; /* the light theme-color in index.html */
+  --surface: #ffffff;
+  --ink: #000000;
+  --muted: #6c6c70;
+  --line: #c6c6c8;
+  --accent: {{accent}};
+  --on-accent: #ffffff;
+  --danger: #d70015;
+  --radius: 10px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #000000; /* the dark theme-color in index.html */
+    --surface: #1c1c1e;
+    --ink: #ffffff;
+    --muted: #98989f;
+    --line: #38383a;
+    --accent: {{accentDark}};
+    --on-accent: #000000;
+    --danger: #ff6961;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  /* Dynamic Type: -apple-system-body follows the text size chosen in iOS Settings. The
+     first line is for other browsers, which don't know it. Size the rest in em and rem so
+     it scales along. */
+  font: 17px/1.35 system-ui, sans-serif;
+  font: -apple-system-body;
+  -webkit-text-size-adjust: 100%;
+  /* Also fills what shows when the page is pulled down past its top. */
+  background: var(--bg);
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  color: var(--ink);
+  -webkit-tap-highlight-color: transparent;
+  /* Ovenlight shows the page edge to edge, under the status bar and the home indicator,
+     so the page pads itself by the safe-area insets. Ovenlight's menu handle sits in the
+     top inset, so keep anything tappable out of it. And don't set overscroll-behavior:
+     pulling down at the top of the page is how people bring that menu back. */
+  padding: calc(env(safe-area-inset-top) + 0.5rem) calc(env(safe-area-inset-right) + 1rem)
+    calc(env(safe-area-inset-bottom) + 2rem) calc(env(safe-area-inset-left) + 1rem);
+}
+
+main {
+  max-width: 40rem;
+  margin: 0 auto;
+}
+
+h1 {
+  margin: 0.25rem 0 0;
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.subtitle {
+  margin: 0.25rem 0 0;
+  color: var(--muted);
+}
+
+/* Lists in the style of iOS grouped tables. */
+.list {
+  list-style: none;
+  margin: 1.25rem 0;
+  padding: 0;
+  background: var(--surface);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 44px; /* the smallest comfortable tap target */
+  padding: 0.6rem 1rem;
+}
+
+.row + .row {
+  border-top: 0.5px solid var(--line);
+}
+
+.text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-wrap: anywhere;
+}
+
+.text small,
+.empty,
+.count,
+.note {
+  color: var(--muted);
+}
+
+.text small {
+  font-size: 0.8em;
+}
+
+.count {
+  font-variant-numeric: tabular-nums;
+}
+
+.note {
+  margin: 0;
+  font-size: 0.85em;
+  text-align: center;
+}
+
+.add {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+}
+
+input {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0.5rem 0.875rem;
+  border: none;
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: max(16px, 1em); /* below 16px, iOS zooms the page in when the field gets focus */
+}
+
+input:focus {
+  outline: 2px solid var(--accent);
+}
+
+.button,
+.icon {
+  border: none;
+  font: inherit;
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.button {
+  min-height: 44px;
+  padding: 0 1.1rem;
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.button.primary {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.button.danger {
+  width: 100%;
+  color: var(--danger);
+}
+
+.icon {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  margin: -0.6rem -0.75rem -0.6rem 0;
+  background: none;
+  color: var(--muted);
+  font-size: 1.5em;
+}
+
+.footer {
+  display: grid;
+  gap: 1.25rem;
+}
+
+a.link,
+.back {
+  text-decoration: none;
+  -webkit-touch-callout: none; /* no link preview on a long press, as in an app */
+}
+
+a.link {
+  justify-content: space-between;
+  background: var(--surface);
+  border-radius: var(--radius);
+  color: var(--ink);
+}
+
+a.link::after {
+  content: "›";
+  color: var(--muted);
+  font-size: 1.4em;
+  line-height: 1;
+}
+
+.back {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--accent);
+}
+
+.button:active,
+.icon:active,
+a.link:active,
+.back:active {
+  opacity: 0.55;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .button,
+  .icon,
+  a.link,
+  .back {
+    transition: opacity 0.15s, transform 0.15s;
+  }
+
+  .button:active {
+    transform: scale(0.97);
+  }
+}

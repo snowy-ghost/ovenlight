@@ -1,0 +1,4 @@
+# The tests compare these byte for byte, so Git never changes their line endings, as
+# core.autocrlf would on Windows.
+testdata/** -text
+internal/policy/testdata/** -text

@@ -1,0 +1,15 @@
+{
+  "name": "snowy-ghost",
+  "description": "Ovenlight: your own web apps on your iPhone, from your Mac",
+  "owner": {
+    "name": "Snowy Ghost",
+    "email": "team@snowyghost.com"
+  },
+  "plugins": [
+    {
+      "name": "ovenlight",
+      "source": "./plugins/ovenlight",
+      "description": "Build web apps that feel at home in Ovenlight, publish them from your Mac, and read feedback sent from the iPhone"
+    }
+  ]
+}

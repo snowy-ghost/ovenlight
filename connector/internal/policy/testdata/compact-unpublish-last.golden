@@ -1,0 +1,10 @@
+== report
+change: Stop sharing coach: remove tag:ovenlight-app-coach and tag:ovenlight-guest-coach, the rule between them, and tag:ovenlight-app-coach from grants rule 1.
+== diff
+--- current policy
++++ proposed policy
+@@ -1,1 +1,1 @@
+-{"acls": [{"action": "accept", "src": ["autogroup:member"], "dst": ["autogroup:member:*"]}], "tagOwners": {"tag:ovenlight-app-coach": ["autogroup:admin"], "tag:ovenlight-guest-coach": ["autogroup:admin"]}, "grants": [{"src": ["alex@example.com"], "dst": ["tag:ovenlight-app-coach"], "ip": ["tcp:443", "tcp:8443"]}, {"src": ["tag:ovenlight-guest-coach"], "dst": ["tag:ovenlight-app-coach"], "ip": ["tcp:443"]}]}
++{"acls": [{"action": "accept", "src": ["autogroup:member"], "dst": ["autogroup:member:*"]}]}
+== proposed
+{"acls": [{"action": "accept", "src": ["autogroup:member"], "dst": ["autogroup:member:*"]}]}

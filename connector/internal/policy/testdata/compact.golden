@@ -1,0 +1,14 @@
+== report
+change: Add tagOwners for tag:ovenlight-app-coach, tag:ovenlight-guest-coach (owner autogroup:admin).
+change: Narrow acls rule 1 from everything reaching everything to autogroup:member reaching autogroup:member, so guest devices neither inherit it nor see your devices.
+change: Add one rule to grants: alex@example.com may reach tag:ovenlight-app-coach on ports 443 and 8443, as a tagged node is no longer one of your own devices.
+change: Add one rule to grants: tag:ovenlight-guest-coach may reach only tag:ovenlight-app-coach:443.
+note: "*" also covered people you share devices with from their own tailnets (autogroup:shared); they aren't in autogroup:member. If you share devices that way, add their access back explicitly.
+== diff
+--- current policy
++++ proposed policy
+@@ -1,1 +1,1 @@
+-{"acls":[{"action":"accept","src":["*"],"dst":["*:*"]}]}
++{"tagOwners": { "tag:ovenlight-app-coach": ["autogroup:admin"], "tag:ovenlight-guest-coach": ["autogroup:admin"] }, "grants": [ {"src": ["alex@example.com"], "dst": ["tag:ovenlight-app-coach"], "ip": ["tcp:443", "tcp:8443"]}, {"src": ["tag:ovenlight-guest-coach"], "dst": ["tag:ovenlight-app-coach"], "ip": ["tcp:443"]} ], "acls":[{"action":"accept","src":["autogroup:member"],"dst":["autogroup:member:*"]}]}
+== proposed
+{"tagOwners": { "tag:ovenlight-app-coach": ["autogroup:admin"], "tag:ovenlight-guest-coach": ["autogroup:admin"] }, "grants": [ {"src": ["alex@example.com"], "dst": ["tag:ovenlight-app-coach"], "ip": ["tcp:443", "tcp:8443"]}, {"src": ["tag:ovenlight-guest-coach"], "dst": ["tag:ovenlight-app-coach"], "ip": ["tcp:443"]} ], "acls":[{"action":"accept","src":["autogroup:member"],"dst":["autogroup:member:*"]}]}

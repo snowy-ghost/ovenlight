@@ -1,0 +1,6 @@
+{
+    "tagOwners": {
+        "tag:printer": ["alex@example.com"]
+    },
+    "acls": []
+}

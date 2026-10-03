@@ -1,0 +1,8 @@
+== refusal
+Ovenlight won't change this policy on its own:
+  - acls rule 2 lets "autogroup:tagged" reach ["tag:monitoring:9100"]; a guest device may reach only its own app's node, on port 443
+  - acls rule 3 lets "tag:ovenlight-guest-coach" reach ["*:*"]; a guest device may reach only its own app's node, on port 443
+
+Suggested manual edit:
+  If a rule above lets guest devices or unknown sources reach more, remove or narrow it.
+  Then run the same ovenlight command again.

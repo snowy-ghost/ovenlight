@@ -1,0 +1,7 @@
+== refusal
+Ovenlight won't change this policy on its own:
+  - acls rule 2 has the source "autogroup:nonroot", and Ovenlight can't tell whether that includes guest devices
+
+Suggested manual edit:
+  If a rule above lets guest devices or unknown sources reach more, remove or narrow it.
+  Then run the same ovenlight command again.

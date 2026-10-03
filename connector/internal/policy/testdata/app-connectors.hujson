@@ -1,0 +1,10 @@
+{
+	"acls": [
+		{"action": "accept", "src": ["autogroup:member"], "dst": ["autogroup:member:*"]},
+	],
+	"nodeAttrs": [
+		// Written by the admin console for an App Connector.
+		{"target": ["*"], "app": {"tailscale.com/app-connectors": [{"name": "github", "connectors": ["tag:connector"], "domains": ["github.com"]}]}},
+		{"target": ["*"], "attr": ["nextdns:abc123", "randomize-client-port", "disable-captive-portal-detection"]},
+	],
+}

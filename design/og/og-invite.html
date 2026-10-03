@@ -1,0 +1,34 @@
+<!doctype html>
+<!-- The link preview image (site/og-invite.jpg), rendered by generate.py: the wordmark on its
+     rack, lit by the app's oven light, a soft cone from the top center with no lamp drawn. -->
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; width: 1200px; height: 630px; overflow: hidden; background: #140c09; }
+  body { position: relative; font-family: ui-serif, "New York", "Iowan Old Style", Georgia, serif; }
+  /* The app's LightCone in the dark appearance: the light's core where it leaves the top edge,
+     amber as it falls, with a soft halo at its source. The blur sits on the wrapper so the
+     clipped edges soften, as on the website. */
+  .cone { position: absolute; left: 50%; top: 0; width: 1100px; height: 600px; margin-left: -550px; filter: blur(36px); }
+  .cone::before {
+    content: ""; position: absolute; inset: 0;
+    clip-path: polygon(calc(50% - 60px) 0, calc(50% + 60px) 0, 100% 100%, 0 100%);
+    background: linear-gradient(rgba(255, 227, 181, 0.5), rgba(232, 120, 44, 0.38) 48%, rgba(232, 120, 44, 0) 100%);
+  }
+  .halo {
+    position: absolute; left: 50%; top: 0; width: 440px; height: 220px; margin-left: -220px;
+    background: radial-gradient(circle 220px at 50% 0, rgba(255, 227, 181, 0.55), rgba(255, 181, 92, 0.18) 40%, rgba(255, 181, 92, 0) 100%);
+  }
+  h1 {
+    position: absolute; left: 0; right: 0; top: 300px; margin: 0; text-align: center;
+    font-size: 132px; font-weight: 600; letter-spacing: -1px; color: #fbf3ea; line-height: 1;
+  }
+  .rack {
+    position: absolute; left: 440px; width: 320px; top: 460px; height: 8px; border-radius: 4px;
+    background: linear-gradient(90deg, #c7581d, #e0702c 50%, #c7581d);
+    box-shadow: 0 0 18px rgba(232, 120, 44, 0.45);
+  }
+</style>
+<div class="cone"></div>
+<div class="halo"></div>
+<h1>Ovenlight</h1>
+<div class="rack"></div>

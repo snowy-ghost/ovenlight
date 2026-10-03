@@ -1,0 +1,19 @@
+[
+  {
+    "slug": "coach",
+    "name": "Interview Coach",
+    "url": "https://coach.tail1.ts.net/",
+    "state": "serving",
+    "online": true,
+    "shareable": true,
+    "guests": 1
+  },
+  {
+    "slug": "notes",
+    "name": "Notes",
+    "state": "needs-login",
+    "online": false,
+    "shareable": false,
+    "guests": 0
+  }
+]

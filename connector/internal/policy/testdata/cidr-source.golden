@@ -1,0 +1,7 @@
+== refusal
+Ovenlight won't change this policy on its own:
+  - acls rule 1 lets "100.64.0.0/10" reach ["*:22"]; a guest device may reach only its own app's node, on port 443
+
+Suggested manual edit:
+  If a rule above lets guest devices or unknown sources reach more, remove or narrow it.
+  Then run the same ovenlight command again.
