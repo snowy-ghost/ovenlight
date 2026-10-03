@@ -10,16 +10,19 @@ system to build.
 ## What the person needs
 
 - A computer that stays on and awake while the apps are used: a Mac with macOS 13 or
-  later, kept logged in; a Linux computer with systemd, such as Ubuntu; or a Windows 11 PC.
+  later, kept logged in, or a Linux computer with systemd, such as Ubuntu. A Windows
+  connector comes later.
 - A Tailscale account with MagicDNS and HTTPS Certificates turned on (admin console, DNS
   page).
 - An iPhone with iOS 18.1 or later and Ovenlight from the App Store.
-- The connector. For now, email team@snowyghost.com for a link to it. Unpack it and run
-  `./install.sh` in its folder, or on Windows, in an administrator PowerShell,
-  `powershell -ExecutionPolicy Bypass -File .\install.ps1`. It installs `ovenlight` at
-  `~/Library/Application Support/ovenlight/bin/ovenlight` on a Mac,
-  `~/.local/state/ovenlight/bin/ovenlight` on Linux, and
-  `%LOCALAPPDATA%\ovenlight\bin\ovenlight.exe` on Windows, and keeps it running.
+- The connector. Download the archive for the computer, unpack it, and run `./install.sh`
+  in its folder:
+  - Mac: https://downloads.ovenlight.app/connector/latest/ovenlight-connector-macos.tar.gz
+  - Linux on amd64: https://downloads.ovenlight.app/connector/latest/ovenlight-connector-linux-amd64.tar.gz
+  - Linux on arm64: https://downloads.ovenlight.app/connector/latest/ovenlight-connector-linux-arm64.tar.gz
+
+  It installs `ovenlight` at `~/Library/Application Support/ovenlight/bin/ovenlight` on a
+  Mac and `~/.local/state/ovenlight/bin/ovenlight` on Linux, and keeps it running.
 
 Signing in to Tailscale, connecting the iPhone and sharing an app are steps only the
 person can do. Ask them, in plain words, rather than working around them.
@@ -54,12 +57,6 @@ Linux, use the binary path above):
 
 ```sh
 claude mcp add ovenlight -- ~/Library/Application\ Support/ovenlight/bin/ovenlight mcp
-```
-
-On Windows, in PowerShell:
-
-```powershell
-claude mcp add ovenlight -- "$env:LOCALAPPDATA\ovenlight\bin\ovenlight.exe" mcp
 ```
 
 ## Links
