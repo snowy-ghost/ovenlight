@@ -7,7 +7,8 @@
   test.
 - `project.yml`, `Ovenlight/`, `OvenlightTests/`: the iPhone app.
 - `scripts/build-tailscalekit.sh`: builds the embedded Tailscale library.
-- `scripts/release-connector.sh`: builds a connector release.
+- `scripts/release-connector.sh`: builds a connector release, and
+  `scripts/publish-connector.sh` publishes it.
 - `design/icon/generate.py`: writes the app icon.
 - `.claude-plugin/marketplace.json`, `plugins/ovenlight/`: the Claude Code plugin (the MCP
   server and a skill that points to `ovenlight guide`). Check it with
@@ -75,33 +76,46 @@ CI, so a change to `testdata/wire/` must also pass the [iPhone app's tests](#tes
 ### Releases
 
 ```sh
-scripts/release-connector.sh 1.0.0              # or --unsigned 1.0.0 to skip signing
+scripts/release-connector.sh 1.0.0       # or --unsigned 1.0.0 to skip all signing
+scripts/publish-connector.sh 1.0.0 1.0.0 # the version, then the oldest secure one
 ```
 
-It writes to `build/release/`, each archive with a `.sha256` beside it:
+`release-connector.sh` writes the release to `build/release/`, replacing the one before:
 
-- `ovenlight-connector-<version>-macos.tar.gz`: a universal (arm64 and x86_64) binary for
-  macOS 13 or later, signed with the Developer ID and notarized, with `install.sh`,
-  `uninstall.sh` and the launchd plist;
-- `-linux-amd64.tar.gz` and `-linux-arm64.tar.gz`: static binaries, with `install.sh`,
-  `uninstall.sh` and the systemd unit;
-- `-windows-amd64.zip` and `-windows-arm64.zip`: with `install.ps1` and `uninstall.ps1`.
-  The binaries aren't code-signed yet; the script marks where Authenticode signing goes.
+- `ovenlight-connector-macos.tar.gz`: a universal (arm64 and x86_64) binary for macOS 13
+  or later, signed with the Developer ID and notarized, with `install.sh`, `uninstall.sh`
+  and the launchd plist;
+- `ovenlight-connector-linux-amd64.tar.gz` and `-linux-arm64.tar.gz`: static binaries,
+  with `install.sh`, `uninstall.sh` and the systemd unit;
+- `ovenlight-connector-windows-amd64.zip` and `-windows-arm64.zip`: with `install.ps1`
+  and `uninstall.ps1`, the binary and both scripts signed with Azure Artifact Signing;
+- `SHA256SUMS`, and `SHA256SUMS.sig`, its signature by git's SSH signing key
+  (`user.signingkey`), which must be one of the keys in
+  [allowed_signers](allowed_signers).
 
-Each also holds `LICENSE`, `NOTICE` and `THIRD_PARTY_NOTICES.txt`, the licenses of what
-that system's build links. It builds with the Go version on `connector/go.mod`'s `go`
-line (through `GOTOOLCHAIN`), as CI does, and refuses a tree with uncommitted changes
-unless `--unsigned`.
-
-After publishing a release, create or update `site/connector/latest.json` and deploy the site:
-`{"latest": "<version>", "secure": "<oldest version without a known security problem>"}`.
-`ovenlight doctor` reads it to tell people about updates, and fails while they run a
-version older than `secure`, so raise `secure` with any release that fixes a security
-problem.
+Each archive holds an `ovenlight-connector-<version>` folder, with `LICENSE`, `NOTICE` and
+`THIRD_PARTY_NOTICES.txt`, the licenses of what that system's build links. The archive
+names carry no version, so the latest release keeps the same URLs. It builds with the Go
+version on `connector/go.mod`'s `go` line (through `GOTOOLCHAIN`), as CI does, and
+refuses a tree with uncommitted changes unless `--unsigned`.
 
 Notarization uses an App Store Connect API key, named by the environment variables
 `ASC_KEY_ID`, `ASC_ISSUER_ID` and `ASC_KEY_PATH`. Over SSH, unlock the login keychain
-first.
+first. Windows signing needs `jsign` (`brew install jsign`) and the Azure CLI
+(`brew install azure-cli`), signed in with `az login` as someone with the Artifact Signing
+Certificate Profile Signer role on the certificate profile that `WIN_PROFILE` in the
+script names.
+
+Try the Windows build on a PC with Smart App Control on before publishing.
+`publish-connector.sh` uploads the release to the R2 bucket behind
+`https://downloads.ovenlight.app`, through `wrangler` (signed in with `npx wrangler login`,
+or `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`):
+
+- `connector/<version>/`: the release's files, never replaced;
+- `connector/latest/`: the same files, replaced by each release, which the README links to;
+- `connector/latest.json`: `{"latest": "<version>", "secure": "<secure>"}`. `ovenlight doctor`
+  reads it to tell people about updates, and fails while they run a version older than
+  `secure`, so raise `secure` with any release that fixes a security problem.
 
 ## The iPhone app
 
@@ -326,8 +340,10 @@ To build and sign your own copy, change to your own:
   entry (see [App-bound domain](#app-bound-domain)), then run `xcodegen generate`;
 - in `Ovenlight/Sources/Support.swift`, `AppLinks.supportEmail` and
   `AppLinks.privacyPolicy`;
-- to release the connector, the Developer ID identity (`IDENTITY`) in
-  `scripts/release-connector.sh`.
+- to release the connector, the Developer ID identity (`IDENTITY`) and the Artifact
+  Signing profile (`WIN_ENDPOINT`, `WIN_PROFILE`) in `scripts/release-connector.sh`, the
+  keys in `docs/allowed_signers`, the bucket and site in `scripts/publish-connector.sh`,
+  and `latestURL` in `connector/update.go`.
 
 ### App-bound domain
 

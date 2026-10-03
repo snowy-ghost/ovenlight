@@ -1,0 +1,4 @@
+# The keys that sign a connector release's SHA256SUMS. Verify with:
+#   ssh-keygen -Y verify -f allowed_signers -I team@snowyghost.com -n file -s SHA256SUMS.sig < SHA256SUMS
+team@snowyghost.com namespaces="file" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILPcRhVVWAsXwW8S4kx91sX5+3/wLs6gI+tbgUYa7VP1
+team@snowyghost.com namespaces="file" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIM/8+4qOycuMKBX1KUt7U/avwRbFGLbl/ngNW5+kbrkQ

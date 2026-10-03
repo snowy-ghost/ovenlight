@@ -95,10 +95,11 @@ try {
   }
   throw
 }
-# Windows can refuse to run it (it isn't code-signed yet), which the task itself never says.
+# Windows can refuse to run it (Smart App Control refuses an unsigned one, such as a build
+# from source), which the task itself never says.
 for ($i = 0; $i -lt 50 -and -not (Running); $i++) { Start-Sleep -Milliseconds 200 }
 if (-not (Running)) {
-  Fail "the connector didn't start. Windows may have blocked it, since it isn't code-signed; otherwise the reason is at the end of $log"
+  Fail "the connector didn't start. Windows may have blocked it (Smart App Control refuses unsigned builds, such as one from source); otherwise the reason is at the end of $log"
 }
 Write-Output "installed the scheduled task $task (log: $log)"
 

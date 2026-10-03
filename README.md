@@ -38,18 +38,36 @@ There are two parts:
 
 ## Install the connector
 
-**From a release.** Download the archive for your computer from GitHub Releases, with
-the `.sha256` checksum beside it: `ovenlight-connector-<version>-macos.tar.gz` (its
-binary is notarized), `-linux-amd64.tar.gz` or `-linux-arm64.tar.gz`, or
-`-windows-amd64.zip` or `-windows-arm64.zip`. The Windows binaries aren't code-signed
-yet, so Windows may warn about them, and Smart App Control, when it's on, can refuse to
-run one; `install.ps1` says so when the connector doesn't start. The arm64 builds are
+**From a release.** Download the archive for your computer:
+[macOS](https://downloads.ovenlight.app/connector/latest/ovenlight-connector-macos.tar.gz)
+(its binary is notarized), Linux
+[amd64](https://downloads.ovenlight.app/connector/latest/ovenlight-connector-linux-amd64.tar.gz)
+or [arm64](https://downloads.ovenlight.app/connector/latest/ovenlight-connector-linux-arm64.tar.gz),
+or Windows
+[amd64](https://downloads.ovenlight.app/connector/latest/ovenlight-connector-windows-amd64.zip)
+or [arm64](https://downloads.ovenlight.app/connector/latest/ovenlight-connector-windows-arm64.zip)
+(its binary and scripts are code-signed). These links always name the latest release;
+`https://downloads.ovenlight.app/connector/<version>/` keeps each one. The arm64 builds are
 untested on real machines, and the Windows arm64 build hasn't run the tests either.
+
+To check a download, fetch
+[SHA256SUMS](https://downloads.ovenlight.app/connector/latest/SHA256SUMS) and
+[SHA256SUMS.sig](https://downloads.ovenlight.app/connector/latest/SHA256SUMS.sig) from
+the same folder, and [docs/allowed_signers](docs/allowed_signers) from this repository,
+then:
+
+```sh
+ssh-keygen -Y verify -f allowed_signers -I team@snowyghost.com -n file -s SHA256SUMS.sig < SHA256SUMS
+shasum -a 256 -c --ignore-missing SHA256SUMS
+```
+
+On Windows, run the `ssh-keygen` line through `cmd /c "..."`, since PowerShell has no `<`,
+and compare what `Get-FileHash <archive>` prints with the archive's line in `SHA256SUMS`.
 
 On macOS and Linux:
 
 ```sh
-tar xzf ovenlight-connector-<version>-<system>.tar.gz
+tar xzf ovenlight-connector-<system>.tar.gz
 cd ovenlight-connector-<version>
 ./install.sh
 ```
@@ -61,7 +79,7 @@ run:
 
 ```powershell
 cd $HOME\Downloads
-Expand-Archive ovenlight-connector-<version>-windows-<arch>.zip .
+Expand-Archive ovenlight-connector-windows-<arch>.zip .
 cd ovenlight-connector-<version>
 powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
@@ -104,8 +122,7 @@ minute). Running the install script again starts it.
 ## Update
 
 Download the new release's archive and run its install script, as above; from source,
-pull and run it again. To hear about new versions, watch this repository's Releases on
-GitHub.
+pull and run it again. `ovenlight doctor` says when a newer release is out.
 
 ## Publish an app
 

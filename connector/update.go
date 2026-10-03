@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -13,7 +14,7 @@ import (
 
 // latestURL names the newest connector release and the oldest without a known security
 // hole: {"latest": "1.2.0", "secure": "1.1.3"}. doctor reads it; nothing else does.
-var latestURL = "https://ovenlight.app/connector/latest.json"
+var latestURL = "https://downloads.ovenlight.app/connector/latest.json"
 
 // updateCheck says when a newer release is out, and fails when this one has a security
 // hole fixed since. A development or pre-release build, or a file it can't read, checks
@@ -41,7 +42,7 @@ func updateCheck() *Check {
 		newest, okN = secure, true // never point to a release older than the secure one
 	}
 	fix := func(v [3]int) string {
-		return fmt.Sprintf("Install %s from the connector's download page (https://ovenlight.app/support#own-computer) with its install script; your apps and node state are kept", vstring(v))
+		return fmt.Sprintf("Install %s (%s) with its install script; your apps and node state are kept", vstring(v), latestArchive())
 	}
 	switch {
 	case okS && less(v, secure):
@@ -52,6 +53,19 @@ func updateCheck() *Check {
 			Message: vstring(newest) + " is out (this is " + releaseVersion + ")", Fix: fix(newest)}
 	}
 	return &Check{ID: "update", Status: statusOK, Message: releaseVersion + " is the latest"}
+}
+
+// latestArchive is this system's archive of the latest release, which is the newest one,
+// never older than the secure one: scripts/publish-connector.sh refuses otherwise.
+func latestArchive() string {
+	name := "macos.tar.gz"
+	switch runtime.GOOS {
+	case "linux":
+		name = "linux-" + runtime.GOARCH + ".tar.gz"
+	case "windows":
+		name = "windows-" + runtime.GOARCH + ".zip"
+	}
+	return "https://downloads.ovenlight.app/connector/latest/ovenlight-connector-" + name
 }
 
 // semver reads "1.2.3", without a pre-release part.
