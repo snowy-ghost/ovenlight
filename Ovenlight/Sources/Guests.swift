@@ -462,8 +462,8 @@ final class GuestManager: ObservableObject {
         if await node.canReach(app) == .notInvited { accessEnded(for: [app]) }
     }
 
-    /// Takes apps away whose owner stopped sharing them: closes them, wipes their data
-    /// (a service worker would otherwise keep serving cached pages), and says so once.
+    /// Takes apps away whose owner stopped sharing them: closes them, wipes their data,
+    /// and says so once.
     func accessEnded(for apps: [WebApp]) {
         let apps = apps.filter { app in registry?.apps.contains { $0.id == app.id } == true }
         guard let first = apps.first else { return }

@@ -255,7 +255,6 @@ Ovenlight takes a shared app away when:
   another, the device loses that app's tag and can no longer reach the node to hear
   `not_invited`.
 
-Taking an app away closes it without loading it again, wipes its data store (a service
-worker would otherwise keep serving cached pages), logs the node out and deletes its
-state once no app of that owner is left, and tells the guest "No Longer Shared with You"
-once.
+Taking an app away closes it without loading it again, wipes its data store, logs the
+node out and deletes its state once no app of that owner is left, and tells the guest
+"No Longer Shared with You" once.

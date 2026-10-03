@@ -284,9 +284,8 @@ logins.
 Any web app that serves plain HTTP on `127.0.0.1` works. The connector tells it who is calling
 with headers such as `Ovenlight-User-Id` and `Ovenlight-Role`. A web manifest gives it
 an icon and a color in Ovenlight. [docs/app-contract.md](docs/app-contract.md) has the
-details, including what an app must do to stay safe. Service workers and offline copies
-work only on the tailnet the App Store build lists as its app-bound domain, the
-developer's, so everyone else's apps get neither
+details, including what an app must do to stay safe. Apps get no service workers or
+offline copies, so an app loads only while its computer can be reached
 ([details](docs/app-contract.md#in-the-iphone-app)).
 
 [docs/building-apps.md](docs/building-apps.md) is the guide to building an app that feels

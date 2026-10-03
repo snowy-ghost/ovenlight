@@ -70,11 +70,9 @@ private struct AppPage: View {
                     } retry: {
                         Task { await appNode.restart() }
                     }
-                } else if case .unreachable(let offlineAvailable) = coordinator.gate {
+                } else if coordinator.gate == .unreachable {
                     LoadErrorView(title: ConnectionCopy.cantReach(app.name), message: ConnectionCopy.cantReachDetail,
-                                  retry: { coordinator.reload() },
-                                  openOffline: offlineAvailable ? { coordinator.openOffline() } : nil,
-                                  close: onClose)
+                                  retry: { coordinator.reload() }, close: onClose)
                         .transition(.opacity)
                 } else {
                     LaunchPlaceholder(app: app, icon: icon, caption: ConnectionCopy.connecting)
@@ -83,7 +81,7 @@ private struct AppPage: View {
             }
             if let error = coordinator.loadError {
                 LoadErrorView(title: "Can't Open \(app.name)", message: error,
-                              retry: { coordinator.reload() }, openOffline: nil, close: onClose)
+                              retry: { coordinator.reload() }, close: onClose)
                     .transition(.opacity)
             }
             AppChrome(
@@ -257,8 +255,6 @@ struct LoadErrorView: View {
     let title: String
     let message: String
     let retry: () -> Void
-    /// Offered only when the app's service worker has a cached copy to show.
-    let openOffline: (() -> Void)?
     let close: () -> Void
 
     var body: some View {
@@ -271,9 +267,6 @@ struct LoadErrorView: View {
                 .buttonStyle(.borderedProminent)
                 .buttonBorderShape(.capsule)
                 .controlSize(.large)
-            if let openOffline {
-                Button("Open Offline Copy", action: openOffline)
-            }
             Button("Back to Apps", action: close)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

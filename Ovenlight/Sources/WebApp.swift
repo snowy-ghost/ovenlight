@@ -1,7 +1,7 @@
 import Foundation
 
 /// One web app the user can open. Each app gets its own website data store, so cookies,
-/// localStorage and service workers never leak between apps.
+/// localStorage and caches never leak between apps.
 struct WebApp: Codable, Identifiable, Hashable {
     var id: UUID
     var name: String
@@ -95,22 +95,6 @@ enum DiscoveryMerge {
             }
         }
         return apps
-    }
-}
-
-/// Domains listed under WKAppBoundDomains. Web views for these hosts run in app-bound
-/// mode, which is what enables service workers inside WKWebView.
-enum AppBoundDomains {
-    static var listed: [String] {
-        (Bundle.main.object(forInfoDictionaryKey: "WKAppBoundDomains") as? [String]) ?? []
-    }
-
-    static func contains(host: String, in domains: [String] = listed) -> Bool {
-        let host = host.lowercased()
-        return domains.contains { domain in
-            let domain = domain.lowercased()
-            return host == domain || host.hasSuffix("." + domain)
-        }
     }
 }
 

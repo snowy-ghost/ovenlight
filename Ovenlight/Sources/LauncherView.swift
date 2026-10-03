@@ -70,7 +70,7 @@ struct LauncherView: View {
                             titleVisibility: .visible, presenting: clearing) { app in
             Button("Sign Out and Clear Data", role: .destructive) { Task { await registry.clearData(app.id) } }
         } message: { _ in
-            Text("This deletes the app's cookies, storage and offline data on this iPhone.")
+            Text("This deletes the app's cookies and storage on this iPhone.")
         }
         .confirmationDialog(removing.map { "Remove \($0.name)?" } ?? "", isPresented: isPresent($removing),
                             titleVisibility: .visible, presenting: removing) { app in

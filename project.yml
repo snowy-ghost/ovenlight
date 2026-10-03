@@ -59,15 +59,9 @@ targets:
         NSCameraUsageDescription: Ovenlight uses the camera to scan invite codes, and apps you open can use it when you allow them.
         NSFaceIDUsageDescription: Ovenlight uses Face ID so only you can open your apps.
         NSLocalNetworkUsageDescription: Ovenlight uses your local network to find a faster, direct path to the computers your apps run on.
-        NSMicrophoneUsageDescription: Apps you open in Ovenlight can record audio when you ask them to, for example to grade a spoken answer.
+        NSMicrophoneUsageDescription: Apps you open in Ovenlight can record audio when you ask them to, for example to record a voice note.
         # WebKit's long-press Save to Photos on a page's image.
         NSPhotoLibraryAddUsageDescription: Ovenlight saves images you choose from your apps to your photo library.
-        # App-bound domains get service workers and offline support. Max 10 entries; an
-        # entry covers its subdomains unless the domain is on the Public Suffix List.
-        # ts.net is on the list, so the tailnet's own domain is registrable and covers
-        # every node in it (each published app is its own node).
-        WKAppBoundDomains:
-          - tailabc123.ts.net
   OvenlightTests:
     type: bundle.unit-test
     platform: iOS

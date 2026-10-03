@@ -162,9 +162,8 @@ only `https`.
 
 `ovenlight run` takes `--control-url`, `--auth-key`, `--dev-tls-cert` and `--dev-tls-key`
 (Headscale can't issue `ts.net` certificates) only with `OVENLIGHT_DEV=1`. Use a separate
-`--config` and `--state` so your real nodes are untouched. Set Headscale's `base_domain`
-to the domain in `WKAppBoundDomains` so test hosts fall under it, and trust the test CA
-in the simulator only for the length of the test:
+`--config` and `--state` so your real nodes are untouched. Trust the test CA in the
+simulator only for the length of the test:
 
 ```sh
 xcrun simctl keychain <udid> add-root-cert ca.pem
@@ -212,10 +211,8 @@ Sign Ovenlight in to the first with `-authKey`, and open the second owner's invi
   proxy in place.
 - **Opening an app** shows its icon and "Connecting…" at once, but the page loads only
   after the node is ready and the app's host answers a probe through the current proxy
-  (`AppLoadGate`). Loading earlier let a service worker paint its cached shell while every
-  API call failed. After about 10 seconds the app shows "Can't Reach <App>" with Try
-  Again, and Open Offline Copy when it has a service worker. Launcher tiles dim with a
-  badge while their machine isn't answering.
+  (`AppLoadGate`). After about 10 seconds the app shows "Can't Reach <App>" with Try
+  Again. Launcher tiles dim with a badge while their machine isn't answering.
 - **The open app** has one piece of native chrome: a small capsule at the top with the
   way home and the app's menu, which tucks up under the status bar. Tapping its handle,
   scrolling up or pulling down at the top of the page brings it back. Tapping the status
@@ -327,39 +324,22 @@ it was never used.
 
 Build TailscaleKit first (`scripts/build-tailscalekit.sh`), then archive and upload with
 Xcode or your own tooling. Before uploading, check the archived app: TailscaleKit is
-embedded with its license notices (`THIRD_PARTY_NOTICES.txt`) and privacy manifest, and
-`WKAppBoundDomains` lists exactly the expected domain, or service workers silently stop
-working. Export compliance is answered in App Store Connect, since the app ships
-WireGuard encryption.
+embedded with its license notices (`THIRD_PARTY_NOTICES.txt`) and privacy manifest.
+Export compliance is answered in App Store Connect, since the app ships WireGuard
+encryption.
 
 ## Forking
 
 To build and sign your own copy, change to your own:
 
-- in `project.yml`, `DEVELOPMENT_TEAM`, `bundleIdPrefix`, the bundle identifiers, the
-  associated domains (see [Invite links](#invite-links)) and the `WKAppBoundDomains`
-  entry (see [App-bound domain](#app-bound-domain)), then run `xcodegen generate`;
+- in `project.yml`, `DEVELOPMENT_TEAM`, `bundleIdPrefix`, the bundle identifiers and the
+  associated domains (see [Invite links](#invite-links)), then run `xcodegen generate`;
 - in `Ovenlight/Sources/Support.swift`, `AppLinks.supportEmail` and
   `AppLinks.privacyPolicy`;
 - to release the connector, the Developer ID identity (`IDENTITY`) and the Artifact
   Signing profile (`WIN_ENDPOINT`, `WIN_PROFILE`) in `scripts/release-connector.sh`, the
   keys in `docs/allowed_signers`, the bucket and site in `scripts/publish-connector.sh`,
   and `latestURL` in `connector/update.go`.
-
-### App-bound domain
-
-Apps get service workers and offline support only on domains listed under
-`WKAppBoundDomains` (at most 10), and the list is read from `Info.plist`, so it can't
-grow at runtime. The one entry is a tailnet's own domain, which covers every node in it
-because `ts.net` is on the Public Suffix List. In `project.yml`, change it to your own
-tailnet:
-
-```yaml
-        WKAppBoundDomains:
-          - <your-tailnet>.ts.net
-```
-
-Or remove the entry, and no app gets service workers.
 
 ### Invite links
 

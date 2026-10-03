@@ -254,22 +254,6 @@ final class UserAgentTests: XCTestCase {
     }
 }
 
-final class AppBoundDomainsTests: XCTestCase {
-    func testMatchesHostAndSubdomainsOnly() {
-        let domains = ["tailabc123.ts.net"]
-        XCTAssertTrue(AppBoundDomains.contains(host: "alex-mac.tailabc123.ts.net", in: domains))
-        XCTAssertTrue(AppBoundDomains.contains(host: "tailabc123.ts.net", in: domains))
-        XCTAssertFalse(AppBoundDomains.contains(host: "eviltailabc123.ts.net", in: domains))
-    }
-
-    func testInfoPlistBindsEveryNodeInTheTailnet() throws {
-        let tailnet = try XCTUnwrap(AppBoundDomains.listed.first)
-        XCTAssertTrue(tailnet.hasSuffix(".ts.net"), "the tailnet's own domain, not ts.net itself")
-        XCTAssertTrue(AppBoundDomains.contains(host: "interview-coach.\(tailnet)"))
-        XCTAssertFalse(AppBoundDomains.contains(host: "interview-coach.tail0000.ts.net"))
-    }
-}
-
 final class AppAddressTests: XCTestCase {
     func testAddsHTTPSToABareHostAndKeepsPortAndPath() {
         XCTAssertEqual(AppAddress.url(from: "  alex-mac.tailabc123.ts.net:8443/app ")?.absoluteString,
@@ -835,20 +819,16 @@ final class AppLoadGateTests: XCTestCase {
     }
 
     func testALoadedPageStaysThroughNodeRestarts() {
-        XCTAssertEqual(run([.nodeNotReady, .gaveUp(offlineAvailable: false)], from: .ready), .ready)
+        XCTAssertEqual(run([.nodeNotReady, .gaveUp], from: .ready), .ready)
         XCTAssertEqual(run([.loadFailed], from: .ready), .waiting, "a failed first navigation checks the path again")
         XCTAssertEqual(run([.retry], from: .ready), .waiting, "Reload checks the path before reloading")
     }
 
-    func testGivesUpWithOrWithoutAnOfflineCopy() {
-        let noCopy = run([.nodeReady, .gaveUp(offlineAvailable: false)])
-        XCTAssertEqual(noCopy, .unreachable(offlineAvailable: false))
-        XCTAssertEqual(run([.openOffline, .nodeReady, .reached], from: noCopy), noCopy, "only Retry leaves it")
-        XCTAssertEqual(run([.retry], from: noCopy), .waiting)
-
-        let withCopy = run([.gaveUp(offlineAvailable: true)])
-        XCTAssertEqual(withCopy, .unreachable(offlineAvailable: true))
-        XCTAssertEqual(run([.openOffline], from: withCopy), .ready)
+    func testGivingUpWaitsForRetry() {
+        let gaveUp = run([.nodeReady, .gaveUp])
+        XCTAssertEqual(gaveUp, .unreachable)
+        XCTAssertEqual(run([.nodeReady, .reached], from: gaveUp), gaveUp, "only Retry leaves it")
+        XCTAssertEqual(run([.retry], from: gaveUp), .waiting)
     }
 }
 

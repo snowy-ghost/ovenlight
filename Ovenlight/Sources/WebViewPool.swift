@@ -47,9 +47,6 @@ final class WebViewPool: ObservableObject {
         // The owner's tailnet apps go through the owner's node, shared apps through their
         // owner's guest node, everything else loads directly.
         let node = NodeManager.shared.node(for: app)
-        // Service workers only run in app-bound mode, and app-bound mode must be off for
-        // hosts not in WKAppBoundDomains, or WebKit refuses to load the page.
-        config.limitsNavigationsToAppBoundDomains = AppBoundDomains.contains(host: app.host)
         Self.configure(config)
 
         let view = WKWebView(frame: .zero, configuration: config)
@@ -201,7 +198,7 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
     }
 
     /// Every app waits for its host to answer before the first navigation, however it's
-    /// reached: loading early lets a service worker paint a cached shell whose requests fail.
+    /// reached (see AppLoadGate).
     func start() {
         openGate()
     }
@@ -228,12 +225,6 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
         loadError = nil
         gate = gate.next(.retry)
         openGate()
-    }
-
-    /// Opens the service worker's cached copy when the app can't be reached.
-    func openOffline() {
-        gate = gate.next(.openOffline)
-        if gate == .ready { load() }
     }
 
     private func openGate() {
@@ -269,13 +260,13 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
                 case .unreachable:
                     break
                 }
-                if Date.now.timeIntervalSince(since) >= AppLoadGate.reachTimeout { return await giveUp() }
+                if Date.now.timeIntervalSince(since) >= AppLoadGate.reachTimeout { return giveUp() }
                 try? await Task.sleep(for: .seconds(1))
             } else {
                 gate = gate.next(.nodeNotReady)
                 probingSince = nil
                 // Sign-in and node failures have their own screens and wait for the owner.
-                if node?.state.isBusy == true, Date.now.timeIntervalSince(opened) >= AppLoadGate.nodeTimeout { return await giveUp() }
+                if node?.state.isBusy == true, Date.now.timeIntervalSince(opened) >= AppLoadGate.nodeTimeout { return giveUp() }
                 try? await Task.sleep(for: .milliseconds(250))
             }
         }
@@ -294,18 +285,12 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
         return (try? await directProbe.data(from: url)) != nil
     }
 
-    private func giveUp() async {
-        let offline = await hasOfflineCopy()
+    private func giveUp() {
         guard !Task.isCancelled else { return }
-        Self.log.info("\(self.app.host, privacy: .public): unreachable, offline copy \(offline)")
-        gate = gate.next(.gaveUp(offlineAvailable: offline))
-        // A page already on screen keeps it; its service worker decides what a reload shows.
-        if hasLoadedOnce { gate = .ready; load() }
-    }
-
-    private func hasOfflineCopy() async -> Bool {
-        guard let store = webView?.configuration.websiteDataStore else { return false }
-        return await !store.dataRecords(ofTypes: [WKWebsiteDataTypeServiceWorkerRegistrations]).isEmpty
+        Self.log.info("\(self.app.host, privacy: .public): unreachable")
+        gate = gate.next(.gaveUp)
+        // A page already on screen keeps it.
+        if hasLoadedOnce { gate = .ready }
     }
 
     private func load() {
@@ -416,7 +401,7 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
         let ns = error as NSError
         if ns.domain == NSURLErrorDomain && ns.code == NSURLErrorCancelled { return }
         // Once the app has rendered, a failed load (offline, a file WebKit can't show)
-        // leaves the page as it is; a service worker may serve it offline.
+        // leaves the page as it is.
         if hasLoadedOnce { return }
         if usesNode && ns.domain == NSURLErrorDomain && Self.retryableThroughNode.contains(ns.code) {
             // The probe answered, but the navigation itself couldn't connect (a lost

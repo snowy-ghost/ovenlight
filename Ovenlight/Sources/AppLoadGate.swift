@@ -2,8 +2,8 @@ import Foundation
 
 /// When an app reached through Ovenlight's node may load its page. Opening the app shows its
 /// placeholder at once; the first navigation waits until the node is ready and a probe
-/// to that app's host through the node's current proxy answers. Loading earlier lets a
-/// service worker paint its cached shell while every request the page makes fails.
+/// to that app's host through the node's current proxy answers, so an app that can't be
+/// reached shows Can't Reach rather than a failed page.
 enum AppLoadGate: Equatable {
     /// Ovenlight's own connection isn't ready.
     case waiting
@@ -11,18 +11,16 @@ enum AppLoadGate: Equatable {
     case probing
     /// The page may load, and did.
     case ready
-    /// The host didn't answer in time. `offlineAvailable` when the app's service worker
-    /// can open a cached copy.
-    case unreachable(offlineAvailable: Bool)
+    /// The host didn't answer in time.
+    case unreachable
 
     enum Event: Equatable {
         case nodeReady
         case nodeNotReady
         case reached
-        case gaveUp(offlineAvailable: Bool)
+        case gaveUp
         /// Try Again, or Reload from the app menu.
         case retry
-        case openOffline
         /// The first navigation failed at the connection level; check the path again.
         case loadFailed
     }
@@ -38,8 +36,6 @@ enum AppLoadGate: Equatable {
             return .waiting
         case (.ready, .loadFailed):
             return .waiting
-        case (.unreachable(offlineAvailable: true), .openOffline):
-            return .ready
         case (.ready, _), (.unreachable, _):
             // A loaded page stays put through node restarts; a gate that gave up waits for Retry.
             return self
@@ -49,8 +45,8 @@ enum AppLoadGate: Equatable {
             return .waiting
         case (.probing, .reached):
             return .ready
-        case (.waiting, .gaveUp(let offline)), (.probing, .gaveUp(let offline)):
-            return .unreachable(offlineAvailable: offline)
+        case (.waiting, .gaveUp), (.probing, .gaveUp):
+            return .unreachable
         default:
             return self
         }

@@ -320,9 +320,8 @@ only to adjust presentation: anyone can send that string.
 - **Notifications.** No Web Push and no Notification API.
 - **Popups and `window.opener`.** `window.open` and `target="_blank"` to the app's own
   address load in the same view; any other site opens in a Safari sheet.
-- **Service workers and offline copies.** WebKit allows them only on domains the app
-  lists, and the App Store build lists only its developer's own tailnet: assume the app
-  is online.
+- **Service workers and offline copies.** Ovenlight doesn't run them: assume the app is
+  online.
 - **WebRTC.** Its traffic doesn't go through Ovenlight's connection to the Mac; don't
   build calls or peer-to-peer features on it.
 - **Location.** Ovenlight doesn't ask iOS for location, so `navigator.geolocation`

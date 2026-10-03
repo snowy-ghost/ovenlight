@@ -124,7 +124,7 @@ final class AppRegistry: ObservableObject {
         save()
     }
 
-    /// Removes the app and deletes everything it stored (cookies, storage, service workers).
+    /// Removes the app and deletes everything it stored (cookies, storage, caches).
     /// Discovery won't add one of the owner's own apps back.
     func remove(_ id: UUID) async {
         guard let app = apps.first(where: { $0.id == id }) else { return }
@@ -140,7 +140,7 @@ final class AppRegistry: ObservableObject {
         await Self.removeDataStore(app.dataStoreID)
     }
 
-    /// Deletes a data store's cookies, storage and service workers. Always go through
+    /// Deletes a data store's cookies, storage and caches. Always go through
     /// here: touching the default store first starts WebKit, and removing a store before
     /// anything else has used it crashes the app when the removal completes (it did at
     /// launch in build 3, when a store was removed before any web view existed).

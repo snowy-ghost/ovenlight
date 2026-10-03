@@ -135,10 +135,9 @@ None of this is required: an app without it is still listed, by name.
   itself downloads: a frame loads such a response as WebKit would, never raising the share
   sheet. Downloads come only from the app's own host, and are refused while Ovenlight is
   locked.
-- **Service workers and offline copies** work only on the tailnets listed in the iPhone
-  app's `WKAppBoundDomains`, and the App Store build lists one tailnet. Apps on any other
-  tailnet get neither, and Open Offline Copy doesn't appear for them (see
-  [development.md](development.md#app-bound-domain)).
+- **No service workers or offline copies.** WebKit runs service workers in an app like
+  Ovenlight only on domains it lists when it's built, and an owner's tailnet can't be known
+  in advance. An app loads only while its computer can be reached.
 - **Microphone**: the owner's own apps (discovered, or on one of the owner's machines),
   on their own origin, get it without a second prompt (iOS still asks once). The
   camera, shared apps and any other app get WebKit's prompt. While
