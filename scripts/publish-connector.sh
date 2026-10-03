@@ -15,9 +15,6 @@ set -euo pipefail
 
 BUCKET=ovenlight-downloads
 SITE=https://downloads.ovenlight.app
-FILES=(ovenlight-connector-macos.tar.gz ovenlight-connector-linux-amd64.tar.gz
-  ovenlight-connector-linux-arm64.tar.gz ovenlight-connector-windows-amd64.zip
-  ovenlight-connector-windows-arm64.zip SHA256SUMS SHA256SUMS.sig)
 
 usage="usage: publish-connector.sh <version> <secure>, e.g. 1.0.1 1.0.0"
 version="${1:?$usage}"
@@ -36,9 +33,13 @@ signers="$root/docs/allowed_signers"
 
 [ -d "$release" ] || { echo "no build/release; run scripts/release-connector.sh $version" >&2; exit 1; }
 cd "$release"
-for f in "${FILES[@]}"; do
+for f in SHA256SUMS SHA256SUMS.sig; do
   [ -f "$f" ] || { echo "no $f in build/release; run scripts/release-connector.sh $version" >&2; exit 1; }
 done
+# The release is what the signed SHA256SUMS lists, with or without Windows.
+FILES=()
+while read -r _ f; do FILES+=("$f"); done < SHA256SUMS
+FILES+=(SHA256SUMS SHA256SUMS.sig)
 [ "$(tar tzf ovenlight-connector-linux-amd64.tar.gz | head -1)" = "ovenlight-connector-$version/" ] ||
   { echo "build/release holds another version than $version" >&2; exit 1; }
 shasum -a 256 -c --quiet SHA256SUMS

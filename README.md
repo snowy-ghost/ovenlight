@@ -40,15 +40,13 @@ There are two parts:
 
 **From a release.** Download the archive for your computer:
 [macOS](https://downloads.ovenlight.app/connector/latest/ovenlight-connector-macos.tar.gz)
-(its binary is notarized), Linux
+(its binary is notarized), or Linux
 [amd64](https://downloads.ovenlight.app/connector/latest/ovenlight-connector-linux-amd64.tar.gz)
-or [arm64](https://downloads.ovenlight.app/connector/latest/ovenlight-connector-linux-arm64.tar.gz),
-or Windows
-[amd64](https://downloads.ovenlight.app/connector/latest/ovenlight-connector-windows-amd64.zip)
-or [arm64](https://downloads.ovenlight.app/connector/latest/ovenlight-connector-windows-arm64.zip)
-(its binary and scripts are code-signed). These links always name the latest release;
-`https://downloads.ovenlight.app/connector/<version>/` keeps each one. The arm64 builds are
-untested on real machines, and the Windows arm64 build hasn't run the tests either.
+or [arm64](https://downloads.ovenlight.app/connector/latest/ovenlight-connector-linux-arm64.tar.gz).
+These links always name the latest release;
+`https://downloads.ovenlight.app/connector/<version>/` keeps each one. The Linux arm64
+build is untested on a real machine. A Windows release comes later, once its signing is
+set up; until then, build it from source (below).
 
 To check a download, fetch
 [SHA256SUMS](https://downloads.ovenlight.app/connector/latest/SHA256SUMS) and
@@ -61,10 +59,7 @@ ssh-keygen -Y verify -f allowed_signers -I team@snowyghost.com -n file -s SHA256
 shasum -a 256 -c --ignore-missing SHA256SUMS
 ```
 
-On Windows, run the `ssh-keygen` line through `cmd /c "..."`, since PowerShell has no `<`,
-and compare what `Get-FileHash <archive>` prints with the archive's line in `SHA256SUMS`.
-
-On macOS and Linux:
+Then:
 
 ```sh
 tar xzf ovenlight-connector-<system>.tar.gz
@@ -72,23 +67,17 @@ cd ovenlight-connector-<version>
 ./install.sh
 ```
 
-On Windows, sign in as the account that will own the apps, which must be an
-administrator (elevating with another account's password installs the connector for that
-account). Open PowerShell as administrator (right-click it, Run as administrator) and
-run:
-
-```powershell
-cd $HOME\Downloads
-Expand-Archive ovenlight-connector-windows-<arch>.zip .
-cd ovenlight-connector-<version>
-powershell -ExecutionPolicy Bypass -File .\install.ps1
-```
-
 **From source.** This needs Go (`brew install go`, your package manager's `golang`,
 `winget install GoLang.Go`, or [go.dev/dl](https://go.dev/dl/)); the `go` command
 fetches the version `connector/go.mod` asks for when yours is older. Run
-`connector/install.sh`. On Windows, in an administrator PowerShell, run
-`powershell -ExecutionPolicy Bypass -File connector\install.ps1`.
+`connector/install.sh`.
+
+On Windows, sign in as the account that will own the apps, which must be an
+administrator (elevating with another account's password installs the connector for that
+account), and in an administrator PowerShell (right-click it, Run as administrator) run
+`powershell -ExecutionPolicy Bypass -File connector\install.ps1`. A binary you build
+isn't code-signed, so Smart App Control, when it's on, may refuse to run it;
+`install.ps1` says so when the connector doesn't start.
 
 Running the install script again reinstalls and restarts the connector, keeping your
 apps and node state. It installs:

@@ -10,9 +10,9 @@
 # it, the licenses and the notices of what it links. The archive names carry no version,
 # so the latest release has stable URLs; scripts/publish-connector.sh publishes it.
 #
-#   scripts/release-connector.sh [--unsigned] <version>     e.g. 1.0.0
+#   scripts/release-connector.sh [--unsigned] [--no-windows] <version>     e.g. 1.0.0
 #
-# It builds with the Go version on connector/go.mod's go line, as CI does, and refuses a
+# --no-windows builds no Windows archives, and needs no Windows signing set up. It builds with the Go version on connector/go.mod's go line, as CI does, and refuses a
 # tree with uncommitted changes. --unsigned skips all signing and notarization, and the
 # clean-tree check, to test everything else. Notarization uses an App Store Connect API
 # key named by ASC_KEY_ID, ASC_ISSUER_ID and ASC_KEY_PATH in the environment. Over SSH,
@@ -32,12 +32,16 @@ WIN_PROFILE=snowyghost/ovenlight
 # on them, so cached objects built for another target aren't reused.
 MACOS_MIN=13.0
 
-unsigned=false
-if [ "${1:-}" = "--unsigned" ]; then
-  unsigned=true
+unsigned=false windows=true
+while [[ "${1:-}" == --* ]]; do
+  case "$1" in
+  --unsigned) unsigned=true ;;
+  --no-windows) windows=false ;;
+  *) echo "unknown option $1" >&2; exit 1 ;;
+  esac
   shift
-fi
-version="${1:?usage: release-connector.sh [--unsigned] <version>, e.g. 1.0.0}"
+done
+version="${1:?usage: release-connector.sh [--unsigned] [--no-windows] <version>, e.g. 1.0.0}"
 [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || { echo "version should look like 1.0.0, not $version" >&2; exit 1; }
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -79,10 +83,12 @@ EOF
     echo "git's SSH signing key (user.signingkey, now \"$sshkey\") isn't in docs/allowed_signers" >&2
     exit 1
   fi
-  command -v jsign > /dev/null || { echo "no jsign, to sign for Windows: brew install jsign" >&2; exit 1; }
-  if ! wintoken > /dev/null; then
-    echo "the Azure CLI can't sign in to Artifact Signing: brew install azure-cli, then az login" >&2
-    exit 1
+  if $windows; then
+    command -v jsign > /dev/null || { echo "no jsign, to sign for Windows: brew install jsign (or --no-windows)" >&2; exit 1; }
+    if ! wintoken > /dev/null; then
+      echo "the Azure CLI can't sign in to Artifact Signing: brew install azure-cli, then az login (or --no-windows)" >&2
+      exit 1
+    fi
   fi
 fi
 
@@ -106,7 +112,9 @@ pack() {
 }
 
 # Linux and Windows: static binaries, no cgo.
-for os in linux windows; do
+oses=(linux)
+$windows && oses+=(windows)
+for os in "${oses[@]}"; do
   for arch in amd64 arm64; do
     echo "building ovenlight $version for $os/$arch"
     dir="$tmp/$os-$arch/$name"

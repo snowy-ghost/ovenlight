@@ -77,6 +77,7 @@ CI, so a change to `testdata/wire/` must also pass the [iPhone app's tests](#tes
 
 ```sh
 scripts/release-connector.sh 1.0.0       # or --unsigned 1.0.0 to skip all signing
+scripts/release-connector.sh --no-windows 1.0.0   # without the Windows archives, before Windows signing is set up
 scripts/publish-connector.sh 1.0.0 1.0.0 # the version, then the oldest secure one
 ```
 
