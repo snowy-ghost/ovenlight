@@ -99,7 +99,7 @@ func nodeDir(stateDir, slug string) string { return filepath.Join(stateDir, "nod
 // nodeLoggedIn reports whether the app's node has logged in: its state holds a login
 // profile, which tsnet saves once the node has one, not before.
 func nodeLoggedIn(stateDir, slug string) bool {
-	data, err := os.ReadFile(filepath.Join(nodeDir(stateDir, slug), "tailscaled.state"))
+	data, err := jsonfile.ReadFile(filepath.Join(nodeDir(stateDir, slug), "tailscaled.state"))
 	var state map[string][]byte
 	var profiles map[string]json.RawMessage
 	return err == nil && json.Unmarshal(data, &state) == nil && json.Unmarshal(state["_profiles"], &profiles) == nil && len(profiles) > 0

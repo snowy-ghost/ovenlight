@@ -110,12 +110,29 @@ func CheckPrivate(path string) error {
 // the access list it inherited from its directory.
 func restrict(path string) error { return ownerOnly(path, windows.NO_INHERITANCE) }
 
-// rename retries for a moment, since Windows refuses to replace a file another process
-// has open, as a reader or a virus scanner may for an instant.
+// rename, remove and readFile retry for a moment, since Windows refuses to replace or
+// delete a file another process has open, as a reader or a virus scanner may for an
+// instant, and to open a file while another process replaces it.
 func rename(from, to string) error {
+	return retry(func() error { return os.Rename(from, to) })
+}
+
+func remove(path string) error {
+	return retry(func() error { return os.Remove(path) })
+}
+
+func readFile(path string) (data []byte, err error) {
+	err = retry(func() (err error) {
+		data, err = os.ReadFile(path)
+		return err
+	})
+	return data, err
+}
+
+func retry(f func() error) error {
 	var err error
 	for range 20 {
-		err = os.Rename(from, to)
+		err = f()
 		if !errors.Is(err, windows.ERROR_ACCESS_DENIED) && !errors.Is(err, windows.ERROR_SHARING_VIOLATION) {
 			return err
 		}

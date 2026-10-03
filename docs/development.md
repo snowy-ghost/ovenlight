@@ -33,7 +33,8 @@ in `connector/go.mod`.
 - **Per-system code** sits in files named for it: `lock_*.go` (flock, or LockFileEx on
   Windows), `listen_*.go` (what listens on an app's port, for `doctor`),
   `internal/jsonfile/private_*.go` (files only you can read: mode 0600, or on Windows an
-  access list that grants only you), `peer_*.go` (on Windows, refuses control
+  access list that grants only you; there, saving, reading and removing also wait a moment
+  while another process has the file open), `peer_*.go` (on Windows, refuses control
   connections from another user) and `supervise_*.go` (the process groups of the apps
   the connector runs).
 - **Global flags.** Commands take `--config <file>` and `--state <dir>`.

@@ -148,7 +148,7 @@ func loadConfigFile(path string) (*Config, bool, error) {
 // readConfig reads the config and its apps' commands, also reporting whether the config
 // exists and whether the commands file holds a command for an app the config doesn't.
 func readConfig(path string) (c *Config, found, stale bool, err error) {
-	data, err := os.ReadFile(path)
+	data, err := jsonfile.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return &Config{}, false, false, nil
 	}
@@ -160,7 +160,7 @@ func readConfig(path string) (c *Config, found, stale bool, err error) {
 		return nil, true, false, fmt.Errorf("%s: %w", path, err)
 	}
 	commands := map[string]appCommand{}
-	if data, err := os.ReadFile(commandsPath(path)); err == nil {
+	if data, err := jsonfile.ReadFile(commandsPath(path)); err == nil {
 		if err := json.Unmarshal(data, &commands); err != nil {
 			return nil, true, false, fmt.Errorf("%s: %w", commandsPath(path), err)
 		}
@@ -202,7 +202,7 @@ func (c *Config) saveCommands(path string) error {
 	if len(commands) > 0 {
 		return jsonfile.Save(commandsPath(path), commands)
 	}
-	if err := os.Remove(commandsPath(path)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+	if err := jsonfile.Remove(commandsPath(path)); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
 	return nil

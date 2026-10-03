@@ -39,3 +39,10 @@ func Save(path string, v any) error {
 	}
 	return rename(tmp.Name(), path)
 }
+
+// ReadFile reads a file that another process may be replacing, as Save does: the CLI and
+// the connector each save files the other reads.
+func ReadFile(path string) ([]byte, error) { return readFile(path) }
+
+// Remove deletes a file that another process may be reading.
+func Remove(path string) error { return remove(path) }

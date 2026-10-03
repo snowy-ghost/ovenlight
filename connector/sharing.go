@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -127,7 +126,7 @@ func feedbackDir(stateDir string) string { return filepath.Join(stateDir, "feedb
 // an error, never silently empty, because that would forget who was removed.
 func loadSharingState(path string) (sharingState, error) {
 	var st sharingState
-	data, err := os.ReadFile(path)
+	data, err := jsonfile.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return st, nil
 	}

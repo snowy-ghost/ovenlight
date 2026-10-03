@@ -11,6 +11,7 @@ import (
 
 	"golang.org/x/term"
 
+	"github.com/snowy-ghost/ovenlight/connector/internal/jsonfile"
 	"github.com/snowy-ghost/ovenlight/connector/internal/tsapi"
 )
 
@@ -31,7 +32,7 @@ func cmdAuth(args []string) error {
 		if _, err := parseArgs(fs, rest, 0); err != nil {
 			return err
 		}
-		err := os.Remove(credentialsPath(p.config))
+		err := jsonfile.Remove(credentialsPath(p.config))
 		if errors.Is(err, os.ErrNotExist) {
 			fmt.Println("No credential was set.")
 			return nil

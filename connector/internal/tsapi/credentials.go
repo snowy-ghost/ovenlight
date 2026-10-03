@@ -91,7 +91,7 @@ func LoadCredentials(path string) (Credentials, error) {
 	if err := jsonfile.CheckPrivate(path); err != nil {
 		return Credentials{}, fmt.Errorf("%w; replace the credential and store the new one with `ovenlight auth set`, which saves it readable only by you", err)
 	}
-	data, err := os.ReadFile(path)
+	data, err := jsonfile.ReadFile(path)
 	if err != nil {
 		return Credentials{}, err
 	}

@@ -26,3 +26,7 @@ func CheckPrivate(path string) error {
 func restrict(string) error { return nil }
 
 func rename(from, to string) error { return os.Rename(from, to) }
+
+func remove(path string) error { return os.Remove(path) }
+
+func readFile(path string) ([]byte, error) { return os.ReadFile(path) }
