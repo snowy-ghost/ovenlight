@@ -69,6 +69,10 @@ if [ -f "$prebuilt" ]; then
   echo "installing $bin"
   cp "$prebuilt" "$bin.new"
   chmod 755 "$bin.new"
+  # A browser download leaves Gatekeeper's quarantine on everything unpacked from it, which
+  # makes the connector's first start wait on an "Are you sure?" prompt. Running this script
+  # already trusted the download.
+  if [ "$os" = Darwin ]; then xattr -d com.apple.quarantine "$bin.new" 2>/dev/null || true; fi
 else
   echo "building $bin"
   (cd "$here" && go build -trimpath -o "$bin.new" .)

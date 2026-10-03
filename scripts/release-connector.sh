@@ -12,9 +12,11 @@
 #
 #   scripts/release-connector.sh [--unsigned] [--no-windows] <version>     e.g. 1.0.0
 #
-# --no-windows builds no Windows archives, and needs no Windows signing set up. It builds with the Go version on connector/go.mod's go line, as CI does, and refuses a
+# It builds with the Go version on connector/go.mod's go line, as CI does, and refuses a
 # tree with uncommitted changes. --unsigned skips all signing and notarization, and the
-# clean-tree check, to test everything else. Notarization uses an App Store Connect API
+# clean-tree check, to test everything else. --no-windows builds no Windows archives, and
+# needs no Windows signing set up; use it only until the first Windows release, since
+# publishing never removes the Windows archives a release before it put in latest/. Notarization uses an App Store Connect API
 # key named by ASC_KEY_ID, ASC_ISSUER_ID and ASC_KEY_PATH in the environment. Over SSH,
 # unlock the login keychain first. Windows signing uses jsign (brew install jsign) and the
 # Azure CLI, signed in (az login) as someone with the Artifact Signing Certificate Profile
