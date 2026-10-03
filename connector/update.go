@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -15,7 +16,8 @@ import (
 var latestURL = "https://ovenlight.app/connector/latest.json"
 
 // updateCheck says when a newer release is out, and fails when this one has a security
-// hole fixed since. A development build, or a file it can't read, checks nothing.
+// hole fixed since. A development or pre-release build, or a file it can't read, checks
+// nothing.
 func updateCheck() *Check {
 	v, ok := semver(releaseVersion)
 	if !ok {
@@ -35,14 +37,19 @@ func updateCheck() *Check {
 	}
 	newest, okN := semver(latest.Latest)
 	secure, okS := semver(latest.Secure)
-	fix := "Install " + latest.Latest + " from the connector's download page (https://ovenlight.app/support#own-computer) with its install script; your apps and node state are kept"
+	if okS && (!okN || less(newest, secure)) {
+		newest, okN = secure, true // never point to a release older than the secure one
+	}
+	fix := func(v [3]int) string {
+		return fmt.Sprintf("Install %s from the connector's download page (https://ovenlight.app/support#own-computer) with its install script; your apps and node state are kept", vstring(v))
+	}
 	switch {
 	case okS && less(v, secure):
 		return &Check{ID: "update", Status: statusFail, Actor: actorPerson,
-			Message: "this connector, " + releaseVersion + ", has a security problem fixed in " + latest.Secure, Fix: fix}
+			Message: "this connector, " + releaseVersion + ", has a security problem fixed in " + vstring(secure), Fix: fix(newest)}
 	case okN && less(v, newest):
 		return &Check{ID: "update", Status: statusWarn, Actor: actorPerson,
-			Message: latest.Latest + " is out (this is " + releaseVersion + ")", Fix: fix}
+			Message: vstring(newest) + " is out (this is " + releaseVersion + ")", Fix: fix(newest)}
 	}
 	return &Check{ID: "update", Status: statusOK, Message: releaseVersion + " is the latest"}
 }
@@ -63,6 +70,8 @@ func semver(s string) ([3]int, bool) {
 	}
 	return v, true
 }
+
+func vstring(v [3]int) string { return fmt.Sprintf("%d.%d.%d", v[0], v[1], v[2]) }
 
 func less(a, b [3]int) bool {
 	for i := range a {

@@ -3,6 +3,7 @@ package main
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -21,6 +22,14 @@ func TestUpdateCheck(t *testing.T) {
 	releaseVersion = "" // a development build
 	if c := updateCheck(); c != nil {
 		t.Errorf("devel: %+v", c)
+	}
+	// Only the secure version, or a latest older than it: the fix names the secure one.
+	releaseVersion = "1.0.0"
+	for _, a := range []string{`{"secure": "1.1.3"}`, `{"latest": "1.1", "secure": "1.1.3"}`, `{"latest": "1.0.5", "secure": "1.1.3"}`} {
+		answer = a
+		if c := updateCheck(); c == nil || c.Status != statusFail || !strings.Contains(c.Fix, "Install 1.1.3 ") {
+			t.Errorf("%s: %+v", a, c)
+		}
 	}
 	releaseVersion, answer = "1.0.0", "not json"
 	if c := updateCheck(); c != nil {
