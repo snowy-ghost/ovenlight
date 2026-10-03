@@ -11,12 +11,13 @@ Ovenlight opens web apps that run on the person's Mac, full screen on their iPho
 1. **Read the guide before building or changing anything.** Call the `guide` tool of the
    `ovenlight` MCP server, or run `ovenlight guide`. It matches the installed connector.
    Follow it over anything here.
-2. **If the connector isn't installed** (the MCP tools don't answer and
-   `~/Library/Application Support/ovenlight/bin/ovenlight` doesn't exist), tell the person
-   what Ovenlight needs, in plain words: a Mac that stays on, a Tailscale account, the
-   Ovenlight iPhone app, and the connector, which they get by emailing
-   team@snowyghost.com for now. https://ovenlight.app/support has the steps. Then wait for
-   them; don't look for workarounds. If it is installed but not running, the person
+2. **If the connector isn't installed** (the MCP tools don't answer, and there's no
+   `~/Library/Application Support/ovenlight/bin/ovenlight` on a Mac or
+   `~/.local/state/ovenlight/bin/ovenlight` on Linux), tell the person what Ovenlight
+   needs, in plain words: a Mac or Linux computer that stays on, a Tailscale account, the
+   Ovenlight iPhone app, and the connector, a free download.
+   https://ovenlight.app/support#own-computer has the steps. Then wait for them; don't
+   look for workarounds. If it is installed but not running, the person
    starts it with the command the guide gives; don't run `ovenlight run` yourself.
 3. **Use the tools for the loop**: publish, restart the app after changing the server,
    check it, read its logs, and read the feedback the person sends from their phone. The
