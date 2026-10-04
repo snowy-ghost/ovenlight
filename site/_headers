@@ -11,11 +11,11 @@
   Content-Type: application/json
 
 # The invite, key included, rides in the join page's fragment. The same policy
-# as the page's own meta tag: only join.js runs (no scripts Cloudflare injects),
-# and nothing may be fetched, beaconed or posted. frame-ancestors only works as
-# a header.
+# as the page's own meta tag: only join.js runs (named by URL, since 'self' would
+# also allow scripts Cloudflare injects from /cdn-cgi/), and nothing may be
+# fetched, beaconed or posted. frame-ancestors only works as a header.
 /join*
-  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'; frame-src 'none'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'none'; script-src https://ovenlight.app/join.js; style-src 'unsafe-inline'; img-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'; frame-src 'none'; frame-ancestors 'none'
   Referrer-Policy: no-referrer
 
 # The home, support and privacy pages run no script and fetch nothing from elsewhere,

@@ -4,9 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- The invite, key included, is in this page's fragment (#...), which browsers never send
-     to a server. This policy keeps it here: only join.js runs (not scripts Cloudflare
-     injects), and nothing may be fetched, beaconed or posted. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'; frame-src 'none'">
+     to a server. This policy keeps it here: only join.js runs (named by URL, since 'self'
+     would also allow scripts Cloudflare injects from /cdn-cgi/), and nothing may be
+     fetched, beaconed or posted. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src https://ovenlight.app/join.js; style-src 'unsafe-inline'; img-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'; frame-src 'none'">
 <meta name="referrer" content="no-referrer">
 <!-- The public TestFlight link, offered in place of the App Store badge. Empty: the page
      offers the App Store badge. -->
