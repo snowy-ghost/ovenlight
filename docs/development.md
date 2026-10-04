@@ -66,13 +66,14 @@ The end-to-end sharing test runs against a throwaway local Headscale, on macOS o
 cd connector && OVENLIGHT_E2E_HEADSCALE=/path/to/headscale go test -tags e2e ./e2e -v -timeout 15m
 ```
 
-CI (`.github/workflows/ci.yml`) runs on every push and pull request, on Linux and
-Windows: `go vet` (with and without the `e2e` tag), the tests (with `-race` on Linux) and
-`govulncheck`, then the install scripts as a user runs them: install, a killed connector
-restarting, reinstall and `uninstall --purge`. On Linux it also runs `gofmt`, `go vet`
-for darwin/arm64 with cgo off, and the end-to-end test against Headscale. The iPhone
-app's side of the wire files runs only in Xcode, locally and before shipping, never in
-CI, so a change to `testdata/wire/` must also pass the [iPhone app's tests](#tests-1).
+CI (`.github/workflows/ci.yml`) runs on every push and pull request, and weekly, on Linux
+and Windows: `go vet` (with and without the `e2e` tag), the tests (with `-race` on Linux)
+and `govulncheck`, then the install scripts as a user runs them: install, a killed
+connector restarting, reinstall and `uninstall --purge`. On Linux it also runs `gofmt`,
+`go vet` and `govulncheck` for darwin/arm64 with cgo off, and the end-to-end test against
+Headscale. The iPhone app's side of the wire files runs only in Xcode, locally and before
+shipping, never in CI, so a change to `testdata/wire/` must also pass the
+[iPhone app's tests](#tests-1).
 
 ### Releases
 

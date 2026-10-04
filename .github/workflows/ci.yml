@@ -3,6 +3,9 @@ name: CI
 on:
   push:
   pull_request:
+  # Weekly as well, so govulncheck sees new advisories without a push.
+  schedule:
+    - cron: '17 6 * * 1'
 
 permissions:
   contents: read
@@ -12,8 +15,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-24.04, windows-2025]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: connector
@@ -52,6 +56,12 @@ jobs:
         run: go test -count=1 ./...
       - name: govulncheck
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
+      # go run with GOOS set would build govulncheck for darwin, so it's installed first.
+      - name: govulncheck (darwin/arm64, cgo off)
+        if: runner.os == 'Linux'
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
+          GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 "$(go env GOPATH)/bin/govulncheck" ./...
 
   # The install scripts, as a user runs them: install, a crash and restart, reinstall,
   # uninstall --purge. On Windows the script builds from source.
@@ -59,8 +69,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-24.04, windows-2025]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -108,7 +119,9 @@ jobs:
           Check (-not (Test-Path "$env:LOCALAPPDATA\ovenlight")) 'folder left behind'
 
   e2e:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    # More than the test's own -timeout, so that one reports where it hung.
+    timeout-minutes: 25
     defaults:
       run:
         working-directory: connector
