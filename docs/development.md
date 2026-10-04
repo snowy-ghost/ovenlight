@@ -81,6 +81,8 @@ shipping, never in CI, so a change to `testdata/wire/` must also pass the
 scripts/release-connector.sh 1.0.0       # or --unsigned 1.0.0 to skip all signing
 scripts/release-connector.sh --no-windows 1.0.0   # without the Windows archives, only until the first Windows release
 scripts/publish-connector.sh 1.0.0 1.0.0 # the version, then the oldest secure one
+git tag -s connector-v1.0.0 <commit>     # then tag the commit it was built from
+git push origin connector-v1.0.0
 ```
 
 `release-connector.sh` writes the release to `build/release/`, replacing the one before:
@@ -113,14 +115,21 @@ script names.
 
 Try the Windows build on a PC with Smart App Control on before publishing.
 `publish-connector.sh` uploads the release to the R2 bucket behind
-`https://downloads.ovenlight.app`, through `wrangler` (signed in with `npx wrangler login`,
-or `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`):
+`https://downloads.ovenlight.app`, through `wrangler` (signed in with
+`npx wrangler@4.147.0 login`, or `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`):
 
 - `connector/<version>/`: the release's files, never replaced;
 - `connector/latest/`: the same files, replaced by each release, which the README links to;
 - `connector/latest.json`: `{"latest": "<version>", "secure": "<secure>"}`. `ovenlight doctor`
   reads it to tell people about updates, and fails while they run a version older than
   `secure`, so raise `secure` with any release that fixes a security problem.
+
+If a release goes wrong, roll forward with a fixed one, raising `secure` if it fixes a
+security problem. `publish-connector.sh` won't move `latest` back, so restoring an older
+release is done by hand: upload `connector/<good version>/`'s files to `connector/latest/`
+with `latest/`'s `Cache-Control: public, max-age=300`, as `publish-connector.sh` puts them
+(a copy would keep the version's year-long cache), point `latest.json` at that version,
+then wait out the caches.
 
 ## The iPhone app
 
