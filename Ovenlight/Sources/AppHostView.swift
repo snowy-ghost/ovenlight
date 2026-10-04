@@ -59,10 +59,14 @@ private struct AppPage: View {
             Color(.systemBackground)
                 .ignoresSafeArea()
             // Files that finished while the person was back in the launcher, once the page
-            // is in a window to present over (it isn't yet as the view appears).
+            // is in a window to present over (it isn't yet as the view appears). The page
+            // stays visible under the opaque placeholder, which fades out over it, and takes
+            // no touches until it has loaded.
             WebViewContainer(webView: webView, onWindow: { coordinator.presentWaitingDownloads() })
                 .ignoresSafeArea()
-                .opacity(coordinator.hasLoadedOnce ? 1 : 0)
+                .allowsHitTesting(coordinator.hasLoadedOnce)
+            // A zIndex keeps each of these over the page as it fades out: without one, SwiftUI
+            // draws a view leaving a ZStack behind its siblings.
             if !coordinator.hasLoadedOnce && coordinator.loadError == nil {
                 if let appNode = coordinator.node, let action = NodeActionOverlay.action(for: appNode.state, app: app, ownerEnabled: node.ownerEnabled) {
                     NodeActionOverlay(appName: app.name, action: action) {
@@ -70,19 +74,23 @@ private struct AppPage: View {
                     } retry: {
                         Task { await appNode.restart() }
                     }
+                    .zIndex(1)
                 } else if coordinator.gate == .unreachable {
                     LoadErrorView(title: ConnectionCopy.cantReach(app.name), message: ConnectionCopy.cantReachDetail,
                                   retry: { coordinator.reload() }, close: onClose)
                         .transition(.opacity)
+                        .zIndex(1)
                 } else {
                     LaunchPlaceholder(app: app, icon: icon, caption: ConnectionCopy.connecting)
                         .transition(.opacity)
+                        .zIndex(1)
                 }
             }
             if let error = coordinator.loadError {
                 LoadErrorView(title: "Can't Open \(app.name)", message: error,
                               retry: { coordinator.reload() }, close: onClose)
                     .transition(.opacity)
+                    .zIndex(1)
             }
             AppChrome(
                 app: app,
@@ -100,6 +108,7 @@ private struct AppPage: View {
                     lock: { lock.lock() }
                 )
             )
+            .zIndex(2)
         }
         .animation(.easeOut(duration: 0.25), value: coordinator.hasLoadedOnce)
         .animation(.easeOut(duration: 0.25), value: coordinator.loadError)
