@@ -370,10 +370,13 @@ struct InviteScannerView: View {
 struct SharedByCaption: View {
     let owner: String
 
+    @Environment(\.colorSchemeContrast) private var contrast
+
     var body: some View {
         Text(ConnectionCopy.sharedBy(owner))
             .font(.caption2)
-            .foregroundStyle(.secondary)
+            // Over the light, secondary text stays faint even with Increase Contrast.
+            .foregroundStyle(contrast == .increased ? HierarchicalShapeStyle.primary : .secondary)
             .lineLimit(1)
     }
 }
