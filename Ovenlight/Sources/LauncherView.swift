@@ -410,6 +410,8 @@ struct AddAppView: View {
     private func add() {
         guard let url = AppAddress.url(from: text, ownerSuffix: ownerSuffix) else {
             refused = AppAddress.url(from: text) != nil
+            // The refusal shows under the field, away from VoiceOver's focus.
+            if refused { AccessibilityNotification.Announcement(AppAddress.notYourComputer).post() }
             return
         }
         registry.add(url: url)

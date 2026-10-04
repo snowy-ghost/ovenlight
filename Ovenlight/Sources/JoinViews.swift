@@ -127,6 +127,8 @@ private struct InviteEntryView: View {
             found(.success(try InviteLink.parse(text: text)))
         } catch {
             withAnimation { self.error = error.message }
+            // The message shows under the field, away from VoiceOver's focus.
+            AccessibilityNotification.Announcement(error.message).post()
         }
     }
 }
