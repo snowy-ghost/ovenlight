@@ -17,9 +17,10 @@ Ovenlight is built so that:
   The connector refuses such requests (see [The proxy](#the-proxy)), except top-level
   link navigations, which is why an app's GETs must
   [change nothing](app-contract.md#make-get-change-nothing).
-- **The app can trust who is calling**, as long as it listens only on `127.0.0.1` and
-  guards requests that reach it straight: it checks their `Host`, sends no CORS headers,
-  and gives a request without identity headers the owner's rights only from its own pages
+- **The app can trust who is calling**, as long as it listens only on `127.0.0.1`, reads
+  each request body in full, and guards requests that reach it straight: it checks their
+  `Host`, sends no CORS headers, and gives a request without identity headers the owner's
+  rights only from its own pages
   ([app-contract.md](app-contract.md#guard-requests-that-come-straight-to-the-port)).
 
 Out of scope: anything running as you on the computer, a coding agent with a shell included,

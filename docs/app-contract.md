@@ -28,6 +28,13 @@ request without identity headers as the owner, if at all, only with a `127.0.0.1
 own).
 [building-apps.md](building-apps.md#who-is-calling) has an example.
 
+### Read each request body
+
+Read each request's body in full before answering, or close the connection. The
+connector forwards a body as the caller sent it and reuses its connections to the app, so
+a server that leaves a body unread can take it for a request of its own, with any
+identity headers the caller wrote into it.
+
 ### Answer GET / with a page or a redirect
 
 Ovenlight opens the app at `/`. `doctor` fails the app unless a plain `GET /` answers
