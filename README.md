@@ -339,5 +339,11 @@ version becomes available under the Apache License 2.0 two years after its relea
 iPhone app and the connector include third-party code under their own licenses, listed in
 each release's `THIRD_PARTY_NOTICES.txt` and in the app under Settings, Acknowledgements.
 
+The starter app that `ovenlight new` writes (`connector/starter`) and the code samples in
+[docs/building-apps.md](docs/building-apps.md) are also available under
+[MIT-0](https://spdx.org/licenses/MIT-0.html), so apps built from them carry no
+conditions. The App Store badge in `site/images` is Apple's artwork, used under Apple's
+terms.
+
 Issues and bug reports are welcome. Code contributions need a contributor license
 agreement first, so open an issue before a pull request.
