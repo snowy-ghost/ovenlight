@@ -439,7 +439,7 @@ struct SettingsView: View {
                     if lock.noPasscode {
                         Text("Ovenlight can't lock until this iPhone has a passcode. Set one in the Settings app.")
                     } else {
-                        Text("How long Ovenlight can stay in the background before it asks for \(lock.biometry.name) again.")
+                        Text("How long Ovenlight can stay in the background before it locks.")
                     }
                 }
                 .ovenlightRows()

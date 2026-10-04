@@ -104,11 +104,13 @@ final class LockManager: ObservableObject {
         return ns.domain == LAErrorDomain && ns.code == LAError.passcodeNotSet.rawValue
     }
 
-    /// What unlocks this iPhone, read once: it doesn't change while Ovenlight runs.
+    /// What unlocks Ovenlight, read once per launch. Face ID that isn't set up, or that the
+    /// person turned down for Ovenlight, leaves the passcode, though `biometryType` still
+    /// names the sensor.
     let biometry: Biometry = {
         let context = LAContext()
-        _ = context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil)
-        switch context.biometryType {
+        let usable = context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil)
+        switch usable ? context.biometryType : .none {
         case .faceID: return Biometry(name: "Face ID", symbol: "faceid")
         case .touchID: return Biometry(name: "Touch ID", symbol: "touchid")
         case .opticID: return Biometry(name: "Optic ID", symbol: "opticid")
