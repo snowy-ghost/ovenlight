@@ -1,4 +1,5 @@
 import Combine
+import ImageIO
 import SwiftUI
 import WebKit
 
@@ -64,9 +65,21 @@ final class AppRegistry: ObservableObject {
     func icon(for app: WebApp) -> UIImage? {
         guard let file = app.iconFile else { return nil }
         if let icon = icons[file] { return icon }
-        let icon = UIImage(contentsOfFile: iconsDirectory.appendingPathComponent(file).path)
+        let icon = (try? Data(contentsOf: iconsDirectory.appendingPathComponent(file))).flatMap(Self.iconImage(from:))
         icons[file] = icon
         return icon
+    }
+
+    /// Decodes an icon no larger than the largest one drawn (96 points, while an app
+    /// opens) at 3x. The server chooses the image, and earlier builds saved it as it came,
+    /// so one over 4096 pixels a side is refused before decoding: for an interlaced PNG, a
+    /// GIF or a WebP, ImageIO makes the full-size bitmap even for a thumbnail.
+    nonisolated static func iconImage(from data: Data) -> UIImage? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let width = properties[kCGImagePropertyPixelWidth] as? Int, width <= 4096,
+              let height = properties[kCGImagePropertyPixelHeight] as? Int, height <= 4096 else { return nil }
+        return Screenshot.image(from: data, maxPixels: 288)
     }
 
     @discardableResult
@@ -246,10 +259,11 @@ final class AppRegistry: ObservableObject {
 
     private func saveIcon(from url: URL, for id: UUID) async {
         guard let app = apps.first(where: { $0.id == id }), let session = session(app),
-              let (data, _) = try? await session.data(from: url), let image = UIImage(data: data),
+              let (data, _) = try? await session.data(from: url),
+              let image = await Task.detached(operation: { Self.iconImage(from: data) }).value, let png = image.pngData(),
               let index = apps.firstIndex(where: { $0.id == id }) else { return }
         let file = "\(id.uuidString).png"
-        try? data.write(to: iconsDirectory.appendingPathComponent(file), options: .atomic)
+        try? png.write(to: iconsDirectory.appendingPathComponent(file), options: .atomic)
         // A refreshed icon keeps its file name, so `apps` may not change; say so anyway.
         objectWillChange.send()
         icons[file] = image

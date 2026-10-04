@@ -374,6 +374,29 @@ final class AppRegistryTests: XCTestCase {
         XCTAssertNil(registry.apps[0].themeColorHex)
         XCTAssertFalse(registry.apps[0].discovered || registry.apps[0].isNew)
     }
+
+    func testIconsAreDecodedSmall() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let png = UIGraphicsImageRenderer(size: CGSize(width: 2048, height: 1024), format: format).pngData { context in
+            UIColor.orange.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 2048, height: 1024))
+        }
+        XCTAssertEqual(AppRegistry.iconImage(from: png)?.cgImage.map { [$0.width, $0.height] }, [288, 144], "what a save writes")
+        let wide = UIGraphicsImageRenderer(size: CGSize(width: 4097, height: 8), format: format).pngData { context in
+            context.fill(CGRect(x: 0, y: 0, width: 4097, height: 8))
+        }
+        XCTAssertNil(AppRegistry.iconImage(from: wide), "over 4096 pixels a side, refused before decoding")
+
+        // One an earlier build saved as the server sent it.
+        let registry = makeRegistry(dir)
+        var app = WebApp(name: "Coach", startURL: URL(string: "https://coach.tailabc123.ts.net/")!)
+        app.iconFile = "coach.png"
+        try png.write(to: registry.iconsDirectory.appendingPathComponent("coach.png"))
+        XCTAssertEqual(registry.icon(for: app)?.cgImage.map { [$0.width, $0.height] }, [288, 144])
+    }
 }
 
 @MainActor
