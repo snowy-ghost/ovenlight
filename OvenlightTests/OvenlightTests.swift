@@ -389,6 +389,10 @@ final class AppRegistryTests: XCTestCase {
             context.fill(CGRect(x: 0, y: 0, width: 4097, height: 8))
         }
         XCTAssertNil(AppRegistry.iconImage(from: wide), "over 4096 pixels a side, refused before decoding")
+        let tall = UIGraphicsImageRenderer(size: CGSize(width: 8, height: 4097), format: format).pngData { context in
+            context.fill(CGRect(x: 0, y: 0, width: 8, height: 4097))
+        }
+        XCTAssertNil(AppRegistry.iconImage(from: tall), "over 4096 pixels high, refused too")
 
         // One an earlier build saved as the server sent it.
         let registry = makeRegistry(dir)
