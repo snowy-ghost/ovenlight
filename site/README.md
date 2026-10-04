@@ -17,9 +17,6 @@ preview image, `og-invite.jpg`, is written by `design/og/generate.py`.
 accepts it only when it is served directly, with no redirect, as
 `application/json`; `_headers` sets the content type.
 
-`.well-known/security.txt` says where to report a security problem (RFC 9116);
-`_headers` adds the charset the RFC requires. Renew its `Expires` date before it passes.
-
 ## Deploying
 
 Deploy origin/master from a worktree of its own, not from a checkout someone may be
