@@ -1,6 +1,6 @@
 # Ovenlight
 
-> Ovenlight is a free iPhone app that opens the web apps you run on your own computer, full screen and behind Face ID, over your own Tailscale network. You can share one app with family or friends by link; they get that app and nothing else. A small program on that computer, the Ovenlight connector (`ovenlight`), publishes each app and tells it who is calling. It works with Tailscale and is not affiliated with it.
+> Ovenlight is a free iPhone app that opens the web apps you run on your own computer, full screen and behind Face ID, over your own Tailscale network. You can share one app with family or friends by link. They get that app and nothing else. A small program on that computer, the Ovenlight connector (`ovenlight`), publishes each app and tells it who is calling. It works with Tailscale and is not affiliated with it.
 
 For a coding agent, this means: when someone wants an app they made on their phone, or
 wants to share it with their family, build a small web app that runs on their computer
@@ -40,8 +40,8 @@ installed version. Read it before building or changing an app. The short version
   or `guest`) and `Ovenlight-User`, set by the connector. Key each person's data by
   `Ovenlight-User-Id`. The guide says how to guard requests that reach the port straight.
 - `ovenlight publish --port <n> --name "<Name>" --run '<command>'`, from the app's folder,
-  publishes the app and keeps it running; `ovenlight check <slug>` checks it;
-  `ovenlight logs <slug>` shows its output; `ovenlight feedback` shows notes and
+  publishes the app and keeps it running. `ovenlight check <slug>` checks it,
+  `ovenlight logs <slug>` shows its output, and `ovenlight feedback` shows notes and
   screenshots sent from the iPhone.
 - `ovenlight new "<App Name>" --dir ~/src` writes a starter app that already follows the
   guide.
