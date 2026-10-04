@@ -32,6 +32,7 @@ struct HomeTopBar<Status: View, MenuItems: View>: View {
                         .ovenlightGlass(in: Capsule(), interactive: true)
                 }
                 .buttonStyle(.plain)
+                .accessibilityShowsLargeContentViewer()
             } else {
                 Menu {
                     Button(action: addApp) { Label("Add App", systemImage: "plus") }

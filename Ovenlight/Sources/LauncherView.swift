@@ -27,6 +27,8 @@ struct LauncherView: View {
             } menuItems: {
                 LauncherShareMenuItems()
             }
+            // Stops growing where the system's bars do.
+            .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
             TailnetBanner(state: node.ownerEnabled ? node.state : .idle) { router.present(.login($0)) }
             PendingInvitesBanner { router.present(.join(JoinRequest(invite: .success($0)))) }
                 .padding(.horizontal, 26)
@@ -45,6 +47,8 @@ struct LauncherView: View {
                     // The menu is open: bring its People count and Share up to date.
                     .task { if !app.isShared { await refreshSharing() } }
             }
+            // Any larger and names break inside words.
+            .dynamicTypeSize(...DynamicTypeSize.accessibility1)
             }
         }
         .background(HomeWallpaper())

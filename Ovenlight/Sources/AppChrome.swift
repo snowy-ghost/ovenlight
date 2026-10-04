@@ -135,10 +135,15 @@ struct AppChrome: View {
                 .contentShape(Rectangle())
             }
             .accessibilityLabel("\(app.name) options")
+            // The name alone: the viewer would draw the app's icon as a flat silhouette.
+            .accessibilityShowsLargeContentViewer { Text(app.name) }
         }
         .foregroundStyle(.primary)
         .ovenlightGlass(in: Capsule(), interactive: true)
         .simultaneousGesture(TapGesture().onEnded { autoHides = false })
+        // Stops growing where the system's bars do. The tip, outside the cap, keeps the
+        // reader's size.
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
         .popoverTip(tip, arrowEdge: .top)
         .frame(maxWidth: 320)
     }
