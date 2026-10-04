@@ -324,7 +324,9 @@ to it can install it:
 
 ## Security
 
-To report a vulnerability, see [docs/security.md](docs/security.md#reporting-a-vulnerability).
+To report a vulnerability, see [SECURITY.md](SECURITY.md). For a leaked link or
+credential, a lost phone, a stolen computer or a compromised app,
+[docs/security.md](docs/security.md#if-something-goes-wrong) says what to do.
 
 ## License
 

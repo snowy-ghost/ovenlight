@@ -445,7 +445,38 @@ website open in this Mac's browser, can choose.
 - Node state and the membership list are excluded from backups, so node keys never come
   back on another phone.
 
+## If something goes wrong
+
+- **An invite link leaked.** If it's still open, `ovenlight share --cancel <id>`
+  withdraws it (`ovenlight guests` lists open invites). If someone else used it,
+  `ovenlight guests` lists the phone that joined: remove it with
+  `ovenlight revoke <device ID>` and send a new invite.
+- **An app's login link leaked.** Whoever opens a pending login link first and signs in
+  gets that app's node, in their own tailnet. If it's still pending, sign in with it
+  yourself at once. If someone beat you to it, `ovenlight status` shows the app at an
+  address in another tailnet, or with another owner: run `ovenlight unpublish <slug>`,
+  delete `nodes/<slug>` in the [state directory](../README.md#install-the-connector),
+  delete the app's old node in the admin console (Machines) if it's still there, and
+  publish the app again, which starts a new node. The node they got never comes back
+  online, since its keys are gone.
+- **An API token or OAuth client secret leaked.** Revoke it in the Tailscale admin
+  console (Settings, Keys; for an OAuth client, Trust credentials) and store a new one
+  with `ovenlight auth set`. Then check your tailnet policy, devices and keys for changes
+  you didn't make.
+- **A lost or stolen iPhone.** Your own: delete its node, an untagged `ovenlight-` device
+  of yours, in the admin console (Machines), then look in `ovenlight guests` for invites
+  and guests you didn't make. A guest's: `ovenlight revoke <device ID>`, then invite them
+  again on their new phone.
+- **A stolen computer.** Revoke the API credential and delete the computer's app nodes in
+  the admin console (Machines), then set up again on another computer, as for a move
+  [without a backup](../README.md#moving-to-a-new-mac). FileVault keeps the node keys and
+  the credential unreadable on a Mac that's off, but the automatic login the README
+  suggests for a Mac without a display needs FileVault off.
+- **An app that may be compromised.** `ovenlight unpublish <slug>`, which also stops the
+  command the connector runs for it. It ran as you, with your login shell's environment
+  (or your terminal's, if you started it): rotate the secrets there, and the API
+  credential, which it could read too.
+
 ## Reporting a vulnerability
 
-Email team@snowyghost.com with what you found and how to reproduce it. Please don't open
-a public issue for a vulnerability.
+See [SECURITY.md](../SECURITY.md).
