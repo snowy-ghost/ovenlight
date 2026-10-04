@@ -33,6 +33,9 @@ WIN_PROFILE=snowyghost/ovenlight
 # build machine's macOS. Flags rather than MACOSX_DEPLOYMENT_TARGET: the build cache keys
 # on them, so cached objects built for another target aren't reused.
 MACOS_MIN=13.0
+# ts_omit_webclient leaves out Tailscale's web client, which the connector doesn't use,
+# and the JavaScript bundle it embeds. The notices are listed with the same tags.
+BUILD_TAGS=ts_omit_webclient
 
 unsigned=false windows=true
 while [[ "${1:-}" == --* ]]; do
@@ -124,8 +127,8 @@ for os in "${oses[@]}"; do
     exe=ovenlight
     [ "$os" = windows ] && exe=ovenlight.exe
     (cd "$conn" && CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" \
-      go build -trimpath -ldflags "-X main.releaseVersion=$version" -o "$dir/$exe" .)
-    CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" "$root/scripts/third-party-notices.sh" "$conn" > "$dir/THIRD_PARTY_NOTICES.txt"
+      go build -trimpath -tags "$BUILD_TAGS" -ldflags "-X main.releaseVersion=$version" -o "$dir/$exe" .)
+    CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" "$root/scripts/third-party-notices.sh" "$conn" -tags "$BUILD_TAGS" > "$dir/THIRD_PARTY_NOTICES.txt"
     if [ "$os" = linux ]; then
       mkdir -p "$dir/systemd"
       cp "$conn/install.sh" "$conn/uninstall.sh" "$dir/"
@@ -153,8 +156,8 @@ for arch in arm64 amd64; do
   echo "building ovenlight $version for $arch"
   (cd "$conn" && CGO_ENABLED=1 GOOS=darwin GOARCH="$arch" \
     CGO_CFLAGS="-O2 -g -mmacosx-version-min=$MACOS_MIN" CGO_LDFLAGS="-mmacosx-version-min=$MACOS_MIN" \
-    go build -trimpath -ldflags "-X main.releaseVersion=$version" -o "$tmp/ovenlight-$arch" .)
-  CGO_ENABLED=1 GOOS=darwin GOARCH="$arch" "$root/scripts/third-party-notices.sh" "$conn" > "$tmp/notices-$arch.txt"
+    go build -trimpath -tags "$BUILD_TAGS" -ldflags "-X main.releaseVersion=$version" -o "$tmp/ovenlight-$arch" .)
+  CGO_ENABLED=1 GOOS=darwin GOARCH="$arch" "$root/scripts/third-party-notices.sh" "$conn" -tags "$BUILD_TAGS" > "$tmp/notices-$arch.txt"
 done
 lipo -create -output "$pkg/ovenlight" "$tmp/ovenlight-arm64" "$tmp/ovenlight-amd64"
 cmp -s "$tmp/notices-arm64.txt" "$tmp/notices-amd64.txt" ||
