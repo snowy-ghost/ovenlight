@@ -12,11 +12,13 @@
 #
 #   scripts/release-connector.sh [--unsigned] [--no-windows] <version>     e.g. 1.0.0
 #
-# It builds with the Go version on connector/go.mod's go line, as CI does, and refuses a
-# tree with uncommitted changes. --unsigned skips all signing and notarization, and the
-# clean-tree check, to test everything else. --no-windows builds no Windows archives, and
-# needs no Windows signing set up; use it only until the first Windows release, since
-# publishing never removes the Windows archives a release before it put in latest/. Notarization uses an App Store Connect API
+# It builds with the Go version on connector/go.mod's go line, as CI does, and only a
+# clean HEAD on origin/master, checking that each binary carries that commit (go1.26
+# stamps none in a git worktree, so run it in a clone). --unsigned skips all signing and
+# notarization, and those checks, to test everything else. --no-windows builds no Windows
+# archives, and needs no Windows signing set up; use it only until the first Windows
+# release, since publishing never removes the Windows archives a release before it put in
+# latest/. Notarization uses an App Store Connect API
 # key named by ASC_KEY_ID, ASC_ISSUER_ID and ASC_KEY_PATH in the environment. Over SSH,
 # unlock the login keychain first. Windows signing uses jsign (brew install jsign) and the
 # Azure CLI, signed in (az login) as someone with the Artifact Signing Certificate Profile
@@ -65,10 +67,16 @@ export GOTOOLCHAIN
 
 # Check the tree and the credentials before minutes of building.
 if ! $unsigned; then
-  if ! git -C "$root" diff --quiet HEAD || [ -n "$(git -C "$root" ls-files --others --exclude-standard -- connector)" ]; then
+  if [ -n "$(git -C "$root" status --porcelain)" ]; then
     echo "the tree has uncommitted changes; commit them first (or pass --unsigned to test)" >&2
     exit 1
   fi
+  git -C "$root" fetch -q origin master
+  if ! git -C "$root" merge-base --is-ancestor HEAD origin/master; then
+    echo "HEAD isn't on origin/master; push it to master first (or pass --unsigned to test)" >&2
+    exit 1
+  fi
+  head="$(git -C "$root" rev-parse HEAD)"
   if ! security find-identity -v -p codesigning | grep -qF "\"$IDENTITY\""; then
     cat >&2 <<EOF
 No "$IDENTITY" signing identity in the keychain.
@@ -111,8 +119,23 @@ pack() {
     (cd "$1" && zip -qrX "$out/$2" "$name")
   else
     # No AppleDouble (._) files or extended attributes: the signature is inside the
-    # binary, and GNU tar warns about them.
-    COPYFILE_DISABLE=1 tar --no-mac-metadata --no-xattrs -C "$1" -czf "$out/$2" "$name"
+    # binary, and GNU tar warns about them. root owns every file, not whoever built it.
+    COPYFILE_DISABLE=1 tar --no-mac-metadata --no-xattrs --uid 0 --gid 0 --uname root --gname root \
+      -C "$1" -czf "$out/$2" "$name"
+  fi
+}
+
+# checkstamp <binary>: refuses a binary that go didn't stamp as built from HEAD unchanged.
+checkstamp() {
+  local info
+  info="$(go version -m "$1")"
+  if ! grep -qF "vcs.revision=$head" <<< "$info" || ! grep -qF vcs.modified=false <<< "$info"; then
+    cat >&2 <<EOF
+go version -m doesn't show this build as $head with no changes.
+Release from a clone, not a git worktree (go1.26 stamps no commit there), and leave the
+tree alone while it builds.
+EOF
+    exit 1
   fi
 }
 
@@ -128,6 +151,7 @@ for os in "${oses[@]}"; do
     [ "$os" = windows ] && exe=ovenlight.exe
     (cd "$conn" && CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" \
       go build -trimpath -tags "$BUILD_TAGS" -ldflags "-X main.releaseVersion=$version" -o "$dir/$exe" .)
+    $unsigned || checkstamp "$dir/$exe"
     CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" "$root/scripts/third-party-notices.sh" "$conn" -tags "$BUILD_TAGS" > "$dir/THIRD_PARTY_NOTICES.txt"
     if [ "$os" = linux ]; then
       mkdir -p "$dir/systemd"
@@ -157,6 +181,7 @@ for arch in arm64 amd64; do
   (cd "$conn" && CGO_ENABLED=1 GOOS=darwin GOARCH="$arch" \
     CGO_CFLAGS="-O2 -g -mmacosx-version-min=$MACOS_MIN" CGO_LDFLAGS="-mmacosx-version-min=$MACOS_MIN" \
     go build -trimpath -tags "$BUILD_TAGS" -ldflags "-X main.releaseVersion=$version" -o "$tmp/ovenlight-$arch" .)
+  $unsigned || checkstamp "$tmp/ovenlight-$arch"
   CGO_ENABLED=1 GOOS=darwin GOARCH="$arch" "$root/scripts/third-party-notices.sh" "$conn" -tags "$BUILD_TAGS" > "$tmp/notices-$arch.txt"
 done
 lipo -create -output "$pkg/ovenlight" "$tmp/ovenlight-arm64" "$tmp/ovenlight-amd64"

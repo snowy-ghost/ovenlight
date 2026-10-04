@@ -99,8 +99,10 @@ scripts/publish-connector.sh 1.0.0 1.0.0 # the version, then the oldest secure o
 Each archive holds an `ovenlight-connector-<version>` folder, with `LICENSE`, `NOTICE` and
 `THIRD_PARTY_NOTICES.txt`, the licenses of what that system's build links. The archive
 names carry no version, so the latest release keeps the same URLs. It builds with the Go
-version on `connector/go.mod`'s `go` line (through `GOTOOLCHAIN`), as CI does, and
-refuses a tree with uncommitted changes unless `--unsigned`.
+version on `connector/go.mod`'s `go` line (through `GOTOOLCHAIN`), as CI does. Unless
+`--unsigned`, it builds only a clean `HEAD` that is on `origin/master`, and checks with
+`go version -m` that each binary carries that commit. Run it in a clone: go1.26 stamps no
+commit in a git worktree.
 
 Notarization uses an App Store Connect API key, named by the environment variables
 `ASC_KEY_ID`, `ASC_ISSUER_ID` and `ASC_KEY_PATH`. Over SSH, unlock the login keychain
