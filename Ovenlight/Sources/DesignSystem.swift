@@ -294,11 +294,12 @@ extension View {
 }
 
 /// A warning: the symbol in orange, the words in secondary text, since orange text is too
-/// faint to read on a light background.
+/// faint to read on a light background. The secondary label color rather than `.secondary`,
+/// which in a form footer, already secondary, would fade the words a level further.
 struct WarningLabelStyle: LabelStyle {
     func makeBody(configuration: Configuration) -> some View {
         Label {
-            configuration.title.foregroundStyle(.secondary)
+            configuration.title.foregroundStyle(Color(.secondaryLabel))
         } icon: {
             configuration.icon.foregroundStyle(.orange)
         }
