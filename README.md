@@ -302,10 +302,10 @@ claude mcp add ovenlight -- ~/Library/Application\ Support/ovenlight/bin/ovenlig
 On Linux, use the binary's path from the [table](#install-the-connector). On Windows:
 `claude mcp add ovenlight -- "$env:LOCALAPPDATA\ovenlight\bin\ovenlight.exe" mcp`.
 
-Or, in Claude Code, install the plugin, which adds the same MCP server and a skill that
-reads the guide when you ask for an app on your phone (use one or the other). It installs
-from this GitHub repository, so while the repository is private, only people with access
-to it can install it:
+Or, in Claude Code on a Mac, install the plugin, which adds the same MCP server and a
+skill that reads the guide when you ask for an app on your phone (use one or the other).
+It installs from this GitHub repository, so while the repository is private, only people
+with access to it can install it:
 
 ```
 /plugin marketplace add snowy-ghost/ovenlight

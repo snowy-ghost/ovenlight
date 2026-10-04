@@ -6,7 +6,8 @@ person's Tailscale network (their tailnet) and tells the app who is calling. An 
 shared with friends and family, who get that one app and nothing else.
 
 `ovenlight guide` and the MCP `guide` tool print this guide. When `ovenlight` isn't on
-`PATH`, the command is `~/Library/Application\ Support/ovenlight/bin/ovenlight`.
+`PATH`, the command is `~/Library/Application\ Support/ovenlight/bin/ovenlight` on a Mac
+and `~/.local/state/ovenlight/bin/ovenlight` on Linux.
 
 Starting from nothing? `ovenlight new "<App Name>" --dir ~/src`, in a shell (MCP has no
 tool for it), writes a small starter app that already follows this guide, and prints how
@@ -368,15 +369,13 @@ Stop and ask for these in plain words, one at a time, with the exact link or pla
 tap. Don't work around them. Doctor marks the checks only the person can fix with
 `"actor": "person"`, and with a `url` when there's a page for it.
 
-- **Start the connector.** When `ovenlight status` says it isn't running, the person
-  starts it in their terminal with
-  `launchctl kickstart gui/$(id -u)/com.snowyghost.ovenlight.connector`. If launchctl
-  says it can't find the service, they run `install.sh` again, from the folder the
-  connector came in (or `connector/install.sh` in the repository); if it keeps stopping,
-  the reason is at the end of `~/Library/Logs/ovenlight.log`. Don't run `ovenlight run`
-  yourself: a connector started from your session stops with it. When status or doctor
-  says to restart it (an app's node lost its login, or the connector is older than the
-  installed binary), the person runs the command shown, too.
+- **Start the connector.** When `ovenlight status` says it isn't running, it also says
+  how: the person runs the install script again, from the folder the connector came in
+  (or `connector/` in the repository), and if it keeps stopping, the reason is at the end
+  of the log that status names. Don't run `ovenlight run` yourself: a connector started
+  from your session stops with it. When status or doctor says to restart it (an app's
+  node lost its login, or the connector is older than the installed binary), the person
+  runs the command shown, too.
 - **A Tailscale account**, with MagicDNS and HTTPS Certificates turned on (admin console,
   DNS page).
 - **Store an API token**: the person runs `ovenlight auth set` in their own terminal and
