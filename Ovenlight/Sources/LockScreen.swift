@@ -1,11 +1,12 @@
 import SwiftUI
 
-/// Shown whenever Ovenlight is locked. Face ID starts on its own when Ovenlight becomes
-/// active; the button is for trying again.
+/// Shown whenever Ovenlight is locked, and as it fades away after an unlock. Face ID starts
+/// on its own when Ovenlight becomes active; the button is for trying again.
 struct LockScreen: View {
     @EnvironmentObject private var lock: LockManager
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var failures = 0
+    @State private var appeared = false
 
     var body: some View {
         LockLayout(level: lampLevel) {
@@ -49,12 +50,15 @@ struct LockScreen: View {
         .onChange(of: lock.lastError) { _, error in
             if error != nil { failures += 1 }
         }
+        .onAppear { appeared = true }
     }
 
     /// Locked, the light is low; Face ID switches it on, the way you turn on an oven light
-    /// to look inside, and it drops back when Face ID stops looking.
+    /// to look inside. It drops back when Face ID stops looking, and stays on once Ovenlight
+    /// unlocks, while the lock screen fades. It starts low even when Face ID is already
+    /// looking, so a lock screen that replaces the privacy cover brightens rather than jumps.
     private var lampLevel: Double {
-        lock.isAuthenticating ? 1 : restingLampLevel
+        appeared && (lock.isAuthenticating || !lock.isLocked) ? 1 : restingLampLevel
     }
 
     @ViewBuilder private var unlockButton: some View {

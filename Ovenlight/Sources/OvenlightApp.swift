@@ -311,12 +311,10 @@ struct RootView: View {
 final class OverlayPresenter: ObservableObject {
     @Published var isLocked = true
     @Published var isActive = true
+    /// Unlocked, and the window not yet faded out: the lock screen stays up, still lit, while
+    /// it fades.
+    @Published private(set) var unlocked = false
     private var window: UIWindow?
-    private var host: UIView?
-    /// Frost between the lock screen and the apps, shown only as an unlock clears it.
-    private let frost = UIVisualEffectView()
-    /// Unlocked since the cover last went away; the next reveal clears frost, not a fade.
-    private var unlocked = false
     /// Ovenlight's own window, which gets the keyboard back after an unlock.
     private weak var mainWindow: UIWindow?
     private static weak var installed: OverlayPresenter?
@@ -342,11 +340,7 @@ final class OverlayPresenter: ObservableObject {
         // VoiceOver stays in the lock screen, not the apps under it.
         host.view.accessibilityViewIsModal = true
         window.rootViewController = host
-        frost.frame = window.bounds
-        frost.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        window.insertSubview(frost, belowSubview: host.view)
         self.window = window
-        self.host = host.view
         apply()
     }
 
@@ -358,14 +352,12 @@ final class OverlayPresenter: ObservableObject {
     }
 
     /// The cover appears at once, so nothing private reaches the app switcher snapshot.
-    /// Once Ovenlight is active again it fades away, or after an unlock gives way to frost
-    /// over the apps that clears (a fade with Reduce Motion).
+    /// Once Ovenlight is active again it fades away, and so does the lock screen after an
+    /// unlock.
     private func apply() {
-        guard let window, let host else { return }
+        guard let window else { return }
         if isLocked || !isActive {
-            [window.layer, host.layer, frost.layer].forEach { $0.removeAllAnimations() }
-            frost.effect = nil
-            host.alpha = 1
+            window.layer.removeAllAnimations()
             window.alpha = 1
             window.isHidden = false
             // Typing must not reach a page under the lock, and iOS would bring its keyboard
@@ -377,22 +369,16 @@ final class OverlayPresenter: ObservableObject {
         } else if !window.isHidden {
             mainWindow?.makeKey()
             let done: (Bool) -> Void = { [weak self] _ in
-                guard let self, !self.isLocked, self.isActive else { return }
+                guard let self else { return }
+                // Before the guard: a fade the app switcher cuts short leaves the cover, not
+                // the lit lock screen.
+                self.unlocked = false
+                guard !self.isLocked, self.isActive else { return }
                 window.isHidden = true
                 window.alpha = 1
-                host.alpha = 1
             }
-            let clearsFrost = unlocked && !UIAccessibility.isReduceMotionEnabled
-            unlocked = false
-            guard clearsFrost else {
-                UIView.animate(withDuration: 0.3, delay: 0, options: [.beginFromCurrentState, .curveEaseOut],
-                               animations: { window.alpha = 0 }, completion: done)
-                return
-            }
-            frost.effect = UIBlurEffect(style: .systemThickMaterial)
-            UIView.animate(withDuration: 0.2, delay: 0, options: .curveEaseOut) { host.alpha = 0 }
-            UIView.animate(withDuration: 0.45, delay: 0.1, options: .curveEaseOut,
-                           animations: { self.frost.effect = nil }, completion: done)
+            UIView.animate(withDuration: 0.3, delay: 0, options: [.beginFromCurrentState, .curveEaseOut],
+                           animations: { window.alpha = 0 }, completion: done)
         }
     }
 }
@@ -401,7 +387,7 @@ struct OverlayRoot: View {
     @ObservedObject var presenter: OverlayPresenter
 
     var body: some View {
-        if presenter.isLocked {
+        if presenter.isLocked || presenter.unlocked {
             LockScreen()
         } else if !presenter.isActive {
             PrivacyCover()
