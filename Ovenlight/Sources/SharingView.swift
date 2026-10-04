@@ -185,6 +185,7 @@ struct SharingAppView: View {
                                 Text("\(person.devices) · joined \(person.guests[0].claimedAt.formatted(.relative(presentation: .named)))")
                                     .font(.caption).foregroundStyle(.secondary)
                             }
+                            .accessibilityElement(children: .combine)
                             .swipeActions {
                                 Button("Remove", role: .destructive) { removing = person }
                                 Button("Add Device") { compose(.person(person)) }.tint(.accentColor)
@@ -204,6 +205,7 @@ struct SharingAppView: View {
                                     Text("\(invite.review == true ? "Review invite, unused" : "Unused"), expires \(invite.expires.formatted(.relative(presentation: .named)))")
                                         .font(.caption).foregroundStyle(.secondary)
                                 }
+                                .accessibilityElement(children: .combine)
                                 .swipeActions {
                                     Button("Cancel Invite", role: .destructive) { Task { await cancel(invite) } }
                                 }
