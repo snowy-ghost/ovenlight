@@ -179,6 +179,9 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
     /// First navigations that failed at the connection level after the probe answered.
     private var failedLoads = 0
     private static let maxFailedLoads = 2
+    /// The page's latest navigation is a link the person tapped (see `isTap`), not one the
+    /// page started itself.
+    private var tapped = false
     private var gateTask: Task<Void, Never>?
     /// Each download under way, and the file it's written to once WebKit asks where.
     private var downloads: [ObjectIdentifier: (download: WKDownload, file: URL?)] = [:]
@@ -289,8 +292,12 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
         guard !Task.isCancelled else { return }
         Self.log.info("\(self.app.host, privacy: .public): unreachable")
         gate = gate.next(.gaveUp)
-        // A page already on screen keeps it.
-        if hasLoadedOnce { gate = .ready }
+        // A page already on screen keeps it. Once a page has loaded, only the person's Reload
+        // checks the path again, so an alert tells them it couldn't reach the computer.
+        if hasLoadedOnce {
+            gate = .ready
+            alertCantReach()
+        }
     }
 
     private func load() {
@@ -327,6 +334,7 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
                  decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void) {
         guard let url = action.request.url else { return decisionHandler(.allow) }
         let isMainFrame = action.targetFrame?.isMainFrame ?? true
+        if isMainFrame { tapped = Self.isTap(action) }
         switch NavigationPolicy.decide(url: url, appHost: app.host, isMainFrame: isMainFrame, tapped: Self.isTap(action)) {
         case .allow where action.shouldPerformDownload:
             // `<a download>`, of the app's own pages or of a blob or data URL.
@@ -401,8 +409,15 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
         let ns = error as NSError
         if ns.domain == NSURLErrorDomain && ns.code == NSURLErrorCancelled { return }
         // Once the app has rendered, a failed load (offline, a file WebKit can't show)
-        // leaves the page as it is.
-        if hasLoadedOnce { return }
+        // leaves the page as it is. A link the person tapped says so when it can't reach the
+        // computer; what the page loads by itself, a reload on a timer say, never does.
+        if hasLoadedOnce {
+            if tapped, ns.domain == NSURLErrorDomain,
+               Self.unreachable.contains(ns.code) || usesNode && Self.retryableThroughNode.contains(ns.code) {
+                alertCantReach()
+            }
+            return
+        }
         if usesNode && ns.domain == NSURLErrorDomain && Self.retryableThroughNode.contains(ns.code) {
             // The probe answered, but the navigation itself couldn't connect (a lost
             // handshake looks like NSURLError -1000 through the proxy): check the path again.
@@ -417,16 +432,16 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
             loadError = ConnectionCopy.cantReachDetail
             return
         }
-        let unreachable: Set<Int> = [NSURLErrorCannotFindHost, NSURLErrorCannotConnectToHost,
-                                     NSURLErrorTimedOut, NSURLErrorNotConnectedToInternet,
-                                     NSURLErrorNetworkConnectionLost, NSURLErrorDNSLookupFailed]
-        if ns.domain == NSURLErrorDomain && unreachable.contains(ns.code) {
+        if ns.domain == NSURLErrorDomain && Self.unreachable.contains(ns.code) {
             loadError = ConnectionCopy.cantReachDetail
         } else {
             loadError = error.localizedDescription
         }
     }
 
+    static let unreachable: Set<Int> = [NSURLErrorCannotFindHost, NSURLErrorCannotConnectToHost,
+                                        NSURLErrorTimedOut, NSURLErrorNotConnectedToInternet,
+                                        NSURLErrorNetworkConnectionLost, NSURLErrorDNSLookupFailed]
     static let retryableThroughNode: Set<Int> = [NSURLErrorBadURL, NSURLErrorTimedOut, NSURLErrorCannotFindHost,
                                                  NSURLErrorCannotConnectToHost, NSURLErrorNetworkConnectionLost]
 
@@ -609,6 +624,17 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
         } else {
             UIApplication.shared.open(url)
         }
+    }
+
+    /// Tells the person that their Reload, or a link they tapped, couldn't reach the app's
+    /// computer; the page already on screen stays. Never over another alert, so they can't
+    /// stack.
+    private func alertCantReach() {
+        guard !(topController is UIAlertController) else { return }
+        let alert = UIAlertController(title: ConnectionCopy.cantReach(app.name), message: ConnectionCopy.cantReachDetail,
+                                      preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, orElse: {})
     }
 
     /// Presents over Ovenlight's own window, never the lock screen's. While locked, or
