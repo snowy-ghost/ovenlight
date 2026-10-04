@@ -156,7 +156,7 @@ None of this is required: an app without it is still listed, by name.
   site, or rely on a popup and `window.opener`, don't return to the app.
 - **Other apps**: a page can't open `ovenlight://` links directly. Other apps open only
   from a link activated in the page's main frame, and Ovenlight first asks "Open in
-  Another App?" naming the link, except for `tel:`, `facetime:` and `facetime-audio:`,
+  another app?" naming the link, except for `tel:`, `facetime:` and `facetime-audio:`,
   where iOS asks.
 
 ## Feedback

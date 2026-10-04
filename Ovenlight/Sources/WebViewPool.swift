@@ -616,7 +616,7 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
         if ["http", "https"].contains(url.scheme?.lowercased() ?? "") {
             present(SFSafariViewController(url: url), orElse: {})
         } else if NavigationPolicy.asksBeforeOpening(url) {
-            let alert = UIAlertController(title: "Open in Another App?",
+            let alert = UIAlertController(title: "Open in another app?",
                                           message: "\(app.name) wants to open \(NavigationPolicy.target(of: url)).", preferredStyle: .alert)
             alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
             alert.addAction(UIAlertAction(title: "Open", style: .default) { _ in UIApplication.shared.open(url) })
