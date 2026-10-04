@@ -82,7 +82,9 @@ private struct InviteEntryView: View {
                     .padding(.bottom, 6)
             }
             Section {
-                TextField("https://ovenlight.app/join#…", text: $text, axis: .vertical)
+                TextField("Invite Link", text: $text, prompt: Text(verbatim: "https://ovenlight.app/join#…"), axis: .vertical)
+                    // A field with a prompt passes neither its title nor a name to VoiceOver.
+                    .accessibilityLabel("Invite Link")
                     .lineLimit(1...4)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
