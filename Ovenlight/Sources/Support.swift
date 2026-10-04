@@ -111,9 +111,10 @@ extension View {
     /// Asks before leaving someone's apps, then leaves: their apps and data go, and the
     /// iPhone leaves their network. `before` runs first, for closing an open app.
     func leaveConfirmation(_ leaving: Binding<Membership?>, before: @escaping () -> Void = {}) -> some View {
-        confirmationDialog(leaving.wrappedValue.map { ConnectionCopy.leaveTitle($0.ownerName) } ?? "",
-                           isPresented: Binding(get: { leaving.wrappedValue != nil }, set: { if !$0 { leaving.wrappedValue = nil } }),
-                           titleVisibility: .visible, presenting: leaving.wrappedValue) { membership in
+        alert(leaving.wrappedValue.map { ConnectionCopy.leaveTitle($0.ownerName) } ?? "",
+              isPresented: Binding(get: { leaving.wrappedValue != nil }, set: { if !$0 { leaving.wrappedValue = nil } }),
+              presenting: leaving.wrappedValue) { membership in
+            Button("Cancel", role: .cancel) {}
             Button("Leave", role: .destructive) {
                 before()
                 Task { await GuestManager.shared.leave(membership.id) }

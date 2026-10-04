@@ -239,8 +239,9 @@ struct SharingAppView: View {
         .refreshable { await sharing.refresh(apps: registry.apps) }
         .task { await sharing.refreshIfStale(apps: registry.apps) }
         .sheet(item: $composing) { InviteComposer(machine: $0.machine, app: $0.app, target: $0.target) }
-        .confirmationDialog(removing.map { "Remove \($0.name)?" } ?? "", isPresented: Binding(
-            get: { removing != nil }, set: { if !$0 { removing = nil } }), titleVisibility: .visible, presenting: removing) { person in
+        .alert(removing.map { "Remove \($0.name)?" } ?? "", isPresented: Binding(
+            get: { removing != nil }, set: { if !$0 { removing = nil } }), presenting: removing) { person in
+            Button("Cancel", role: .cancel) {}
             Button("Remove", role: .destructive) { Task { await remove(person) } }
         } message: { person in
             Text("\(person.name) can't open \(app?.name ?? "the app") anymore, on any device. Each of their devices is also removed from your Tailscale network unless it has another of your apps.")

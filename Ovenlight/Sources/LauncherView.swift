@@ -70,14 +70,16 @@ struct LauncherView: View {
                 if let app = renaming, !renameText.isEmpty { registry.rename(app.id, to: renameText) }
             }
         }
-        .confirmationDialog(clearing.map { "Sign out of \($0.name)?" } ?? "", isPresented: isPresent($clearing),
-                            titleVisibility: .visible, presenting: clearing) { app in
+        .alert(clearing.map { "Sign out of \($0.name)?" } ?? "", isPresented: isPresent($clearing),
+               presenting: clearing) { app in
+            Button("Cancel", role: .cancel) {}
             Button("Sign Out and Clear Data", role: .destructive) { Task { await registry.clearData(app.id) } }
         } message: { _ in
             Text("This deletes the app's cookies and storage on this iPhone.")
         }
-        .confirmationDialog(removing.map { "Remove \($0.name)?" } ?? "", isPresented: isPresent($removing),
-                            titleVisibility: .visible, presenting: removing) { app in
+        .alert(removing.map { "Remove \($0.name)?" } ?? "", isPresented: isPresent($removing),
+               presenting: removing) { app in
+            Button("Cancel", role: .cancel) {}
             Button("Remove App", role: .destructive) {
                 removals += 1
                 Task { await registry.remove(app.id) }
