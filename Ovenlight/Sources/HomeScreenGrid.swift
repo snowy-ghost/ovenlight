@@ -127,7 +127,7 @@ struct HomeScreenGrid<Menu: View, Preview: View>: View {
                 .background { background }
                 .overlay {
                     if apps.isEmpty && ownerEnabled {
-                        Text("Apps you publish with the Ovenlight connector on your computers show up here.")
+                        Text("Apps you publish with the [Ovenlight connector](https://ovenlight.app/support#own-computer) on your computers show up here.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
