@@ -56,7 +56,7 @@ sharing is the person's, in a terminal or in Ovenlight. For Claude Code on a Mac
 Linux, use the binary path above):
 
 ```sh
-claude mcp add ovenlight -- ~/Library/Application\ Support/ovenlight/bin/ovenlight mcp
+claude mcp add --scope user ovenlight -- ~/Library/Application\ Support/ovenlight/bin/ovenlight mcp
 ```
 
 ## Links
