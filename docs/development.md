@@ -129,7 +129,7 @@ The Xcode project is generated. Edit `project.yml`, then run `xcodegen generate`
 `scripts/build-tailscalekit.sh` builds `Frameworks/TailscaleKit.xcframework` from
 `tailscale/libtailscale` at a pinned commit. Run it once before building in Xcode. The
 output is gitignored and cached; `--force` rebuilds. It needs Go, and fetches the
-`go1.26.6` toolchain itself. On top of upstream it:
+`go1.26.8` toolchain itself. On top of upstream it:
 
 - builds with the `ts_omit_debug` tag, which drops the node's debug LocalAPI, pprof and
   debug HTTP handlers;

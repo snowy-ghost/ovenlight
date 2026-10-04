@@ -10,7 +10,9 @@ LIBTAILSCALE_REPO=https://github.com/tailscale/libtailscale.git
 LIBTAILSCALE_COMMIT=59d4bb82744915815178e0f0776d60026a397ee7
 # libtailscale's tailscale.com dependency doesn't build with Go 1.27 yet. Keep the
 # latest 1.26 patch release: it carries the standard library's security fixes.
-GO_TOOLCHAIN=go1.26.6
+GO_TOOLCHAIN=go1.26.8
+# -trimpath keeps the build machine's file paths, such as /Users/<name>/go, out of the binary.
+GO_FLAGS=-trimpath
 # Modules raised past libtailscale's go.mod for security fixes (govulncheck). Drop an
 # entry once the pinned go.mod reaches it: go get would otherwise move it back down.
 GO_UPGRADES="golang.org/x/net@v0.56.0 golang.org/x/text@v0.39.0"
@@ -31,7 +33,7 @@ stamp="$root/Frameworks/.tailscalekit-pin"
 src="$root/build/libtailscale"
 # A change to the settings above or to the notices script rebuilds the framework.
 notices_sum="$(shasum -a 256 < "$root/scripts/third-party-notices.sh" | cut -d' ' -f1)"
-want="$LIBTAILSCALE_COMMIT $GO_TOOLCHAIN $BUILD_TAGS $GO_UPGRADES $NO_LOGS_FILE $NOTICES $notices_sum"
+want="$LIBTAILSCALE_COMMIT $GO_TOOLCHAIN $GO_FLAGS $BUILD_TAGS $GO_UPGRADES $NO_LOGS_FILE $NOTICES $notices_sum"
 
 if [ "${1:-}" != "--force" ] && [ -d "$out" ] && [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$want" ]; then
   echo "TailscaleKit.xcframework is current ($LIBTAILSCALE_COMMIT)"
@@ -78,7 +80,7 @@ cmp -s "$src/notices-arm64.txt" "$src/notices-amd64.txt" ||
 
 echo "building TailscaleKit at $LIBTAILSCALE_COMMIT with $GO_TOOLCHAIN, tags $BUILD_TAGS (several minutes)"
 # Apple's tools first: libtailscale's scripts expect Xcode's clang and rsync.
-(cd "$src/swift" && PATH="/usr/bin:/bin:/usr/sbin:/sbin:$PATH" GOTOOLCHAIN="$GO_TOOLCHAIN" make ios-fat)
+(cd "$src/swift" && PATH="/usr/bin:/bin:/usr/sbin:/sbin:$PATH" GOTOOLCHAIN="$GO_TOOLCHAIN" GOFLAGS="$GO_FLAGS" make ios-fat)
 
 built="$src/swift/build/Build/Products/Release-iphonefat/TailscaleKit.xcframework"
 [ -d "$built" ] || { echo "no xcframework at $built" >&2; exit 1; }
