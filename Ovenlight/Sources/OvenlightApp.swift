@@ -23,13 +23,18 @@ struct OvenlightApp: App {
     }
 
     /// Whether this iPhone has kept anything: apps, invites or a node. It asks only whether
-    /// the files exist, which iOS answers even before the first unlock after a restart, when
-    /// a prewarmed launch can't read them.
+    /// the files exist and their size, which iOS answers even before the first unlock after
+    /// a restart, when a prewarmed launch can't read them.
     static func hasSavedData(in directory: URL? = nil) -> Bool {
         let base = directory ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Ovenlight", isDirectory: true)
         let files = FileManager.default
-        if ["apps.json", "memberships.json"].contains(where: { files.fileExists(atPath: base.appendingPathComponent($0).path) }) {
+        // A failed join, leaving the last network and removing the last app each leave an
+        // empty list, `[]`; a file whose size can't be read still counts.
+        if ["apps.json", "memberships.json"].contains(where: {
+            let file = base.appendingPathComponent($0)
+            return files.fileExists(atPath: file.path) && (try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize) != 2
+        }) {
             return true
         }
         // Stop Using My Own Computers and leaving the last network leave `tailscale/` empty;

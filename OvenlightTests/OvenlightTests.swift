@@ -477,7 +477,7 @@ final class LockTimingTests: XCTestCase {
         XCTAssertFalse(lock.lockIsDue, "back in front")
     }
 
-    func testAnEmptyNodeFolderIsNothingToLock() throws {
+    func testAnEmptyNodeFolderOrListIsNothingToLock() throws {
         let base = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         defer { try? FileManager.default.removeItem(at: base) }
         let nodes = base.appendingPathComponent("tailscale/owner", isDirectory: true)
@@ -485,7 +485,12 @@ final class LockTimingTests: XCTestCase {
         XCTAssertTrue(OvenlightApp.hasSavedData(in: base))
         try FileManager.default.removeItem(at: nodes)
         XCTAssertFalse(OvenlightApp.hasSavedData(in: base), "what Stop Using My Own Computers leaves")
-        try Data("[]".utf8).write(to: base.appendingPathComponent("apps.json"))
+        for name in ["apps.json", "memberships.json"] {
+            try Data("[]".utf8).write(to: base.appendingPathComponent(name))
+        }
+        XCTAssertFalse(OvenlightApp.hasSavedData(in: base), "what a failed join or removing the last app leaves")
+        let app = WebApp(name: "Notes", startURL: URL(string: "https://notes.example.com/")!)
+        try JSONEncoder().encode([app]).write(to: base.appendingPathComponent("apps.json"))
         XCTAssertTrue(OvenlightApp.hasSavedData(in: base))
     }
 }
