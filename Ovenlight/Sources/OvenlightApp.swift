@@ -190,6 +190,9 @@ struct RootView: View {
         ZStack {
             LauncherView()
                 .environment(\.launchNamespace, launch)
+                // Hidden while locked: at launch the lock window draws a few frames after this
+                // one, and the apps' names mustn't show before it does.
+                .opacity(lock.isLocked ? 0 : 1)
                 .fullScreenCover(item: $router.openApp, onDismiss: router.appDismissed) { app in
                     AppHostView(app: app) { router.openApp = nil }
                         .launchDestination(for: app, in: launch)
