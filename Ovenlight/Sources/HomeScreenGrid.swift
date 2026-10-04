@@ -209,6 +209,8 @@ struct HomeScreenGrid<Menu: View, Preview: View>: View {
                     } preview: {
                         preview(app)
                     }
+                    // Both looks swap in place, as on the Home Screen: Done only stops the jiggle.
+                    .transition(.identity)
             }
         }
         .accessibilityActions {
