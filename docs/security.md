@@ -440,8 +440,10 @@ website open in this Mac's browser, can choose.
   machines shared in), and trusts a machine's `/v1/apps` answer only for hosts that are
   themselves such peers.
 - Each network the phone joins gets its own node, state and random device name
-  (`ovenlight-` and six random characters), so two owners can't tell they have the same
-  phone as a guest.
+  (`ovenlight-` and six random characters), so no name or key ties its guest devices
+  together. Two owners comparing notes could still match them: each sees when Ovenlight
+  is open on the phone (its guest node comes online and checks in with their apps every
+  minute), and its public IP address and iOS version.
 - Node state and the membership list are excluded from backups, so node keys never come
   back on another phone.
 
