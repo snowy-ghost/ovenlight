@@ -177,6 +177,8 @@ a:hover { text-decoration-thickness: 2px; }
   padding-block: 2rem 2.5rem;
 }
 .site-footer nav { display: flex; flex-wrap: wrap; gap: 0.25rem 1.5rem; }
+/* Apple asks for its credit line once on a site that shows the App Store badge. */
+.site-footer .credits { flex-basis: 100%; margin: 0; }
 .site-footer a { color: var(--ink-soft); text-decoration: none; }
 .site-footer a:hover { color: var(--ink); text-decoration: underline; }
 
