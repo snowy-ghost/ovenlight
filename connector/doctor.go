@@ -655,6 +655,10 @@ func nodeChecks(app App, reply *controlReply, p *paths) []Check {
 			login = *c
 			login.Status = statusFail
 		}
+	case "needs-approval":
+		login.Status, login.Message = statusFail, "the node waits for approval: your tailnet has device approval on"
+		login.Fix = "Approve " + app.Slug + " in the Tailscale admin console (Machines page)"
+		login.Actor, login.URL = actorPerson, consoleMachines
 	default:
 		login.Status, login.Message = statusWarn, "the node is "+st.State+" ("+st.Backend+")"
 	}

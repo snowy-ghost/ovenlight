@@ -139,9 +139,10 @@ with one, the connector turns key expiry off.
 
 On your iPhone, open Ovenlight, choose Use My Own Computers, then Connect, and sign in
 with the same Tailscale account. If your tailnet has device approval on, approve the
-iPhone in the admin console. Ovenlight then finds your published apps by itself. Add
-App, in the More menu, also takes an app's address, but only one on your own tailnet;
-apps on other people's computers come by invite.
+iPhone in the admin console. An app you signed in with a login link waits there for
+approval too, listed by its slug. Ovenlight then finds your published apps by itself.
+Add App, in the More menu, also takes an app's address, but only one on your own
+tailnet; apps on other people's computers come by invite.
 
 `status`, `doctor` and `check` take `--json`. `publish` edits the app list (see the
 [table](#install-the-connector)) and reloads the connector.

@@ -873,3 +873,19 @@ func TestNoLoginLinkSaysWhy(t *testing.T) {
 		t.Errorf("other paths: %s", fix)
 	}
 }
+
+// A node that waits for device approval says so, and doctor says where the person
+// approves it.
+func TestNodeWaitingForApproval(t *testing.T) {
+	app := App{Name: "Coach", Slug: "coach", Port: 4317}
+	n := newAppNode(app, t.TempDir(), devOptions{}, nil)
+	n.applyStatus(&ipnstate.Status{BackendState: "NeedsMachineAuth"})
+	st := n.status()
+	if st.State != "needs-approval" {
+		t.Errorf("state %q", st.State)
+	}
+	c := nodeChecks(app, &controlReply{Apps: []NodeStatus{st}}, &paths{})[0]
+	if c.Status != statusFail || c.Actor != actorPerson || c.URL != consoleMachines || !strings.HasPrefix(c.Fix, "Approve coach ") {
+		t.Errorf("doctor: %+v", c)
+	}
+}

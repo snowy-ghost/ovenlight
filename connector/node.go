@@ -637,7 +637,7 @@ var metaClient = &http.Client{
 // NodeStatus is one app's live state, as `status` and `doctor` report it.
 type NodeStatus struct {
 	appInfo
-	State     string     `json:"state"` // starting, needs-login, running, serving, stopped
+	State     string     `json:"state"` // starting, needs-login, needs-approval, running, serving, stopped
 	Backend   string     `json:"backend"`
 	DNSName   string     `json:"dnsName,omitempty"`
 	URL       string     `json:"url,omitempty"`
@@ -673,6 +673,8 @@ func (n *appNode) status() NodeStatus {
 		if !n.app.Shareable { // see reshareCommand
 			s.LoginURL = n.authURL
 		}
+	case n.backend == "NeedsMachineAuth": // logged in, and waiting for device approval
+		s.State = "needs-approval"
 	case n.backend == "Running":
 		s.State = "running"
 	case n.backend == "Stopped":

@@ -666,6 +666,8 @@ func cmdPublish(args []string) error {
 		fmt.Printf("\nIts node needs to log in again as a shareable app node: %s\n", reshareCommand(res.App.Slug))
 	case res.State == "needs-login" && res.LoginURL != "":
 		fmt.Printf("\nLog this app's node in to your tailnet (one time):\n  %s\n", res.LoginURL)
+	case res.State == "needs-approval":
+		fmt.Printf("\nApprove this app's node, %s, in the Tailscale admin console: %s\n", res.App.Slug, consoleMachines)
 	case res.State == "serving":
 		fmt.Printf("\nServing at %s\n", res.URL)
 	default:
@@ -1019,6 +1021,8 @@ func cmdStatus(args []string) error {
 				fmt.Printf("\nLOGIN FAILED for %s: %s\n", a.Name, a.LoginErr)
 			case a.LoginURL != "":
 				fmt.Printf("\nLOGIN NEEDED for %s: open this link and sign in to your tailnet\n  %s\n", a.Name, a.LoginURL)
+			case a.State == "needs-approval":
+				fmt.Printf("\nAPPROVAL NEEDED for %s: approve its node, %s, in the Tailscale admin console: %s\n", a.Name, a.Slug, consoleMachines)
 			}
 			if a.Error != "" && a.State != "needs-login" {
 				fmt.Printf("\n%s: %s\n", a.Name, a.Error)
