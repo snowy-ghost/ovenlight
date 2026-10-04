@@ -111,7 +111,9 @@ minute). Running the install script again starts it.
 ## Update
 
 Download the new release's archive and run its install script, as above; from source,
-pull and run it again. `ovenlight doctor` says when a newer release is out.
+pull and run it again. A release build's `ovenlight doctor` says when a newer release is
+out, and fails when one fixes a security problem in yours; a build from source doesn't
+check.
 
 ## Publish an app
 
