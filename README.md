@@ -339,11 +339,15 @@ version becomes available under the Apache License 2.0 two years after its relea
 iPhone app and the connector include third-party code under their own licenses, listed in
 each release's `THIRD_PARTY_NOTICES.txt` and in the app under Settings, Acknowledgements.
 
-The starter app that `ovenlight new` writes (`connector/starter`) and the code samples in
-[docs/building-apps.md](docs/building-apps.md) are also available under
-[MIT-0](https://spdx.org/licenses/MIT-0.html), so apps built from them carry no
-conditions. The App Store badge in `site/images` is Apple's artwork, used under Apple's
-terms.
+Snowy Ghost LLC also licenses two things under [MIT-0](https://spdx.org/licenses/MIT-0.html),
+in every version, so apps built from them carry no conditions from us: the starter app
+that `ovenlight new` writes (`connector/starter`), and the code samples in
+[docs/building-apps.md](docs/building-apps.md), which `ovenlight guide` prints. The App
+Store badge in `site/images` is Apple's artwork, used under Apple's terms.
 
-Issues and bug reports are welcome. Code contributions need a contributor license
-agreement first, so open an issue before a pull request.
+Ovenlight and the Ovenlight icon are trademarks of Snowy Ghost LLC. The licenses above give
+no right to use them except to say where the software comes from, so a changed version you
+distribute needs its own name and icon.
+
+Issues and bug reports are welcome. We don't accept code contributions yet, so please don't
+open pull requests: describe the change you'd like in an issue.

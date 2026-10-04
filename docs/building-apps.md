@@ -11,7 +11,9 @@ and `~/.local/state/ovenlight/bin/ovenlight` on Linux.
 
 Starting from nothing? `ovenlight new "<App Name>" --dir ~/src`, in a shell (MCP has no
 tool for it), writes a small starter app that already follows this guide, and prints how
-to run and publish it.
+to run and publish it. The starter app and the code samples in this guide are licensed by
+Snowy Ghost LLC under MIT-0 (https://spdx.org/licenses/MIT-0.html), so you can use them in
+any app with no conditions.
 
 ## Don't build these
 
