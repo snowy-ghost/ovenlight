@@ -300,9 +300,9 @@ Sign Ovenlight in to the first with `-authKey`, and open the second owner's invi
 - **People & Sharing** (More menu) talks to each connector's admin API on port 8443
   through the owner's own node, and asks the owner's online machines at once (after the
   first answer, one app node per machine). It lists each app with whether it's online
-  and shareable, its guests (one row per person with their devices; swipe to add a
-  device or remove them), open invites (swipe to cancel) and the feedback inbox with
-  screenshots.
+  and shareable, its guests (one row per person with a count of their devices; swipe to
+  add a device or remove them), open invites (swipe to cancel) and the feedback inbox
+  with screenshots.
 - **Share** asks for someone new (a name, only a label) or someone already shared with,
   who then keeps one identity across apps and devices.
 - **Invites** show a QR code for in person, Send Invite (the share sheet, with the

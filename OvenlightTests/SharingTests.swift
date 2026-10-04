@@ -804,11 +804,11 @@ final class AppMenuPlanTests: XCTestCase {
     func testGroupsDevicesByPerson() {
         var pad = guest("Sam")
         pad.deviceId = "nPad"
-        pad.deviceName = "Sam-ipad"
         let sam = guest("Sam")
-        let people = GuestPerson.all([sam, guest("Kim"), pad, guest("Lee", removed: true)])
+        let people = GuestPerson.all([sam, guest("Kim"), pad, guest("Sam", app: "notes"), guest("Lee", removed: true)])
         XCTAssertEqual(people.map(\.name), ["Sam", "Kim"])
-        XCTAssertEqual(people[0].devices, "Sam-iphone, Sam-ipad")
+        XCTAssertEqual(people[0].devices, "2 devices")
+        XCTAssertEqual(people[1].devices, "1 device")
         XCTAssertEqual(people[1].id, "pKim")
     }
 
