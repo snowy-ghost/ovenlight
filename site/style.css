@@ -597,6 +597,8 @@ a:hover { text-decoration-thickness: 2px; }
   overflow-wrap: anywhere;
   color: var(--ink);
 }
+/* A flag with its value, kept whole so a command never breaks inside one. */
+.prose code span { white-space: nowrap; }
 
 .callout {
   position: relative;
