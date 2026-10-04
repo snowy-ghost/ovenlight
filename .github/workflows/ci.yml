@@ -38,6 +38,11 @@ jobs:
       - name: go vet (darwin/arm64, cgo off)
         if: runner.os == 'Linux'
         run: GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go vet ./...
+      # Guards against licenses below a module's root, like xxhash's in klauspost/compress,
+      # going missing from the notices. Same tags as scripts/release-connector.sh.
+      - name: third-party notices
+        if: runner.os == 'Linux'
+        run: ../scripts/third-party-notices.sh . -tags ts_omit_webclient | grep -F 'Copyright (c) 2016 Caleb Spare'
       - name: go test -race
         if: runner.os == 'Linux'
         run: go test -race -count=1 ./...

@@ -29,7 +29,9 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 out="$root/Frameworks/TailscaleKit.xcframework"
 stamp="$root/Frameworks/.tailscalekit-pin"
 src="$root/build/libtailscale"
-want="$LIBTAILSCALE_COMMIT $GO_TOOLCHAIN $BUILD_TAGS $GO_UPGRADES $NO_LOGS_FILE $NOTICES"
+# A change to the settings above or to the notices script rebuilds the framework.
+notices_sum="$(shasum -a 256 < "$root/scripts/third-party-notices.sh" | cut -d' ' -f1)"
+want="$LIBTAILSCALE_COMMIT $GO_TOOLCHAIN $BUILD_TAGS $GO_UPGRADES $NO_LOGS_FILE $NOTICES $notices_sum"
 
 if [ "${1:-}" != "--force" ] && [ -d "$out" ] && [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$want" ]; then
   echo "TailscaleKit.xcframework is current ($LIBTAILSCALE_COMMIT)"
