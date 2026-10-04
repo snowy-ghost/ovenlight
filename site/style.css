@@ -149,7 +149,8 @@ a:hover { text-decoration-thickness: 2px; }
 .brand img { width: 1.75rem; height: 1.75rem; border-radius: 0.45rem; }
 .brand-name { font-family: var(--serif); font-weight: 600; font-size: 1.1875rem; letter-spacing: -0.01em; }
 .brand-by { color: var(--ink-soft); font-size: var(--step--1); }
-@media (max-width: 26em) { .brand-by { display: none; } }
+/* Hidden on every iPhone (up to 440 px wide), where it would wrap beside the nav. */
+@media (max-width: 29em) { .brand-by { display: none; } }
 
 .site-nav { display: flex; gap: 0.25rem; }
 .site-nav a {
