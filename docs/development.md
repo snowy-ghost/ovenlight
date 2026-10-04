@@ -9,7 +9,8 @@
 - `scripts/build-tailscalekit.sh`: builds the embedded Tailscale library.
 - `scripts/release-connector.sh`: builds a connector release, and
   `scripts/publish-connector.sh` publishes it.
-- `design/icon/generate.py`: writes the app icon.
+- `design/icon/generate.py`: writes the app icon, and the site's `icon.svg` and
+  `icon-180.png`.
 - `.claude-plugin/marketplace.json`, `plugins/ovenlight/`: the Claude Code plugin (the MCP
   server and a skill that points to `ovenlight guide`). Check it with
   `claude plugin validate .`.

@@ -40,24 +40,6 @@
   ],
   "groups": [
     {
-      "name": "Lamp",
-      "layers": [
-        {
-          "name": "Lamp",
-          "glass": true,
-          "image-name": "lamp.svg"
-        }
-      ],
-      "shadow": {
-        "kind": "layer-color",
-        "opacity": 0.6
-      },
-      "translucency": {
-        "enabled": false,
-        "value": 0.5
-      }
-    },
-    {
       "name": "Apps",
       "layers": [
         {
