@@ -248,6 +248,8 @@ struct NodeActionOverlay: View {
         Image(systemName: name)
             .font(.system(size: 36))
             .foregroundStyle(.secondary)
+            // The words under it say the same.
+            .accessibilityHidden(true)
     }
 }
 
