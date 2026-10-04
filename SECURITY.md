@@ -7,6 +7,13 @@ repository is public, GitHub's private vulnerability reporting works too (Securi
 Report a vulnerability). Please don't open a public issue for a vulnerability. You'll
 get a reply within a few days.
 
+## Testing
+
+Test only on installations and tailnets of your own, never on other people's data, devices
+or apps, and give us reasonable time to fix a problem before you make it public. If you
+work in good faith within those limits, we won't bring or support legal action against
+you. We can't speak for Tailscale or Apple, whose services have their own rules.
+
 ## Supported versions
 
 The latest connector release and the current version of the Ovenlight iPhone app.
