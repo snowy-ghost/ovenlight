@@ -99,15 +99,25 @@ struct LampLight: View {
     @State private var source = LightSource.current
 
     var body: some View {
-        LightCone(level: level, source: source)
-            .ignoresSafeArea()
-            // Follows the phone as it turns. A half turn between the two landscapes keeps the
-            // screen's size, so only the scene's orientation shows it.
-            .onReceive(LightSource.changes) { source = $0 }
-            .animation(reduceMotion ? nil : .smooth, value: level)
-            .lampWarmUp()
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
+        // Drawn on a square as long as the screen, so turning the phone never changes the
+        // canvas's shape: one that did would be drawn for the new orientation but cropped to
+        // the old shape, a hard edge of light, until the turn ends.
+        GeometryReader { geo in
+            let side = max(geo.size.width, geo.size.height)
+            LightCone(level: level, source: source, visible: geo.size)
+                .frame(width: side, height: side)
+        }
+        // The square hangs off the screen's right or bottom edge; right to left, it would hang
+        // off the left instead and take the light with it.
+        .environment(\.layoutDirection, .leftToRight)
+        .ignoresSafeArea()
+        // Follows the phone as it turns. A half turn between the two landscapes keeps the
+        // screen's size, so only the scene's orientation shows it.
+        .onReceive(LightSource.changes) { source = $0 }
+        .animation(reduceMotion ? nil : .smooth, value: level)
+        .lampWarmUp()
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }
 
@@ -145,6 +155,8 @@ enum LightSource {
 private struct LightCone: View, Animatable {
     var level: Double
     let source: LightSource
+    /// The screen's size, at the canvas's top left corner.
+    let visible: CGSize
 
     @Environment(\.colorScheme) private var colorScheme
 
@@ -159,17 +171,17 @@ private struct LightCone: View, Animatable {
         // per appearance at the launcher's level of 0.6, and scale with the level.
         let lit = level / 0.6
         let sideways = source != .top
-        Canvas { context, size in
+        Canvas { context, _ in
             // Turn the canvas so the light always runs down the drawing's own y axis.
-            let across = sideways ? size.height : size.width
-            let along = sideways ? size.width : size.height
+            let across = sideways ? visible.height : visible.width
+            let along = sideways ? visible.width : visible.height
             switch source {
             case .top: break
             case .left:
-                context.translateBy(x: 0, y: size.height)
+                context.translateBy(x: 0, y: visible.height)
                 context.rotate(by: .degrees(-90))
             case .right:
-                context.translateBy(x: size.width, y: 0)
+                context.translateBy(x: visible.width, y: 0)
                 context.rotate(by: .degrees(90))
             }
             // The island's middle, which the light leaves from.
