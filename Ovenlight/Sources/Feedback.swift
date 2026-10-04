@@ -105,7 +105,12 @@ struct FeedbackSheet: View {
                         .lineLimit(4...10)
                         .focused($focused)
                 } footer: {
-                    Text(app.sharedBy.map { "Goes to \($0), who runs \(app.name)." } ?? "Goes to your feedback in People & Sharing.")
+                    // A failure takes the footer's place, where it shows above the keyboard.
+                    if case .failed(let message) = result {
+                        Label(message, systemImage: "exclamationmark.triangle.fill").labelStyle(.warning)
+                    } else {
+                        Text(app.sharedBy.map { "Goes to \($0), who runs \(app.name)." } ?? "Goes to your feedback in People & Sharing.")
+                    }
                 }
                 .ovenlightRows()
                 if let screenshot {
@@ -123,13 +128,6 @@ struct FeedbackSheet: View {
                                 .padding(.vertical, 4)
                                 .accessibilityLabel("Screenshot of \(app.name)")
                         }
-                    }
-                    .ovenlightRows()
-                }
-                if case .failed(let message) = result {
-                    Section {
-                        Label(message, systemImage: "exclamationmark.triangle.fill")
-                            .labelStyle(.warning)
                     }
                     .ovenlightRows()
                 }
