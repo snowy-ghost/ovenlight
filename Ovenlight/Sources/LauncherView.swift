@@ -84,8 +84,9 @@ struct LauncherView: View {
                 removals += 1
                 Task { await registry.remove(app.id) }
             }
-        } message: { _ in
-            Text("This removes the app from Ovenlight and deletes everything it stored on this iPhone.")
+        } message: { app in
+            Text(app.sharedBy.map(ConnectionCopy.removeSharedDetail)
+                 ?? "This removes the app from Ovenlight and deletes everything it stored on this iPhone.")
         }
         .sensoryFeedback(.success, trigger: removals)
         .onChange(of: registry.apps.isEmpty) { _, empty in if empty { isEditing = false } }

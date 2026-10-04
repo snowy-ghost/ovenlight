@@ -617,7 +617,7 @@ final class GuestCopyTests: XCTestCase {
             ConnectionCopy.feedbackSentDetail(to: "Riley"), ConnectionCopy.feedbackSentDetail(to: nil), ConnectionCopy.feedbackFailed,
             ConnectionCopy.feedbackTooMany, ConnectionCopy.feedbackNetwork,
             ConnectionCopy.reportProblem, ConnectionCopy.leaveApps("Riley"), ConnectionCopy.leaveTitle("Riley"),
-            ConnectionCopy.leaveDetail("Riley"),
+            ConnectionCopy.leaveDetail("Riley"), ConnectionCopy.removeSharedDetail("Riley"),
             AppAddress.signInFirst, AppAddress.notYourComputer,
         ]
         let report = MailDraft.problemReport(appName: "Echo", host: "echo.example.com", sharedBy: "Riley",

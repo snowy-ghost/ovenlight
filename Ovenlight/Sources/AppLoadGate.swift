@@ -103,4 +103,7 @@ enum ConnectionCopy {
     static func leaveDetail(_ owner: String) -> String {
         "\(owner)'s apps and everything they stored on this iPhone will be removed. You'll need a new invite from \(owner) to open them again."
     }
+    static func removeSharedDetail(_ owner: String) -> String {
+        "This removes the app and everything it stored on this iPhone. You'll need a new invite from \(owner) to open it again."
+    }
 }
