@@ -18,3 +18,6 @@ preview image, `og-invite.jpg`, is written by `design/og/generate.py`.
 `.well-known/apple-app-site-association` makes invite links open the app. iOS
 accepts it only when it is served directly, with no redirect, as
 `application/json`; `_headers` sets the content type.
+
+`.well-known/security.txt` says where to report a security problem (RFC 9116);
+`_headers` adds the charset the RFC requires. Renew its `Expires` date before it passes.
