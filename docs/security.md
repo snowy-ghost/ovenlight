@@ -280,8 +280,8 @@ the screenshot paths, and `status` shows the count and the latest notes.
 
 ## On the computer
 
-The connector keeps everything as you, in the places the README's
-[table](../README.md#install-the-connector) lists for each system: the app list with the
+The connector keeps everything as you, in the places connector.md's
+[table](connector.md#what-it-installs) lists for each system: the app list with the
 API credential beside it, and the state directory, with each node's keys and
 certificates, the guest and invite records, the feedback inbox, the policy backups and
 the control socket. Only you can read them:
@@ -313,7 +313,7 @@ itself runs without administrator rights.
 - The connector's log is readable only by you. At 20 MB it moves to `ovenlight.log.1`,
   replacing the one before, so there are two files at most. A crash lands in
   `ovenlight.stderr.log` beside it on macOS and Windows, and in the user journal on
-  Linux. The README's [table](../README.md#install-the-connector) has where the log is.
+  Linux. The [table](connector.md#what-it-installs) in connector.md has where the log is.
 - It keeps each request's path, cut at 200 bytes, and never its query, which can carry
   OAuth codes and tokens.
 - Each node's backend log is `nodes/<slug>/backend.log` in the state directory. At 10 MB
@@ -357,6 +357,10 @@ itself runs without administrator rights.
 - `ovenlight run` clears the environment variables that would set tsnet's login, control
   server or log target, unless `OVENLIGHT_DEV=1`. The apps it runs never get them from
   your login shell.
+- **App addresses** are publicly listed. Each app node's HTTPS certificate is recorded in
+  public Certificate Transparency logs, so anyone can look up its
+  `<slug>.<tailnet>.ts.net` name. Every invite link carries that name too. Choose app
+  names and slugs you don't mind people seeing.
 
 ## The MCP server
 
@@ -457,7 +461,7 @@ website open in this Mac's browser, can choose.
   gets that app's node, in their own tailnet. If it's still pending, sign in with it
   yourself at once. If someone beat you to it, `ovenlight status` shows the app at an
   address in another tailnet, or with another owner: run `ovenlight unpublish <slug>`,
-  delete `nodes/<slug>` in the [state directory](../README.md#install-the-connector),
+  delete `nodes/<slug>` in the [state directory](connector.md#what-it-installs),
   delete the app's old node in the admin console (Machines) if it's still there, and
   publish the app again, which starts a new node. The node they got never comes back
   online, since its keys are gone.
@@ -471,9 +475,10 @@ website open in this Mac's browser, can choose.
   again on their new phone.
 - **A stolen computer.** Revoke the API credential and delete the computer's app nodes in
   the admin console (Machines), then set up again on another computer, as for a move
-  [without a backup](../README.md#moving-to-a-new-mac). FileVault keeps the node keys and
-  the credential unreadable on a Mac that's off, but the automatic login the README
-  suggests for a Mac without a display needs FileVault off.
+  [without a backup](connector.md#move-to-a-new-mac). FileVault keeps the node keys and
+  the credential unreadable on a Mac that's off, but the automatic login that
+  [connector.md](connector.md#what-the-computer-needs) suggests for a Mac without a
+  display needs FileVault off.
 - **An app that may be compromised.** `ovenlight unpublish <slug>`, which also stops the
   command the connector runs for it. It ran as you, with your login shell's environment
   (or your terminal's, if you started it): rotate the secrets there, and the API

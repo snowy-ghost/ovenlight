@@ -19,13 +19,13 @@
 ## The connector
 
 Build and install it from a checkout with `connector/install.sh`, or
-`connector\install.ps1` on Windows (see the
-[README](../README.md#install-the-connector)). The minimum Go version is the `go` line
+`connector\install.ps1` on Windows (see
+[connector.md](connector.md#from-source)). The minimum Go version is the `go` line
 in `connector/go.mod`.
 
 - **One node per app.** Each published app gets its own tsnet node named after its slug,
-  with state in `nodes/<slug>/` in the state directory (the README's
-  [table](../README.md#install-the-connector) has it for each system). The commands the
+  with state in `nodes/<slug>/` in the state directory (connector.md's
+  [table](connector.md#what-it-installs) has it for each system). The commands the
   connector runs for apps are in `commands.json` beside the app list, where a connector
   from before `--run`, which saves the config without them, can't drop them. Loading the
   config drops the command of an app it no longer lists, as such a connector's
@@ -120,7 +120,8 @@ Try the Windows build on a PC with Smart App Control on before publishing.
 `npx wrangler@4.147.0 login`, or `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`):
 
 - `connector/<version>/`: the release's files, never replaced;
-- `connector/latest/`: the same files, replaced by each release, which the README links to;
+- `connector/latest/`: the same files, replaced by each release, which the install commands
+  and download links in the docs point to;
 - `connector/latest.json`: `{"latest": "<version>", "secure": "<secure>"}`. `ovenlight doctor`
   reads it to tell people about updates, and fails while they run a version older than
   `secure`, so raise `secure` with any release that fixes a security problem.
