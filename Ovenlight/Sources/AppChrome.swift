@@ -22,7 +22,7 @@ struct AppChromeActions {
 
 /// The open app's only native chrome: a small glass capsule at the top with the way home
 /// and the app's menu. It shows while the app opens, then tucks up under the status bar,
-/// leaving a small handle in the top safe area. Tapping the handle, scrolling up, or pulling
+/// leaving a small handle just below it. Tapping the handle, scrolling up, or pulling
 /// down at the top of the page brings it back; scrolling down or touching the page hides it
 /// again. With VoiceOver on it stays put.
 struct AppChrome: View {
@@ -172,14 +172,12 @@ struct ChromeTip: Tip {
     var image: Image? { Image(systemName: "hand.tap") }
 }
 
-/// What stays of the chrome while it's tucked away: a small handle just above the page's
-/// content, in the top safe area that pages leave clear. It works on any page, however
-/// the page scrolls. A phone on its side has no top safe area, so there the handle sits on
-/// the page's top edge.
+/// What stays of the chrome while it's tucked away: a small handle at the top center, just
+/// below the top safe area, since the status bar takes the taps inside that area (to
+/// scroll the page to the top). It works on any page, however the page scrolls. A phone on
+/// its side has no top safe area, so there the handle sits on the page's top edge.
 private struct ChromeHandle: View {
     let reveal: () -> Void
-
-    @Environment(\.verticalSizeClass) private var verticalSizeClass
 
     var body: some View {
         Button(action: reveal) {
@@ -190,9 +188,6 @@ private struct ChromeHandle: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        // In portrait, sit in the bottom of the top safe area, under the status bar or
-        // Dynamic Island.
-        .offset(y: verticalSizeClass == .compact ? 0 : -20)
         .accessibilityLabel("Show App Menu")
     }
 }

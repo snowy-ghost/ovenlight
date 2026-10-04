@@ -47,9 +47,10 @@ body {
   color: var(--ink);
   -webkit-tap-highlight-color: transparent;
   /* Ovenlight shows the page edge to edge, under the status bar and the home indicator,
-     so the page pads itself by the safe-area insets. Ovenlight's menu handle sits in the
-     top inset, so keep anything tappable out of it. And don't set overscroll-behavior:
-     pulling down at the top of the page is how people bring that menu back. */
+     so the page pads itself by the safe-area insets. Ovenlight's menu handle sits at the
+     top center just below the top inset, so keep anything tappable out of there. And
+     don't set overscroll-behavior: pulling down at the top of the page is how people
+     bring that menu back. */
   padding: calc(env(safe-area-inset-top) + 0.5rem) calc(env(safe-area-inset-right) + 1rem)
     calc(env(safe-area-inset-bottom) + 2rem) calc(env(safe-area-inset-left) + 1rem);
 }
