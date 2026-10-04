@@ -10,7 +10,7 @@
 #
 # <secure> is the oldest version without a known security problem: doctor fails on any
 # older one, so raise it with a release that fixes one. Uploads go through wrangler, signed
-# in with `npx wrangler login` or CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID.
+# in with `npx wrangler@4.147.0 login` or CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID.
 set -euo pipefail
 
 BUCKET=ovenlight-downloads
@@ -56,7 +56,7 @@ if published="$(curl -fs "$SITE/connector/$version/SHA256SUMS")" && [ "$publishe
   echo "another build of $version is already published" >&2
   exit 1
 fi
-npx wrangler r2 bucket info "$BUCKET" > /dev/null
+npx wrangler@4.147.0 r2 bucket info "$BUCKET" > /dev/null
 
 # put <key> <file> <cache-control>
 put() {
@@ -66,7 +66,7 @@ put() {
     *.zip) type=application/zip ;;
     *.json) type=application/json ;;
   esac
-  npx wrangler r2 object put "$BUCKET/$1" --file "$2" --content-type "$type" --cache-control "$3" --remote
+  npx wrangler@4.147.0 r2 object put "$BUCKET/$1" --file "$2" --content-type "$type" --cache-control "$3" --remote
 }
 
 for f in "${FILES[@]}"; do

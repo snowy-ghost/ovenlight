@@ -1,5 +1,5 @@
 // The ovenlight.app website: static files in site/, served by Cloudflare (Workers static
-// assets, the current form of Pages). Deploy from the repo root with `npx wrangler deploy`.
+// assets, the current form of Pages). Deploy as site/README.md says.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "ovenlight-site",
