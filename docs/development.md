@@ -338,9 +338,9 @@ App Review, for TestFlight and for the App Store, needs a way in. Make it an inv
 using the app's slug: `ovenlight share <slug> --to "App Review" --review`.
 
 It is the same single-use `tag:ovenlight-guest-<slug>` key and claim step as any invite,
-but valid for 7 days, since the reviewer may test days later. It runs only in a terminal,
-is marked `review` in `guests`, `status` and the admin API's `invites`, and prints the
-link and notes to paste into App Store Connect (App Review Information, Notes). The app's
+but valid for 90 days, Tailscale's longest, since a review can take weeks. It runs only
+in a terminal, is marked `review` in `guests`, `status` and the admin API's `invites`, and
+prints the link and notes to paste into App Store Connect (App Review Information, Notes). The app's
 computer has to stay on and the connector running until the review is done. While a
 reviewer is still a guest or has an open invite, another review invite needs
 `--existing`.

@@ -101,7 +101,7 @@ func cmdShare(args []string) error {
 	existing := fs.Bool("existing", false, "the invite is for someone you already share with, named by --to")
 	person := fs.String("person", "", "the invite is for someone you already share with, by person ID (see `ovenlight guests`)")
 	cancelID := fs.String("cancel", "", "withdraw an unused invite, by its ID")
-	review := fs.Bool("review", false, "an invite for Apple's App Review: valid 7 days")
+	review := fs.Bool("review", false, "an invite for Apple's App Review: valid 90 days")
 	pos, err := parseArgs(fs, args, 1)
 	if err != nil {
 		return err

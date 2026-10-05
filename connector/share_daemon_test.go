@@ -208,7 +208,7 @@ func TestReviewInviteExpiresAfterAWeek(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(res.Message, "within 7 days to join: "+res.Link) {
+	if !strings.Contains(res.Message, "within 90 days to join: "+res.Link) {
 		t.Errorf("message = %s", res.Message)
 	}
 	if r := d.sh.st.reconcile(nil, []string{"coach"}, res.Invite.Expires.Add(-time.Minute)); len(r.Expired) != 0 {

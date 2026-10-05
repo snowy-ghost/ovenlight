@@ -379,7 +379,7 @@ func TestSlugAndValidation(t *testing.T) {
 
 func TestHumanDuration(t *testing.T) {
 	for d, want := range map[time.Duration]string{
-		inviteTTL: "24 hours", reviewInviteTTL: "7 days", tagWait: "90 seconds",
+		inviteTTL: "24 hours", reviewInviteTTL: "90 days", tagWait: "90 seconds",
 		time.Hour: "1 hour", 10 * time.Minute: "10 minutes", 48 * time.Hour: "2 days",
 	} {
 		if got := humanDuration(d); got != want {

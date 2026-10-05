@@ -221,7 +221,7 @@ sorts them by name.
 The phone trims labels (`owner`, `name`, `to`), drops control characters, and keeps at
 most 64 characters.
 
-The key is a credential until it is used. It expires after 24 hours (7 days for an App
+The key is a credential until it is used. It expires after 24 hours (90 days for an App
 Review invite).
 
 ## Joining, on the phone

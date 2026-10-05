@@ -275,7 +275,7 @@ func TestInviteLinkRoundTrip(t *testing.T) {
 		t.Errorf("message = %s", msg)
 	}
 	res.Invite.Expires, res.Owner = t0.Add(reviewInviteTTL), "Sam"
-	if msg := inviteMessage(res); !strings.HasPrefix(msg, "I'm sharing Interview Coach with you in Ovenlight, an iPhone app. Open this link on your iPhone within 7 days to join: ") {
+	if msg := inviteMessage(res); !strings.HasPrefix(msg, "I'm sharing Interview Coach with you in Ovenlight, an iPhone app. Open this link on your iPhone within 90 days to join: ") {
 		t.Errorf("review message = %s", msg)
 	}
 	var buf bytes.Buffer
