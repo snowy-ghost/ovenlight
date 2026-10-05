@@ -18,9 +18,9 @@ directions. So:
 
 - Add fields; never rename or remove them. Readers ignore fields they don't know. The
   phone decodes each list one record at a time and requires only a few fields of each:
-  those that identify the record, plus an invite's `state`, `created` and `expires`, a
-  guest's `claimedAt` and a feedback item's `at`. A record it can't read costs only that
-  record.
+  an app's `slug` and `name`, an invite's `id`, `app`, `state` and `expires`, a guest's
+  `deviceId`, `person`, `app` and `claimedAt`, and a feedback item's `id`, `app` and `at`.
+  A record it can't read costs only that record.
 - Every answer is a view type, never a stored record (most views are in
   `connector/wire.go`), so key IDs, key hashes and other internal fields never go on the
   wire.
@@ -29,9 +29,10 @@ directions. So:
   `guests`, `invite-created`, `invite-canceled`, `guest-removed`,
   `guest-removed-with-errors`, `feedback`, `feedback-sent`, `claim`,
   `whoami-owner`, `whoami-guest`, `site-manifest` (`/.well-known/ovenlight.json`) and an
-  `error-<code>` file for each code the phone reads. `go test -run TestWireFiles -update`
-  rewrites them, but refuses to drop a key a file already has unless `-allow-drop` is
-  added, which is only for a key no shipped build of Ovenlight needs.
+  `error-<code>` file for each code the phone reads.
+  `go -C connector test -run TestWireFiles -update` rewrites them, but refuses to drop a
+  key a file already has unless `-allow-drop` is added, which is only for a key no
+  shipped build of Ovenlight needs.
 - The phone never acts on an error's text, only on its status and
   [error code](#errors). An answer without a code it knows is an unknown failure, which
   never ends access or deletes anything.
@@ -202,7 +203,8 @@ The first is the one to send. Its fields ride in the fragment, which browsers ne
 to a server, so the key never reaches the website. It opens Ovenlight when it's
 installed; otherwise the page offers Open in Ovenlight (the second form) and a way to
 get the app.
-The fields are form-encoded (`+` is a space).
+The fields are form-encoded (`+` is a space) and may come in any order: the connector
+sorts them by name.
 
 | Field | Required | Meaning |
 | --- | --- | --- |

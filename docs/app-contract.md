@@ -138,10 +138,11 @@ None of this is required: an app without it is still listed, by name.
   reachability checks and icon fetches.
 - **Downloads**: an `<a download>` link, a blob or data URL download, and a page load
   answered with `Content-Disposition: attachment` or a type WebKit can't show all open the
-  share sheet, where the person can save the file to Files or send it on. Only the page
-  itself downloads: a frame loads such a response as WebKit would, never raising the share
-  sheet. Downloads come only from the app's own host, and are refused while Ovenlight is
-  locked.
+  share sheet, where the person can save the file to Files or send it on. An
+  `<a download>` link works in the app's own frames too, but not in a frame from another
+  host. In a frame, an attachment or a type WebKit can't show loads as WebKit would, never
+  raising the share sheet. Downloads come only from the app's own host, and are refused
+  while Ovenlight is locked.
 - **No service workers or offline copies.** WebKit runs service workers in an app like
   Ovenlight only on domains it lists when it's built, and an owner's tailnet can't be known
   in advance. An app loads only while its computer can be reached.

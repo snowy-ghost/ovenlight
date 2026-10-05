@@ -201,7 +201,7 @@ a node's key expires within 30 days.
   the join page ([protocol.md](protocol.md#invite-links)).
 - A device belongs to one person. A device already admitted to any of your apps can only
   claim that person's invites; any other invite stays unused.
-- `share` runs only in a terminal. The MCP server can't share at all.
+- Making an invite with `share` takes a terminal. The MCP server can't share at all.
 - `share --cancel <id>` withdraws an unused invite and deletes its key. If the delete
   fails (an expired API token, say), the connector refuses the invite at once, retries
   the delete on each sync, and `--cancel` says the key still works until then.
@@ -321,16 +321,18 @@ itself runs without administrator rights.
 - An app the connector runs (`publish --run`) writes its output to `<slug>.log`, readable
   only by you, in `~/Library/Logs/ovenlight/` on macOS and in the state directory's
   `logs/` elsewhere. It moves to `<slug>.log.1` at 5 MB. What it holds is up to the app,
-  and often includes what requests sent it, such as their paths. The app runs in your
-  login shell's environment, so what your shell profile exports, API keys included,
-  reaches it, and lands in this log if the app prints it. To read that environment the
-  connector runs your login shell, and so your profile, each time it starts an app's
-  command. When a command restarts on its own, it runs it only while no read has worked,
-  at most once every five minutes. Each read ends whatever the profile left running in
-  the shell's process group once it is done, and a profile that takes over 10 seconds is
-  ended then. `publish` runs it too, to check a new command's programs are found. Beside
-  the log, `<slug>.pid` names the app's running process group, so a connector restarted
-  after a crash can end what the last one left running.
+  and often includes what requests sent it, such as their paths. On macOS and Linux the
+  app runs in your login shell's environment, so what your shell profile exports, API keys
+  included, reaches it, and lands in this log if the app prints it. To read that
+  environment the connector runs your login shell, and so your profile, each time it
+  starts an app's command. When a command restarts on its own, it runs it only while no
+  read has worked, at most once every five minutes. Each read ends whatever the profile
+  left running in the shell's process group once it is done, and a profile that takes
+  over 10 seconds is ended then. `publish` runs it too, to check a new command's programs
+  are found. On Windows there is no login shell, and the app gets the connector's own
+  environment, with your account's environment variables. Beside the log, `<slug>.pid`
+  names the app's running process group, so a connector restarted after a crash can end
+  what the last one left running.
 - The apps' commands are kept in `commands.json` beside the config, readable only by you.
   They run as the connector's children. On macOS they have whatever access to a folder
   macOS protects (Desktop, Documents, iCloud Drive) you allowed the connector, wherever
@@ -387,8 +389,8 @@ with its tailnet name as `Host` and your identity headers, as the connector does
 you, or with none while your login isn't known. `doctor` and `status` ask only `GET /`.
 `restart` and `restart_app`, once the app answers, also send the files and CORS requests
 below, to `127.0.0.1` without identity headers.
-`check_app` and `check` ask only `GET` and `OPTIONS`, to `/`, the pages, stylesheets and
-icon the app itself names, a few fixed paths (`/api/ovenlight-check`,
+`check_app` and `check` ask only `GET` and `OPTIONS`, to `/`, the pages, stylesheets, web
+manifest and icon the app itself names, a few fixed paths (`/api/ovenlight-check`,
 `/ovenlight-check-missing`, `/console`), one random path under `/ovenlight-check-`, which
 tells a route that answers every path from a served file, and the app's own files, at
 most 40 requests (and one more each for the files and the debug pages when the app
@@ -402,7 +404,9 @@ out. They
 read nothing in a folder that holds more than an app's, such as the home folder, or one
 macOS protects, and for an app without a folder they ask only `/.env` and
 `/package.json`. The CORS and `/console` requests carry no identity headers, going to
-`127.0.0.1` as a page in this Mac's browser would. The agent chooses none of them. What guests wrote
+`127.0.0.1` as a page in this Mac's browser would. They read `/` a second time, and the
+web manifest, from `127.0.0.1` without identity headers too, as the connector reads them
+for the app's icon and color. The agent chooses none of them. What guests wrote
 in feedback, and the output of the apps the connector runs, reach the agent fenced as
 untrusted data: that output holds what requests sent the app, which a guest, or any
 website open in this Mac's browser, can choose.
