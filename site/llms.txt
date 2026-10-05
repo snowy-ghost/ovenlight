@@ -59,6 +59,20 @@ Linux, use the binary path above):
 claude mcp add --scope user ovenlight -- ~/Library/Application\ Support/ovenlight/bin/ovenlight mcp
 ```
 
+On a Mac, Claude Code can install Ovenlight's plugin instead. It adds the same MCP server
+and a skill that reads the guide whenever the person asks to put an app on their phone.
+In Claude Code, run:
+
+```
+/plugin marketplace add snowy-ghost/ovenlight
+```
+
+then:
+
+```
+/plugin install ovenlight@snowy-ghost
+```
+
 ## Links
 
 - [Ovenlight](https://ovenlight.app/): what it is and what it needs
@@ -66,3 +80,16 @@ claude mcp add --scope user ovenlight -- ~/Library/Application\ Support/ovenligh
 - [Support](https://ovenlight.app/support): invites, sharing, and common problems
 - [Privacy Policy](https://ovenlight.app/privacy)
 - [Ovenlight on the App Store](https://apps.apple.com/app/id6817561066)
+- [The connector](https://ovenlight.app/docs/connector.md): installing and updating it,
+  publishing and sharing apps, moving to a new Mac and uninstalling
+- [Building apps](https://ovenlight.app/docs/building-apps.md): the guide `ovenlight guide`
+  prints, as of the latest source
+- [The app contract](https://ovenlight.app/docs/app-contract.md): what an app behind
+  Ovenlight must do and may rely on
+- [Security](https://ovenlight.app/docs/security.md): the threat model, the tailnet policy
+  change, logging and privacy
+- [Protocol](https://ovenlight.app/docs/protocol.md): how the iPhone app and the connector
+  talk
+- [Development](https://ovenlight.app/docs/development.md): building the iPhone app, tests,
+  local development, shipping and forking
+- [Ovenlight on GitHub](https://github.com/snowy-ghost/ovenlight): the source code and docs
