@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security problem
+    url: https://github.com/snowy-ghost/ovenlight/security/advisories/new
+    about: Report it privately, as SECURITY.md says, not in a public issue.
+  - name: Help setting up Ovenlight
+    url: https://ovenlight.app/support
+    about: Steps for the iPhone app and the connector.

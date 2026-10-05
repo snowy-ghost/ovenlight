@@ -2,10 +2,9 @@
 
 ## Reporting a vulnerability
 
-Email team@snowyghost.com with what you found and how to reproduce it. Once this
-repository is public, GitHub's private vulnerability reporting works too (Security tab,
-Report a vulnerability). Please don't open a public issue for a vulnerability. You'll
-get a reply within a few days.
+Email team@snowyghost.com with what you found and how to reproduce it, or use GitHub's
+private vulnerability reporting (Security tab, Report a vulnerability). Please don't open
+a public issue for a vulnerability. You'll get a reply within a few days.
 
 ## Testing
 
