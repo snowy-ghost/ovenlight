@@ -49,42 +49,43 @@ in `connector/go.mod`.
 ### Tests
 
 ```sh
-cd connector && go test ./...
+go -C connector test ./...
 ```
 
 The unit tests include the Tailscale API client and `setup-sharing` against an in-memory
 fake of the API. `TestWireFiles` compares the connector's answers with the files in
 `testdata/wire/`, which Ovenlight's tests decode too
-([protocol.md](protocol.md#compatibility)); `go test -run TestWireFiles -update`
-rewrites them, for a change Ovenlight still reads. It refuses to drop a key a file
-already has unless `-allow-drop` is added too, which is only for a key no shipped build
-of Ovenlight needs.
+([protocol.md](protocol.md#compatibility));
+`go -C connector test -run TestWireFiles -update` rewrites them, for a change Ovenlight
+still reads. It refuses to drop a key a file already has unless `-allow-drop` is added
+too, which is only for a key no shipped build of Ovenlight needs.
 
 The end-to-end sharing test runs against a throwaway local Headscale, on macOS or Linux
 (CI runs it on Linux). It passes against Headscale v0.29.4 (`go install github.com/juanfont/headscale/cmd/headscale@v0.29.4`):
 
 ```sh
-cd connector && OVENLIGHT_E2E_HEADSCALE=/path/to/headscale go test -tags e2e ./e2e -v -timeout 15m
+OVENLIGHT_E2E_HEADSCALE="$(go env GOPATH)/bin/headscale" go -C connector test -tags e2e ./e2e -v -timeout 15m
 ```
 
 CI (`.github/workflows/ci.yml`) runs on every push and pull request, and weekly, on Linux
 and Windows: `go vet` (with and without the `e2e` tag), the tests (with `-race` on Linux)
 and `govulncheck`, then the install scripts as a user runs them: install, a killed
 connector restarting, reinstall and `uninstall --purge`. On Linux it also runs `gofmt`,
-`go vet` and `govulncheck` for darwin/arm64 with cgo off, and the end-to-end test against
-Headscale. The iPhone app's side of the wire files runs only in Xcode, locally and before
-shipping, never in CI, so a change to `testdata/wire/` must also pass the
-[iPhone app's tests](#tests-1).
+`go vet` and `govulncheck` for darwin/arm64 with cgo off, a check that
+`scripts/third-party-notices.sh` still finds a license kept below a module's root, and the
+end-to-end test against Headscale. It also renders the docs with `scripts/sitedocs`,
+which fails on a link or `#anchor` that goes nowhere. The iPhone app's side of the wire
+files runs only in Xcode, locally and before shipping, never in CI, so a change to
+`testdata/wire/` must also pass the [iPhone app's tests](#tests-1).
 
 ### Releases
 
 ```sh
-scripts/release-connector.sh 1.0.0       # or --unsigned 1.0.0 to skip all signing
-scripts/release-connector.sh --no-windows 1.0.0   # without the Windows archives, only until the first Windows release
-scripts/publish-connector.sh 1.0.0 1.0.0 # the version, then the oldest secure one
-git tag -s connector-v1.0.0 <commit>     # then tag the commit it was built from
-git push origin connector-v1.0.0
+scripts/release-connector.sh 1.0.0
 ```
+
+Options go before the version: `--unsigned` skips all signing, and `--no-windows` leaves
+out the Windows archives, to use only until the first Windows release.
 
 `release-connector.sh` writes the release to `build/release/`, replacing the one before:
 
@@ -114,10 +115,20 @@ first. Windows signing needs `jsign` (`brew install jsign`) and the Azure CLI
 Certificate Profile Signer role on the certificate profile that `WIN_PROFILE` in the
 script names.
 
-Try the Windows build on a PC with Smart App Control on before publishing.
-`publish-connector.sh` uploads the release to the R2 bucket behind
-`https://downloads.ovenlight.app`, through `wrangler` (signed in with
-`npx wrangler@4.147.0 login`, or `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`):
+Try the Windows build on a PC with Smart App Control on before publishing. Then tag the
+release and publish it:
+
+```sh
+git tag -s -m "Connector 1.0.0" connector-v1.0.0
+git push origin connector-v1.0.0
+scripts/publish-connector.sh 1.0.0 1.0.0
+```
+
+The tag goes on `HEAD`, the clean commit on `origin/master` the release was built from.
+`publish-connector.sh` takes the version, then the oldest secure one, and uploads the
+release to the R2 bucket behind `https://downloads.ovenlight.app`, through `wrangler`
+(signed in with `npx wrangler@4.147.0 login`, or `CLOUDFLARE_API_TOKEN` and
+`CLOUDFLARE_ACCOUNT_ID`):
 
 - `connector/<version>/`: the release's files, never replaced;
 - `connector/latest/`: the same files, replaced by each release, which the install commands
@@ -135,8 +146,10 @@ then wait out the caches.
 
 ## The iPhone app
 
-The Xcode project is generated. Edit `project.yml`, then run `xcodegen generate`; the
-`.xcodeproj` is committed. Minimum iOS is 18.1, TailscaleKit's minimum.
+Building the app needs Xcode 26 or later, for the Icon Composer icon and the iOS 26 glass
+effects. Minimum iOS is 18.1, TailscaleKit's minimum. The Xcode project is generated from
+`project.yml`, and the `.xcodeproj` is committed, so XcodeGen (`brew install xcodegen`) is
+needed only after editing `project.yml`: then run `xcodegen generate`.
 
 ### TailscaleKit
 
@@ -155,8 +168,11 @@ output is gitignored and cached; `--force` rebuilds. It needs Go, and fetches th
 
 ### Tests
 
+Any iPhone simulator with iOS 18.1 or later works as the destination.
+`xcrun simctl list devices available` lists them.
+
 ```sh
-scripts/build-tailscalekit.sh && xcodebuild test -scheme Ovenlight -destination "platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5"
+scripts/build-tailscalekit.sh && xcodebuild test -scheme Ovenlight -destination "platform=iOS Simulator,name=iPhone 17,OS=latest"
 ```
 
 ### Debug launch arguments
@@ -181,14 +197,14 @@ only `https`.
 simulator only for the length of the test:
 
 ```sh
-xcrun simctl keychain <udid> add-root-cert ca.pem
+xcrun simctl keychain booted add-root-cert ca.pem
 ```
 
 For sharing, add `--dev-headscale <bin> --dev-headscale-config <file>`: the connector
 then drives Headscale's CLI instead of the Tailscale API for keys, devices and tags.
-Headscale has no policy API, so `setup-sharing` works only against Tailscale;
-`publish --shareable` still records the owner, but you write the policy it would have
-written into Headscale's policy file by hand.
+Ovenlight leaves a development server's policy alone, so `setup-sharing` works only
+against Tailscale. `publish --shareable` still records the owner, but you write the policy
+it would have written into Headscale's policy file by hand.
 
 To try guest mode in one simulator, run two Headscales with different `base_domain`s
 (two owners), one dev connector each, and a test certificate covering both wildcards.
@@ -226,7 +242,7 @@ Sign Ovenlight in to the first with `-authKey`, and open the second owner's invi
   proxy in place.
 - **Opening an app** shows its icon and "Connecting…" at once, but the page loads only
   after the node is ready and the app's host answers a probe through the current proxy
-  (`AppLoadGate`). After about 10 seconds the app shows "Can't Reach <App>" with Try
+  (`AppLoadGate`). After about 10 seconds the app shows "Can't Reach \<App>" with Try
   Again. Launcher tiles dim with a badge while their machine isn't answering.
 - **The open app** has one piece of native chrome: a small capsule at the top with the
   way home and the app's menu, which tucks up under the status bar. Tapping its handle,
@@ -279,7 +295,7 @@ Sign Ovenlight in to the first with `-authKey`, and open the second owner's invi
   sends nothing, and offers Open in Ovenlight and a way to get the app. Ovenlight also takes invite links pasted or typed under More, Join with
   Invite, or scanned there as a QR code (VisionKit, on devices with a camera). The join
   flow itself is in [protocol.md](protocol.md#joining-on-the-phone). The app then appears
-  on the launcher labeled "from <owner>". An invite for an app already here offers Join
+  on the launcher labeled "from \<owner>". An invite for an app already here offers Join
   Again rather than claiming on its own, and a membership's saved names change only when
   a claim succeeds.
 - **Failures** say what happened without naming the network: key already used, no longer
@@ -312,17 +328,14 @@ Sign Ovenlight in to the first with `-authKey`, and open the second owner's invi
   none) and Copy Link, all with the universal link. Share in an open app's menu does the
   same for that app; it shows only for the owner's shareable apps.
 - **Send Feedback** is in every app from a connector, owner or guest ("Send Feedback to
-  <owner>" in a shared app, so it isn't mistaken for Report a Problem). It takes a snapshot
+  \<owner>" in a shared app, so it isn't mistaken for Report a Problem). It takes a snapshot
   of the page (`WKWebView.takeSnapshot`, shrunk under the connector's 5 MB), adds an
   optional note, and posts both to `/__ovenlight/feedback` through the app's own node.
 
 ## App Review invites
 
-App Review, for TestFlight and for the App Store, needs a way in. Make it an invite:
-
-```sh
-ovenlight share <slug> --to "App Review" --review
-```
+App Review, for TestFlight and for the App Store, needs a way in. Make it an invite,
+using the app's slug: `ovenlight share <slug> --to "App Review" --review`.
 
 It is the same single-use `tag:ovenlight-guest-<slug>` key and claim step as any invite,
 but valid for 7 days, since the reviewer may test days later. It runs only in a terminal,
@@ -348,18 +361,23 @@ encryption.
 To build and sign your own copy, change to your own:
 
 - in `project.yml`, `DEVELOPMENT_TEAM`, `bundleIdPrefix`, the bundle identifiers and the
-  associated domains (see [Invite links](#invite-links)), then run `xcodegen generate`;
+  associated domains (see [Invite links](#invite-links)), then run `xcodegen generate`. A
+  free Apple ID's personal team can't sign Associated Domains: to build for a device with
+  one, remove the `com.apple.developer.associated-domains` entitlement before generating;
 - in `Ovenlight/Sources/Support.swift`, `AppLinks.supportEmail` and
   `AppLinks.privacyPolicy`;
 - to release the connector, the Developer ID identity (`IDENTITY`) and the Artifact
   Signing profile (`WIN_ENDPOINT`, `WIN_PROFILE`) in `scripts/release-connector.sh`, the
-  keys in `docs/allowed_signers`, the bucket and site in `scripts/publish-connector.sh`,
-  and `latestURL` in `connector/update.go`.
+  keys in `docs/allowed_signers`, the `team@snowyghost.com` principal both release scripts
+  verify `SHA256SUMS.sig` against, the bucket and site in `scripts/publish-connector.sh`,
+  and `latestURL` and the download URL in `latestArchive()` in `connector/update.go`.
 
 ### Invite links
 
 Invite links point at `https://ovenlight.app/join`, set in
 `connector/invite.go` and `Ovenlight/Sources/InviteLink.swift`, and the app claims that
 domain with Associated Domains in `project.yml`. iOS opens a universal link only in the
-app the site lists, so a fork's build takes invites in the `ovenlight://join?...` form
-instead: pasted under More, Join with Invite, or from the join page's Open in Ovenlight.
+app the site lists, so in a fork's build, or one without the entitlement, an invite tapped
+in Messages or scanned with the Camera opens the join page, whose Open in Ovenlight hands
+it over as `ovenlight://join?...`. Pasted under More, Join with Invite, or scanned there,
+an invite opens in either form.
