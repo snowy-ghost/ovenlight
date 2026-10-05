@@ -135,3 +135,27 @@ jobs:
           cache-dependency-path: connector/go.sum
       - run: go install github.com/juanfont/headscale/cmd/headscale@v0.29.4
       - run: OVENLIGHT_E2E_HEADSCALE="$(go env GOPATH)/bin/headscale" go test -tags e2e ./e2e -v -count=1 -timeout 15m
+
+  # The docs as the site renders them: a link or #anchor in docs/ that goes nowhere fails.
+  docs:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: scripts/sitedocs
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: scripts/sitedocs/go.mod
+          cache-dependency-path: scripts/sitedocs/go.sum
+      - name: gofmt
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "gofmt needed:"
+            echo "$unformatted"
+            exit 1
+          fi
+      - run: go vet ./...
+      - run: go run .
