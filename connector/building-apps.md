@@ -96,12 +96,14 @@ stop one they started (Ctrl-C in its terminal); never `pkill` by name:
 
 ```sh
 ovenlight publish --port 4317 --name "Recipes" --run 'npm start' --dir ~/src/recipes
-ovenlight logs recipes -n 100        # its output (MCP logs); -f follows it until Ctrl-C (not for agents)
-ovenlight restart recipes            # stop the command and start it again
+ovenlight logs recipes -n 100
+ovenlight restart recipes
 ```
 
 The connector starts the command in the app's folder with `PORT` and `HOST=127.0.0.1`
-set, starts it again whenever it exits, and keeps its output. `--run ""` stops running it,
+set, starts it again whenever it exits, and keeps its output: `logs` prints the last
+lines (MCP `logs`), and with `-f` keeps following until Ctrl-C, which isn't for agents.
+`restart` stops the command and starts it again. `--run ""` stops running it,
 and `ovenlight unpublish <slug>` (MCP `unpublish`) stops running it and serving the app;
 its tile stays on the phone until the person removes it.
 
@@ -223,10 +225,11 @@ Copy `decodeWords` from the starter's `server.js`
 Python, `str(email.header.make_header(email.header.decode_header(value)))` does the same;
 in Go, `new(mime.WordDecoder).DecodeHeader(value)`.
 
-To test as a guest, send the headers yourself, to a path that reads who is calling:
+To test as a guest, send the headers yourself, to a path that reads who is calling. These
+examples use 4317, the Recipes app's port from above:
 
 ```sh
-curl -H 'Ovenlight-User-Id: guest:sam' -H 'Ovenlight-User: Sam' -H 'Ovenlight-Role: guest' http://127.0.0.1:<port>/api/items
+curl -H 'Ovenlight-User-Id: guest:sam' -H 'Ovenlight-User: Sam' -H 'Ovenlight-Role: guest' http://127.0.0.1:4317/api/items
 ```
 
 `check` doesn't test the identity guard (`caller`) on requests straight to the port.
@@ -234,8 +237,8 @@ Forged headers under a foreign `Host` and a cross-site write must both get 403 (
 from a framework's host check):
 
 ```sh
-curl -H 'Host: evil.example' -H 'Ovenlight-User-Id: guest:sam' -H 'Ovenlight-Role: owner' http://127.0.0.1:<port>/api/items
-curl -H 'Sec-Fetch-Site: cross-site' -H 'Content-Type: application/json' -d '{}' http://127.0.0.1:<port>/api/items
+curl -H 'Host: evil.example' -H 'Ovenlight-User-Id: guest:sam' -H 'Ovenlight-Role: owner' http://127.0.0.1:4317/api/items
+curl -H 'Sec-Fetch-Site: cross-site' -H 'Content-Type: application/json' -d '{}' http://127.0.0.1:4317/api/items
 ```
 
 A page with no server code of its own can fetch `/__ovenlight/whoami`, which the connector
@@ -246,7 +249,7 @@ anything that matters on the server.
 ## Make it feel native
 
 Ovenlight shows each app in a full-screen web view (WebKit, iOS 18.1 or later, iPhone,
-portrait) with no browser bar.
+portrait and landscape) with no browser bar.
 
 **The head.**
 
