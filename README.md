@@ -217,6 +217,11 @@ Claude Code, run:
 
 ```
 /plugin marketplace add snowy-ghost/ovenlight
+```
+
+then:
+
+```
 /plugin install ovenlight@snowy-ghost
 ```
 

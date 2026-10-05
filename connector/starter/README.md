@@ -16,7 +16,7 @@ is, and `ovenlight guide` prints the full guide to building for Ovenlight.
 - `public/manifest.webmanifest`, `public/icon-512.png`, `public/apple-touch-icon.png`: the
   icon and color Ovenlight shows (the name comes from `ovenlight publish --name`).
 
-## Run it on this Mac
+## Run it on this computer
 
 This is for a person in a terminal; a coding agent publishes the app instead (see below).
 It needs Node 22.13 or later and nothing else: no `npm install`, no build step.
