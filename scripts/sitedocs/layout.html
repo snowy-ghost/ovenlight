@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}}</title>
+<meta name="description" content="{{.Description}}">
+<link rel="canonical" href="https://ovenlight.app{{.Path}}">
+{{- if .Doc}}
+<link rel="alternate" type="text/markdown" href="{{.Path}}.md">
+{{- end}}
+<meta name="theme-color" content="#faf5ee" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#19110d" media="(prefers-color-scheme: dark)">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Ovenlight">
+<meta property="og:title" content="{{.Title}}">
+<meta property="og:description" content="{{.Description}}">
+<meta property="og:image" content="https://ovenlight.app/og-invite.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="The Ovenlight wordmark on its rack, lit by a soft cone of warm light from above.">
+<meta property="og:url" content="https://ovenlight.app{{.Path}}">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="{{.Title}}">
+<meta name="twitter:description" content="{{.Description}}">
+<meta name="twitter:image" content="https://ovenlight.app/og-invite.jpg">
+
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/icon-180.png">
+<link rel="stylesheet" href="/style.css">
+{{- if .Doc}}
+<script src="/docs.js" defer></script>
+{{- end}}
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <div class="container">
+    <a class="brand" href="/">
+      <img src="/icon.svg" width="28" height="28" alt="">
+      <span class="brand-name">Ovenlight</span>
+      <span class="brand-by">by Snowy Ghost</span>
+    </a>
+    <nav class="site-nav" aria-label="Main">
+      <a href="/docs" aria-current="{{if .Doc}}true{{else}}page{{end}}">Docs</a>
+      <a href="/support">Support</a>
+      <a href="/privacy">Privacy</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main" class="doc-page{{if not .Doc}} doc-index{{end}}">
+  <div class="lamp" aria-hidden="true"><span class="lamp-beam"></span></div>
+{{- with .Doc}}
+  <div class="doc-head">
+    <div class="container">
+      <h1 id="{{.ID}}">{{.Title}}</h1>
+      <p class="updated"><a href="{{.Source}}">View on GitHub</a></p>
+    </div>
+  </div>
+
+  <div class="container doc">
+    <nav class="toc" aria-labelledby="toc-title">
+      <h2 id="toc-title">On this page</h2>
+      <ol>
+      {{- range .TOC}}
+        <li><a href="#{{.ID}}">{{.Text}}</a></li>
+      {{- end}}
+      </ol>
+    </nav>
+
+    <article class="prose">
+{{.Body}}
+    </article>
+  </div>
+{{- else}}
+  <div class="doc-head">
+    <div class="container">
+      <h1>Documentation</h1>
+      <p class="updated">The same pages are in the <a href="https://github.com/snowy-ghost/ovenlight/tree/master/docs">repository on GitHub</a>.</p>
+    </div>
+  </div>
+
+  <div class="container doc">
+    <ul class="doc-list">
+    {{- range .Docs}}
+      <li>
+        <h2><a href="/docs/{{.Name}}">{{.Title}}</a></h2>
+        <p>{{.Summary}}</p>
+      </li>
+    {{- end}}
+    </ul>
+  </div>
+{{- end}}
+</main>
+
+<footer class="site-footer">
+  <div class="container">
+    <span>&copy; 2026 Snowy Ghost LLC</span>
+    <nav aria-label="Footer">
+      <a href="/docs">Docs</a>
+      <a href="/support">Support</a>
+      <a href="/privacy">Privacy Policy</a>
+      <a href="https://github.com/snowy-ghost/ovenlight">Source code</a>
+      <a href="https://snowyghost.com">Snowy Ghost</a>
+    </nav>
+  </div>
+</footer>
+</body>
+</html>

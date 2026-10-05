@@ -1,5 +1,5 @@
 /* Ovenlight, "Pilot Light": warm cream, one ember accent, an oven light's glow.
-   Shared by the home, support and privacy pages. The join page carries its own
+   Shared by the home, support, privacy and docs pages. The join page carries its own
    inline copy of these tokens because its CSP allows no external stylesheet. */
 
 :root {
@@ -161,7 +161,17 @@ a:hover { text-decoration-thickness: 2px; }
   border-radius: 999px;
 }
 .site-nav a:hover { color: var(--ink); background: var(--bg-band); }
-.site-nav a[aria-current="page"] { color: var(--ink); }
+.site-nav a[aria-current] { color: var(--ink); }
+.brand { flex-shrink: 0; }
+/* The narrowest phones: a tighter nav, and the wordmark only for screen readers. */
+@media (max-width: 24em) {
+  .site-header .container { gap: 0.5rem; }
+  .site-nav { gap: 0; margin-right: -0.5rem; }
+  .site-nav a { padding-inline: 0.5rem; font-size: 0.875rem; }
+}
+@media (max-width: 21.24em) {
+  .brand-name { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+}
 
 .site-footer {
   border-top: 1px solid var(--line);
@@ -483,7 +493,7 @@ a:hover { text-decoration-thickness: 2px; }
 }
 .closing .store { margin-top: 1.75rem; }
 
-/* Long-form pages: support and privacy */
+/* Long-form pages: support, privacy and the docs */
 
 .doc-page { position: relative; isolation: isolate; }
 .doc-page > .lamp { z-index: -1; height: 40rem; }
@@ -514,6 +524,7 @@ a:hover { text-decoration-thickness: 2px; }
 
 .doc {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 2.5rem;
   padding-bottom: clamp(4rem, 9vw, 6rem);
 }
@@ -575,19 +586,25 @@ a:hover { text-decoration-thickness: 2px; }
   margin-top: 2.4em;
   scroll-margin-top: 1.5rem;
 }
-.prose h2 + * { margin-top: 0.7em; }
+.prose h3 {
+  font-size: 1.2em;
+  line-height: 1.3;
+  margin-top: 2em;
+  scroll-margin-top: 1.5rem;
+}
+.prose :is(h2, h3) + * { margin-top: 0.7em; }
 .prose > h2:first-child { margin-top: 0; }
-.prose h2 a { color: inherit; text-decoration: none; }
-.prose h2 a::after {
+.prose :is(h2, h3) a { color: inherit; text-decoration: none; }
+.prose :is(h2, h3) a::after {
   content: "#" / "";
   margin-left: 0.35em;
   color: var(--ink-soft);
   font-weight: 400;
   opacity: 0;
 }
-.prose h2 a:hover::after, .prose h2 a:focus-visible::after { opacity: 1; }
-.prose ol { padding-left: 1.4em; }
-.prose li + li { margin-top: 0.6em; }
+.prose :is(h2, h3) a:hover::after, .prose :is(h2, h3) a:focus-visible::after { opacity: 1; }
+.prose :is(ol, ul) { padding-left: 1.4em; }
+.prose li + li, .prose li > * + * { margin-top: 0.6em; }
 .prose li::marker { color: var(--ember); font-family: var(--serif); font-weight: 600; }
 .prose code {
   font-family: var(--mono);
@@ -615,3 +632,82 @@ a:hover { text-decoration-thickness: 2px; }
 .callout strong { font-weight: 650; }
 .doc > .callout { max-width: 65ch; line-height: 1.7; }
 @media (min-width: 48em) { .doc > .callout { font-size: 1.125rem; } }
+
+/* The docs: code blocks and tables scroll sideways rather than widen the page. */
+
+.prose pre {
+  margin-bottom: 0;
+  padding: 0.85rem 1rem;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 0.8125rem;
+  line-height: 1.6;
+}
+@media (min-width: 48em) { .prose pre { padding: 1rem 1.25rem; font-size: 0.875rem; } }
+.prose pre code { padding: 0; border: 0; border-radius: 0; background: none; font-size: inherit; overflow-wrap: normal; }
+
+/* docs.js wraps each code block to give it a Copy button. */
+.code { position: relative; }
+.code pre { margin: 0; padding-right: 4.5rem; }
+.code button {
+  position: absolute;
+  top: 0.45rem;
+  right: 0.45rem;
+  padding: 0.25rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--ink-soft);
+  font: 600 0.75rem/1.4 var(--sans);
+  cursor: pointer;
+}
+.code button:hover { color: var(--ink); }
+
+.prose .table { overflow-x: auto; }
+.prose table { border-collapse: collapse; font-size: 0.875em; line-height: 1.5; }
+.prose th, .prose td {
+  min-width: 11rem;
+  padding: 0.6em 0.75em;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+.prose :is(th, td):first-child { min-width: 8rem; padding-left: 0; }
+.prose th { color: var(--ink); font-weight: 600; }
+/* Code in a table stays whole in the first column, which names the row, and on a phone,
+   where the table scrolls instead; elsewhere it wraps to fit. */
+.prose td:first-child code { overflow-wrap: normal; }
+@media (max-width: 47.99em) { .prose td code { overflow-wrap: normal; } }
+
+/* The docs index */
+
+.doc-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 1rem;
+}
+@media (min-width: 48em) { .doc-list { grid-template-columns: 1fr 1fr; } }
+@media (min-width: 68em) {
+  .doc-index .lamp-beam { left: 50%; }
+  .doc-index .doc-head { text-align: center; }
+  .doc-index :is(.doc-head .container, .doc) { display: block; max-width: 60rem; }
+}
+.doc-list li {
+  position: relative;
+  padding: 1.35rem 1.5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+}
+.doc-list li:hover { border-color: var(--ember); }
+.doc-list h2 { font-size: var(--step-1); }
+.doc-list h2 a { color: var(--ink); text-decoration: none; }
+/* The whole card is the link. */
+.doc-list h2 a::after { content: ""; position: absolute; inset: 0; border-radius: inherit; }
+.doc-list p { margin-top: 0.4rem; color: var(--ink-soft); font-size: 0.9375rem; }

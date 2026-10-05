@@ -27,3 +27,12 @@
   Content-Security-Policy: default-src 'none'; script-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'none'
 /privacy
   Content-Security-Policy: default-src 'none'; script-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'none'
+
+# The docs pages likewise, except that docs.js runs, named by URL as on the join page.
+# The rule also matches docs.js and the Markdown copies, where the policy does nothing.
+/docs*
+  Content-Security-Policy: default-src 'none'; script-src https://ovenlight.app/docs.js; style-src 'self' 'unsafe-inline'; img-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'none'
+
+# Each doc's Markdown, beside its page, for coding agents.
+/docs/*.md
+  Content-Type: text/markdown; charset=utf-8
