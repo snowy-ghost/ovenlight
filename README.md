@@ -22,8 +22,8 @@
     <img src="site/images/launcher-480.jpg" width="30%" alt="The Ovenlight launcher on an iPhone: apps such as Recipe Box, Garden Log, Trip Planner and Book Club, laid out like a Home Screen in warm light falling from the Dynamic Island.">
   </picture>&nbsp;
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="site/images/recipe-box-dark-480.jpg">
-    <img src="site/images/recipe-box-480.jpg" width="30%" alt="Recipe Box, a family recipe app, open full screen in Ovenlight: a search field, recipe categories, tonight's dinner and recently added recipes.">
+    <source media="(prefers-color-scheme: dark)" srcset="site/images/house-guide-dark-480.jpg">
+    <img src="site/images/house-guide-480.jpg" width="30%" alt="House Guide, a guide to a home for a house sitter, open full screen in Ovenlight: a greeting, a search field, a drawing of the house at dusk, a welcome note, what's next for Biscuit the dog and the Wi-Fi password.">
   </picture>&nbsp;
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="site/images/join-dark-480.jpg">
