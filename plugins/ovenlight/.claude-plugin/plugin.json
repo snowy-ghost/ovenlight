@@ -9,6 +9,6 @@
   },
   "homepage": "https://ovenlight.app",
   "repository": "https://github.com/snowy-ghost/ovenlight",
-  "license": "FSL-1.1-ALv2",
+  "license": "Apache-2.0",
   "keywords": ["ovenlight", "iphone", "web-apps", "self-hosted"]
 }

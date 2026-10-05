@@ -247,12 +247,10 @@ To report a vulnerability, see [SECURITY.md](SECURITY.md).
 
 ## License
 
-The Functional Source License, Version 1.1, ALv2 Future License (FSL-1.1-ALv2); see
-[LICENSE](LICENSE) and [NOTICE](NOTICE). You may use, change and share Ovenlight for any
-purpose except offering a commercial product or service that competes with it, and each
-version becomes available under the Apache License 2.0 two years after its release. The
-iPhone app and the connector include third-party code under their own licenses, listed in
-each release's `THIRD_PARTY_NOTICES.txt` and in the app under Settings, Acknowledgements.
+Snowy Ghost LLC licenses Ovenlight, this version and every earlier one, under the
+[Apache License 2.0](LICENSE); see also [NOTICE](NOTICE). The iPhone app and the connector
+include third-party code under their own licenses, listed in each release's
+`THIRD_PARTY_NOTICES.txt` and in the app under Settings, Acknowledgements.
 
 Snowy Ghost LLC also licenses two things under [MIT-0](https://spdx.org/licenses/MIT-0.html),
 in every version, so apps built from them carry no conditions from us: the starter app
