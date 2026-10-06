@@ -68,8 +68,10 @@ own, no analytics and no ads.
 - A computer that stays on and awake while anyone uses your apps: a Mac with macOS 13 or
   later, logged in to its desktop; a Linux computer with systemd, such as Ubuntu; or a
   Windows 11 PC.
-- A Tailscale account. The computer doesn't need the Tailscale app. Headscale is supported
-  for [development](docs/development.md#local-headscale) only.
+- A Tailscale account. Its free Personal plan is for non-commercial use, so a business
+  needs one of [Tailscale's paid plans](https://tailscale.com/pricing). The computer
+  doesn't need the Tailscale app. Headscale is supported for
+  [development](docs/development.md#local-headscale) only.
 
 [docs/connector.md](docs/connector.md#what-the-computer-needs) says how the connector runs
 on each system, including on a Mac without a display.

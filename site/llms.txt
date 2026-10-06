@@ -13,7 +13,8 @@ system to build.
   later, kept logged in, or a Linux computer with systemd, such as Ubuntu. A Windows
   connector comes later.
 - A Tailscale account with MagicDNS and HTTPS Certificates turned on (admin console, DNS
-  page).
+  page). Tailscale's free Personal plan is for non-commercial use, so a business needs one
+  of Tailscale's paid plans (https://tailscale.com/pricing).
 - An iPhone with iOS 18.1 or later and Ovenlight from the App Store.
 - The connector. Download the archive for the computer, unpack it, and run `./install.sh`
   in its folder:

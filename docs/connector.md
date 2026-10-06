@@ -22,7 +22,9 @@ The computer must stay on and awake while anyone uses your apps, and be one of t
 
 You also need a Tailscale account with MagicDNS and HTTPS certificates turned on in the
 admin console, under [DNS](https://console.tailscale.com/admin/dns); `ovenlight doctor`
-checks both. The computer doesn't need the Tailscale app.
+checks both. The computer doesn't need the Tailscale app. Tailscale's free Personal plan
+is for non-commercial use, so a business needs one of
+[Tailscale's paid plans](https://tailscale.com/pricing).
 
 ## Install
 
@@ -270,6 +272,12 @@ it again; Add App, under the ••• button, adds it by its address.
 
 Your friend needs only Ovenlight. Their phone joins your tailnet as a guest device that
 can reach only the apps you invited them to, and none of your other devices.
+
+Sharing uses tagged devices, which Tailscale's plans count: each shareable app is one, and
+so is each guest's phone, however many of your apps it holds. Three shared apps and ten
+guests use 13, for example. The free Personal plan includes a set number and charges for
+more ([pricing](https://tailscale.com/pricing)). Removing a guest from all your apps
+deletes their device, so it stops counting.
 
 First create an API access token in the Tailscale admin console, under
 [Settings, Keys](https://console.tailscale.com/admin/settings/keys), and store it once;
