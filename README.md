@@ -213,9 +213,9 @@ On Linux, the path is `~/.local/state/ovenlight/bin/ovenlight`. On Windows, in P
 claude mcp add --scope user ovenlight -- "$env:LOCALAPPDATA\ovenlight\bin\ovenlight.exe" mcp
 ```
 
-On a Mac, you can install Ovenlight's Claude Code plugin instead. It adds the same MCP
-server and a skill that reads the guide whenever you ask to put an app on your phone. In
-Claude Code, run:
+On a Mac or a Linux computer, you can install Ovenlight's Claude Code plugin instead (on
+Windows, it comes later). It adds the same MCP server and a skill that reads the guide
+whenever you ask to put an app on your phone. In Claude Code, run:
 
 ```
 /plugin marketplace add snowy-ghost/ovenlight

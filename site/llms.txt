@@ -60,9 +60,9 @@ Linux, use the binary path above):
 claude mcp add --scope user ovenlight -- ~/Library/Application\ Support/ovenlight/bin/ovenlight mcp
 ```
 
-On a Mac, Claude Code can install Ovenlight's plugin instead. It adds the same MCP server
-and a skill that reads the guide whenever the person asks to put an app on their phone.
-In Claude Code, run:
+On a Mac or a Linux computer, Claude Code can install Ovenlight's plugin instead. It adds
+the same MCP server and a skill that reads the guide whenever the person asks to put an
+app on their phone. In Claude Code, run:
 
 ```
 /plugin marketplace add snowy-ghost/ovenlight

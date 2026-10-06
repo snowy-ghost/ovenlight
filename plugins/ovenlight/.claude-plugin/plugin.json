@@ -1,7 +1,7 @@
 {
   "name": "ovenlight",
   "displayName": "Ovenlight",
-  "description": "Build web apps that feel at home in Ovenlight, publish them from your Mac, and read feedback sent from the iPhone. Needs the Ovenlight connector installed on the Mac.",
+  "description": "Build web apps that feel at home in Ovenlight, publish them from your Mac or Linux computer, and read feedback sent from the iPhone. Needs the Ovenlight connector installed on that computer.",
   "author": {
     "name": "Snowy Ghost",
     "email": "team@snowyghost.com",

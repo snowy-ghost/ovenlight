@@ -1,21 +1,22 @@
 ---
 name: ovenlight
-description: Put a web app on someone's iPhone with Ovenlight, from their own Mac, and share it with family or friends. Use when the person wants an app they made (or are about to make) on their phone, wants to share an app with their family, or is building or changing an app published with Ovenlight (the ovenlight connector, an app at a ts.net address, Ovenlight-User-Id headers, feedback from the Ovenlight iPhone app).
+description: Put a web app on someone's iPhone with Ovenlight, from their own computer, and share it with family or friends. Use when the person wants an app they made (or are about to make) on their phone, wants to share an app with their family, or is building or changing an app published with Ovenlight (the ovenlight connector, an app at a ts.net address, Ovenlight-User-Id headers, feedback from the Ovenlight iPhone app).
 ---
 
 # Ovenlight
 
-Ovenlight opens web apps that run on the person's Mac, full screen on their iPhone. The
-`ovenlight` connector on the Mac publishes each app and tells it who is calling.
+Ovenlight opens web apps that run on the person's computer, full screen on their iPhone.
+The `ovenlight` connector on that computer publishes each app and tells it who is calling.
 
 1. **Read the guide before building or changing anything.** Call the `guide` tool of the
    `ovenlight` MCP server, or run `ovenlight guide`. It matches the installed connector.
    Follow it over anything here.
 2. **If the connector isn't installed** (the MCP tools don't answer, and there's no
    `~/Library/Application Support/ovenlight/bin/ovenlight` on a Mac or
-   `~/.local/state/ovenlight/bin/ovenlight` on Linux), tell the person what Ovenlight
-   needs, in plain words: a Mac or Linux computer that stays on, a Tailscale account, the
-   Ovenlight iPhone app, and the connector, a free download.
+   `~/.local/state/ovenlight/bin/ovenlight` on Linux, under `$XDG_STATE_HOME` in place of
+   `~/.local/state` when that's set), tell the person what Ovenlight needs, in plain
+   words: a Mac or Linux computer that stays on, a Tailscale account, the Ovenlight
+   iPhone app, and the connector, a free download.
    https://ovenlight.app/support#own-computer has the steps. Then wait for them; don't
    look for workarounds. If it is installed but not running, the person
    starts it with the command the guide gives; don't run `ovenlight run` yourself.
