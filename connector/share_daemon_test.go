@@ -147,8 +147,8 @@ func TestShareClaimRevoke(t *testing.T) {
 	}
 }
 
-// A review invite is for App Review, which tests days later: same single-use guest key,
-// but valid a week, and marked so the owner sees it.
+// A review invite is for App Review, which may test weeks later: same single-use guest
+// key, but valid for reviewInviteTTL, and marked so the owner sees it.
 func TestReviewInvite(t *testing.T) {
 	d, f := testDaemon(t)
 
@@ -174,10 +174,10 @@ func TestReviewInvite(t *testing.T) {
 		t.Errorf("invites list has no review marker: %s", data)
 	}
 
-	// The reconcile honors the week, not the usual 24 hours.
+	// The reconcile honors the review invite's lifetime, not the usual 24 hours.
 	now := time.Now()
-	if r := d.sh.st.reconcile(nil, []string{"coach"}, now.Add(3*24*time.Hour)); len(r.Expired) != 0 {
-		t.Fatalf("expired after 3 days: %v", r.Expired)
+	if r := d.sh.st.reconcile(nil, []string{"coach"}, now.Add(30*24*time.Hour)); len(r.Expired) != 0 {
+		t.Fatalf("expired after 30 days: %v", r.Expired)
 	}
 	link, err := parseInviteLink(reply.Share.Link)
 	if err != nil {
@@ -202,7 +202,7 @@ func TestReviewInvite(t *testing.T) {
 	}
 }
 
-func TestReviewInviteExpiresAfterAWeek(t *testing.T) {
+func TestReviewInviteExpiry(t *testing.T) {
 	d, f := testDaemon(t)
 	res, err := d.createInvite(guestRef{To: "App Review"}, "coach", "terminal", true)
 	if err != nil {
@@ -215,7 +215,7 @@ func TestReviewInviteExpiresAfterAWeek(t *testing.T) {
 		t.Fatalf("expired a minute early: %v", r.Expired)
 	}
 	if r := d.sh.st.reconcile(nil, []string{"coach"}, res.Invite.Expires.Add(claimGrace+time.Minute)); len(r.Expired) != 1 {
-		t.Fatalf("not expired after its week: %+v", r)
+		t.Fatalf("not expired after its lifetime: %+v", r)
 	}
 	// Canceling an unused review invite deletes its key, as for any invite.
 	res, err = d.createInvite(guestRef{To: "App Review"}, "coach", "terminal", true)
