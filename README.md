@@ -36,7 +36,9 @@ recipe box, chore chart or trip planner you built for your family, maybe with a 
 agent over a weekend. It reaches them over your own Tailscale network (your tailnet)
 through a Tailscale node built into the iPhone app, so the phone needs no VPN and no
 Tailscale app. One Face ID unlock opens all of them, and each one runs full screen from
-its own icon, with its storage kept apart from the others.
+its own icon, with its storage kept apart from the others. A coding agent can also publish
+and check these apps and read the feedback people send from their iPhones, through
+Ovenlight's MCP server or its Claude Code plugin ([With a coding agent](#with-a-coding-agent)).
 
 To share an app, send a friend an invite link. They install Ovenlight, open the link and
 tap Join, with no account to create.
@@ -226,6 +228,10 @@ then:
 ```
 /plugin install ovenlight@snowy-ghost
 ```
+
+For another agent that supports MCP, add a local server whose command is the connector's
+full path, such as `/Users/you/Library/Application Support/ovenlight/bin/ovenlight` on a
+Mac, and whose argument is `mcp`.
 
 ## Documentation
 

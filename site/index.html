@@ -12,7 +12,7 @@
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Ovenlight">
 <meta property="og:title" content="Ovenlight · Your own web apps on your iPhone">
-<meta property="og:description" content="Open the web apps you run on your own computers on your iPhone, privately. Share one app with a friend by invite.">
+<meta property="og:description" content="You or your coding agent built a web app. It runs on your own computer, and Ovenlight opens it on your iPhone, privately. Share it with a friend by invite.">
 <meta property="og:image" content="https://ovenlight.app/og-invite.jpg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
@@ -20,7 +20,7 @@
 <meta property="og:url" content="https://ovenlight.app/">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Ovenlight · Your own web apps on your iPhone">
-<meta name="twitter:description" content="Open the web apps you run on your own computers on your iPhone, privately. Share one app with a friend by invite.">
+<meta name="twitter:description" content="You or your coding agent built a web app. It runs on your own computer, and Ovenlight opens it on your iPhone, privately. Share it with a friend by invite.">
 <meta name="twitter:image" content="https://ovenlight.app/og-invite.jpg">
 
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
@@ -51,7 +51,7 @@
     <div class="container">
       <h1 class="wordmark">Ovenlight</h1>
       <span class="rack" aria-hidden="true"></span>
-      <p class="lead">The web apps you run on your own computer, on your iPhone behind Face&nbsp;ID. Share one with a friend by link. They install Ovenlight and tap Join.</p>
+      <p class="lead">You or your coding agent built a web&nbsp;app. It runs on your own computer, and Ovenlight opens it on your iPhone behind Face&nbsp;ID. Share it with a friend by link. They install Ovenlight and tap Join.</p>
       <a class="store" href="https://apps.apple.com/app/id6817561066">
         <picture>
           <source srcset="/images/app-store-badge-white.svg" media="(prefers-color-scheme: dark)">
@@ -75,7 +75,29 @@
   <section class="section section-band" aria-labelledby="who">
     <div class="container intro">
       <h2 class="section-title" id="who">Who it's for</h2>
-      <p>You built a small web app for your family, your garden or your book club, maybe with an AI coding tool over a weekend, and it runs on your own computer. Ovenlight puts it on your iPhone without putting it on the internet, and hands it to the people it's for. They need nothing but Ovenlight.</p>
+      <p>You built a small web app for your family, your garden or your book club, maybe in an afternoon with a coding agent, and it runs on your own computer. The hard part now is getting it to the people it's for. Ovenlight puts it on your iPhone and theirs without putting it on the internet. They need nothing but Ovenlight.</p>
+    </div>
+  </section>
+
+  <section class="section section-band section-follow" aria-labelledby="agent">
+    <div class="container agent">
+      <div>
+        <h2 class="section-title" id="agent">Bring your coding agent</h2>
+        <p class="agent-text">Once your computer is set up, ask your coding agent to put the app on your phone. The Ovenlight connector on your computer is also an MCP server, so Claude&nbsp;Code, or another agent that supports local MCP servers, can follow Ovenlight's building guide, publish the app, check it and read its logs. There's an Ovenlight plugin for Claude&nbsp;Code too. Inviting people is up to you: the MCP server has no tool for it. <a href="https://github.com/snowy-ghost/ovenlight#with-a-coding-agent">Connect your agent.</a></p>
+      </div>
+      <figure class="ask">
+        <div class="callout">
+          <p class="ask-you"><span class="visually-hidden">You: </span>Make a chore chart for the kids and put it on my phone.</p>
+          <ol class="ask-steps">
+            <li><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 10.5l3.5 3.5 7.5-8"/></svg><p>Read Ovenlight's building guide <code>ovenlight guide</code></p></li>
+            <li><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 10.5l3.5 3.5 7.5-8"/></svg><p>Built Chore Chart on your computer</p></li>
+            <li><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 10.5l3.5 3.5 7.5-8"/></svg><p>Published it to your Tailscale network <code>ovenlight publish</code></p></li>
+            <li><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 10.5l3.5 3.5 7.5-8"/></svg><p>Checked it for Ovenlight <code>ovenlight check</code></p></li>
+          </ol>
+          <p class="ask-reply"><span class="visually-hidden">Your agent: </span>Chore Chart is ready. It will show up in Ovenlight on your phone once you sign in with your Tailscale account at this link: <code>https://login.tailscale.com/a/&hellip;</code></p>
+        </div>
+        <figcaption>In your coding agent</figcaption>
+      </figure>
     </div>
   </section>
 
@@ -146,7 +168,7 @@
           <li><p>You make an app shareable once, on the computer that runs it.</p></li>
           <li><p>You send an invite from Ovenlight or from that computer: a link or a QR code that works once and expires after 24 hours.</p></li>
           <li><p>Your friend opens it on their iPhone and taps Join, with no account to create and nothing to sign in to.</p></li>
-          <li><p>The app shows up in their Ovenlight marked with your name, and they can send you feedback from inside it.</p></li>
+          <li><p>The app shows up in their Ovenlight marked with your name, and they can send you feedback from inside it. Your coding agent can read that feedback, screenshot included, and fix the app.</p></li>
         </ol>
         <p class="share-after">You can stop sharing at any time. Their access ends at once, and the app and everything it stored are removed from their iPhone the next time Ovenlight connects.</p>
       </div>
