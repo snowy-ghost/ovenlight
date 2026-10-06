@@ -150,10 +150,10 @@ func commandWord(run string) string {
 // commandFoundCheck warns when the program a simple command starts (see commandWord)
 // isn't found in the app's directory in the environment the connector runs it with, the
 // login shell's: a tool a terminal finds through an activated virtual environment,
-// node_modules/.bin or a PATH set in .zshrc, which a login shell doesn't read. It reads
-// that environment as the connector does, from the environment launchd gives the
-// connector, not the caller's, which has all of those. Other commands go unchecked; the
-// app's output in logs says what didn't start.
+// node_modules/.bin or a PATH set in .zshrc or .bashrc, which a login shell doesn't
+// read. It reads that environment as the connector does, from the environment launchd
+// or systemd gives the connector, not the caller's, which has all of those. Other
+// commands go unchecked; the app's output in logs says what didn't start.
 func commandFoundCheck(app App) *Check {
 	word := commandWord(app.Run)
 	if word == "" {
@@ -185,12 +185,16 @@ func commandFoundCheck(app App) *Check {
 			Message: fmt.Sprintf("there's no executable at %s, so the app's command may not start", path),
 			Fix:     fmt.Sprintf("Check the path (a relative one starts from %s) and that what it names exists, such as a virtual environment, then publish again with the corrected --run.", app.Dir)}
 	}
-	fix := fmt.Sprintf("If a terminal finds %s through PATH set only in ~/.zshrc (nvm, pyenv), put its directory first on PATH in the command: --run 'PATH=<dir>:$PATH <command>', with <dir> from command -v %s. ", word, word)
+	where, leftOut := "that only a terminal's shell sets up", ""
+	if rc := rcName(loginShell()); rc != "" {
+		where, leftOut = "set only in "+rc, " (not what "+rc+" sets up)"
+	}
+	fix := fmt.Sprintf("If a terminal finds %s through PATH %s (nvm, pyenv), put its directory first on PATH in the command: --run 'PATH=<dir>:$PATH <command>', with <dir> from command -v %s. ", word, where, word)
 	if !slices.Contains([]string{"node", "npm", "npx", "python", "python3"}, word) {
 		fix += fmt.Sprintf("If it is a project's own tool, run it as .venv/bin/%s or uv run %s (Python), or through npx or an npm script (Node). ", word, word)
 	}
 	return &Check{ID: "command-not-found", App: app.Slug, Status: statusWarn, Actor: actorAgent,
-		Message: fmt.Sprintf("%s isn't found in %s with the PATH the connector runs the command with, the one your login shell sets (in ~/.zprofile, not ~/.zshrc), so the app's command may not start", word, app.Dir),
+		Message: fmt.Sprintf("%s isn't found in %s with the PATH the connector runs the command with, the one your login shell sets%s, so the app's command may not start", word, app.Dir, leftOut),
 		Fix:     fix + "Then publish again with the corrected --run."}
 }
 

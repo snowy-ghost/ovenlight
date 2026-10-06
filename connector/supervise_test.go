@@ -1334,7 +1334,7 @@ func TestCommandWord(t *testing.T) {
 		}
 	}
 	// Each login shell reads the question alike.
-	for _, shell := range []string{"/bin/sh", "/bin/zsh", "/bin/bash", "fish"} {
+	for shell, rc := range map[string]string{"/bin/sh": "", "/bin/zsh": "~/.zshrc", "/bin/bash": "~/.bashrc", "fish": ""} {
 		path, err := exec.LookPath(shell)
 		if err != nil {
 			continue
@@ -1343,8 +1343,13 @@ func TestCommandWord(t *testing.T) {
 		if c := commandFoundCheck(App{Slug: "coach", Run: "sh -c true", Dir: t.TempDir()}); c != nil {
 			t.Errorf("%s, sh: %+v", shell, c)
 		}
-		if c := commandFoundCheck(App{Slug: "coach", Run: "uvicorn-not-here", Dir: t.TempDir()}); c == nil {
+		c := commandFoundCheck(App{Slug: "coach", Run: "uvicorn-not-here", Dir: t.TempDir()})
+		if c == nil {
 			t.Errorf("%s, missing: found", shell)
+		} else if rc != "" && (!strings.Contains(c.Message, "(not what "+rc+" sets up)") || !strings.Contains(c.Fix, "PATH set only in "+rc+" ")) {
+			t.Errorf("%s, missing: the warning doesn't name %s: %+v", shell, rc, c)
+		} else if rc == "" && (strings.Contains(c.Message, "(not what") || !strings.Contains(c.Fix, "PATH that only a terminal's shell sets up ")) {
+			t.Errorf("%s, missing: the warning names an rc file: %+v", shell, c)
 		}
 	}
 	t.Setenv("SHELL", "/bin/sh")

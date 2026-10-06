@@ -242,6 +242,18 @@ func profileName(shell string) string {
 	return "~/.profile"
 }
 
+// rcName is the file a terminal's shell reads and a login shell doesn't, as a person
+// finds it, or "" for a shell without one.
+func rcName(shell string) string {
+	switch filepath.Base(shell) {
+	case "zsh":
+		return "~/.zshrc"
+	case "bash":
+		return "~/.bashrc"
+	}
+	return ""
+}
+
 // unreadShells are the login shells whose environment loginEnv doesn't read: it can't
 // have them run a command as a login shell, or print their environment as sh would.
 var unreadShells = []string{"nu", "xonsh", "elvish"}
