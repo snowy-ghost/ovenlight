@@ -399,17 +399,16 @@ the files at the top of the folder the connector runs the app in and the databas
 (such as `*.db` and `*.sqlite`) a folder down, by their paths there under `/`, under the
 folders of the assets the home page links, and under a few common prefixes such as
 `/static/`. To tell a file served from a page, they read each file's first 16 bytes, and
-count a shorter file only when the answer is all of it; a file of blank space is left
-out. They
-read nothing in a folder that holds more than an app's, such as the home folder, or one
-macOS protects, and for an app without a folder they ask only `/.env` and
+count a shorter file only when the answer is all of it; a file of blank space is left out.
+They read nothing in a folder that holds more than an app's, such as the home folder, or
+one macOS protects, and for an app without a folder they ask only `/.env` and
 `/package.json`. The CORS and `/console` requests carry no identity headers, going to
-`127.0.0.1` as a page in this Mac's browser would. They read `/` a second time, and the
-web manifest, from `127.0.0.1` without identity headers too, as the connector reads them
-for the app's icon and color. The agent chooses none of them. What guests wrote
-in feedback, and the output of the apps the connector runs, reach the agent fenced as
+`127.0.0.1` as a page in this computer's browser would. They read `/` a second time, and
+the web manifest, from `127.0.0.1` without identity headers too, as the connector reads
+them for the app's icon and color. The agent chooses none of them. What guests wrote in
+feedback, and the output of the apps the connector runs, reach the agent fenced as
 untrusted data: that output holds what requests sent the app, which a guest, or any
-website open in this Mac's browser, can choose.
+website open in this computer's browser, can choose.
 
 ## On the iPhone
 
@@ -479,8 +478,8 @@ website open in this Mac's browser, can choose.
   again on their new phone.
 - **A stolen computer.** Revoke the API credential and delete the computer's app nodes in
   the admin console (Machines), then set up again on another computer, as for a move
-  [without a backup](connector.md#move-to-a-new-mac). FileVault keeps the node keys and
-  the credential unreadable on a Mac that's off, but the automatic login that
+  [without a backup](connector.md#move-to-a-new-computer). FileVault keeps the node keys
+  and the credential unreadable on a Mac that's off, but the automatic login that
   [connector.md](connector.md#what-the-computer-needs) suggests for a Mac without a
   display needs FileVault off.
 - **An app that may be compromised.** `ovenlight unpublish <slug>`, which also stops the

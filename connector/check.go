@@ -539,10 +539,10 @@ func debugCheck(app App, host string) Check {
 }
 
 // corsCheck fails when the app lets another website read what it answers: when its
-// Access-Control-Allow-Origin is * or names that website. Then a page open in this Mac's
-// browser can call the app's port and read the answers, with identity headers of its
-// own when Access-Control-Allow-Headers lets it. It asks / and a path under /api/, where
-// an API's CORS middleware often sits, as that page would: at 127.0.0.1, without
+// Access-Control-Allow-Origin is * or names that website. Then a page open in this
+// computer's browser can call the app's port and read the answers, with identity headers
+// of its own when Access-Control-Allow-Headers lets it. It asks / and a path under /api/,
+// where an API's CORS middleware often sits, as that page would: at 127.0.0.1, without
 // identity. Other Access-Control-* headers grant nothing without that one, and a
 // framework's CORS middleware sends some by default.
 func corsCheck(app App) Check {
@@ -587,7 +587,7 @@ func corsCheck(app App) Check {
 	}
 	return Check{ID: "cors", Status: statusFail, Actor: actorAgent,
 		Message: "the app answers a request from another website, " + other + ", with CORS headers that let it in (" + strings.Join(found[:min(len(found), 3)], "; ") +
-			"), so another website, such as one open in this Mac's browser, can call the app and read its answers" + also,
+			"), so another website, such as one open in this computer's browser, can call the app and read its answers" + also,
 		Fix: "Send no CORS headers: the app's pages come from its own host and need none. In Vite, set server: { cors: false } (and preview: { cors: false }); in Express, remove the cors() middleware."}
 }
 
@@ -878,8 +878,8 @@ func loginCheck(page *url.URL, body []byte) *Check {
 		Fix:     "Ovenlight already says who is calling; drop the login and use Ovenlight-User-Id, the header the connector sends with each request (Ovenlight-User has the person's name)."}
 }
 
-// localURL matches an absolute URL naming this Mac's loopback, which on the phone is the
-// phone itself.
+// localURL matches an absolute URL naming this computer's loopback, which on the phone is
+// the phone itself.
 var localURL = regexp.MustCompile(`(?i)\b(?:https?|wss?)://(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(?::\d+)?[^\s"'<>)\x60]*`)
 
 // localURLCheck names the origins of the localhost URLs the page has, not the whole

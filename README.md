@@ -236,7 +236,7 @@ Mac, and whose argument is `mcp`.
 ## Documentation
 
 - [docs/connector.md](docs/connector.md): installing and updating the connector,
-  publishing and sharing apps, moving to a new Mac and uninstalling.
+  publishing and sharing apps, moving to a new computer and uninstalling.
 - [docs/building-apps.md](docs/building-apps.md): building an app that works and feels
   native in Ovenlight, for coding agents and people.
 - [docs/app-contract.md](docs/app-contract.md): what an app behind Ovenlight must do and

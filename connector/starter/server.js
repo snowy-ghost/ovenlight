@@ -55,13 +55,13 @@ function save() {
 //   Ovenlight-Role     "owner" (you) or "guest" (someone you shared the app with)
 //
 // Requests can also come straight to this port, past the connector: your own curl, or any
-// web page open in this Mac's browser. A website can point its own name at 127.0.0.1 and
-// then send whatever headers it likes, but it can't change the Host its requests carry.
-// So identity headers count only with the Host the connector sends (the app's .ts.net
-// name) or a local one. A request without them gets the owner's rights only when it asks
-// for 127.0.0.1 or localhost and comes from the app's own pages or from no page at all
-// (curl, the address bar), so another website in this Mac's browser can't act as you.
-// Anything else gets null, and the API answers 403.
+// web page open in this computer's browser. A website can point its own name at 127.0.0.1
+// and then send whatever headers it likes, but it can't change the Host its requests
+// carry. So identity headers count only with the Host the connector sends (the app's
+// .ts.net name) or a local one. A request without them gets the owner's rights only when
+// it asks for 127.0.0.1 or localhost and comes from the app's own pages or from no page
+// at all (curl, the address bar), so another website in this computer's browser can't act
+// as you. Anything else gets null, and the API answers 403.
 function caller(req) {
   const host = (req.headers.host || "").replace(/:\d+$/, "");
   const local = host === "127.0.0.1" || host === "localhost";

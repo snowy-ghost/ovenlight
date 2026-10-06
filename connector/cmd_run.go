@@ -250,8 +250,8 @@ func waitListening(p *paths, app App, before []listener, began time.Time) {
 // copy doesn't listen on 127.0.0.1 (one that binds localhost fails on ::1 too), or on
 // every address while nothing listens on 127.0.0.1, but AirPlay Receiver. Failing that,
 // it is one on ::1 beside the copy, with beside set: macOS lets the copy bind 127.0.0.1
-// beside it, but a browser on the Mac reaches it at localhost. It is nil when there is
-// neither.
+// beside it, but a browser on the computer reaches it at localhost. It is nil when there
+// is neither.
 func heldBy(all []listener, ours func(pid int) bool) (held *listener, beside bool) {
 	loopback := slices.ContainsFunc(all, func(l listener) bool { return l.host() == "127.0.0.1" })
 	copyUp := slices.ContainsFunc(all, func(l listener) bool { return l.host() == "127.0.0.1" && ours(l.pid) })
@@ -319,8 +319,8 @@ func portHeldCheck(app App, status *controlReply) *Check {
 
 // besideCopyCheck warns of l, a listener on ::1 beside the connector's copy of app on
 // 127.0.0.1, most likely the person's own copy started in a terminal, which binds
-// localhost: both copies run, sharing the app's data, and a browser on the Mac reaches
-// that one.
+// localhost: both copies run, sharing the app's data, and a browser on the computer
+// reaches that one.
 func besideCopyCheck(app App, l listener) *Check {
 	what := fmt.Sprintf("%s (pid %d)", cmp.Or(clip(l.name, 40), "a process"), l.pid)
 	fix := "If it's the person's own copy, ask them to stop it (Ctrl-C in its terminal), since two copies share the data file; " +

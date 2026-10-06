@@ -40,7 +40,7 @@ const (
 	statusFail = "fail"
 )
 
-// Who can apply a fix: a coding agent on this Mac, or only the person (the Tailscale
+// Who can apply a fix: a coding agent on this computer, or only the person (the Tailscale
 // admin console, a login link, their iPhone, or a terminal command that asks them).
 const (
 	actorAgent  = "agent"
@@ -612,7 +612,7 @@ func noLinkCheck(st NodeStatus, p *paths) *Check {
 	switch {
 	case st.NoServer:
 		c.Message = fmt.Sprintf("the node has had no login link for over %v: it %s", loginLinkWait, unreachableText(st.LoginErr))
-		c.Fix = "Check this Mac's network connection, and any VPN or firewall that may block Tailscale; the node keeps trying, and ovenlight status shows the link once it comes"
+		c.Fix = "Check this computer's network connection, and any VPN or firewall that may block Tailscale; the node keeps trying, and ovenlight status shows the link once it comes"
 	case st.Restart:
 		c.Message = "the node lost its login (removed from the tailnet, or its key expired), and gets a new login link only when the connector restarts"
 		c.Fix = restartLoginFix(p)

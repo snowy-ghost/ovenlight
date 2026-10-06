@@ -3,7 +3,8 @@
 The connector, the `ovenlight` command, runs on the computer with your apps. It publishes
 each app as its own node (a device in your tailnet) with HTTPS, and manages guests. This
 page covers it in full: installing and updating it, publishing and sharing apps, moving to
-a new Mac and uninstalling. The [README](../README.md#get-started) has the short version.
+a new computer and uninstalling. The [README](../README.md#get-started) has the short
+version.
 
 ## What the computer needs
 
@@ -339,22 +340,26 @@ tags and guest rule out of your policy. When any of that fails or has to wait, `
 says what's left and what to run, and [security.md](security.md#later-changes) has the
 details.
 
-## Move to a new Mac
+## Move to a new computer
 
-The connector keeps everything in `~/.config/ovenlight` (the app list, the commands it
-runs for apps, and the API credential) and `~/Library/Application Support/ovenlight` (node
-state, guests and invites). Back up both. To move, stop the old Mac's connector if it
-still runs (`uninstall.sh` stops it and keeps both folders), copy them to the new Mac and
-run `install.sh` there: every app and guest carries over. An app the connector runs needs
-its project folder at the same path on the new Mac, and the tools its command uses;
-otherwise publish it again from its new folder with `--dir`. After restoring an older
-backup, run `ovenlight guests` and revoke anyone who shouldn't be there: a guest removed
-after that backup can regain access, and anyone who joined after it needs a new invite.
+The connector keeps everything in two folders: its config (the app list, the commands it
+runs for apps, and the API credential) and its state (node state, guests and invites). On
+a Mac they are `~/.config/ovenlight` and `~/Library/Application Support/ovenlight`; on
+Linux, `~/.config/ovenlight` and `~/.local/state/ovenlight`, or under `$XDG_CONFIG_HOME`
+and `$XDG_STATE_HOME` when those are set; on Windows, one folder holds both:
+`%LOCALAPPDATA%\ovenlight`. Back them up. To move, stop the old computer's connector if it
+still runs (the uninstall script stops it and keeps its data), copy the folders to the new
+computer and install the connector there: every app and guest carries over. An app the
+connector runs needs its project folder at the same path on the new computer, and the
+tools its command uses; otherwise publish it again from its new folder with `--dir`. After
+restoring an older backup, run `ovenlight guests` and revoke anyone who shouldn't be
+there: a guest removed after that backup can regain access, and anyone who joined after it
+needs a new invite.
 
-Without a backup, first delete the old Mac's app nodes in the admin console (Machines).
-Otherwise the new nodes come up named `<slug>-1`, and every saved tile and invite points
-at the old name. Then publish each app again and send new invites; existing guests lose
-access.
+Without a backup, first delete the old computer's app nodes in the admin console
+(Machines). Otherwise the new nodes come up named `<slug>-1`, and every saved tile and
+invite points at the old name. Then publish each app again and send new invites; existing
+guests lose access.
 
 On a new or restored iPhone, your own apps come back once you tap Connect again. Apps
 shared with you don't move: ask for a new invite.

@@ -647,7 +647,7 @@ func TestFollowLogAcrossAMove(t *testing.T) {
 func TestMCPCannotSetACommand(t *testing.T) {
 	dir := t.TempDir()
 	p := &paths{config: filepath.Join(dir, "config.json"), state: filepath.Join(dir, "state")}
-	// Ports nothing listens on, so the checks ask nothing else on this Mac.
+	// Ports nothing listens on, so the checks ask nothing else on this computer.
 	free := func() int {
 		ln, err := net.Listen("tcp", "127.0.0.1:0")
 		if err != nil {
@@ -1004,7 +1004,7 @@ func TestPortHeldCheck(t *testing.T) {
 	}
 	// AirPlay Receiver on every address holds the port only while nothing is on 127.0.0.1,
 	// and a listener on ::1 only while the copy isn't on 127.0.0.1, which macOS lets it bind
-	// beside one; beside the copy, it is a second copy a browser on the Mac reaches.
+	// beside one; beside the copy, it is a second copy a browser on the computer reaches.
 	inCopy := func(pid int) bool { return pid == 1 }
 	airplay := listener{2, "ControlCenter", "*:5000"}
 	v6 := listener{3, "node", "[::1]:5000"}

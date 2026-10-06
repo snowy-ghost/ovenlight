@@ -18,15 +18,15 @@ import (
 )
 
 // The connector can keep an app's own process running, so the app outlives the terminal
-// it was started in. The connector is a LaunchAgent, so the apps run while it does:
-// whenever the person is logged in to this Mac, including after a restart once they log
-// in. Each app with a Run command gets a supervisor: it starts the command in the app's
-// directory with sh, in the environment the user's login shell sets up (see loginEnv)
-// with PORT and HOST, keeps its output in a log of its own, and starts it again when it exits,
-// waiting longer each time unless the run served. The process and everything it starts
-// form one process group, which stopping ends as a whole. Each running group is recorded
-// in <slug>.pid beside the log, so a connector restarted after a crash ends what the last
-// one left running (see endOrphans).
+// it was started in. The connector is the person's own service (a LaunchAgent on a Mac, a
+// systemd user service on Linux, a scheduled task on Windows), so the apps run while it
+// does. Each app with a Run command gets a supervisor: it starts the command in the app's
+// directory with sh (cmd.exe on Windows), in the environment the user's login shell sets
+// up (see loginEnv) with PORT and HOST, keeps its output in a log of its own, and starts
+// it again when it exits, waiting longer each time unless the run served. The process and
+// everything it starts form one process group, which stopping ends as a whole. Each
+// running group is recorded in <slug>.pid beside the log, so a connector restarted after
+// a crash ends what the last one left running (see endOrphans).
 
 // envMark comes before the login shell's environment in what loginEnv reads, after
 // whatever the profile prints.

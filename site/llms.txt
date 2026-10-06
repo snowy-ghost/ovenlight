@@ -82,7 +82,7 @@ then:
 - [Privacy Policy](https://ovenlight.app/privacy)
 - [Ovenlight on the App Store](https://apps.apple.com/app/id6817561066)
 - [The connector](https://ovenlight.app/docs/connector.md): installing and updating it,
-  publishing and sharing apps, moving to a new Mac and uninstalling
+  publishing and sharing apps, moving to a new computer and uninstalling
 - [Building apps](https://ovenlight.app/docs/building-apps.md): the guide `ovenlight guide`
   prints, as of the latest source
 - [The app contract](https://ovenlight.app/docs/app-contract.md): what an app behind

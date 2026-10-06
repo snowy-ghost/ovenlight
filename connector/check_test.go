@@ -756,7 +756,8 @@ func TestServesFileWithoutContentType(t *testing.T) {
 	}
 }
 
-// CORS is about a page in this Mac's browser, which calls 127.0.0.1 as no one in particular.
+// CORS is about a page in this computer's browser, which calls 127.0.0.1 as no one in
+// particular.
 func TestCORSAsksAsABrowserPage(t *testing.T) {
 	var hosts []string
 	app := appServer(t, func(w http.ResponseWriter, r *http.Request) {

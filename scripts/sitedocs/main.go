@@ -33,7 +33,7 @@ const (
 
 // The docs, in the order the index lists them, each with its line there.
 var docs = []struct{ name, summary string }{
-	{"connector", "Installing and updating the connector, publishing and sharing apps, moving to a new Mac and uninstalling."},
+	{"connector", "Installing and updating the connector, publishing and sharing apps, moving to a new computer and uninstalling."},
 	{"building-apps", "Building an app that works and feels native in Ovenlight, for coding agents and people."},
 	{"app-contract", "What an app behind Ovenlight must do and may rely on."},
 	{"security", "The threat model, the tailnet policy change, logging and privacy."},

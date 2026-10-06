@@ -1012,7 +1012,7 @@ func cmdStatus(args []string) error {
 		for _, a := range out.Apps {
 			switch {
 			case a.NoServer:
-				fmt.Printf("\nNO LOGIN LINK for %s: its node %s. Check this Mac's network connection, and any VPN or firewall.\n", a.Name, unreachableText(a.LoginErr))
+				fmt.Printf("\nNO LOGIN LINK for %s: its node %s. Check this computer's network connection, and any VPN or firewall.\n", a.Name, unreachableText(a.LoginErr))
 			case a.State == "needs-login" && a.Shareable:
 				fmt.Printf("\nLOGIN NEEDED for %s: run `%s`\n", a.Name, reshareCommand(a.Slug))
 			case a.Restart:

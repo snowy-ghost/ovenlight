@@ -425,8 +425,8 @@ func callTool(name string, raw json.RawMessage, p *paths) (any, error) {
 	case "logs":
 		// The output carries what requests sent the app, such as the paths uvicorn, Flask
 		// or Django print, and whoever sends a request chooses those: a guest, or any
-		// website open in this Mac's browser, which can send requests to 127.0.0.1. So it
-		// is fenced, as what guests write in feedback is.
+		// website open in this computer's browser, which can send requests to 127.0.0.1.
+		// So it is fenced, as what guests write in feedback is.
 		lines := args.Lines
 		if lines <= 0 {
 			lines = 100
