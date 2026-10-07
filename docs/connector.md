@@ -43,8 +43,7 @@ curl -fsSL https://downloads.ovenlight.app/connector/latest/ovenlight-connector-
 ./install.sh
 ```
 
-On Linux, use `linux-amd64` or `linux-arm64` in place of `macos`. The Linux arm64 build is
-untested on real hardware.
+On Linux, use `linux-amd64` or `linux-arm64` in place of `macos`.
 
 On Windows, signed in as the account that will own the apps, open PowerShell with Run as
 administrator and run:
@@ -57,7 +56,7 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
 On an Arm PC, use `windows-arm64` in place of `windows-amd64`. The Windows arm64 build is
-untested on real hardware too. `ovenlight.exe`, `install.ps1` and `uninstall.ps1` are
+untested on real hardware. `ovenlight.exe`, `install.ps1` and `uninstall.ps1` are
 signed by Snowy Ghost LLC. To check one, open its Properties and look under Digital
 Signatures.
 

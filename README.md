@@ -97,8 +97,7 @@ curl -fsSL https://downloads.ovenlight.app/connector/latest/ovenlight-connector-
 ./install.sh
 ```
 
-On Linux, use `linux-amd64` or `linux-arm64` in place of `macos`; the arm64 build is
-untested on real hardware so far.
+On Linux, use `linux-amd64` or `linux-arm64` in place of `macos`.
 
 On Windows, sign in as the account that will own the apps, which must be an
 administrator. Open PowerShell with Run as administrator, then run:
@@ -111,7 +110,7 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
 On an Arm PC, use `windows-arm64` in place of `windows-amd64`. That build is untested on
-real hardware so far too.
+real hardware so far.
 
 The script installs the `ovenlight` command and keeps the connector running. When
 `~/.local/bin` isn't on your `PATH`, as on a new Mac, the script prints a line for your
