@@ -1,10 +1,12 @@
 #!/bin/sh
-# Starts the Ovenlight connector's MCP server from where install.sh puts the connector.
+# Starts the Ovenlight connector's MCP server from where install.sh puts the connector. On
+# Windows, Claude Code finds mcp.cmd beside this file and runs that instead.
 case "$(uname -s)" in
 Darwin) bin="$HOME/Library/Application Support/ovenlight/bin/ovenlight" ;;
 Linux) bin="${XDG_STATE_HOME:-$HOME/.local/state}/ovenlight/bin/ovenlight" ;;
+MINGW* | MSYS* | CYGWIN*) bin="$LOCALAPPDATA/ovenlight/bin/ovenlight.exe" ;;
 *)
-  echo "Ovenlight's Claude Code plugin runs on macOS and Linux for now. Add the connector with claude mcp add, as https://github.com/snowy-ghost/ovenlight#with-a-coding-agent shows." >&2
+  echo "The Ovenlight connector doesn't run on $(uname -s)." >&2
   exit 1
   ;;
 esac

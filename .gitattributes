@@ -1,0 +1,4 @@
+# The plugin's launchers keep their line endings in every checkout, including one made
+# with Git for Windows' core.autocrlf: cmd reads mcp.cmd with CRLF and sh reads mcp with LF.
+*.cmd text eol=crlf
+plugins/ovenlight/scripts/mcp text eol=lf

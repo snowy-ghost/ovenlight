@@ -9,7 +9,7 @@
     {
       "name": "ovenlight",
       "source": "./plugins/ovenlight",
-      "description": "Build web apps that feel at home in Ovenlight, publish them from your Mac or Linux computer, and read feedback sent from the iPhone"
+      "description": "Build web apps that feel at home in Ovenlight, publish them from your own computer, and read feedback sent from the iPhone"
     }
   ]
 }

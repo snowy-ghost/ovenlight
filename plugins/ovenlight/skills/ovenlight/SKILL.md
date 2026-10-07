@@ -12,11 +12,12 @@ The `ovenlight` connector on that computer publishes each app and tells it who i
    `ovenlight` MCP server, or run `ovenlight guide`. It matches the installed connector.
    Follow it over anything here.
 2. **If the connector isn't installed** (the MCP tools don't answer, and there's no
-   `~/Library/Application Support/ovenlight/bin/ovenlight` on a Mac or
-   `~/.local/state/ovenlight/bin/ovenlight` on Linux, under `$XDG_STATE_HOME` in place of
+   `~/Library/Application Support/ovenlight/bin/ovenlight` on a Mac,
+   `%LOCALAPPDATA%\ovenlight\bin\ovenlight.exe` on Windows, or
+   `~/.local/state/ovenlight/bin/ovenlight` on Linux, with `$XDG_STATE_HOME` in place of
    `~/.local/state` when that's set), tell the person what Ovenlight needs, in plain
-   words: a Mac or Linux computer that stays on, a Tailscale account, the Ovenlight
-   iPhone app, and the connector, a free download.
+   words: a computer that stays on, a Tailscale account, the Ovenlight iPhone app, and
+   the connector, a free download.
    https://ovenlight.app/support#own-computer has the steps. Then wait for them; don't
    look for workarounds. If it is installed but not running, the person
    starts it with the command the guide gives; don't run `ovenlight run` yourself.
