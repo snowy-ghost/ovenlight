@@ -160,9 +160,9 @@ for os in "${oses[@]}"; do
       pack "$tmp/$os-$arch" "ovenlight-connector-linux-$arch.tar.gz"
     else
       cp "$conn/install.ps1" "$conn/uninstall.ps1" "$dir/"
-      # Smart App Control refuses an unsigned binary, and runs an unsigned script in
-      # Constrained Language Mode. The certificates last days, so the timestamp is what
-      # keeps a signature valid.
+      # Smart App Control refuses an unsigned binary, and an App Control policy that
+      # enforces scripts runs an unsigned script in Constrained Language Mode. The
+      # certificates last days, so the timestamp is what keeps a signature valid.
       $unsigned || AZURE_SIGNING_TOKEN="$(wintoken)" jsign --storetype TRUSTEDSIGNING \
         --keystore "$WIN_ENDPOINT" --storepass env:AZURE_SIGNING_TOKEN \
         --alias "$WIN_PROFILE" --tsaurl http://timestamp.acs.microsoft.com --tsmode RFC3161 \
