@@ -109,8 +109,7 @@ tar -xf connector.zip --strip-components 1
 powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
-On an Arm PC, use `windows-arm64` in place of `windows-amd64`. That build is untested on
-real hardware so far.
+On an Arm PC, use `windows-arm64` in place of `windows-amd64`.
 
 The script installs the `ovenlight` command and keeps the connector running. When
 `~/.local/bin` isn't on your `PATH`, as on a new Mac, the script prints a line for your

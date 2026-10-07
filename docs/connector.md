@@ -55,10 +55,9 @@ tar -xf connector.zip --strip-components 1
 powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
-On an Arm PC, use `windows-arm64` in place of `windows-amd64`. The Windows arm64 build is
-untested on real hardware. `ovenlight.exe`, `install.ps1` and `uninstall.ps1` are
-signed by Snowy Ghost LLC. To check one, open its Properties and look under Digital
-Signatures.
+On an Arm PC, use `windows-arm64` in place of `windows-amd64`. `ovenlight.exe`,
+`install.ps1` and `uninstall.ps1` are signed by Snowy Ghost LLC. To check one, open its
+Properties and look under Digital Signatures.
 
 To check a download on a Mac or Linux before installing it, fetch the archive with its
 checksums ([SHA256SUMS](https://downloads.ovenlight.app/connector/latest/SHA256SUMS)),
