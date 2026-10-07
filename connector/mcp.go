@@ -10,6 +10,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -266,8 +268,21 @@ func ovenlightCommand() string {
 			return "ovenlight"
 		}
 	}
+	if runtime.GOOS == "windows" {
+		// PowerShell won't run a quoted path at the start of a line, and Git Bash needs a
+		// path with backslashes quoted, but both run one from the home folder written with
+		// ~ and slashes, as install.ps1 puts the connector.
+		if home, err := os.UserHomeDir(); err == nil {
+			if rel, err := filepath.Rel(home, exe); err == nil && !strings.HasPrefix(rel, "..") && plainPath.MatchString(rel) {
+				return "~/" + filepath.ToSlash(rel)
+			}
+		}
+	}
 	return shellQuote(exe)
 }
+
+// plainPath matches a relative path that no shell needs quoted.
+var plainPath = regexp.MustCompile(`^[\w.\\-]+$`)
 
 // fenceGuestText wraps what a guest wrote in tags an agent can tell apart from the
 // rest. The fence is random per answer, so the text can't close it early.
