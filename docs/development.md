@@ -84,8 +84,7 @@ files runs only in Xcode, locally and before shipping, never in CI, so a change 
 scripts/release-connector.sh 1.0.0
 ```
 
-Options go before the version: `--unsigned` skips all signing, and `--no-windows` leaves
-out the Windows archives, to use only until the first Windows release.
+`--unsigned`, before the version, skips all signing, to test the rest.
 
 `release-connector.sh` writes the release to `build/release/`, replacing the one before:
 
