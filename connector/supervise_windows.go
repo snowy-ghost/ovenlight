@@ -1,8 +1,10 @@
 package main
 
 import (
+	"log"
 	"os"
 	"os/exec"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -14,24 +16,63 @@ import (
 
 // Windows has no process groups or login shell. An app's group is its process and every
 // process it started, found from the process list by parent, and its environment is the
-// connector's own, which Windows already loads from the user's profile for the task.
+// connector's own, with what Windows keeps for the account read again (see loginEnv).
 
-// shellCommand runs an app's command with cmd, which reads the line as typed.
+// shellCommand runs an app's command with cmd, which reads the line as typed, except that
+// $PORT and $HOST become cmd's %PORT% and %HOST%, so a command written for sh, as in the
+// guide, works here too.
 func shellCommand(run string) *exec.Cmd {
 	cmd := exec.Command(os.Getenv("ComSpec"))
 	if cmd.Path == "" {
 		cmd = exec.Command("cmd.exe")
 	}
+	run = shVars.ReplaceAllString(run, "%${1}${2}%")
 	cmd.SysProcAttr = &syscall.SysProcAttr{CmdLine: `/d /s /c "` + run + `"`}
 	return cmd
 }
 
-// loginEnv is env without what the connector clears from its own.
+// shVars matches $PORT, ${PORT}, $HOST and ${HOST}, the variables the connector sets.
+var shVars = regexp.MustCompile(`\$\{(PORT|HOST)\}|\$(PORT|HOST)\b`)
+
+// loginEnv is env followed by the variables Windows keeps for the account, as they are
+// now, which win over env's since the last of a name wins: a tool installed after the
+// connector started is on PATH. It leaves out what the connector clears from its own, in
+// any case. Should Windows fail to give the account's, env stays as it is.
 func loginEnv(env []string) ([]string, error) {
-	return slices.DeleteFunc(slices.Clone(env), func(v string) bool {
+	env = slices.Clone(env)
+	var token windows.Token
+	if windows.OpenProcessToken(windows.CurrentProcess(), windows.TOKEN_QUERY|windows.TOKEN_DUPLICATE, &token) == nil {
+		if account, err := token.Environ(false); err == nil {
+			env = append(env, account...)
+		}
+		token.Close()
+	}
+	return slices.DeleteFunc(env, func(v string) bool {
 		name, _, _ := strings.Cut(v, "=")
-		return slices.Contains(tsnetEnv, name)
+		return slices.ContainsFunc(tsnetEnv, func(ts string) bool { return strings.EqualFold(ts, name) })
 	}), nil
+}
+
+// endAppsWithConnector puts the connector in a job that ends every process in it once the
+// connector's handle to it closes, as it does however the connector exits, even when Task
+// Scheduler ends it without a word. The apps start in the job too, so they end with it.
+func endAppsWithConnector() {
+	job, err := windows.CreateJobObject(nil, nil)
+	if err == nil {
+		info := windows.JOBOBJECT_EXTENDED_LIMIT_INFORMATION{
+			BasicLimitInformation: windows.JOBOBJECT_BASIC_LIMIT_INFORMATION{LimitFlags: windows.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE},
+		}
+		_, err = windows.SetInformationJobObject(job, windows.JobObjectExtendedLimitInformation, uintptr(unsafe.Pointer(&info)), uint32(unsafe.Sizeof(info)))
+		if err == nil {
+			err = windows.AssignProcessToJobObject(job, windows.CurrentProcess())
+		}
+		if err != nil {
+			windows.CloseHandle(job)
+		}
+	}
+	if err != nil {
+		log.Printf("apps may keep running after the connector stops: %v", err)
+	}
 }
 
 // loginShell is cmd, which runs the apps' commands.

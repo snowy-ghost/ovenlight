@@ -40,7 +40,7 @@ func resolveRun(existing App, run, dir *string) (string, string, error) {
 	if dir != nil || cwd == "" {
 		path := ""
 		if dir != nil {
-			path = *dir
+			path = expandHome(*dir)
 		}
 		abs, err := filepath.Abs(path) // "" is the current directory
 		if err != nil {
@@ -54,6 +54,19 @@ func resolveRun(existing App, run, dir *string) (string, string, error) {
 		cwd = abs
 	}
 	return cmd, cwd, nil
+}
+
+// expandHome puts the home folder in place of a leading ~, as a shell does, for a shell
+// that leaves it as typed, such as Windows PowerShell 5.1.
+func expandHome(path string) string {
+	if path != "~" && !strings.HasPrefix(path, "~/") && !strings.HasPrefix(path, "~"+string(filepath.Separator)) {
+		return path
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return path
+	}
+	return filepath.Join(home, path[1:])
 }
 
 // protectedFolder names the folder macOS protects that dir is in, such as Desktop, or is

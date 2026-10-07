@@ -23,6 +23,10 @@ func shellCommand(run string) *exec.Cmd {
 	return exec.Command("/bin/sh", "-c", run)
 }
 
+// endAppsWithConnector does nothing here: the connector stops its apps itself on SIGTERM
+// (see runDaemon).
+func endAppsWithConnector() {}
+
 // loginEnvTimeout is how long the login shell has to print its environment; tests
 // shorten it.
 var loginEnvTimeout = 10 * time.Second

@@ -25,12 +25,13 @@ It needs Node 22.13 or later and nothing else: no `npm install`, no build step.
 npm start
 ```
 
+In Windows PowerShell, run `npm.cmd start`, and write `curl.exe` for `curl` below.
+
 Then open http://127.0.0.1:{{port}}/. Without Ovenlight in front of it, the app takes you
 for its owner. To see what a guest gets, send the headers Ovenlight would:
 
 ```sh
-curl -H 'Ovenlight-User-Id: guest:sam' -H 'Ovenlight-User: Sam' -H 'Ovenlight-Role: guest' \
-  http://127.0.0.1:{{port}}/api/items
+curl -H 'Ovenlight-User-Id: guest:sam' -H 'Ovenlight-User: Sam' -H 'Ovenlight-Role: guest' http://127.0.0.1:{{port}}/api/items
 ```
 
 A reload shows changes to `public/`; a change to `server.js` needs a restart.

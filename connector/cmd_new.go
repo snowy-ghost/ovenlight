@@ -18,6 +18,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -63,7 +64,7 @@ func cmdNew(args []string) error {
 	// --dir My Projects, may belong to that value. It is the name when it is the only one
 	// and is clearly whole: it holds a space, so it was quoted, or the value is a folder
 	// that exists.
-	if i := at[0]; afterValue(flags, args, i) && !(len(pos) == 1 && (strings.Contains(pos[0], " ") || isDir(args[i-1]))) {
+	if i := at[0]; afterValue(flags, args, i) && !(len(pos) == 1 && (strings.Contains(pos[0], " ") || isDir(expandHome(args[i-1])))) {
 		// Values as typed, in plain quotes: %q would double a Windows path's backslashes.
 		return fmt.Errorf(`unexpected argument %q after %s "%s": give the name first: ovenlight new "<App Name>" --dir <parent>, and put a value with spaces in quotes, such as %s "%s"`,
 			pos[0], args[i-2], args[i-1], args[i-2], args[i-1]+" "+pos[0])
@@ -92,7 +93,7 @@ func cmdNew(args []string) error {
 	case *port != 0:
 		app.Port = *port
 		if taken[app.Port] || !portFree(app.Port) {
-			fmt.Printf("Note: port %d is in use already, by a published app or something on this machine.\n", app.Port)
+			fmt.Printf("Note: port %d is in use already, by a published app or something on this computer.\n", app.Port)
 		}
 	default:
 		app.Port = starterPort(app.Slug, taken)
@@ -101,7 +102,7 @@ func cmdNew(args []string) error {
 	if err := (App{Name: app.Name, Slug: app.Slug, Port: app.Port}).Validate(); err != nil {
 		return err
 	}
-	dir, err := filepath.Abs(filepath.Join(*parent, app.Slug))
+	dir, err := filepath.Abs(filepath.Join(expandHome(*parent), app.Slug))
 	if err != nil {
 		return err
 	}
@@ -110,7 +111,11 @@ func cmdNew(args []string) error {
 	}
 
 	fmt.Printf("Created %s in %s, on port %d%s.\n\n", app.Name, dir, app.Port, chosen)
-	fmt.Printf("Try it on this machine (a person in a terminal; a coding agent publishes it below instead):\n  cd %s\n  npm start\nthen open http://127.0.0.1:%d/ (Ctrl-C stops it).\n\n", shellQuote(dir), app.Port)
+	npm := "npm"
+	if runtime.GOOS == "windows" {
+		npm = "npm.cmd" // Windows PowerShell's npm is npm.ps1, which its default policy refuses to run
+	}
+	fmt.Printf("Try it on this computer (a person in a terminal; a coding agent publishes it below instead):\n  cd %s\n  %s start\nthen open http://127.0.0.1:%d/ (Ctrl-C stops it).\n\n", shellQuote(dir), npm, app.Port)
 	fmt.Printf("Put it on your phone (a coding agent's path); first stop any copy you started (Ctrl-C, or kill with the process ID you started), since the connector runs its own on the same port and keeps it running:\n  %s --dir %s\n  %s check%s %s\n\n",
 		publishCommand(ovenlightCommand(), app, pathFlags(p)), shellQuote(dir), ovenlightCommand(), pathFlags(p), app.Slug)
 	starter := App{Name: app.Name, Slug: app.Slug, Run: "npm start", Dir: dir}
@@ -150,7 +155,7 @@ func shellQuote(s string) string {
 
 // starterPort picks the port for a new app: one from 20000 to 29999, starting from where
 // the slug hashes to, so a name always gets the same one, and moving past any port a
-// published app has or something on this machine answers on. The range is clear of the
+// published app has or something on this computer answers on. The range is clear of the
 // usual development ports (3000, 5173, 8000, 8080) and below the ports systems hand out
 // for outgoing connections (32768 and up on Linux, 49152 and up on macOS and Windows).
 func starterPort(slug string, taken map[int]bool) int {

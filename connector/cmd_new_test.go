@@ -117,6 +117,19 @@ func TestShellQuote(t *testing.T) {
 	}
 }
 
+// A shell that leaves ~ as typed, such as Windows PowerShell 5.1, still gets the home folder.
+func TestExpandHome(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip(err)
+	}
+	for in, want := range map[string]string{"~": home, "~/src": filepath.Join(home, "src"), "src": "src", "~src": "~src"} {
+		if got := expandHome(in); got != want {
+			t.Errorf("expandHome(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 // A name after --dir's value is taken when it is clearly whole: quoted, with a space, or
 // after a folder that exists.
 func TestNewTakesTheNameAfterAFolder(t *testing.T) {

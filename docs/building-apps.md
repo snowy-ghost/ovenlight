@@ -6,9 +6,11 @@ in the person's Tailscale network (their tailnet) and tells the app who is calli
 can be shared with friends and family, who get that one app and nothing else.
 
 `ovenlight guide` and the MCP `guide` tool print this guide. When `ovenlight` isn't on
-`PATH`, the command is `~/Library/Application\ Support/ovenlight/bin/ovenlight` on a Mac
-and `~/.local/state/ovenlight/bin/ovenlight` on Linux (under `$XDG_STATE_HOME` in place of
-`~/.local/state` when that's set).
+`PATH`, the command is `~/Library/Application\ Support/ovenlight/bin/ovenlight` on a Mac,
+`~/.local/state/ovenlight/bin/ovenlight` on Linux (under `$XDG_STATE_HOME` in place of
+`~/.local/state` when that's set) and `%LOCALAPPDATA%\ovenlight\bin\ovenlight.exe` on
+Windows (in PowerShell, `& "$env:LOCALAPPDATA\ovenlight\bin\ovenlight.exe"`, and in Git
+Bash, `"$LOCALAPPDATA/ovenlight/bin/ovenlight.exe"`).
 
 Starting from nothing? `ovenlight new "<App Name>" --dir ~/src`, in a shell (MCP has no
 tool for it), writes a small starter app that already follows this guide, and prints how
@@ -104,12 +106,12 @@ ovenlight restart recipes
 The connector starts the command in the app's folder with `PORT` and `HOST=127.0.0.1`
 set, starts it again whenever it exits, and keeps its output: `logs` prints the last
 lines (MCP `logs`), and with `-f` keeps following until Ctrl-C, which isn't for agents.
-`restart` stops the command and starts it again. `--run ""` stops running it,
+`restart` stops the command and starts it again. `--run=` stops running it,
 and `ovenlight unpublish <slug>` (MCP `unpublish`) stops running it and serving the app;
 its tile stays on the phone until the person removes it.
 
 The folder is `--dir`, or else the current directory whenever the app gets a command it
-didn't have (a new app, or one after `--run ""`); after that the app keeps its folder
+didn't have (a new app, or one after `--run=`); after that the app keeps its folder
 until `--dir` changes it. Keep projects in a folder such as
 `~/src`: a reboot empties `/tmp`, and on a Mac, macOS asks on the Mac's screen before the
 connector may use Desktop, Documents, Downloads, iCloud Drive, cloud storage folders such
@@ -119,14 +121,14 @@ Single-quote the command, so the connector's shell expands `$PORT`; in double qu
 your own shell replaces it with nothing first:
 `--run '.venv/bin/uvicorn main:app --host 127.0.0.1 --port $PORT'`.
 
-It runs the command with `/bin/sh` in the environment of the person's login shell, which
-leaves out what only a terminal's shell loads: zsh, the macOS default, reads `~/.zprofile`
-but not `~/.zshrc`, and bash on Ubuntu and Debian skips what `~/.bashrc` sets up. So a
-tool set up only in `~/.zshrc` or `~/.bashrc` (nvm, pyenv) isn't found, nor one from a
-virtual environment activated in a terminal (run that from `.venv/bin`, above): for a
-simple command `publish` warns about it, and for any command `ovenlight logs <slug>` says
-command not found. Put the tool's directory first on `PATH` in the command, with the
-directory from `command -v node`:
+On macOS and Linux, it runs the command with `/bin/sh` in the environment of the person's
+login shell, which leaves out what only a terminal's shell loads: zsh, the macOS default,
+reads `~/.zprofile` but not `~/.zshrc`, and bash on Ubuntu and Debian skips what
+`~/.bashrc` sets up. So a tool set up only in `~/.zshrc` or `~/.bashrc` (nvm, pyenv)
+isn't found, nor one from a virtual environment activated in a terminal (run that from
+`.venv/bin`, above): for a simple command `publish` warns about it, and for any command
+`ovenlight logs <slug>` says command not found. Put the tool's directory first on `PATH`
+in the command, with the directory from `command -v node`:
 
 ```sh
 ovenlight publish --slug recipes --run 'PATH=/path/to/node/bin:$PATH npm start'
@@ -134,6 +136,22 @@ ovenlight publish --slug recipes --run 'PATH=/path/to/node/bin:$PATH npm start'
 
 A variable exported only in `~/.zshrc` or `~/.bashrc` is missing too, and nothing warns
 about it: keep settings the app needs in a file in its folder, outside the public one.
+
+On Windows, it runs the command with `cmd`, in the environment Windows keeps for the
+person's account, which it reads again when the app is published or restarted: a tool
+installed since, with winget for example, is found after `ovenlight restart <slug>`, and
+what only a PowerShell profile sets is missing. It passes `$PORT` and `$HOST` on as
+`%PORT%` and `%HOST%`, so the commands above work there with a few changes:
+
+- A virtual environment's tools are in `.venv\Scripts`, written with backslashes, since
+  cmd doesn't take `/` in a program's path.
+- Python is `python`.
+- A Go app builds with `go build -o app.exe .` and runs as `app.exe`.
+- Django serves with waitress, since gunicorn doesn't run on Windows:
+  `.venv\Scripts\waitress-serve --listen=127.0.0.1:$PORT <project>.wsgi:application`.
+
+To put a folder first on `PATH` there, write `set PATH=<folder>;%PATH%&& npm start`, with
+no space before `&&`.
 
 While you iterate, a command that reloads on changes (the "Also" column above) picks up
 each edit, and the person sees it after Reload in the app's menu. A command that
@@ -151,7 +169,7 @@ pass instead.
 
 The app runs only while the computer is on and awake: a Mac logged in to its desktop, or
 a Linux computer while the person is logged in, unless linger is on (`install.sh` says
-when it isn't).
+when it isn't). On Windows, it runs from startup, even with nobody signed in.
 
 ## Who is calling
 
@@ -236,6 +254,8 @@ examples use 4317, the Recipes app's port from above:
 ```sh
 curl -H 'Ovenlight-User-Id: guest:sam' -H 'Ovenlight-User: Sam' -H 'Ovenlight-Role: guest' http://127.0.0.1:4317/api/items
 ```
+
+In Windows PowerShell, write `curl.exe` in place of `curl`, here and below.
 
 `check` doesn't test the identity guard (`caller`) on requests straight to the port.
 Forged headers under a foreign `Host` and a cross-site write must both get 403 (or 400

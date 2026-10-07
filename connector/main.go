@@ -31,7 +31,7 @@ Usage:
   ovenlight new "<App Name>" [--dir <parent>] [--port <n>]   a starter app to build on, and how to publish it
   ovenlight publish --port <n> --name "<App>" [--slug <slug>] [--shareable]
   ovenlight publish --slug <slug> --shareable     make a published app shareable
-  ovenlight publish ... --run '<command>' [--dir <path>]   keep the app running (--run '' stops)
+  ovenlight publish ... --run '<command>' [--dir <path>]   keep the app running (--run= stops)
   ovenlight logs <slug> [-n <lines>] [-f]         output of an app published with --run
   ovenlight restart <slug>                        stop an app published with --run and start it again
   ovenlight unpublish <slug>
@@ -233,6 +233,7 @@ func cmdRun(args []string) error {
 			dev.TLSCert = &cert
 		}
 	}
+	endAppsWithConnector()
 	err := runDaemon(p.config, p.state, dev)
 	if err != nil && *logFile != "" {
 		log.Printf("stopped: %v", err) // main prints it to standard error too
@@ -304,7 +305,7 @@ func (e portTakenError) Error() string { return e.message(false) }
 func (e portTakenError) message(mcp bool) string {
 	if e.running {
 		return fmt.Sprintf("%s (%s) is on port %d too and the connector runs its command, so it would start two apps on one port. "+
-			"Give this app a port of its own, or stop the other's command: ovenlight publish --slug %s --run ''", e.other.Name, e.other.Slug, e.other.Port, e.other.Slug)
+			"Give this app a port of its own, or stop the other's command: ovenlight publish --slug %s --run=", e.other.Name, e.other.Slug, e.other.Port, e.other.Slug)
 	}
 	arg := "--slug " + e.other.Slug
 	if mcp {
@@ -556,7 +557,7 @@ func cmdPublish(args []string) error {
 	shareable := fs.Bool("shareable", false, "run the app as a tagged node that guests can be invited to")
 	ownerFlag := fs.String("owner", "", "with no owner recorded: your Tailscale login (default: the user who owns the app nodes)")
 	labelFlag := fs.String("owner-label", "", `with no owner recorded: how guests see you, for example "Sam"`)
-	runFlag := fs.String("run", "", `shell command that serves the app on $PORT, which the connector keeps running ('' stops that)`)
+	runFlag := fs.String("run", "", `shell command that serves the app on $PORT, which the connector keeps running (--run= stops that)`)
 	dirFlag := fs.String("dir", "", "directory to run the command in (default: the one it runs in now, or for an app's first command the current one)")
 	if _, err := parseArgs(fs, args, 0); err != nil {
 		return err
