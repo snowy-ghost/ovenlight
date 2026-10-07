@@ -77,7 +77,7 @@ To download in a browser instead, use these links:
 [amd64](https://downloads.ovenlight.app/connector/latest/ovenlight-connector-linux-amd64.tar.gz)
 and
 [arm64](https://downloads.ovenlight.app/connector/latest/ovenlight-connector-linux-arm64.tar.gz).
-These links always point to the latest release; each release also stays at
+These links always point to the latest release. Each release from 1.0.1 on also stays at
 `https://downloads.ovenlight.app/connector/<version>/`. Unpack the archive if your browser
 hasn't, then run `./install.sh` in its `ovenlight-connector-<version>` folder.
 
