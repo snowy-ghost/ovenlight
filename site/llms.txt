@@ -10,20 +10,26 @@ system to build.
 ## What the person needs
 
 - A computer that stays on and awake while the apps are used: a Mac with macOS 13 or
-  later, kept logged in, or a Linux computer with systemd, such as Ubuntu. A Windows
-  connector comes later.
+  later (kept logged in), a Linux computer with systemd (such as Ubuntu), or a Windows 11
+  PC.
 - A Tailscale account with MagicDNS and HTTPS Certificates turned on (admin console, DNS
   page). Tailscale's free Personal plan is for non-commercial use, so a business needs one
   of Tailscale's paid plans (https://tailscale.com/pricing).
 - An iPhone with iOS 18.1 or later and Ovenlight from the App Store.
-- The connector. Download the archive for the computer, unpack it, and run `./install.sh`
-  in its folder:
+- The connector. Download the archive for the computer:
   - Mac: https://downloads.ovenlight.app/connector/latest/ovenlight-connector-macos.tar.gz
   - Linux on amd64: https://downloads.ovenlight.app/connector/latest/ovenlight-connector-linux-amd64.tar.gz
   - Linux on arm64: https://downloads.ovenlight.app/connector/latest/ovenlight-connector-linux-arm64.tar.gz
+  - Windows on x64: https://downloads.ovenlight.app/connector/latest/ovenlight-connector-windows-amd64.zip
+  - Windows on Arm: https://downloads.ovenlight.app/connector/latest/ovenlight-connector-windows-arm64.zip
 
-  It installs `ovenlight` at `~/Library/Application Support/ovenlight/bin/ovenlight` on a
-  Mac and `~/.local/state/ovenlight/bin/ovenlight` on Linux, and keeps it running.
+  Unpack it and run `./install.sh` in its folder. On Windows, the person signs in as the
+  account that will own the apps, which must be an administrator. They open PowerShell
+  with Run as administrator and run `powershell -ExecutionPolicy Bypass -File .\install.ps1`
+  in that folder. The script installs `ovenlight` at
+  `~/Library/Application Support/ovenlight/bin/ovenlight` on a Mac,
+  `~/.local/state/ovenlight/bin/ovenlight` on Linux and
+  `%LOCALAPPDATA%\ovenlight\bin\ovenlight.exe` on Windows, and keeps it running.
 
 Signing in to Tailscale, connecting the iPhone and sharing an app are steps only the
 person can do. Ask them, in plain words, rather than working around them.
@@ -60,9 +66,15 @@ Linux, use the binary path above):
 claude mcp add --scope user ovenlight -- ~/Library/Application\ Support/ovenlight/bin/ovenlight mcp
 ```
 
-On a Mac or a Linux computer, Claude Code can install Ovenlight's plugin instead. It adds
-the same MCP server and a skill that reads the guide whenever the person asks to put an
-app on their phone. In Claude Code, run:
+On Windows, in PowerShell:
+
+```powershell
+claude mcp add --scope user ovenlight -- "$env:LOCALAPPDATA\ovenlight\bin\ovenlight.exe" mcp
+```
+
+Claude Code can install Ovenlight's plugin instead. It adds the same MCP server and a
+skill that reads the guide whenever the person asks to put an app on their phone. In
+Claude Code, run:
 
 ```
 /plugin marketplace add snowy-ghost/ovenlight

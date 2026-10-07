@@ -19,7 +19,10 @@ The computer must stay on and awake while anyone uses your apps, and be one of t
   service, and with linger on, it runs from startup with nobody logged in. `install.sh`
   turns linger on, or prints the `sudo` command for it when it can't.
 - **A Windows 11 PC.** The connector is a scheduled task that runs as you from startup,
-  with nobody signed in. Installing it needs an administrator PowerShell.
+  with nobody signed in. Installing it needs an administrator PowerShell, signed in as
+  the account that will own the apps: elevating with another account's password installs
+  the connector for that account. Windows puts an idle computer to sleep by default: in
+  Settings, under System > Power (Power & battery on a laptop), set sleep to Never.
 
 You also need a Tailscale account with MagicDNS and HTTPS certificates turned on in the
 admin console, under [DNS](https://console.tailscale.com/admin/dns); `ovenlight doctor`
@@ -41,12 +44,26 @@ curl -fsSL https://downloads.ovenlight.app/connector/latest/ovenlight-connector-
 ```
 
 On Linux, use `linux-amd64` or `linux-arm64` in place of `macos`. The Linux arm64 build is
-untested on a real machine. A Windows release comes later, once its signing is set up;
-until then, build the connector [from source](#from-source).
+untested on real hardware.
 
-To check a download before installing it, fetch the archive with its checksums
-([SHA256SUMS](https://downloads.ovenlight.app/connector/latest/SHA256SUMS)), their
-signature
+On Windows, signed in as the account that will own the apps, open PowerShell with Run as
+administrator and run:
+
+```powershell
+mkdir $HOME\ovenlight-connector -Force | Out-Null; cd $HOME\ovenlight-connector
+curl.exe -fsSL https://downloads.ovenlight.app/connector/latest/ovenlight-connector-windows-amd64.zip -o connector.zip
+tar -xf connector.zip --strip-components 1
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+```
+
+On an Arm PC, use `windows-arm64` in place of `windows-amd64`. The Windows arm64 build is
+untested on real hardware too. `ovenlight.exe`, `install.ps1` and `uninstall.ps1` are
+signed by Snowy Ghost LLC. To check one, open its Properties and look under Digital
+Signatures.
+
+To check a download on a Mac or Linux before installing it, fetch the archive with its
+checksums ([SHA256SUMS](https://downloads.ovenlight.app/connector/latest/SHA256SUMS)),
+their signature
 ([SHA256SUMS.sig](https://downloads.ovenlight.app/connector/latest/SHA256SUMS.sig)) and
 the signing key from this repository ([allowed_signers](allowed_signers)), then verify
 them:
@@ -73,13 +90,20 @@ tar xzf ovenlight-connector-macos.tar.gz --strip-components 1
 
 To download in a browser instead, use these links:
 [macOS](https://downloads.ovenlight.app/connector/latest/ovenlight-connector-macos.tar.gz)
-(its binary is notarized), and Linux
+(its binary is notarized), Linux
 [amd64](https://downloads.ovenlight.app/connector/latest/ovenlight-connector-linux-amd64.tar.gz)
 and
-[arm64](https://downloads.ovenlight.app/connector/latest/ovenlight-connector-linux-arm64.tar.gz).
+[arm64](https://downloads.ovenlight.app/connector/latest/ovenlight-connector-linux-arm64.tar.gz),
+and Windows
+[x64](https://downloads.ovenlight.app/connector/latest/ovenlight-connector-windows-amd64.zip)
+and
+[Arm](https://downloads.ovenlight.app/connector/latest/ovenlight-connector-windows-arm64.zip).
 These links always point to the latest release. Each release from 1.0.1 on also stays at
 `https://downloads.ovenlight.app/connector/<version>/`. Unpack the archive if your browser
-hasn't, then run `./install.sh` in its `ovenlight-connector-<version>` folder.
+hasn't, then run `./install.sh` in its `ovenlight-connector-<version>` folder. On Windows,
+right-click that folder in File Explorer and choose Copy as path. Then, in PowerShell
+opened with Run as administrator, type `cd` and a space, paste the path, press Enter, and
+run `powershell -ExecutionPolicy Bypass -File .\install.ps1`.
 
 ### From source
 
@@ -97,12 +121,11 @@ connector/install.sh
 If `go env GOTOOLCHAIN` says `local`, as on Fedora and Red Hat Enterprise Linux, `go`
 won't fetch a newer one: run `GOTOOLCHAIN=auto connector/install.sh` instead.
 
-On Windows, sign in as the account that will own the apps, which must be an administrator:
-elevating with another account's password installs the connector for that account. Install
-Git and Go with `winget install Git.Git` and `winget install GoLang.Go`, open a new
-PowerShell window so it finds them, and run
-`git clone https://github.com/snowy-ghost/ovenlight $HOME\ovenlight`. Then open an
-administrator PowerShell (right-click it and choose Run as administrator) and run:
+On Windows, signed in as the account that will own the apps, install Git and Go with
+`winget install Git.Git` and `winget install GoLang.Go`, open a new PowerShell window so
+it finds them, and run `git clone https://github.com/snowy-ghost/ovenlight $HOME\ovenlight`.
+Then open an administrator PowerShell (right-click it and choose Run as administrator)
+and run:
 
 ```powershell
 cd $HOME\ovenlight
@@ -229,7 +252,7 @@ ovenlight publish --port 4317 --name "Recipe Box" --run 'npm start'
 
 The connector runs the command in the app's folder, with `PORT` set to the app's port and
 `HOST` to `127.0.0.1`. That folder is the one `--dir` names. Without `--dir`, an app given
-a command when it has none (a new app, or one after `--run ""`) takes the current
+a command when it has none (a new app, or one after `--run=`) takes the current
 directory, and keeps it until `--dir` changes it. Keep projects out of `/tmp`, which a
 restart empties, and out of Desktop, Documents, Downloads, iCloud Drive, cloud storage
 folders and external drives: macOS asks on the Mac's screen before the connector may use
@@ -251,14 +274,18 @@ A variable exported only in `~/.zshrc` or `~/.bashrc` is missing too, and nothin
 about it: keep settings the app needs in a file in its folder, outside the public one.
 
 On Windows, the command runs with `cmd`, in the environment Windows keeps for your
-account, so anything only a PowerShell profile sets is missing.
+account, which the connector reads again when you publish or restart the app: a tool
+installed since is found after `ovenlight restart <slug>`, and anything only a PowerShell
+profile sets is missing. `$PORT` and `$HOST` still work, since the connector passes them
+on as `%PORT%` and `%HOST%`. A Python virtual environment's tools are in `.venv\Scripts`,
+written with backslashes, in place of `.venv/bin`.
 
 The connector starts the command again whenever it exits, waiting longer after each exit,
 up to a minute. Once a run has lasted a minute and served on the app's port, the wait
 starts over. The command's output goes to `<slug>.log` in `~/Library/Logs/ovenlight` on
 macOS, and in the `logs` folder of the state directory on Linux and Windows; `status`
-shows whether it runs. Publishing the app again keeps the command and folder; `--run ""`
-stops running it (in PowerShell, `--run=`), and so does `unpublish`.
+shows whether it runs. Publishing the app again keeps the command and folder; `--run=`
+stops running it, and so does `unpublish`.
 
 ### Unpublish
 
@@ -384,9 +411,12 @@ On Windows, run this in an administrator PowerShell, adding `--purge` to the sec
 to delete the data too:
 
 ```powershell
-cd $HOME\ovenlight
-powershell -ExecutionPolicy Bypass -File connector\uninstall.ps1
+cd $HOME\ovenlight-connector
+powershell -ExecutionPolicy Bypass -File .\uninstall.ps1
 ```
+
+If you installed from another folder, run the `uninstall.ps1` beside the `install.ps1` you
+ran (`connector\uninstall.ps1` in a clone).
 
 `uninstall.ps1` also takes the bin folder out of your `PATH`. On Linux, linger stays on,
 since other services of yours may need it: `loginctl disable-linger` turns it off.

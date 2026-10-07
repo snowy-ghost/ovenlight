@@ -98,16 +98,29 @@ curl -fsSL https://downloads.ovenlight.app/connector/latest/ovenlight-connector-
 ```
 
 On Linux, use `linux-amd64` or `linux-arm64` in place of `macos`; the arm64 build is
-untested on a real machine so far. On Windows,
-[build the connector from source](docs/connector.md#from-source) for now.
+untested on real hardware so far.
+
+On Windows, sign in as the account that will own the apps, which must be an
+administrator. Open PowerShell with Run as administrator, then run:
+
+```powershell
+mkdir $HOME\ovenlight-connector -Force | Out-Null; cd $HOME\ovenlight-connector
+curl.exe -fsSL https://downloads.ovenlight.app/connector/latest/ovenlight-connector-windows-amd64.zip -o connector.zip
+tar -xf connector.zip --strip-components 1
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+```
+
+On an Arm PC, use `windows-arm64` in place of `windows-amd64`. That build is untested on
+real hardware so far too.
 
 The script installs the `ovenlight` command and keeps the connector running. When
 `~/.local/bin` isn't on your `PATH`, as on a new Mac, the script prints a line for your
 shell profile: add it, open a new Terminal window and run
 `~/ovenlight-connector/install.sh` again, so the `ovenlight` commands below work as
-written. To update later, run the same commands again; `ovenlight doctor` tells you when a
-new release is out. [docs/connector.md](docs/connector.md#install) also says how to
-download in a browser or check a download's signature, and where everything goes.
+written. On Windows, `install.ps1` adds `ovenlight` to your `PATH` for PowerShell windows
+opened after it. To update later, run the same commands again; `ovenlight doctor` tells
+you when a new release is out. [docs/connector.md](docs/connector.md#install) also says
+how to download in a browser or check a download's signature, and where everything goes.
 
 ### 3. Publish an app
 
@@ -215,9 +228,9 @@ On Linux, the path is `~/.local/state/ovenlight/bin/ovenlight`. On Windows, in P
 claude mcp add --scope user ovenlight -- "$env:LOCALAPPDATA\ovenlight\bin\ovenlight.exe" mcp
 ```
 
-On a Mac or a Linux computer, you can install Ovenlight's Claude Code plugin instead (on
-Windows, it comes later). It adds the same MCP server and a skill that reads the guide
-whenever you ask to put an app on your phone. In Claude Code, run:
+You can install Ovenlight's Claude Code plugin instead. It adds the same MCP server and a
+skill that reads the guide whenever you ask to put an app on your phone. In Claude Code,
+run:
 
 ```
 /plugin marketplace add snowy-ghost/ovenlight
