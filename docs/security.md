@@ -305,8 +305,21 @@ the control socket. Only you can read them:
 On Windows the connector runs as a scheduled task, as you, with logon type S4U: it runs
 with nobody signed in, Windows stores no password for it, and it gets no network
 credentials of yours (it needs none). Registering such a task takes an administrator,
-so `install.ps1` must run elevated; the task's run level is Limited, so the connector
-itself runs without administrator rights.
+so `install.ps1` must run elevated.
+
+An S4U task gets the account's full administrator rights whatever its run level says, so
+the connector has them. Your apps don't. The connector starts them with a standard token,
+as a PowerShell window not run as administrator has: the administrator groups in it can
+only deny access, and it has medium integrity and no administrator privileges. If Windows
+won't make that token, the connector starts no app. This keeps an app from using
+administrator rights by mistake, not one written to take them: anything running as you
+can replace the connector's binary in `%LOCALAPPDATA%` without administrator rights, and
+the task's next start runs the replacement with them.
+
+On a work or school account (Microsoft Entra ID) or a domain account, the task runs in
+your session from sign-in instead, so the connector runs only while you're signed in. It
+has the same rights there, and your sign-in's network credentials, which your apps can
+use too.
 
 ## Logging
 

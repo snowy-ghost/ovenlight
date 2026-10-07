@@ -137,11 +137,12 @@ ovenlight publish --slug recipes --run 'PATH=/path/to/node/bin:$PATH npm start'
 A variable exported only in `~/.zshrc` or `~/.bashrc` is missing too, and nothing warns
 about it: keep settings the app needs in a file in its folder, outside the public one.
 
-On Windows, it runs the command with `cmd`, in the environment Windows keeps for the
-person's account, which it reads again when the app is published or restarted: a tool
-installed since, with winget for example, is found after `ovenlight restart <slug>`, and
-what only a PowerShell profile sets is missing. It passes `$PORT` and `$HOST` on as
-`%PORT%` and `%HOST%`, so the commands above work there with a few changes:
+On Windows, it runs the command with `cmd`, without administrator rights, in the
+environment Windows keeps for the person's account, which it reads again when the app is
+published or restarted: a tool installed since, with winget for example, is found after
+`ovenlight restart <slug>`, and what only a PowerShell profile sets is missing. It passes
+`$PORT` and `$HOST` on as `%PORT%` and `%HOST%`, so the commands above work there with a
+few changes:
 
 - A virtual environment's tools are in `.venv\Scripts`, written with backslashes, since
   cmd doesn't take `/` in a program's path.
@@ -169,7 +170,8 @@ pass instead.
 
 The app runs only while the computer is on and awake: a Mac logged in to its desktop, or
 a Linux computer while the person is logged in, unless linger is on (`install.sh` says
-when it isn't). On Windows, it runs from startup, even with nobody signed in.
+when it isn't). On Windows, it runs from startup, even with nobody signed in. On a work,
+school or domain account, it runs only while the person is signed in.
 
 ## Who is calling
 

@@ -1,12 +1,14 @@
 # Installs the Ovenlight connector and runs it in the background as the scheduled task
 # "ovenlight": from startup, as you, whether or not anyone is signed in. Its logon type is
-# S4U, so Windows stores no password. From a release, it installs the ovenlight.exe next
-# to this script; in the source tree, it builds one.
+# S4U, so Windows stores no password. A work, school or domain account gets a task that
+# runs while it's signed in instead (see $local). From a release, it installs the
+# ovenlight.exe next to this script; in the source tree, it builds one.
 # Safe to run again: it rebuilds, reinstalls and restarts. Node state and the app list
 # are kept.
 #
 # Run it from an administrator PowerShell, signed in as the account that will own the
-# apps: only an administrator can register a task that runs with nobody signed in.
+# apps: only an administrator can register a task that runs with nobody signed in or
+# with administrator rights.
 #   powershell -ExecutionPolicy Bypass -File .\install.ps1
 $ErrorActionPreference = 'Stop'
 
@@ -30,6 +32,10 @@ $me = [Security.Principal.WindowsIdentity]::GetCurrent()
 if (-not ([Security.Principal.WindowsPrincipal]$me).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
   Fail 'install.ps1 needs an administrator PowerShell: right-click PowerShell, choose Run as administrator, and run it again.'
 }
+# Only the computer's own accounts get the S4U task, which runs with nobody signed in:
+# Windows refuses it for a work or school account (Microsoft Entra ID), and a domain may
+# refuse it for its own.
+$local = $me.Name.StartsWith("$env:COMPUTERNAME\", [StringComparison]::OrdinalIgnoreCase)
 # One computer runs one connector: never take over another account's.
 $existing = Get-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue
 if ($existing -and (New-Object Security.Principal.NTAccount $existing.Principal.UserId).Translate([Security.Principal.SecurityIdentifier]) -ne $me.User) {
@@ -74,13 +80,27 @@ try {
   if (Test-Path $bin) { Move-Item $bin (Join-Path $binDir "ovenlight.old-$([DateTime]::Now.Ticks).exe") }
   Move-Item $new $bin -Force
 
-  $action = New-ScheduledTaskAction -Execute $bin -Argument ('run --log "{0}" --config "{1}" --state "{2}"' -f $log, $config, $support)
-  # At startup, and every minute from now on: Task Scheduler restarts a task only when it
-  # fails to start, not when it stops, so each minute it tries, and a try while it runs does
-  # nothing (IgnoreNew).
+  $run = 'run --log "{0}" --config "{1}" --state "{2}"' -f $log, $config, $support
+  # At startup or sign-in, and every minute from now on: Task Scheduler restarts a task
+  # only when it fails to start, not when it stops, so each minute it tries, and a try
+  # while it runs does nothing (IgnoreNew).
   $retry = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 1)
-  $triggers = @((New-ScheduledTaskTrigger -AtStartup), $retry)
-  $principal = New-ScheduledTaskPrincipal -UserId $me.Name -LogonType S4U -RunLevel Limited
+  # With the account's administrator rights: an S4U task gets them whatever its run level
+  # says, and the signed-in task asks for them, since without them the connector can't
+  # check an elevated client in another session, such as SSH (see checkPeer). The
+  # connector starts the apps with standard rights.
+  if ($local) {
+    $action = New-ScheduledTaskAction -Execute $bin -Argument $run
+    $triggers = @((New-ScheduledTaskTrigger -AtStartup), $retry)
+    $principal = New-ScheduledTaskPrincipal -UserId $me.Name -LogonType S4U -RunLevel Highest
+  } else {
+    # In the account's session, where a console program gets a window, so under a console
+    # host with none. The connector stops with that host: stopping a task ends only the
+    # process it started.
+    $action = New-ScheduledTaskAction -Execute (Join-Path $env:SystemRoot 'System32\conhost.exe') -Argument "--headless `"$bin`" $run"
+    $triggers = @((New-ScheduledTaskTrigger -AtLogOn -User $me.Name), $retry)
+    $principal = New-ScheduledTaskPrincipal -UserId $me.Name -LogonType Interactive -RunLevel Highest
+  }
   # Never stopped for running long or on battery, at normal priority (a task's default is
   # below normal).
   $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
@@ -102,6 +122,9 @@ if (-not (Running)) {
   Fail "the connector didn't start. Windows may have blocked it (Smart App Control refuses unsigned builds, such as one from source); otherwise the reason is at the end of $log"
 }
 Write-Output "installed the scheduled task $task (log: $log)"
+if (-not $local) {
+  Write-Output "it runs only while you're signed in, since yours is a work, school or domain account"
+}
 
 # Put ovenlight on your PATH. The registry keeps the PATH as written, %variables% and all;
 # Windows' own setter would expand them for good.

@@ -234,6 +234,7 @@ func cmdRun(args []string) error {
 		}
 	}
 	endAppsWithConnector()
+	stopWithConsoleHost()
 	err := runDaemon(p.config, p.state, dev)
 	if err != nil && *logFile != "" {
 		log.Printf("stopped: %v", err) // main prints it to standard error too

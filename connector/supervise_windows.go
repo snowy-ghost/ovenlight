@@ -1,9 +1,11 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -27,12 +29,82 @@ func shellCommand(run string) *exec.Cmd {
 		cmd = exec.Command("cmd.exe")
 	}
 	run = shVars.ReplaceAllString(run, "%${1}${2}%")
-	cmd.SysProcAttr = &syscall.SysProcAttr{CmdLine: `/d /s /c "` + run + `"`}
+	token, err := appToken()
+	cmd.SysProcAttr = &syscall.SysProcAttr{CmdLine: `/d /s /c "` + run + `"`, Token: syscall.Token(token)}
+	if err != nil {
+		cmd.Err = fmt.Errorf("Windows wouldn't give it a token without administrator rights: %w", err)
+	}
 	return cmd
 }
 
 // shVars matches $PORT, ${PORT}, $HOST and ${HOST}, the variables the connector sets.
 var shVars = regexp.MustCompile(`\$\{(PORT|HOST)\}|\$(PORT|HOST)\b`)
+
+// appToken is what the apps run with: a standard token when the connector is elevated, as
+// Task Scheduler runs it (see install.ps1), since an app has no use for administrator
+// rights. Otherwise it's 0, the connector's own. Should Windows refuse to make one, an
+// elevated connector starts no app at all.
+var appToken = sync.OnceValues(standardToken)
+
+var procCreateRestrictedToken = windows.NewLazySystemDLL("advapi32.dll").NewProc("CreateRestrictedToken")
+
+// standardToken is a copy of the connector's token, when it's elevated, in which the
+// administrator groups only deny, as UAC has them in a window not run as administrator.
+// It has medium integrity and no privilege but SeChangeNotifyPrivilege. Its owner and
+// default access list name the account instead of Administrators: without that, a
+// process given the token can't open itself and fails to start (0xc0000142).
+func standardToken() (windows.Token, error) {
+	if !windows.GetCurrentProcessToken().IsElevated() {
+		return 0, nil
+	}
+	// The copy's handle gets the same rights, which CreateProcessAsUser and setStandard need.
+	var own windows.Token
+	if err := windows.OpenProcessToken(windows.CurrentProcess(), windows.TOKEN_DUPLICATE|windows.TOKEN_QUERY|windows.TOKEN_ASSIGN_PRIMARY|windows.TOKEN_ADJUST_DEFAULT, &own); err != nil {
+		return 0, err
+	}
+	defer own.Close()
+	const disableMaxPrivilege, luaToken = 0x1, 0x4 // the LUA flag filters the groups as UAC does
+	var token windows.Token
+	if r, _, err := procCreateRestrictedToken.Call(uintptr(own), disableMaxPrivilege|luaToken, 0, 0, 0, 0, 0, 0, uintptr(unsafe.Pointer(&token))); r == 0 {
+		return 0, err
+	}
+	if err := setStandard(token, own); err != nil {
+		token.Close()
+		return 0, err
+	}
+	return token, nil
+}
+
+// setStandard gives the token the account as its owner, a default access list for the
+// account and SYSTEM, and medium integrity (the LUA flag leaves it at high).
+func setStandard(token, own windows.Token) error {
+	user, err := own.GetTokenUser()
+	if err != nil {
+		return err
+	}
+	owner := struct{ Owner *windows.SID }{user.User.Sid}
+	if err := windows.SetTokenInformation(token, windows.TokenOwner, (*byte)(unsafe.Pointer(&owner)), uint32(unsafe.Sizeof(owner))); err != nil {
+		return err
+	}
+	sd, err := windows.SecurityDescriptorFromString("D:(A;;GA;;;" + user.User.Sid.String() + ")(A;;GA;;;SY)")
+	if err != nil {
+		return err
+	}
+	acl, _, err := sd.DACL()
+	if err != nil {
+		return err
+	}
+	dacl := struct{ DefaultDacl *windows.ACL }{acl}
+	if err := windows.SetTokenInformation(token, windows.TokenDefaultDacl, (*byte)(unsafe.Pointer(&dacl)), uint32(unsafe.Sizeof(dacl))); err != nil {
+		return err
+	}
+	medium, err := windows.CreateWellKnownSid(windows.WinMediumLabelSid)
+	if err != nil {
+		return err
+	}
+	label := windows.Tokenmandatorylabel{Label: windows.SIDAndAttributes{Sid: medium, Attributes: windows.SE_GROUP_INTEGRITY}}
+	return windows.SetTokenInformation(token, windows.TokenIntegrityLevel, (*byte)(unsafe.Pointer(&label)), label.Size())
+}
 
 // loginEnv is env followed by the variables Windows keeps for the account, as they are
 // now, which win over env's since the last of a name wins: a tool installed after the
@@ -73,6 +145,31 @@ func endAppsWithConnector() {
 	if err != nil {
 		log.Printf("apps may keep running after the connector stops: %v", err)
 	}
+}
+
+// stopWithConsoleHost has the connector exit as soon as the console host that started it
+// ends, as abruptly as Task Scheduler ends a connector it runs directly. A work, school or
+// domain account's task runs it under a console host with no window (see install.ps1).
+func stopWithConsoleHost() {
+	host, err := windows.OpenProcess(windows.SYNCHRONIZE|windows.PROCESS_QUERY_LIMITED_INFORMATION, false, uint32(os.Getppid()))
+	if err != nil {
+		return
+	}
+	name := make([]uint16, windows.MAX_PATH)
+	n := uint32(len(name))
+	hostStart, _ := handleStart(host)
+	ownStart, err := processStart(os.Getpid())
+	// A parent that started after the connector is another process given the pid.
+	if windows.QueryFullProcessImageName(host, 0, &name[0], &n) != nil || err != nil || hostStart > ownStart ||
+		!strings.EqualFold(filepath.Base(windows.UTF16ToString(name[:n])), "conhost.exe") {
+		windows.CloseHandle(host)
+		return
+	}
+	go func() {
+		windows.WaitForSingleObject(host, windows.INFINITE)
+		log.Print("the console host ended: stopping")
+		os.Exit(1)
+	}()
 }
 
 // loginShell is cmd, which runs the apps' commands.

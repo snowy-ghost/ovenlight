@@ -27,6 +27,10 @@ func shellCommand(run string) *exec.Cmd {
 // (see runDaemon).
 func endAppsWithConnector() {}
 
+// stopWithConsoleHost does nothing here: only Windows runs the connector under a console
+// host (see supervise_windows.go).
+func stopWithConsoleHost() {}
+
 // loginEnvTimeout is how long the login shell has to print its environment; tests
 // shorten it.
 var loginEnvTimeout = 10 * time.Second

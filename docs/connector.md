@@ -19,10 +19,12 @@ The computer must stay on and awake while anyone uses your apps, and be one of t
   service, and with linger on, it runs from startup with nobody logged in. `install.sh`
   turns linger on, or prints the `sudo` command for it when it can't.
 - **A Windows 11 PC.** The connector is a scheduled task that runs as you from startup,
-  with nobody signed in. Installing it needs an administrator PowerShell, signed in as
-  the account that will own the apps: elevating with another account's password installs
-  the connector for that account. Windows puts an idle computer to sleep by default: in
-  Settings, under System > Power (Power & battery on a laptop), set sleep to Never.
+  with nobody signed in. On a work or school account (Microsoft Entra ID) or a domain
+  account, Windows runs it only while you're signed in. Installing it needs an
+  administrator PowerShell, signed in as the account that will own the apps: elevating
+  with another account's password installs the connector for that account. Windows puts
+  an idle computer to sleep by default: in Settings, under System > Power (Power &
+  battery on a laptop), set sleep to Never.
 
 You also need a Tailscale account with MagicDNS and HTTPS certificates turned on in the
 admin console, under [DNS](https://console.tailscale.com/admin/dns); `ovenlight doctor`
@@ -271,12 +273,13 @@ or through `uv run`.
 A variable exported only in `~/.zshrc` or `~/.bashrc` is missing too, and nothing warns
 about it: keep settings the app needs in a file in its folder, outside the public one.
 
-On Windows, the command runs with `cmd`, in the environment Windows keeps for your
-account, which the connector reads again when you publish or restart the app: a tool
-installed since is found after `ovenlight restart <slug>`, and anything only a PowerShell
-profile sets is missing. `$PORT` and `$HOST` still work, since the connector passes them
-on as `%PORT%` and `%HOST%`. A Python virtual environment's tools are in `.venv\Scripts`,
-written with backslashes, in place of `.venv/bin`.
+On Windows, the command runs with `cmd`, without the administrator rights the connector
+has, as in a PowerShell window not run as administrator. It gets the environment Windows
+keeps for your account, which the connector reads again when you publish or restart the
+app: a tool installed since is found after `ovenlight restart <slug>`, and anything only
+a PowerShell profile sets is missing. `$PORT` and `$HOST` still work, since the connector
+passes them on as `%PORT%` and `%HOST%`. A Python virtual environment's tools are in
+`.venv\Scripts`, written with backslashes, in place of `.venv/bin`.
 
 The connector starts the command again whenever it exits, waiting longer after each exit,
 up to a minute. Once a run has lasted a minute and served on the app's port, the wait
