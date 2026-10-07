@@ -118,7 +118,7 @@ func TestShareClaimRevoke(t *testing.T) {
 	if g := d.sh.guestFor("nSam", "coach"); g == nil || g.Name != "Sam" {
 		t.Fatalf("guest not recorded: %+v", g)
 	}
-	waitFor(t, func() bool { f.Mu.Lock(); defer f.Mu.Unlock(); return f.Keys[0].Deleted }, "the spent key to be deleted")
+	waitFor(t, func() bool { return keyDeleted(d, res.Invite.ID) }, "the spent key to be deleted")
 	// Kim can't reuse it.
 	if code, _ := claim(t, d, kimDev, link.Key); code != http.StatusForbidden {
 		t.Errorf("second device claimed the same invite: %d", code)
@@ -989,6 +989,15 @@ func mustRead(t *testing.T, path string) string {
 	return string(b)
 }
 
+// keyDeleted is whether the invite's key is recorded deleted. A claim deletes the key in
+// the background and saves that last, under the lock this takes, so a test that waits for
+// it ends with no write still going into its temporary folder.
+func keyDeleted(d *daemon, id string) bool {
+	d.sh.mu.Lock()
+	defer d.sh.mu.Unlock()
+	return d.sh.st.invite(id).KeyID == ""
+}
+
 func waitFor(t *testing.T, cond func() bool, what string) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -1114,7 +1123,7 @@ func TestUnpublishedWhileDownRetiresGuests(t *testing.T) {
 		defer f.Mu.Unlock()
 		return len(f.Devices) == 0
 	}, "Sam's device to be deleted")
-	waitFor(t, func() bool { d.sh.mu.Lock(); defer d.sh.mu.Unlock(); return d.sh.st.invite("i1").KeyID == "" }, "Kim's key to be deleted")
+	waitFor(t, func() bool { return keyDeleted(d, "i1") }, "Kim's key to be deleted")
 
 	addApp(d, App{Name: "Notes", Slug: "notes", Port: 4318, Shareable: true})
 	d.syncOnce()
@@ -1380,15 +1389,10 @@ func TestSyncListsUnclaimedGuestDevices(t *testing.T) {
 // retried by the sync; a key already gone counts as deleted.
 func TestSyncRetriesInviteKeyDeletion(t *testing.T) {
 	d, f := testDaemon(t)
-	keyDeleted := func(id string) bool {
-		d.sh.mu.Lock()
-		defer d.sh.mu.Unlock()
-		return d.sh.st.invite(id).KeyID == ""
-	}
 	res, _ := d.createInvite(guestRef{To: "Sam"}, "coach", "terminal", false)
 	link, _ := parseInviteLink(res.Link)
 	claim(t, d, samDev, link.Key)
-	waitFor(t, func() bool { return keyDeleted(res.Invite.ID) }, "the claimed invite's key to be recorded deleted")
+	waitFor(t, func() bool { return keyDeleted(d, res.Invite.ID) }, "the claimed invite's key to be recorded deleted")
 
 	kim, _ := d.createInvite(guestRef{To: "Kim"}, "coach", "terminal", false)
 	lee, _ := d.createInvite(guestRef{To: "Lee"}, "coach", "terminal", false)
@@ -1400,7 +1404,7 @@ func TestSyncRetriesInviteKeyDeletion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if keyDeleted(kim.Invite.ID) {
+	if keyDeleted(d, kim.Invite.ID) {
 		t.Fatal("recorded a key deletion that failed")
 	}
 	// Canceling (or revoking) says the key still works until the sync deletes it.
@@ -1422,8 +1426,8 @@ func TestSyncRetriesInviteKeyDeletion(t *testing.T) {
 	f.Mu.Lock()
 	kimGone := f.Keys[1].Deleted
 	f.Mu.Unlock()
-	if !kimGone || !keyDeleted(kim.Invite.ID) || !keyDeleted(lee.Invite.ID) {
-		t.Errorf("after sync: Kim's key deleted %v (recorded %v), Lee's recorded %v", kimGone, keyDeleted(kim.Invite.ID), keyDeleted(lee.Invite.ID))
+	if !kimGone || !keyDeleted(d, kim.Invite.ID) || !keyDeleted(d, lee.Invite.ID) {
+		t.Errorf("after sync: Kim's key deleted %v (recorded %v), Lee's recorded %v", kimGone, keyDeleted(d, kim.Invite.ID), keyDeleted(d, lee.Invite.ID))
 	}
 	if strings.Contains(mustRead(t, sharingPath(d.stateDir)), `"keyId"`) {
 		t.Error("the deletions weren't saved")
@@ -1566,13 +1570,14 @@ func TestANameNeverGrantsAnotherPersonsDevices(t *testing.T) {
 	if code, out := claimApp(t, d, both, link.Key, notes); code != http.StatusForbidden || !strings.Contains(out["error"], "another guest") {
 		t.Errorf("claim from another person's device: %d %v", code, out)
 	}
-	waitFor(t, func() bool { f.Mu.Lock(); defer f.Mu.Unlock(); return f.Keys[0].Deleted }, "Sam's spent key to be deleted")
+	waitFor(t, func() bool { return keyDeleted(d, res.Invite.ID) }, "Sam's spent key to be deleted")
 }
 
 // A person's second device joins as the same person: apps see one user.
 func TestASecondDeviceIsTheSameUser(t *testing.T) {
-	d, f := testDaemon(t)
+	d, _ := testDaemon(t)
 	res, _ := d.createInvite(guestRef{To: "Sam"}, "coach", "terminal", false)
+	phoneInvite := res.Invite.ID
 	link, _ := parseInviteLink(res.Link)
 	_, phone := claim(t, d, samDev, link.Key)
 	res, err := d.createInvite(guestRef{Person: res.Invite.Person}, "coach", "ovenlight", false)
@@ -1584,7 +1589,7 @@ func TestASecondDeviceIsTheSameUser(t *testing.T) {
 	if _, out := claim(t, d, pad, link.Key); out["userId"] != phone["userId"] || out["userId"] == "" {
 		t.Errorf("iPad user %q, phone user %q", out["userId"], phone["userId"])
 	}
-	waitFor(t, func() bool { f.Mu.Lock(); defer f.Mu.Unlock(); return f.Keys[0].Deleted && f.Keys[1].Deleted }, "the spent keys to be deleted")
+	waitFor(t, func() bool { return keyDeleted(d, phoneInvite) && keyDeleted(d, res.Invite.ID) }, "the spent keys to be deleted")
 	// Removing Sam is final: an open invite of Sam's for the app goes too.
 	open, _ := d.createInvite(guestRef{Person: res.Invite.Person}, "coach", "ovenlight", false)
 	if rr, err := d.revoke(res.Invite.Person, "coach", true); err != nil || len(rr.Removed) != 2 {
