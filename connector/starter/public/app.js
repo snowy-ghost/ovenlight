@@ -70,11 +70,14 @@ async function listScreen() {
       ),
     );
     if (!items.length) list.append(h("li", { class: "row empty" }, "Nothing here yet."));
+    // Filtered like render(): a condition that's false must not turn into the text "false".
     footer.replaceChildren(
-      h("a", { href: "/people", class: "row link" }, "People"),
-      me.owner
-        ? items.length > 0 && h("button", { class: "button danger", onclick: clear }, "Clear the List")
-        : h("p", { class: "note" }, "Only the owner can clear the list."),
+      ...[
+        h("a", { href: "/people", class: "row link" }, "People"),
+        me.owner
+          ? items.length > 0 && h("button", { class: "button danger", onclick: clear }, "Clear the List")
+          : h("p", { class: "note" }, "Only the owner can clear the list."),
+      ].filter(Boolean),
     );
   }
 
