@@ -133,6 +133,10 @@ private struct AppPage: View {
         }
         .mailComposer($mail)
         .leaveConfirmation($leaving, before: onClose)
+        .onAppear {
+            // Reopening an app that couldn't reach its computer, or couldn't load, tries again.
+            if !coordinator.hasLoadedOnce, coordinator.gate == .unreachable || coordinator.loadError != nil { coordinator.reload() }
+        }
         .task {
             // Whether Share applies comes from the owner's connector.
             if !app.isShared, app.discovered { await sharing.refreshIfStale(apps: registry.apps) }
