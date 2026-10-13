@@ -419,6 +419,8 @@ struct AddAppView: View {
             return
         }
         registry.add(url: url)
+        // An app discovery already found (one removed, then added back) joins it at once.
+        Task { await registry.mergeDiscovered(node.discovered) }
         dismiss()
     }
 }

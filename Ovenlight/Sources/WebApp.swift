@@ -85,6 +85,8 @@ enum DiscoveryMerge {
                 apps[index].manifestName = item.manifest.name
                 if let theme = item.manifest.themeColor { apps[index].themeColorHex = theme }
                 if let slug = item.manifest.slug { apps[index].slug = slug }
+                // Added by its address, it's still a connector's app: Send Feedback and Share.
+                apps[index].discovered = true
             } else {
                 var app = WebApp(name: item.manifest.name, startURL: item.startURL,
                                  themeColorHex: item.manifest.themeColor, discovered: true)

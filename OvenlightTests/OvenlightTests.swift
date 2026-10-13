@@ -600,6 +600,7 @@ final class DiscoveryTests: XCTestCase {
         XCTAssertEqual(merged.map(\.name), ["My coach", "Notes"], "one tile per host, user's name kept, dismissed skipped")
         XCTAssertEqual(merged[0].id, manual.id)
         XCTAssertEqual(merged[0].themeColorHex, "#0e6b66")
+        XCTAssertTrue(merged[0].discovered, "a tile added by its address is a connector's app once found")
         XCTAssertTrue(merged[1].discovered)
 
         // A name that came from the manifest follows the manifest.
