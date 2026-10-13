@@ -29,7 +29,8 @@ struct LauncherView: View {
             }
             // Stops growing where the system's bars do.
             .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
-            TailnetBanner(state: node.ownerEnabled ? node.state : .idle) { router.present(.login($0)) }
+            TailnetBanner(state: node.ownerEnabled ? node.state : .idle, connect: { router.present(.login($0)) },
+                          approve: { router.present(.approve) })
             PendingInvitesBanner { router.present(.join(JoinRequest(invite: .success($0)))) }
                 .padding(.horizontal, 26)
             if registry.apps.isEmpty && !node.ownerEnabled && node.memberships.memberships.isEmpty {
@@ -177,6 +178,7 @@ struct LauncherView: View {
 struct TailnetBanner: View {
     let state: NodeState
     let connect: (URL) -> Void
+    let approve: () -> Void
 
     var body: some View {
         switch state {
@@ -203,7 +205,7 @@ struct TailnetBanner: View {
                 }
             }
         case .awaitingApproval:
-            card { OwnerApprovalPrompt() }
+            card { OwnerApprovalPrompt(approve: approve) }
         default:
             EmptyView()
         }
@@ -226,8 +228,8 @@ struct OwnerApprovalPrompt: View {
     /// Tailscale's device list, where a new device waits for approval.
     static let machinesPage = URL(string: "https://console.tailscale.com/admin/machines")!
 
+    let approve: () -> Void
     @EnvironmentObject private var node: NodeManager
-    @Environment(\.openURL) private var openURL
 
     var body: some View {
         let name = Text(node.deviceName).bold()
@@ -241,7 +243,7 @@ struct OwnerApprovalPrompt: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            Button { openURL(Self.machinesPage) } label: {
+            Button(action: approve) {
                 Text("Open Machines Page")
                     .font(.body.weight(.semibold))
                     .frame(maxWidth: .infinity)
@@ -253,7 +255,9 @@ struct OwnerApprovalPrompt: View {
     }
 }
 
-/// Tailscale's sign-in page, inside Ovenlight. RootView dismisses it once the node connects.
+/// Tailscale's sign-in page, or its Machines page for approving this iPhone, inside Ovenlight
+/// rather than Safari, whose cookies are separate, so approving can use the sign-in. RootView
+/// dismisses the sign-in page once the node connects. The Machines page stays until Done.
 struct SafariView: UIViewControllerRepresentable {
     let url: URL
 
@@ -343,7 +347,6 @@ struct AddAppView: View {
     @EnvironmentObject private var node: NodeManager
     @EnvironmentObject private var router: Router
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.openURL) private var openURL
     @State private var text = ""
     /// Add was tapped with an address that isn't on the owner's own computers.
     @State private var refused = false
@@ -390,7 +393,7 @@ struct AddAppView: View {
                         } else if case .needsLogin(let url) = node.state {
                             Button("Sign In to Your Computers") { router.present(.login(url)) }
                         } else if node.state == .awaitingApproval {
-                            Button("Approve This iPhone") { openURL(OwnerApprovalPrompt.machinesPage) }
+                            Button("Approve This iPhone") { router.present(.approve) }
                         }
                     }
                     .ovenlightRows()
@@ -432,7 +435,6 @@ struct SettingsView: View {
     @EnvironmentObject private var router: Router
     @EnvironmentObject private var lock: LockManager
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.openURL) private var openURL
     @AppStorage(LockManager.lockAfterKey) private var lockAfterSeconds = LockManager.defaultLockAfter
     @State private var confirmingSignOut = false
     @State private var mail: MailDraft?
@@ -474,7 +476,7 @@ struct SettingsView: View {
                                 }
                             }
                             if node.state == .awaitingApproval {
-                                Button("Approve This iPhone") { openURL(OwnerApprovalPrompt.machinesPage) }
+                                Button("Approve This iPhone") { router.present(.approve) }
                             }
                             if node.status?.account != nil {
                                 Button("Sign Out", role: .destructive) { confirmingSignOut = true }

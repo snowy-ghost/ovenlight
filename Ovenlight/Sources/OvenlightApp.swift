@@ -156,6 +156,8 @@ enum RootSheet: Identifiable {
     case join(JoinRequest)
     /// Tailscale's sign-in page for the owner's node.
     case login(URL)
+    /// Tailscale's Machines page, where the owner approves this iPhone.
+    case approve
     /// The owner's People & Sharing.
     case sharing
     case addApp
@@ -167,6 +169,7 @@ enum RootSheet: Identifiable {
         switch self {
         case .join(let request): "join \(request.id)"
         case .login(let url): "login \(url)"
+        case .approve: "approve"
         case .sharing: "sharing"
         case .addApp: "add"
         case .settings: "settings"
@@ -249,6 +252,13 @@ struct RootView: View {
         }
         .onChange(of: node.state) { _, state in
             if case .needsLogin = state { return }
+            if state == .awaitingApproval {
+                // Signed in, and the tailnet approves each new device: go straight on to the
+                // Machines page, in Ovenlight's browser where the sign-in happened, not Safari.
+                // It stays until Done, since an app may be waiting for approval there too.
+                if case .login = router.sheet { router.sheet = .approve }
+                return
+            }
             if case .login = router.sheet { router.sheet = nil }
         }
         // Opening an app, from anywhere, clears its new dot.
@@ -288,6 +298,8 @@ struct RootView: View {
             JoinFlowView(request: request)
         case .login(let url):
             SafariView(url: url).ignoresSafeArea()
+        case .approve:
+            SafariView(url: OwnerApprovalPrompt.machinesPage).ignoresSafeArea()
         case .sharing:
             NavigationStack {
                 SharingList()

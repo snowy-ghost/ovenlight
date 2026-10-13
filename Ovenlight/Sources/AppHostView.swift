@@ -70,7 +70,13 @@ private struct AppPage: View {
             if !coordinator.hasLoadedOnce && coordinator.loadError == nil {
                 if let appNode = coordinator.node, let action = NodeActionOverlay.action(for: appNode.state, app: app, ownerEnabled: node.ownerEnabled) {
                     NodeActionOverlay(appName: app.name, action: action) {
-                        if case .needsLogin(let url) = node.state { sheet = .login(url) } else if !node.ownerEnabled { node.enableOwner() }
+                        if case .needsLogin(let url) = node.state {
+                            sheet = .login(url)
+                        } else if node.state == .awaitingApproval {
+                            sheet = .approve
+                        } else if !node.ownerEnabled {
+                            node.enableOwner()
+                        }
                     } retry: {
                         Task { await appNode.restart() }
                     }
@@ -120,12 +126,18 @@ private struct AppPage: View {
         .sheet(item: $sheet) { sheet in
             switch sheet {
             case .login(let url): SafariView(url: url).ignoresSafeArea()
+            case .approve: SafariView(url: OwnerApprovalPrompt.machinesPage).ignoresSafeArea()
             case .invite(let machine, let app): InviteComposer(machine: machine, app: app)
             default: EmptyView()
             }
         }
         .onChange(of: node.state) { _, state in
             if case .needsLogin = state { return }
+            if state == .awaitingApproval {
+                // As at the root: from sign-in straight on to approving this iPhone.
+                if case .login = sheet { sheet = .approve }
+                return
+            }
             if case .login = sheet { sheet = nil }
         }
         .sheet(item: $feedback) { capture in
@@ -243,7 +255,7 @@ struct NodeActionOverlay: View {
                     .multilineTextAlignment(.center)
                 Button("Sign In", action: connect).buttonStyle(.borderedProminent)
             case .ownerApproval:
-                OwnerApprovalPrompt()
+                OwnerApprovalPrompt(approve: connect)
             case .failed(let message):
                 symbol("wifi.exclamationmark")
                 Text(message)
