@@ -56,9 +56,10 @@ struct LauncherView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { Task { await refreshSharing() } }
         }
-        // The ask at launch usually comes before the connection is up, so ask again once it is.
-        .onChange(of: node.ownerIsConnected) { _, connected in
-            if connected { Task { await refreshSharing() } }
+        // Which apps can be shared follows the owner's computers: ask again once the connection
+        // is up (the ask at launch usually comes first) and whenever a computer comes or goes.
+        .onChange(of: node.ownerIsConnected ? node.ownersOnlineHosts : nil) { _, hosts in
+            if hosts != nil { Task { await refreshSharing(force: true) } }
         }
         .task {
             await registry.refreshAllMissingIcons()
@@ -155,13 +156,14 @@ struct LauncherView: View {
         node.memberships.memberships.first { $0.id == app.membershipID }
     }
 
-    /// The owner's guests and shareable apps, for the menus.
-    private func refreshSharing() async {
+    /// The owner's guests and shareable apps, for the menus. `force` asks even when the last
+    /// answer is recent, since a computer came or went since.
+    private func refreshSharing(force: Bool = false) async {
         #if DEBUG
         if SharingFixture.isOn { return sharing.useFixture(SharingFixture.machines(for: registry.apps)) }
         #endif
         guard node.ownerIsConnected, registry.apps.contains(where: { !$0.isShared && $0.discovered }) else { return }
-        await sharing.refreshIfStale(apps: registry.apps)
+        if force { await sharing.refresh(apps: registry.apps) } else { await sharing.refreshIfStale(apps: registry.apps) }
     }
 
     private func isPresent(_ item: Binding<WebApp?>) -> Binding<Bool> {
