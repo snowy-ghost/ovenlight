@@ -234,7 +234,7 @@ final class MembershipNode: ObservableObject {
     private var lifecycle: Task<Void, Never>?
     private var isCheckingHealth = false
     private var probedHosts: [String]?
-    private var lastGuestProbe: Date?
+    private var lastProbe: Date?
     private var loginLostPolls = 0
     private var absence = PeerAbsence()
     /// Bumped on every start and stop so work from an older node can't touch the new one.
@@ -457,12 +457,11 @@ final class MembershipNode: ObservableObject {
                     continue
                 }
                 if state == .ready {
-                    if isOwner {
-                        // A machine came online or went away: look again, for new apps and tiles.
-                        if Discovery.candidateHosts(in: status) != probedHosts { await rediscover() }
-                    } else if let last = lastGuestProbe, Date.now.timeIntervalSince(last) > 60 {
-                        await rediscover()
-                    }
+                    // Look again when a machine comes online or goes away (the owner's new apps
+                    // and tiles), and once a minute regardless: a host that missed one look, as a
+                    // newly published app's first answer can, would otherwise wait for the next change.
+                    let hostsChanged = isOwner && Discovery.candidateHosts(in: status) != probedHosts
+                    if hostsChanged || lastProbe.map({ Date.now.timeIntervalSince($0) > 60 }) == true { await rediscover() }
                 }
             }
             let interval: Double = state == .ready ? 10 : 1
@@ -505,8 +504,8 @@ final class MembershipNode: ObservableObject {
     }
 
     private func probe(_ hosts: [String]) async -> Discovery.Outcome {
+        lastProbe = .now
         if isOwner { return await Discovery.probe(hosts: hosts, session: session()) }
-        lastGuestProbe = .now
         let outcome = await GuestProbe.probe(hosts: hosts, session: session())
         if !outcome.notInvited.isEmpty { onNotInvited(outcome.notInvited) }
         return outcome.base
