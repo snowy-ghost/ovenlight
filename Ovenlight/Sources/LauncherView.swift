@@ -190,7 +190,7 @@ struct TailnetBanner: View {
                         Text("Connect Your Computers")
                             .font(.headline)
                     }
-                    Text("Ovenlight connects privately to your own computers with your Tailscale account, without a VPN.")
+                    Text("Ovenlight connects privately to your own computers with your Tailscale account, without a VPN. If Tailscale says this iPhone needs approval, open the admin console and tap Approve.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -239,7 +239,7 @@ struct OwnerApprovalPrompt: View {
                 Text("Approve This iPhone")
                     .font(.headline)
             }
-            Text("Your Tailscale network asks you to approve each new device once. On the Machines page, this iPhone is listed as \(name). Ovenlight connects as soon as you approve it.")
+            Text("Your Tailscale network asks you to approve each new device once. On the Machines page, find \(name), open its ••• menu and choose Approve. Ovenlight connects as soon as you do.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
