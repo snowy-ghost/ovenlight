@@ -5,78 +5,141 @@
 <h1 align="center">Ovenlight</h1>
 
 <p align="center">
-  The web apps you run on your own computer, on your iPhone behind Face&nbsp;ID.<br>
-  Share one with a friend without sharing the computer it runs on.
+  <strong>Your own AI-built web apps, on your iPhone and your friends'.</strong><br>
+  They run on your own computer, stay off the internet and open behind Face&nbsp;ID.
 </p>
 
 <p align="center">
-  <a href="https://apps.apple.com/app/id6817561066">App Store</a> ·
-  <a href="#get-started">Get started</a> ·
-  <a href="#build-apps-for-ovenlight">Build an app</a> ·
+  <a href="https://apps.apple.com/app/id6817561066"><picture>
+    <source media="(prefers-color-scheme: dark)" srcset="site/images/app-store-badge-white.svg">
+    <img src="site/images/app-store-badge-black.svg" width="150" height="50" alt="Download on the App Store">
+  </picture></a><br>
+  <sub>Got an invite? Install Ovenlight, then open your link again. Here's
+  <a href="https://ovenlight.app/privacy#inviter">what the person who invited you sees</a>.</sub>
+</p>
+
+<p align="center">
+  <a href="#get-started">Get&nbsp;started</a> ·
+  <a href="#with-a-coding-agent">With&nbsp;your&nbsp;coding&nbsp;agent</a> ·
+  <a href="#share-an-app">Share&nbsp;an&nbsp;app</a> ·
+  <a href="#security">Security</a> ·
   <a href="https://ovenlight.app">ovenlight.app</a>
 </p>
 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="site/images/launcher-dark-480.jpg">
-    <img src="site/images/launcher-480.jpg" width="30%" alt="The Ovenlight launcher on an iPhone: apps such as Recipe Box, Garden Log, Trip Planner and Book Club, laid out like a Home Screen in warm light falling from the Dynamic Island.">
+    <img src="site/images/launcher-480.jpg" width="30%" alt="The Ovenlight launcher on an iPhone: apps such as Recipe Box, Trip Planner, Book Club and House Guide, laid out like a Home Screen in warm light falling from the Dynamic Island.">
+  </picture>&nbsp;
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="site/images/join-house-guide-dark-480.jpg">
+    <img src="site/images/join-house-guide-480.jpg" width="30%" alt="An invite in Ovenlight asking: Join Dimitri's House Guide? It says Dimitri invited you as Sam, that House Guide runs on Dimitri's computer and that you don't need an account, and offers Join and Not Now buttons.">
   </picture>&nbsp;
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="site/images/house-guide-dark-480.jpg">
-    <img src="site/images/house-guide-480.jpg" width="30%" alt="House Guide, a guide to a home for a house sitter, open full screen in Ovenlight: a greeting, a search field, a drawing of the house at dusk, a welcome note, what's next for Biscuit the dog and the Wi-Fi password.">
-  </picture>&nbsp;
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="site/images/join-dark-480.jpg">
-    <img src="site/images/join-480.jpg" width="30%" alt="An invite in Ovenlight asking: Join Riley's Movie Night? It says the app runs on Riley's computer, and offers Join and Not Now buttons.">
+    <img src="site/images/house-guide-480.jpg" width="30%" alt="House Guide on Sam's iPhone, open full screen in Ovenlight: a greeting to Sam, a search field, a drawing of the house at dusk, a welcome note from Dimitri, what's next for Biscuit the dog and the Wi-Fi password.">
   </picture>
 </p>
 
-Ovenlight is an iPhone launcher for the small web apps you run on your own computers: the
-recipe box, chore chart or trip planner you built for your family, maybe with a coding
-agent over a weekend. It reaches them over your own Tailscale network (your tailnet)
-through a Tailscale node built into the iPhone app, so the phone needs no VPN and no
-Tailscale app. One Face ID unlock opens all of them, and each one runs full screen from
-its own icon, with its storage kept apart from the others. A coding agent can also publish
-and check these apps and read the feedback people send from their iPhones, through
-Ovenlight's MCP server or its Claude Code plugin ([With a coding agent](#with-a-coding-agent)).
+You built a small web app for your family, your garden or your book club, maybe in an
+afternoon with a coding agent, and it runs on your own computer. The hard part now is
+getting it to the people it's for. Ovenlight puts it on your iPhone and theirs, and it
+opens wherever the phone is online, at home or away. It takes a computer that stays on,
+with Ovenlight's connector installed, and a Tailscale account of your own (free for
+personal use). The people you share with need only Ovenlight.
 
-To share an app, send a friend an invite link. They install Ovenlight, open the link and
-tap Join, with no account to create.
+Once your computer is [set up](#get-started) and your agent
+[connected](#with-a-coding-agent), ask it to put the app on your phone:
 
-Ovenlight is free, and so is the connector that runs on your computer. It's made by
-Dimitri Cole at [Snowy Ghost](https://snowyghost.com).
+> **You:** Make a chore chart for the kids and put it on my phone.
+>
+> *Your agent reads Ovenlight's building guide, builds Chore Chart on your computer,
+> publishes it and checks it.*
+>
+> **Your agent:** Chore Chart is ready. It will show up in Ovenlight on your phone once you
+> sign in with your Tailscale account at this link: `https://login.tailscale.com/a/…`
+
+## What you get
+
+- **Friends join with a link and a tap.** A friend installs Ovenlight, opens your invite
+  and taps Join, with no account and nothing to sign in to. The app arrives marked with
+  your name.
+- **Share one app, not your computer.** A friend's iPhone reaches only the apps you shared
+  with it, and none of your other devices. When you stop sharing, their access ends at
+  once, and the app and its data leave their iPhone the next time Ovenlight connects.
+- **Nothing to deploy, no login to build.** The app stays on your computer, off the
+  internet. Ovenlight's connector, a program that runs beside it, gives it an HTTPS
+  address in your Tailscale network and tells it who is calling. Any web app that serves
+  plain HTTP on `127.0.0.1` can sit behind it, AI-built or not.
+- **Your coding agent does the publishing.** Through the connector's MCP server, your agent
+  can publish the app, check it, read its logs and read the notes and screenshots people
+  send from inside it. Inviting people is up to you: Ovenlight gives the agent no tool for
+  it.
+- **It opens like an app.** Full screen, from its own icon, in a launcher that works like
+  your Home Screen, with its storage kept apart from the others. One Face ID unlock opens
+  them all.
+- **Private, free and open source.** There's no Ovenlight account, no analytics and no
+  ads. Phones reach your computer over a Tailscale connection built into Ovenlight, never
+  through servers of ours. No phone needs a VPN or the Tailscale app. The iPhone app and
+  the connector are free, under the Apache License 2.0. It's made by Dimitri Cole at
+  [Snowy Ghost](https://snowyghost.com).
+
+## Why not a VPN, a tunnel or the cloud?
+
+- **A VPN and a bookmark** work for you. A friend would need a VPN app and an account, and
+  unless you write access rules for them, they'd reach your computer, not just one app.
+  With Ovenlight they get one app with its own icon and nothing to set up, and Ovenlight
+  drafts the rules for you to approve.
+- **A tunnel or an open port** works in any browser, on any phone, but puts the app on the
+  internet, where the app or the tunnel has to keep strangers out. Ovenlight keeps the app
+  off the internet and turns away anyone you didn't invite.
+- **A cloud host** keeps the app up while your computer is off, but puts the app on the
+  internet and its data off your computer. Ovenlight keeps both on your computer, which has
+  to be on and awake while people use the app.
 
 ## How it works
 
-There are two parts:
+```mermaid
+%%{init: {"flowchart": {"wrappingWidth": 400}}}%%
+flowchart LR
+  you["Your iPhone"] --> rb & cc
+  sam["Sam's iPhone"] -- "invited to Recipe Box" --> rb
+  subgraph computer["Your computer, running the connector"]
+    rb["Recipe Box<br>recipe-box.your-tailnet.ts.net"]
+    cc["Chore Chart<br>chore-chart.your-tailnet.ts.net"]
+  end
+```
 
 - **The connector** (the `ovenlight` command, in [`connector/`](connector)) runs on the
-  computer with your apps. It makes each app a device in your tailnet, with an HTTPS
-  address, and passes each request on to the app at `127.0.0.1` with headers that say who
-  is calling. It also manages your guests.
-- **The iPhone app** (in [`Ovenlight/`](Ovenlight)) joins your tailnet, finds the apps you
-  publish and opens them.
+  computer with your apps. Built on Tailscale's tsnet, it makes each app its own device in
+  your Tailscale network (your tailnet), with an HTTPS address, and passes each request on
+  to the app at `127.0.0.1` with headers that say who is calling. It also manages your
+  guests and serves the MCP tools your coding agent uses.
+- **The iPhone app** (in [`Ovenlight/`](Ovenlight)) carries its own Tailscale node, built
+  with TailscaleKit. It finds the apps you publish and opens them.
 
-When you share an app, your friend's iPhone joins your tailnet as a guest device that can
-reach only the apps you invited them to, and none of your other devices. Phones reach your
-computer over your tailnet, never through servers of ours. Ovenlight has no account of its
-own, no analytics and no ads.
+When you share an app, your friend's iPhone joins your tailnet as a guest device.
+[Security](#security) says what it can reach and how that's enforced.
 
 ## What you need
 
-- An iPhone with iOS 18.1 or later, and Ovenlight from the
-  [App Store](https://apps.apple.com/app/id6817561066). To build the app yourself, see
-  [docs/development.md](docs/development.md#the-iphone-app).
-- A computer that stays on and awake while anyone uses your apps: a Mac with macOS 13 or
-  later, logged in to its desktop; a Linux computer with systemd, such as Ubuntu; or a
+- **A computer that stays on and awake** while anyone uses your apps: a Mac with macOS 13
+  or later, logged in to its desktop; a Linux computer with systemd, such as Ubuntu; or a
   Windows 11 PC.
-- A Tailscale account. Its free Personal plan is for non-commercial use, so a business
-  needs one of [Tailscale's paid plans](https://tailscale.com/pricing). The computer
-  doesn't need the Tailscale app. Headscale is supported for
-  [development](docs/development.md#local-headscale) only.
+- **An iPhone with iOS 18.1 or later** and Ovenlight from the
+  [App Store](https://apps.apple.com/app/id6817561066), for you and for everyone you share
+  with.
+- **A Tailscale account**, for you only. The people you share with need none, and no phone
+  or computer needs the Tailscale app. Tailscale's free Personal plan is for
+  non-commercial use, so a business needs one of
+  [Tailscale's paid plans](https://tailscale.com/pricing). Each shareable app and each
+  guest's phone is a tagged device, which Tailscale's plans count. The free Personal plan
+  includes a set number and charges for more ([details](docs/connector.md#share-an-app)).
 
 [docs/connector.md](docs/connector.md#what-the-computer-needs) says how the connector runs
-on each system, including on a Mac without a display.
+on each system, including on a Mac without a display. To build the iPhone app yourself, see
+[docs/development.md](docs/development.md#the-iphone-app). Headscale is supported for
+[development](docs/development.md#local-headscale) only.
 
 ## Get started
 
@@ -111,58 +174,110 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 
 On an Arm PC, use `windows-arm64` in place of `windows-amd64`.
 
-The script installs the `ovenlight` command and keeps the connector running. When
-`~/.local/bin` isn't on your `PATH`, as on a new Mac, the script prints a line for your
-shell profile: add it, open a new Terminal window and run
-`~/ovenlight-connector/install.sh` again, so the `ovenlight` commands below work as
-written. On Windows, `install.ps1` adds `ovenlight` to your `PATH` for PowerShell windows
-opened after it. To update later, run the same commands again; `ovenlight doctor` tells
-you when a new release is out. [docs/connector.md](docs/connector.md#install) also says
-how to download in a browser or check a download's signature, and where everything goes.
+The script installs the `ovenlight` command and keeps the connector running. If it prints
+a line for your shell profile, as on a new Mac, add that line to the file it names. On a
+Mac, this does it:
+
+```sh
+echo >> ~/.zshrc
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
+```
+
+Then open a new Terminal window and run `~/ovenlight-connector/install.sh` again, so the
+commands below work as written. On Windows, `ovenlight` works in PowerShell windows opened
+after the install. To update, run the install commands again when `ovenlight doctor` says
+a new release is out. [docs/connector.md](docs/connector.md#install) also covers
+downloading in a browser and checking a download's signature.
 
 ### 3. Publish an app
 
-Run your app on the same computer, on a port nothing else uses. It must serve plain HTTP
-on `127.0.0.1`, and serve static files only from a public folder, never from the project's
-folder with its data and code. Then publish it with its port:
+Public certificate logs list each app's address with your tailnet's name in it, so pick
+app names you don't mind people seeing.
+
+With a coding agent, [connect it](#with-a-coding-agent) and ask it to put your app on your
+phone. It publishes and checks the app, and asks you for the steps only you can do, such as
+opening the login link.
+
+To publish it yourself, run your app on the same computer, on a port nothing else uses. It
+must serve plain HTTP on `127.0.0.1`, and serve static files only from a public folder,
+never from the project's folder with its data and code. Then publish it with its port:
 
 ```sh
 ovenlight publish --port 4317 --name "Recipe Box"
 ```
 
-No app yet? `ovenlight new "Family List" --dir ~/src` writes a starter app and says how to
-run and publish it.
-
 Recipe Box becomes its own device in your tailnet, at
-`https://recipe-box.<your-tailnet>.ts.net/`. Public certificate logs list that address, so
-pick names you don't mind people seeing. For each new app, `publish` prints a login link:
-open it and sign in with your Tailscale account. Once you store an API access token (see
-[Share an app](#share-an-app)), later apps sign in without a login link.
-`ovenlight doctor` checks the whole setup and gives a fix for anything wrong, and
-`ovenlight help` lists every command.
+`https://recipe-box.<your-tailnet>.ts.net/`. For each new app, `publish` prints a login
+link: open it and sign in with your Tailscale account. Once you store an API access token
+(see [Share an app](#share-an-app)), later apps sign in without a login link. `ovenlight
+doctor` checks the setup and gives a fix for each problem it finds, and `ovenlight help`
+lists every command.
 
-To have the connector start your app and keep it running instead, stop your copy (Ctrl-C
-in its terminal, never `pkill` by name). Then, in the app's folder, give `publish` the
-command that starts it:
+To have the connector start the app and keep it running, stop your own copy (Ctrl-C in its
+terminal, never `pkill` by name). Then, in the app's folder, give `publish` the command
+that starts it:
 
 ```sh
 ovenlight publish --port 4317 --name "Recipe Box" --run 'npm start'
 ```
 
+No app yet? `ovenlight new "Family List" --dir ~/src` writes a starter app (a shared list
+everyone can add to) and says how to run and publish it.
+
 ### 4. Open it on your iPhone
 
-In Ovenlight, choose Use My Own Computers, tap Connect, and sign in with the same
-Tailscale account. If you've already joined someone else's app, you'll find Use My Own
-Computers in Settings, under the ••• button. If your tailnet has device approval on,
-approve the iPhone and the app (listed as `recipe-box`) in the
+In Ovenlight, choose Use My Own Computers, tap Connect and sign in with the same Tailscale
+account. If you've already joined someone else's app, Use My Own Computers is in Settings,
+under the ••• button. If your tailnet has device approval on, approve the iPhone and the
+app (listed as `recipe-box`) in the
 [admin console](https://console.tailscale.com/admin/machines). Your apps then appear on
-their own. If one doesn't, `ovenlight doctor` says why.
+their own. If one doesn't, run `ovenlight doctor` on the computer.
+
+## With a coding agent
+
+The connector is also an MCP server, so Claude Code, or another agent that supports local
+MCP servers, can follow Ovenlight's building guide, publish your app, check it, restart
+it, read its logs and read the feedback people send. Through the MCP tools, what guests
+write and what apps print come marked as untrusted text. Once it's connected, ask it to
+put an app on your phone.
+
+In Claude Code, install Ovenlight's plugin. It adds the MCP server and a skill that reads
+the guide whenever you ask to put an app on your phone:
+
+```
+/plugin marketplace add snowy-ghost/ovenlight
+```
+
+then:
+
+```
+/plugin install ovenlight@snowy-ghost
+```
+
+To add only the MCP server to Claude Code, on a Mac:
+
+```sh
+claude mcp add --scope user ovenlight -- \
+  ~/Library/Application\ Support/ovenlight/bin/ovenlight mcp
+```
+
+On Linux, the path is `~/.local/state/ovenlight/bin/ovenlight` (under `$XDG_STATE_HOME`
+when that's set). On Windows, in PowerShell:
+
+```powershell
+claude mcp add --scope user ovenlight -- "$env:LOCALAPPDATA\ovenlight\bin\ovenlight.exe" mcp
+```
+
+For another agent, add a local MCP server whose command is the connector's full path, such
+as `/Users/you/Library/Application Support/ovenlight/bin/ovenlight` on a Mac, and whose
+argument is `mcp`. An agent with a shell can also run `ovenlight doctor --json` and
+`ovenlight check <slug> --json`.
 
 ## Share an app
 
-Your friend needs only Ovenlight, and you need an API access token from the Tailscale
-admin console, under [Settings, Keys](https://console.tailscale.com/admin/settings/keys).
-Store it once; `auth set` asks for it, with input hidden:
+Your friend needs only Ovenlight. You need an API access token from the Tailscale admin
+console, under [Settings, Keys](https://console.tailscale.com/admin/settings/keys). Store
+it with `auth set`, which asks for it with input hidden:
 
 ```sh
 ovenlight auth set
@@ -183,66 +298,62 @@ To invite someone:
 ovenlight share recipe-box --to "Sam"
 ```
 
-It prints a link, a QR code and a message to send. Sam opens the link on their iPhone and
-taps Join. An invite works once and expires after 24 hours. `ovenlight guests` lists your
-guests and open invites, and `ovenlight revoke Sam` removes Sam from every app
-immediately; add `--app <slug>` to remove Sam from just one. You can also share from
-Ovenlight on your iPhone: touch and hold one of your apps, then choose Share.
+It prints a link, a QR code and a message to send. Sam installs Ovenlight, opens the link
+on their iPhone and taps Join. An invite works once, on one iPhone, and expires after 24
+hours. You can also share from your iPhone: touch and hold one of your apps, then choose
+Share.
 
-From inside the app, Sam can send you a note and a screenshot with Send Feedback, in the
-app's menu. `ovenlight feedback` lists what arrives.
-
-[docs/connector.md](docs/connector.md#share-an-app) has the details, such as token expiry
-and unpublishing a shareable app, and
+`ovenlight guests` lists who has access and the open invites, and `ovenlight revoke Sam`
+removes Sam from every app at once. From inside the app, Sam can send you a note and a
+screenshot with Send Feedback, and `ovenlight feedback` lists what arrives.
+[docs/connector.md](docs/connector.md#share-an-app) covers the rest, such as token expiry,
+removing someone from one app and unpublishing a shareable app, and
 [docs/security.md](docs/security.md#the-policy-change) explains the policy change.
+
+## Security
+
+- **Two locks on every guest request.** Your tailnet policy lets a guest's phone reach only
+  the apps you shared with it, on port 443. The connector then checks which device is
+  calling and refuses anyone you didn't invite to that app, other people in your tailnet
+  included.
+- **You approve the policy change.** `publish --shareable` shows it to you first. It
+  narrows an allow-everything rule so guests don't inherit it, stops when it can't change
+  the policy safely, and rolls the change back if the policy doesn't read back as written
+  or your app nodes stop seeing your devices.
+- **Invite keys never reach ovenlight.app.** The key rides in the part of the link after
+  `#`, which browsers never send to a server, and the connector keeps only its hash.
+- **Apps can trust who is calling**, as long as they follow the
+  [app contract](docs/app-contract.md): the connector removes any identity headers a
+  caller sends and sets its own from Tailscale.
+- **Signed releases.** The connector's checksums are signed, and the public keys that
+  check them are in this repository ([how to verify](docs/connector.md#from-a-release)).
+  Its Windows program and scripts are signed by Snowy Ghost LLC.
+
+Out of scope: anything running as you on the computer, such as a coding agent with a shell
+or one of your apps, can do what you can, including reading the Tailscale API credential
+that `ovenlight auth set` stores there. The computer's other accounts can reach an app on
+`127.0.0.1` directly too, so they must belong to people you trust.
+[docs/security.md](docs/security.md) has the full threat model, and
+[what to do](docs/security.md#if-something-goes-wrong) about a leaked link or credential,
+a lost phone, a stolen computer or a compromised app. To report a vulnerability, see
+[SECURITY.md](SECURITY.md).
 
 ## Build apps for Ovenlight
 
-Any web app that serves plain HTTP on `127.0.0.1` works, and it needs no login of its own:
-the connector tells it who is calling with headers such as `Ovenlight-User-Id` and
-`Ovenlight-Role`. A web manifest gives the app its icon and color in Ovenlight. Apps get
-no service workers or offline copies, so an app loads only while its computer can be
-reached ([details](docs/app-contract.md#in-the-iphone-app)).
+Web apps that serve plain HTTP on `127.0.0.1` work, in any language, and they need no
+login of their own: the connector tells the app who is calling with headers such as
+`Ovenlight-User-Id` and `Ovenlight-Role`. A web manifest gives the app its icon and color
+in Ovenlight. Signing in through Google or another OAuth provider doesn't work inside
+Ovenlight ([why](docs/building-apps.md#dont-build-these)), and neither do
+[a few web features](docs/building-apps.md#what-doesnt-work) such as push notifications
+and offline copies.
 
-The starter app from `ovenlight new` already suits Ovenlight.
-[docs/building-apps.md](docs/building-apps.md) is the guide to building an app that feels
-at home in Ovenlight, written for coding agents first; `ovenlight guide` prints it.
-[docs/app-contract.md](docs/app-contract.md) is the contract itself, including what an app
-must do to stay safe.
-
-### With a coding agent
-
-The connector is also an MCP server, so a coding agent can publish and check your apps and
-read the feedback people send. To add it to Claude Code on a Mac:
-
-```sh
-claude mcp add --scope user ovenlight -- \
-  ~/Library/Application\ Support/ovenlight/bin/ovenlight mcp
-```
-
-On Linux, the path is `~/.local/state/ovenlight/bin/ovenlight`. On Windows, in PowerShell:
-
-```powershell
-claude mcp add --scope user ovenlight -- "$env:LOCALAPPDATA\ovenlight\bin\ovenlight.exe" mcp
-```
-
-You can install Ovenlight's Claude Code plugin instead. It adds the same MCP server and a
-skill that reads the guide whenever you ask to put an app on your phone. In Claude Code,
-run:
-
-```
-/plugin marketplace add snowy-ghost/ovenlight
-```
-
-then:
-
-```
-/plugin install ovenlight@snowy-ghost
-```
-
-For another agent that supports MCP, add a local server whose command is the connector's
-full path, such as `/Users/you/Library/Application Support/ovenlight/bin/ovenlight` on a
-Mac, and whose argument is `mcp`.
+`ovenlight check <slug>` tests a published app, from the address it listens on to the
+files it serves, and says how to fix what it finds.
+[docs/building-apps.md](docs/building-apps.md) is the building guide, written for coding
+agents first, and `ovenlight guide` prints it. The starter app from `ovenlight new` already
+follows it. [docs/app-contract.md](docs/app-contract.md) is the contract itself, including
+what an app must do to stay safe.
 
 ## Documentation
 
@@ -257,17 +368,6 @@ Mac, and whose argument is `mcp`.
 - [docs/protocol.md](docs/protocol.md): how the iPhone app and the connector talk.
 - [docs/development.md](docs/development.md): building the iPhone app, tests, local
   development, shipping and forking.
-
-## Security
-
-Every guest request passes two independent checks: your tailnet policy lets a guest's
-phone reach only the apps you shared with them, and the connector looks up which device is
-calling and refuses any guest you didn't invite to the app they're opening.
-[docs/security.md](docs/security.md) has the threat model, and
-[what to do](docs/security.md#if-something-goes-wrong) about a leaked link or credential,
-a lost phone, a stolen computer or a compromised app.
-
-To report a vulnerability, see [SECURITY.md](SECURITY.md).
 
 ## License
 
@@ -291,3 +391,8 @@ affiliated with Tailscale Inc.
 
 Issues and bug reports are welcome. We don't accept code contributions yet, so please don't
 open pull requests: describe the change you'd like in an issue.
+
+<sub>Apple, the Apple logo, App Store, Face ID, iPhone, Mac and macOS are trademarks of
+Apple Inc., registered in the U.S. and other countries and regions. IOS is a trademark or
+registered trademark of Cisco in the U.S. and other countries and is used under
+license.</sub>
