@@ -544,7 +544,8 @@ final class OwnerSharing: ObservableObject {
             round = candidates.filter { !covered.contains($0) && !asked.contains($0) }
         }
         machines = found
-        lastRefresh = .now
+        // A pass that only failed doesn't count as fresh: the next menu asks again.
+        if !found.isEmpty || failures.isEmpty { lastRefresh = .now }
         problem = found.isEmpty ? failures.first : nil
     }
 

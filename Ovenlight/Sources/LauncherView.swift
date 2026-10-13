@@ -56,6 +56,10 @@ struct LauncherView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { Task { await refreshSharing() } }
         }
+        // The ask at launch usually comes before the connection is up, so ask again once it is.
+        .onChange(of: node.ownerIsConnected) { _, connected in
+            if connected { Task { await refreshSharing() } }
+        }
         .task {
             await registry.refreshAllMissingIcons()
             await refreshSharing()
