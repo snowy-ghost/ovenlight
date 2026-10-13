@@ -10,3 +10,4 @@ Frameworks/
 # The docs pages, which scripts/sitedocs renders from docs/
 /site/docs/
 /site/docs.html
+/site/sitemap.xml

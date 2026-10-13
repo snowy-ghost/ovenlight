@@ -2,8 +2,8 @@
 // their link checker: it fails on any relative link or #anchor in them that doesn't
 // resolve. wrangler.jsonc runs it before each deploy, and CI on each push.
 //
-// Run it from this directory. It writes site/docs.html, and site/docs/ with each doc's
-// page and its Markdown, all of which git ignores.
+// Run it from this directory. It writes site/docs.html, site/docs/ with each doc's page
+// and its Markdown, and site/sitemap.xml, all of which git ignores.
 package main
 
 import (
@@ -133,11 +133,25 @@ func run() error {
 			return err
 		}
 	}
-	return write(filepath.Join(root, "site", "docs.html"), page{
+	if err := write(filepath.Join(root, "site", "docs.html"), page{
 		"Documentation · Ovenlight",
 		"How the Ovenlight connector works, how to build apps for it, and how Ovenlight keeps them private.",
 		"/docs", nil, all,
-	})
+	}); err != nil {
+		return err
+	}
+	// Every page for search engines, the docs included. The join page isn't one: it's an invite's.
+	var sitemap strings.Builder
+	sitemap.WriteString("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n")
+	pages := []string{"/", "/docs", "/support", "/privacy"}
+	for _, p := range all {
+		pages = append(pages, "/docs/"+p.Name)
+	}
+	for _, p := range pages {
+		fmt.Fprintf(&sitemap, "  <url><loc>https://ovenlight.app%s</loc></url>\n", p)
+	}
+	sitemap.WriteString("</urlset>\n")
+	return os.WriteFile(filepath.Join(root, "site", "sitemap.xml"), []byte(sitemap.String()), 0o644)
 }
 
 // setIDs gives each heading the ID GitHub gives it, so that links into the docs work the
