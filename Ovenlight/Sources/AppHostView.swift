@@ -125,19 +125,19 @@ private struct AppPage: View {
         .statusBarHidden(false)
         .sheet(item: $sheet) { sheet in
             switch sheet {
-            case .login(let url): SafariView(url: url).ignoresSafeArea()
+            case .login(let url):
+                SafariView(url: url).ignoresSafeArea()
+                    // As at the root: closed with the iPhone still waiting, on to the Machines page.
+                    .onDisappear { if self.sheet == nil, node.state == .awaitingApproval { self.sheet = .approve } }
             case .approve: SafariView(url: OwnerApprovalPrompt.machinesPage).ignoresSafeArea()
             case .invite(let machine, let app): InviteComposer(machine: machine, app: app)
             default: EmptyView()
             }
         }
         .onChange(of: node.state) { _, state in
+            // As at the root: the sign-in page stays until the iPhone is approved.
             if case .needsLogin = state { return }
-            if state == .awaitingApproval {
-                // As at the root: from sign-in straight on to approving this iPhone.
-                if case .login = sheet { sheet = .approve }
-                return
-            }
+            if state == .awaitingApproval { return }
             if case .login = sheet { sheet = nil }
         }
         .sheet(item: $feedback) { capture in

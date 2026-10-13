@@ -251,14 +251,10 @@ struct RootView: View {
             if !locked, !router.appsChanged(registry.apps) { WebViewPool.shared.presentWaitingDownloads() }
         }
         .onChange(of: node.state) { _, state in
+            // Signed in, but the tailnet approves each new device: the sign-in page stays, so
+            // the owner can carry on in Tailscale's pages, and closes once the iPhone is approved.
             if case .needsLogin = state { return }
-            if state == .awaitingApproval {
-                // Signed in, and the tailnet approves each new device: go straight on to the
-                // Machines page, in Ovenlight's browser where the sign-in happened, not Safari.
-                // It stays until Done, since an app may be waiting for approval there too.
-                if case .login = router.sheet { router.sheet = .approve }
-                return
-            }
+            if state == .awaitingApproval { return }
             if case .login = router.sheet { router.sheet = nil }
         }
         // Opening an app, from anywhere, clears its new dot.
@@ -298,6 +294,9 @@ struct RootView: View {
             JoinFlowView(request: request)
         case .login(let url):
             SafariView(url: url).ignoresSafeArea()
+                // Closed with the iPhone still waiting: on to the Machines page, in the same
+                // browser, which keeps the sign-in. It stays until Done, for an app waiting too.
+                .onDisappear { if router.sheet == nil, node.state == .awaitingApproval { router.present(.approve) } }
         case .approve:
             SafariView(url: OwnerApprovalPrompt.machinesPage).ignoresSafeArea()
         case .sharing:

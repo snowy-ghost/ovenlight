@@ -216,12 +216,12 @@ Sign Ovenlight in to the first with `-authKey`, and open the second owner's invi
   (an app, an invite or a node). The empty launcher, "Welcome to Ovenlight", offers Join
   with Invite and Use My Own Computers. Only the second (also in Settings) starts the
   owner's node and shows "Connect Your Computers"; Connect opens Tailscale's sign-in page
-  in Ovenlight and closes it once connected. With device approval on, the sign-in page
-  gives way to Tailscale's Machines page, in Ovenlight's browser rather than Safari, which
-  stays until Done so an app waiting there can be approved too. If it's closed before the
-  iPhone is approved, an "Approve This iPhone" card names this iPhone as the tailnet lists it
-  and opens the page again, and an app opened meanwhile shows the same card. Settings shows
-  the account
+  in Ovenlight and closes it once connected. With device approval on, the sign-in page stays
+  open until the iPhone is approved. Closed before that, it gives way to Tailscale's
+  Machines page, in Ovenlight's browser rather than Safari, which stays until Done so an
+  app waiting there can be approved too. An "Approve This iPhone" card names this iPhone as
+  the tailnet lists it and opens that page again, and an app opened meanwhile shows the same
+  card. Settings shows the account
   and has Sign Out, which logs the node out and deletes its state; your apps stay, and
   ask you to sign in again. While no account is signed in, before the first sign-in or
   after Sign Out, Settings has Stop Using My Own Computers, which undoes the choice: the

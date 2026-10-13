@@ -257,7 +257,8 @@ struct OwnerApprovalPrompt: View {
 
 /// Tailscale's sign-in page, or its Machines page for approving this iPhone, inside Ovenlight
 /// rather than Safari, whose cookies are separate, so approving can use the sign-in. RootView
-/// dismisses the sign-in page once the node connects. The Machines page stays until Done.
+/// dismisses the sign-in page once the node connects, which with device approval means once
+/// the iPhone is approved. The Machines page stays until Done.
 struct SafariView: UIViewControllerRepresentable {
     let url: URL
 
