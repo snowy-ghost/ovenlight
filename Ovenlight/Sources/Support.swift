@@ -5,6 +5,7 @@ import SwiftUI
 enum AppLinks {
     static let supportEmail = "team@snowyghost.com"
     static let privacyPolicy = URL(string: "https://ovenlight.app/privacy")!
+    static let tailscalePricing = URL(string: "https://tailscale.com/pricing")!
 }
 
 /// A message to the team, opened in Mail for the person to finish and send.

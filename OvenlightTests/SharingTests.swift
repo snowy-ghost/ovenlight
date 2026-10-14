@@ -480,6 +480,9 @@ final class AdminAPITests: XCTestCase {
                 let list = try AdminAPI.decoder.decode(AdminGuestList.self, from: data)
                 XCTAssertEqual(list.guests.count, try count(data, "guests"))
                 XCTAssertEqual(list.invites.count, try count(data, "invites"))
+                XCTAssertEqual(list.guests.map { $0.lastOpened != nil }, [true, false, false])
+                XCTAssertNotNil(list.openedSince)
+                XCTAssertEqual(list.taggedDevices, AdminTaggedDevices(apps: 1, guests: 3, tailnet: 5))
             case "invite-canceled":
                 _ = try AdminAPI.decoder.decode(AdminInvite.self, from: data)
             case "invite-created":
@@ -782,6 +785,93 @@ final class RouterTests: XCTestCase {
         router.sheet = nil
         router.sheetDismissed()
         XCTAssertTrue(ran)
+    }
+}
+
+final class GuestActivityTests: XCTestCase {
+    private var calendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/Los_Angeles")!
+        calendar.locale = Locale(identifier: "en_US")
+        return calendar
+    }
+    /// Tuesday 13 October 2026, 9:41 in the afternoon, Pacific time.
+    private var now: Date { calendar.date(from: DateComponents(year: 2026, month: 10, day: 13, hour: 21, minute: 41))! }
+
+    private func guest(_ device: String, person: String = "pSam", name: String = "Sam", app: String = "coach", claimed: Date,
+                       opened: Date? = nil) -> AdminGuest {
+        AdminGuest(deviceId: device, person: person, name: name, app: app, deviceName: "", claimedAt: claimed, lastOpened: opened)
+    }
+
+    private func daysAgo(_ days: Double) -> Date { now.addingTimeInterval(-86_400 * days) }
+
+    func testDaysAsPeopleSayThem() {
+        let cases: [(Date, String)] = [
+            (now.addingTimeInterval(-60 * 60 * 21), "today"), // this morning, just after midnight
+            (now.addingTimeInterval(3_600), "today"), // the connector's clock runs ahead
+            (now.addingTimeInterval(-60 * 60 * 22), "yesterday"), // just before midnight
+            (daysAgo(3), "3 days ago"),
+            (daysAgo(8), "last week"),
+            (daysAgo(20), "2 weeks ago"),
+            (daysAgo(45), "last month"),
+            (daysAgo(100), "3 months ago"),
+            (daysAgo(400), "last year"),
+        ]
+        for (date, want) in cases {
+            XCTAssertEqual(GuestActivity.day(date, now: now, calendar: calendar), want, "\(date)")
+        }
+    }
+
+    func testDaysAreReadOnThisCalendar() {
+        let day = AdminAPI.parseDay("2026-09-29", calendar: calendar)
+        XCTAssertEqual(day, calendar.date(from: DateComponents(year: 2026, month: 9, day: 29)))
+        XCTAssertEqual(day.map { GuestActivity.day($0, now: now, calendar: calendar) }, "2 weeks ago")
+        XCTAssertNil(AdminAPI.parseDay("yesterday"))
+    }
+
+    func testActivityFromTheRecords() {
+        let since = daysAgo(30)
+        let old = guest("nOld", claimed: daysAgo(90), opened: daysAgo(40))
+        let new = guest("nNew", claimed: daysAgo(10), opened: daysAgo(2))
+        XCTAssertEqual(GuestActivity([old, new], since: since), .opened(daysAgo(2)), "the latest of any device")
+        let quiet = guest("nQuiet", claimed: daysAgo(90))
+        XCTAssertEqual(GuestActivity([quiet], since: since), .notSince(since), "joined before the connector began noting")
+        XCTAssertEqual(GuestActivity([guest("nNew", claimed: daysAgo(10))], since: since), .notYet)
+        XCTAssertEqual(GuestActivity([quiet, guest("nNew", claimed: daysAgo(10))], since: nil), .joined(daysAgo(90)),
+                       "a connector that doesn't note opens")
+
+        XCTAssertEqual(GuestActivity.opened(daysAgo(2)).phrase(now: now, calendar: calendar), "opened 2 days ago")
+        XCTAssertEqual(GuestActivity.notSince(since).phrase(now: now, calendar: calendar), "not opened since Sep 13")
+        XCTAssertEqual(GuestActivity.notSince(daysAgo(400)).phrase(now: now, calendar: calendar), "not opened since Sep 8, 2025")
+        XCTAssertEqual(GuestActivity.notYet.phrase(now: now, calendar: calendar), "not opened yet")
+        XCTAssertEqual(GuestActivity.notYet.caption, "Not opened yet")
+    }
+
+    func testPeopleWhoOpenedAppsMostRecentlyComeFirst() {
+        let since = daysAgo(30)
+        let list = AdminGuestList(guests: [
+            guest("nQuiet", person: "pJo", name: "Jo", claimed: daysAgo(60)),
+            guest("nKim", person: "pKim", name: "Kim", claimed: daysAgo(20), opened: daysAgo(5)),
+            guest("nSamOld", claimed: daysAgo(90), opened: daysAgo(25)),
+            guest("nSamNew", app: "notes", claimed: daysAgo(10), opened: daysAgo(1)),
+            guest("nAl", person: "pAl", name: "Al", claimed: daysAgo(2)),
+        ], openedSince: since)
+        let people = GuestPerson.byActivity(list)
+        XCTAssertEqual(people.map(\.name), ["Sam", "Kim", "Al", "Jo"], "then those who haven't opened one, by name")
+        XCTAssertEqual(people[0].guests.count, 2, "every app and device of theirs")
+        XCTAssertEqual(people[0].summary(since: since).components(separatedBy: " · ").first, "2 devices")
+    }
+
+    func testTaggedDevicesSentence() {
+        func machine(_ tagged: AdminTaggedDevices?) -> OwnerSharing.Machine {
+            OwnerSharing.Machine(adminHost: "coach.tail1.ts.net", apps: [], guests: AdminGuestList(taggedDevices: tagged))
+        }
+        XCTAssertEqual(SharingList.taggedDevices([machine(AdminTaggedDevices(apps: 1, guests: 3, tailnet: 5))]),
+                       "Your shareable apps and your guests' devices use 4 of the 5 tagged devices in your Tailscale network. Tailscale's plans include a set number and charge for more.")
+        XCTAssertEqual(SharingList.taggedDevices([machine(AdminTaggedDevices(apps: 2, guests: 2, tailnet: 4))])?.contains("use all 4 tagged devices"), true)
+        XCTAssertEqual(SharingList.taggedDevices([machine(AdminTaggedDevices(apps: 1, guests: 0, tailnet: 1))])?.contains("use the only tagged device"), true)
+        XCTAssertNil(SharingList.taggedDevices([machine(nil)]), "not counted yet")
+        XCTAssertNil(SharingList.taggedDevices([machine(AdminTaggedDevices(apps: 0, guests: 0, tailnet: 3))]), "nothing of Ovenlight's")
     }
 }
 

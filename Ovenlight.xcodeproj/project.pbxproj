@@ -34,6 +34,7 @@
 		A1EB749823834CB3B7AFDF0A /* JoinViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A8A8A6A1207B1BB7E6EA7B3 /* JoinViews.swift */; };
 		A558B2382D8C97DCAAA12520 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 0EC8FC82953D2DED0255C82F /* Assets.xcassets */; };
 		ADA817FA1E749291866DBAF6 /* Support.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6E06B8F26C9FD9FCCB51519 /* Support.swift */; };
+		B5D68A14D99BE28ABD8D3A44 /* People.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFAA4D2FDF0E75A7809713B7 /* People.swift */; };
 		B63D1C0CDB0446329F1B593F /* AppLoadGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 963067FAE28F9BF6529BFC25 /* AppLoadGate.swift */; };
 		C495B79ABA410E7B889A8E0C /* OvenlightApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A517BD84018B2828BC72D4 /* OvenlightApp.swift */; };
 		D0ED3339CAE36ADFBA5FF73E /* Membership.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CCD533579257508B3431799 /* Membership.swift */; };
@@ -100,6 +101,7 @@
 		E5A517BD84018B2828BC72D4 /* OvenlightApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OvenlightApp.swift; sourceTree = "<group>"; };
 		E98CA3450D0B87A45892308A /* Guests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Guests.swift; sourceTree = "<group>"; };
 		ECD80721744FB677A2D02578 /* OvenlightTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = OvenlightTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		EFAA4D2FDF0E75A7809713B7 /* People.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = People.swift; sourceTree = "<group>"; };
 		F345A4265BE4AA546DB255C6 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		F6E06B8F26C9FD9FCCB51519 /* Support.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Support.swift; sourceTree = "<group>"; };
 		FDD7C9DAEC2D3E694FC41EF6 /* HomeScreenTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeScreenTests.swift; sourceTree = "<group>"; };
@@ -151,6 +153,7 @@
 				9CCD533579257508B3431799 /* Membership.swift */,
 				9ADA1757A23B00C0E9AFAE93 /* NodeManager.swift */,
 				E5A517BD84018B2828BC72D4 /* OvenlightApp.swift */,
+				EFAA4D2FDF0E75A7809713B7 /* People.swift */,
 				89451C0B311D28E953083293 /* SharedSettings.swift */,
 				C9D9B92F98F696FF2AFC664F /* SharingView.swift */,
 				F6E06B8F26C9FD9FCCB51519 /* Support.swift */,
@@ -335,6 +338,7 @@
 				D0ED3339CAE36ADFBA5FF73E /* Membership.swift in Sources */,
 				77F33AD20054A0B17B487EA8 /* NodeManager.swift in Sources */,
 				C495B79ABA410E7B889A8E0C /* OvenlightApp.swift in Sources */,
+				B5D68A14D99BE28ABD8D3A44 /* People.swift in Sources */,
 				885664161F2C8CF3A273E252 /* SharedSettings.swift in Sources */,
 				1C3B83A2D8CC86E9AEDF05A7 /* SharingView.swift in Sources */,
 				ADA817FA1E749291866DBAF6 /* Support.swift in Sources */,

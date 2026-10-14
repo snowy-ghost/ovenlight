@@ -49,7 +49,8 @@ struct AppPeopleSheet: View {
 #if DEBUG
 /// Simulator screenshots of sharing without a connector: `-sharingFixture YES` fills in
 /// what a connector would report for Book Club (shareable, two guests, an open
-/// invite) and Budget (not shareable), and shows Echo Board as shared by Riley.
+/// invite) and Budget (not shareable), and shows Echo Board as shared by Riley. Sam's
+/// first iPhone hasn't opened Book Club for two months, since a new one joined.
 enum SharingFixture {
     static var isOn: Bool { UserDefaults.standard.bool(forKey: "sharingFixture") }
 
@@ -65,18 +66,24 @@ enum SharingFixture {
         func host(_ name: String) -> String? { apps.first { $0.name == name }.map { Discovery.normalizedHost($0.host) } }
         guard let club = host("Book Club"), let budget = host("Budget") else { return [] }
         let now = Date.now
+        func ago(days: Double) -> Date { now.addingTimeInterval(-86_400 * days) }
         var machine = OwnerSharing.Machine(adminHost: club, apps: [
             AdminApp(slug: "book-club", name: "Book Club", url: "https://\(club)/", online: true, shareable: true, guests: 2),
             AdminApp(slug: "budget", name: "Budget", url: "https://\(budget)/", online: true, shareable: false, guests: 0),
         ])
         machine.guests = AdminGuestList(
             guests: [
-                AdminGuest(deviceId: "n1", person: "p1", name: "Sam", app: "book-club", deviceName: "ovenlight-4k2x9q", claimedAt: now.addingTimeInterval(-86_400 * 3)),
-                AdminGuest(deviceId: "n4", person: "p1", name: "Sam", app: "book-club", deviceName: "ovenlight-m7c1pw", claimedAt: now.addingTimeInterval(-86_400)),
-                AdminGuest(deviceId: "n2", person: "p2", name: "Kim", app: "book-club", deviceName: "ovenlight-r5j8de", claimedAt: now.addingTimeInterval(-3_600 * 5)),
+                AdminGuest(deviceId: "n1", person: "p1", name: "Sam", app: "book-club", deviceName: "ovenlight-4k2x9q", claimedAt: ago(days: 120),
+                           lastOpened: ago(days: 64)),
+                AdminGuest(deviceId: "n4", person: "p1", name: "Sam", app: "book-club", deviceName: "ovenlight-m7c1pw", claimedAt: ago(days: 63),
+                           lastOpened: ago(days: 0.1)),
+                AdminGuest(deviceId: "n2", person: "p2", name: "Kim", app: "book-club", deviceName: "ovenlight-r5j8de", claimedAt: ago(days: 30),
+                           lastOpened: ago(days: 1)),
             ],
             invites: [AdminInvite(id: "i3", to: "Lee", person: "p3", app: "book-club", state: AdminInvite.sent,
-                                  expires: now.addingTimeInterval(86_400))])
+                                  expires: now.addingTimeInterval(86_400))],
+            openedSince: ago(days: 200),
+            taggedDevices: AdminTaggedDevices(apps: 1, guests: 3, tailnet: 5))
         machine.feedback = [AdminFeedback(id: "f1", at: now.addingTimeInterval(-1_800), app: "book-club", from: "Sam", role: "guest",
                                           note: "The chapter list stops scrolling after chapter 20.")]
         return [machine]

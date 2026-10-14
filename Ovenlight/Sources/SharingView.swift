@@ -39,8 +39,10 @@ struct LauncherShareMenuItems: View {
 struct SharingList: View {
     @EnvironmentObject private var registry: AppRegistry
     @ObservedObject private var sharing = OwnerSharing.shared
+    @State private var showingPricing = false
 
     private var feedbackCount: Int { sharing.machines.reduce(0) { $0 + $1.feedback.count } }
+    private var peopleCount: Int { sharing.machines.reduce(0) { $0 + GuestPerson.all($1.guests.guests).count } }
 
     var body: some View {
         List {
@@ -63,7 +65,7 @@ struct SharingList: View {
                         NavigationLink {
                             SharingAppView(machineID: machine.id, slug: app.slug)
                         } label: {
-                            SharingAppRow(app: app, local: localApp(app))
+                            SharingAppRow(app: app)
                         }
                     }
                 }
@@ -71,6 +73,17 @@ struct SharingList: View {
             }
             if !sharing.machines.isEmpty {
                 Section {
+                    if peopleCount > 0 {
+                        NavigationLink {
+                            SharingPeopleList()
+                        } label: {
+                            LabeledContent {
+                                Text("\(peopleCount)")
+                            } label: {
+                                Label("People", systemImage: "person.2")
+                            }
+                        }
+                    }
                     NavigationLink {
                         FeedbackInbox()
                     } label: {
@@ -79,6 +92,15 @@ struct SharingList: View {
                         } label: {
                             Label("Feedback", systemImage: "exclamationmark.bubble")
                         }
+                    }
+                } footer: {
+                    if let tagged = Self.taggedDevices(sharing.machines) {
+                        // The link opens Tailscale's pricing in a sheet, as Settings opens the privacy policy.
+                        Text(LocalizedStringKey("\(tagged) [Learn More](\(AppLinks.tailscalePricing.absoluteString))"))
+                            .environment(\.openURL, OpenURLAction { _ in
+                                showingPricing = true
+                                return .handled
+                            })
                     }
                 }
                 .ovenlightRows()
@@ -90,22 +112,27 @@ struct SharingList: View {
         .refreshable { await sharing.refresh(apps: registry.apps) }
         .task { await sharing.refresh(apps: registry.apps) }
         .animation(.default, value: sharing.machines)
+        .sheet(isPresented: $showingPricing) { SafariView(url: AppLinks.tailscalePricing).ignoresSafeArea() }
     }
 
-    private func localApp(_ app: AdminApp) -> WebApp? {
-        registry.apps.first { !$0.isShared && Discovery.normalizedHost($0.host) == app.host }
+    /// How many of the tailnet's tagged devices, which Tailscale's plans count, the owner's
+    /// shareable apps and guests' devices take. Nil before a connector has counted them.
+    static func taggedDevices(_ machines: [OwnerSharing.Machine]) -> String? {
+        let counts = machines.compactMap(\.guests.taggedDevices)
+        guard let all = counts.map(\.tailnet).max() else { return nil }
+        let used = min(counts.reduce(0) { $0 + $1.apps + $1.guests }, all)
+        guard used > 0 else { return nil }
+        let share = used < all ? "\(used) of the \(all) tagged devices" : used == 1 ? "the only tagged device" : "all \(all) tagged devices"
+        return "Your shareable apps and your guests' devices use \(share) in your Tailscale network. Tailscale's plans include a set number and charge for more."
     }
 }
 
 private struct SharingAppRow: View {
     let app: AdminApp
-    let local: WebApp?
-    @EnvironmentObject private var registry: AppRegistry
 
     var body: some View {
         HStack(spacing: 12) {
-            let tile = local ?? WebApp(name: app.name, startURL: URL(string: app.url ?? "https://\(app.slug).invalid/")!)
-            AppIconView(app: tile, image: local.flatMap(registry.icon(for:)), size: 36)
+            AdminAppIcon(app: app)
             VStack(alignment: .leading, spacing: 2) {
                 Text(app.name)
                 Text(summary).font(.caption).foregroundStyle(.secondary)
@@ -118,6 +145,18 @@ private struct SharingAppRow: View {
         let state = app.online ? "Online" : "Offline"
         guard app.shareable else { return "\(state) · Only you" }
         return "\(state) · " + (app.guests == 0 ? "Not shared yet" : app.guests == 1 ? "1 person" : "\(app.guests) people")
+    }
+}
+
+/// A connector's app with its icon from the Home Screen, or a plain tile when it isn't there.
+struct AdminAppIcon: View {
+    let app: AdminApp
+    @EnvironmentObject private var registry: AppRegistry
+
+    var body: some View {
+        let local = registry.apps.first { !$0.isShared && Discovery.normalizedHost($0.host) == app.host }
+        let tile = local ?? WebApp(name: app.name, startURL: URL(string: app.url ?? "https://\(app.slug).invalid/")!)
+        AppIconView(app: tile, image: local.flatMap(registry.icon(for:)), size: 36)
     }
 }
 
@@ -180,12 +219,11 @@ struct SharingAppView: View {
                             Text("No one yet").foregroundStyle(.secondary)
                         }
                         ForEach(people) { person in
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(person.name)
-                                Text("\(person.devices) · joined \(person.guests[0].claimedAt.formatted(.relative(presentation: .named)))")
-                                    .font(.caption).foregroundStyle(.secondary)
+                            NavigationLink {
+                                SharingPersonView(machineID: machine.id, personID: person.id)
+                            } label: {
+                                GuestPersonRow(name: person.name, detail: person.summary(since: machine.guests.openedSince))
                             }
-                            .accessibilityElement(children: .combine)
                             .swipeActions {
                                 Button("Remove", role: .destructive) { removing = person }
                                 Button("Add Device") { compose(.person(person)) }.tint(.accentColor)

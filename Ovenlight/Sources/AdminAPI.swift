@@ -73,6 +73,9 @@ struct AdminGuest: Decodable, Equatable, Identifiable {
     var deviceName: String
     var claimedAt: Date
     var removedAt: Date?
+    /// The day this device last used the app, if it has since the list's `openedSince`: the
+    /// start of the day the connector names, on this iPhone's calendar.
+    var lastOpened: Date?
 
     var id: String { "\(deviceId)/\(app)" }
     var isActive: Bool { removedAt == nil }
@@ -88,9 +91,10 @@ extension AdminGuest {
         name = (try? c.decodeIfPresent(String.self, forKey: .name)) ?? ""
         deviceName = (try? c.decodeIfPresent(String.self, forKey: .deviceName)) ?? ""
         removedAt = try? c.decodeIfPresent(Date.self, forKey: .removedAt)
+        lastOpened = (try? c.decodeIfPresent(String.self, forKey: .lastOpened)).flatMap { AdminAPI.parseDay($0) }
     }
 
-    private enum CodingKeys: String, CodingKey { case deviceId, person, name, app, deviceName, claimedAt, removedAt }
+    private enum CodingKeys: String, CodingKey { case deviceId, person, name, app, deviceName, claimedAt, removedAt, lastOpened }
 }
 
 /// One person's active devices, for listing and removing guests together.
@@ -137,24 +141,119 @@ struct GuestPerson: Identifiable, Equatable {
         let count = Set(guests.map(\.deviceId)).count
         return count == 1 ? "1 device" : "\(count) devices"
     }
+
+    /// "2 devices · opened today": how many devices, and when they last opened the apps of
+    /// `guests`.
+    func summary(since: Date?) -> String {
+        "\(devices) · \(GuestActivity(guests, since: since).phrase())"
+    }
+
+    /// Everyone with a device in any app, those who opened one most recently first, so the
+    /// people who stopped gather at the end.
+    static func byActivity(_ list: AdminGuestList) -> [GuestPerson] {
+        func last(_ person: GuestPerson) -> Date {
+            GuestActivity(person.guests, since: list.openedSince).lastOpened ?? .distantPast
+        }
+        return all(list.guests).sorted { a, b in
+            let (x, y) = (last(a), last(b))
+            return x != y ? x > y : a.name.localizedStandardCompare(b.name) == .orderedAscending
+        }
+    }
+}
+
+/// When someone last opened an app, from their guest records: the day the connector noted,
+/// or what its silence means given when it began noting (`openedSince`).
+enum GuestActivity: Equatable {
+    case opened(Date)
+    /// They joined before the connector began noting, and haven't opened it since then.
+    case notSince(Date)
+    case notYet
+    /// From a connector that doesn't note opens: only when they joined.
+    case joined(Date)
+
+    init(_ guests: [AdminGuest], since: Date?) {
+        if let last = guests.compactMap(\.lastOpened).max() {
+            self = .opened(last)
+        } else if let since {
+            self = guests.contains { $0.claimedAt < since } ? .notSince(since) : .notYet
+        } else {
+            self = .joined(guests.map(\.claimedAt).min() ?? .now)
+        }
+    }
+
+    var lastOpened: Date? { if case .opened(let date) = self { date } else { nil } }
+
+    /// "opened today", "not opened since Oct 14", "not opened yet", or "joined 3 days ago".
+    func phrase(now: Date = .now, calendar: Calendar = .current) -> String {
+        switch self {
+        case .opened(let date):
+            return "opened \(Self.day(date, now: now, calendar: calendar))"
+        case .notSince(let date):
+            var style = Date.FormatStyle.dateTime.month(.abbreviated).day()
+            if !calendar.isDate(date, equalTo: now, toGranularity: .year) { style = style.year() }
+            style.calendar = calendar
+            style.timeZone = calendar.timeZone
+            return "not opened since \(date.formatted(style))"
+        case .notYet:
+            return "not opened yet"
+        case .joined(let date):
+            return "joined \(date.formatted(.relative(presentation: .named)))"
+        }
+    }
+
+    /// The phrase as a caption of its own: "Opened today".
+    var caption: String {
+        let text = phrase()
+        return text.prefix(1).uppercased() + text.dropFirst()
+    }
+
+    /// A day as people say it: "today", "yesterday", "3 days ago", "last week".
+    static func day(_ date: Date, now: Date = .now, calendar: Calendar = .current) -> String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.dateTimeStyle = .named
+        formatter.calendar = calendar
+        // From midnight to midnight, so the formatter never gets down to hours.
+        let (day, today) = (calendar.startOfDay(for: date), calendar.startOfDay(for: now))
+        return day < today ? formatter.localizedString(for: day, relativeTo: today) : formatter.localizedString(from: DateComponents(day: 0))
+    }
+}
+
+/// The tailnet's tagged devices, which Tailscale's plans count apart from people's own:
+/// the connector's shareable apps and guest devices, and every tagged device.
+struct AdminTaggedDevices: Decodable, Equatable {
+    var apps: Int
+    var guests: Int
+    var tailnet: Int
 }
 
 struct AdminGuestList: Decodable, Equatable {
     var guests: [AdminGuest]
     var invites: [AdminInvite]
+    /// When the connector began noting when guests open apps; nil from one that doesn't.
+    var openedSince: Date?
+    /// As of the connector's last sync with the tailnet.
+    var taggedDevices: AdminTaggedDevices?
 
-    init(guests: [AdminGuest] = [], invites: [AdminInvite] = []) {
+    init(guests: [AdminGuest] = [], invites: [AdminInvite] = [], openedSince: Date? = nil, taggedDevices: AdminTaggedDevices? = nil) {
         self.guests = guests
         self.invites = invites
+        self.openedSince = openedSince
+        self.taggedDevices = taggedDevices
     }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         guests = (try? c.decodeIfPresent(EachDecoded<AdminGuest>.self, forKey: .guests))?.elements ?? []
         invites = (try? c.decodeIfPresent(EachDecoded<AdminInvite>.self, forKey: .invites))?.elements ?? []
+        openedSince = try? c.decodeIfPresent(Date.self, forKey: .openedSince)
+        taggedDevices = try? c.decodeIfPresent(AdminTaggedDevices.self, forKey: .taggedDevices)
     }
 
-    private enum CodingKeys: String, CodingKey { case guests, invites }
+    private enum CodingKeys: String, CodingKey { case guests, invites, openedSince, taggedDevices }
+
+    func hasOpenInvites(_ person: String) -> Bool {
+        invites.contains { $0.person == person && $0.state == AdminInvite.sent }
+    }
 }
 
 /// A minted invite. `link`, the universal link to send, carries the key and is shown once.
@@ -235,6 +334,14 @@ enum AdminAPI {
         let rest = String(after.dropFirst(digits.count))
         let trimmed = String(text[..<dot]) + "." + String((digits + "000").prefix(3)) + rest
         return try? Date.ISO8601FormatStyle(includingFractionalSeconds: true).parse(trimmed)
+    }
+
+    /// A day the connector names as 2026-10-13: its start on this iPhone's calendar, so it
+    /// reads as the same day whatever the time zones.
+    static func parseDay(_ text: String, calendar: Calendar = .current) -> Date? {
+        let parts = text.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3 else { return nil }
+        return calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2]))
     }
 
     static var decoder: JSONDecoder {
@@ -390,6 +497,14 @@ struct AdminClient {
     func removeGuest(_ person: GuestPerson, app slug: String) async throws -> AdminRevokeResult {
         try await send("DELETE", AdminAPI.path("/v1/guests/", person.id) + "?app=\(slug)&by=person",
                        as: AdminRevokeResult.self)
+    }
+    /// Removes a person from every app: all their devices, and their unused invites.
+    func removePerson(_ id: String) async throws -> AdminRevokeResult {
+        try await send("DELETE", AdminAPI.path("/v1/guests/", id) + "?by=person", as: AdminRevokeResult.self)
+    }
+    /// Removes one device from every app.
+    func removeDevice(_ id: String) async throws -> AdminRevokeResult {
+        try await send("DELETE", AdminAPI.path("/v1/guests/", id), as: AdminRevokeResult.self)
     }
 }
 
