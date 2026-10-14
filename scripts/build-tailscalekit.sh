@@ -10,12 +10,12 @@ LIBTAILSCALE_REPO=https://github.com/tailscale/libtailscale.git
 LIBTAILSCALE_COMMIT=59d4bb82744915815178e0f0776d60026a397ee7
 # libtailscale's tailscale.com dependency doesn't build with Go 1.27 yet. Keep the
 # latest 1.26 patch release: it carries the standard library's security fixes.
-GO_TOOLCHAIN=go1.26.8
+GO_TOOLCHAIN=go1.26.9
 # -trimpath keeps the build machine's file paths, such as /Users/<name>/go, out of the binary.
 GO_FLAGS=-trimpath
 # Modules raised past libtailscale's go.mod for security fixes (govulncheck). Drop an
 # entry once the pinned go.mod reaches it: go get would otherwise move it back down.
-GO_UPGRADES="golang.org/x/net@v0.56.0 golang.org/x/text@v0.39.0"
+GO_UPGRADES="golang.org/x/net@v0.60.0 golang.org/x/text@v0.42.0"
 # ts_omit_debug drops the node's debug LocalAPI, pprof and debug HTTP handlers, which
 # Ovenlight never calls. libtailscale's Makefile has no knob for tags, so it is edited.
 BUILD_TAGS=ios,ts_omit_debug
