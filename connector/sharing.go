@@ -29,7 +29,7 @@ const (
 )
 
 const (
-	inviteTTL       = 24 * time.Hour      // key lifetime
+	inviteTTL       = 7 * 24 * time.Hour  // key lifetime
 	reviewInviteTTL = 90 * 24 * time.Hour // a review invite's key: App Review may test weeks later; Tailscale's maximum
 	claimGrace      = time.Hour           // a device that joined just before expiry may still claim
 	reconcileEvery  = 3 * time.Minute
@@ -422,7 +422,7 @@ func forTerminal(err error) error {
 
 func (inv Invite) open() bool { return inv.State == inviteSent }
 
-// lifetime is how long the invite's key lasts, to the hour: 24 hours, or 90 days for review.
+// lifetime is how long the invite's key lasts, to the hour: 7 days, or 90 days for review.
 func (inv Invite) lifetime() time.Duration { return inv.Expires.Sub(inv.Created).Round(time.Hour) }
 
 // peopleNamed lists the current people called name (any case).

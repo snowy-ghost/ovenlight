@@ -139,7 +139,7 @@ func TestWireFiles(t *testing.T) {
 		removed[i].RemovedAt, removed[i].RemovedWhy = &at, "removed by the owner"
 	}
 	canceled := Invite{ID: "b3c4d5e6f7", To: "Sam", Person: "7c2e91a4d0", App: "coach", State: inviteCanceled, RequestedBy: "ovenlight",
-		Created: wireT0.Add(3 * 24 * time.Hour), Expires: wireT0.Add(4 * 24 * time.Hour)}
+		Created: wireT0.Add(3 * 24 * time.Hour), Expires: wireT0.Add(3*24*time.Hour + inviteTTL)}
 	got["guest-removed"] = encoded(revokeResult{Removed: removed, Deleted: []string{"nSamPhone"}, Retagged: []string{"nSamPad"},
 		Canceled: []Invite{canceled}}.view())
 	got["guest-removed-with-errors"] = encoded(revokeResult{Removed: removed[:1], Errors: []string{

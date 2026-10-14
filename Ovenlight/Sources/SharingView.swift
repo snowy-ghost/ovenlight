@@ -207,7 +207,7 @@ struct SharingAppView: View {
                     }
                 } footer: {
                     if app.shareable {
-                        Text("Each invite is a link that works once, on one iPhone, for 24 hours. Guests reach only this app.")
+                        Text("Each invite is a link that works once, on one iPhone, for 7 days. Guests reach only this app.")
                     } else {
                         Text("To share it, run this on its computer: ovenlight publish --slug \(app.slug) --shareable")
                     }
@@ -240,7 +240,7 @@ struct SharingAppView: View {
                             ForEach(invites) { invite in
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text("For \(invite.to)")
-                                    Text("\(invite.review == true ? "Review invite, unused" : "Unused"), expires \(invite.expires.formatted(.relative(presentation: .named)))")
+                                    Text("\(invite.review == true ? "Review invite, unused" : "Unused"), expires \(invite.expiresIn)")
                                         .font(.caption).foregroundStyle(.secondary)
                                 }
                                 .accessibilityElement(children: .combine)
@@ -349,7 +349,7 @@ struct InviteComposer: View {
                         Section {
                             LabeledContent(person.name, value: person.devices)
                         } footer: {
-                            footer("The invite adds an iPhone for \(person.name): \(app.name) sees one person on all of them. It works once, on one iPhone, for 24 hours.")
+                            footer("The invite adds an iPhone for \(person.name): \(app.name) sees one person on all of them. It works once, on one iPhone, for 7 days.")
                         }
                         .ovenlightRows()
                     } else {
@@ -412,7 +412,7 @@ struct InviteComposer: View {
                       : "\(namesake.name) already has an invite. Use a name that tells them apart, like \(namesake.name) L.", systemImage: "person.2.fill")
                     .labelStyle(.warning)
             } else {
-                footer("\(trimmed.isEmpty ? "They see" : "\(trimmed) sees") this name on the invite, and \(app.name) knows them by it. You send the invite yourself next, by message or QR code. It works once, on one iPhone, for 24 hours.")
+                footer("\(trimmed.isEmpty ? "They see" : "\(trimmed) sees") this name on the invite, and \(app.name) knows them by it. You send the invite yourself next, by message or QR code. It works once, on one iPhone, for 7 days.")
             }
         }
     }
@@ -474,7 +474,7 @@ struct InviteResultView: View {
                     VStack(spacing: 6) {
                         Text("Invite for \(invite.to)")
                             .font(.display(.title2))
-                        Text("Works once. Expires \(invite.expires.formatted(.relative(presentation: .named))), at \(invite.expires.formatted(date: .omitted, time: .shortened)).")
+                        Text("Works once. Expires \(invite.expiresIn), at \(invite.expires.formatted(date: .omitted, time: .shortened)).")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }

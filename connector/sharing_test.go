@@ -391,7 +391,7 @@ func TestInviteLinkRoundTrip(t *testing.T) {
 	}
 	// The message says how long the key lasts, to the hour.
 	res := &shareResult{Link: s, AppName: "Interview Coach", Invite: Invite{Created: t0, Expires: t0.Add(inviteTTL - time.Second)}}
-	if msg := inviteMessage(res); msg != "I'm sharing Interview Coach with you in Ovenlight, an iPhone app. Open this link on your iPhone within 24 hours to join: "+s {
+	if msg := inviteMessage(res); msg != "I'm sharing Interview Coach with you in Ovenlight, an iPhone app. Open this link on your iPhone within 7 days to join: "+s {
 		t.Errorf("message = %s", msg)
 	}
 	res.Invite.Expires, res.Owner = t0.Add(reviewInviteTTL), "Sam"

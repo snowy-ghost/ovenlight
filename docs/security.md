@@ -192,8 +192,8 @@ a node's key expires within 30 days.
 
 ## Invites
 
-- `share` mints a single-use key tagged `tag:ovenlight-guest-<slug>` that expires in 24
-  hours, or 90 days for an App Review invite (`share --review`, terminal only;
+- `share` mints a single-use key tagged `tag:ovenlight-guest-<slug>` that expires in 7
+  days, or 90 days for an App Review invite (`share --review`, terminal only;
   [development.md](development.md#app-review-invites)). The key is preauthorized, whatever
   the tailnet's device approval setting, so a guest's phone never waits for you.
 - The connector records the invite with the key's SHA-256, never the key.
@@ -213,7 +213,7 @@ a node's key expires within 30 days.
 
 Ovenlight never asks you to approve a guest's phone. Guests join under random device
 names, so you couldn't tell whose phone was waiting, and approving it would be a rubber
-stamp. What protects you is the invite: it works once, for 24 hours, and only for one app,
+stamp. What protects you is the invite: it works once, for 7 days, and only for one app,
 since the policy lets its guest tag reach that app alone. You can remove anyone at any
 time. If a stranger uses a forwarded link first, the invite doesn't work for the guest you
 invited, and your guest list shows who joined with it, so you can remove them.

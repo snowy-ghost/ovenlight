@@ -847,6 +847,14 @@ final class GuestActivityTests: XCTestCase {
         XCTAssertEqual(GuestActivity.notYet.caption, "Not opened yet")
     }
 
+    func testANewInviteExpiresInDaysNotNextWeek() {
+        var fresh = AdminInvite(id: "i", to: "Sam", person: "p", app: "coach", state: AdminInvite.sent,
+                                expires: .now.addingTimeInterval(7 * 86_400 - 60))
+        XCTAssertEqual(fresh.expiresIn, "in 7 days")
+        fresh.expires = .now.addingTimeInterval(90 * 86_400)
+        XCTAssertEqual(fresh.expiresIn, "in 3 months")
+    }
+
     func testPeopleWhoOpenedAppsMostRecentlyComeFirst() {
         let since = daysAgo(30)
         let list = AdminGuestList(guests: [

@@ -349,7 +349,7 @@ It prints a link, a QR code and a message to send. The other sharing commands:
   one.
 - `ovenlight share --cancel <id>`: withdraws an invite that hasn't been used.
 
-An invite link works once and expires after 24 hours. Your friend's iPhone joins without
+An invite link works once and expires after 7 days. Your friend's iPhone joins without
 waiting for your approval, even if your tailnet has device approval on
 ([security.md](security.md#invites) says why). You can also share apps and remove guests
 in Ovenlight on your iPhone: touch and hold one of your apps, or open People & Sharing

@@ -175,7 +175,7 @@ func TestReviewInvite(t *testing.T) {
 		t.Errorf("invites list has no review marker: %s", data)
 	}
 
-	// The reconcile honors the review invite's lifetime, not the usual 24 hours.
+	// The reconcile honors the review invite's lifetime, not the usual 7 days.
 	now := time.Now()
 	if r := d.sh.st.reconcile(nil, []string{"coach"}, now.Add(30*24*time.Hour)); len(r.Expired) != 0 {
 		t.Fatalf("expired after 30 days: %v", r.Expired)
@@ -241,7 +241,7 @@ func TestPlainInviteIsNotReview(t *testing.T) {
 	if res.Invite.Review || strings.Contains(string(data), "review") || f.Keys[0].Expires.Sub(f.Keys[0].Created) != inviteTTL {
 		t.Errorf("plain invite = %s, key %+v", data, f.Keys[0])
 	}
-	if !strings.HasSuffix(res.Message, "within 24 hours to join: "+res.Link) {
+	if !strings.HasSuffix(res.Message, "within 7 days to join: "+res.Link) {
 		t.Errorf("message = %s", res.Message)
 	}
 }

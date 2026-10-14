@@ -47,6 +47,13 @@ struct AdminInvite: Decodable, Equatable, Identifiable {
     var expires: Date
     /// Made with `ovenlight share --review` for Apple's App Review.
     var review: Bool?
+
+    /// When it expires, as people say it: "in 7 days", "tomorrow". Days rather than weeks,
+    /// or a new invite would expire "next week".
+    var expiresIn: String {
+        expires.formatted(Date.RelativeFormatStyle(allowedFields: [.year, .month, .day, .hour, .minute, .second],
+                                                   presentation: .named))
+    }
 }
 
 extension AdminInvite {

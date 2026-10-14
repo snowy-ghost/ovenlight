@@ -322,8 +322,8 @@ ovenlight share recipe-box --to "Sam"
 ```
 
 It prints a link, a QR code and a message to send. Sam installs Ovenlight, opens the link
-on their iPhone and taps Join. An invite works once, on one iPhone, and expires after 24
-hours. You can also share from your iPhone: touch and hold one of your apps, then choose
+on their iPhone and taps Join. An invite works once, on one iPhone, and expires after 7
+days. You can also share from your iPhone: touch and hold one of your apps, then choose
 Share.
 
 `ovenlight guests` lists who has access, when each guest last opened your apps, and the
