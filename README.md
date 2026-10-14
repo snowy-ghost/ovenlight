@@ -326,8 +326,8 @@ on their iPhone and taps Join. An invite works once, on one iPhone, and expires 
 hours. You can also share from your iPhone: touch and hold one of your apps, then choose
 Share.
 
-`ovenlight guests` lists who has access and the open invites, and `ovenlight revoke Sam`
-removes Sam from every app at once. From inside the app, Sam can send you a note and a
+`ovenlight guests` lists who has access, when each guest last opened your apps, and the
+open invites. `ovenlight revoke Sam` removes Sam from every app at once. From inside the app, Sam can send you a note and a
 screenshot with Send Feedback, and `ovenlight feedback` lists what arrives.
 [docs/connector.md](docs/connector.md#share-an-app) covers the rest, such as token expiry,
 removing someone from one app and unpublishing a shareable app, and

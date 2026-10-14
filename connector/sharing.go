@@ -77,6 +77,10 @@ type Guest struct {
 	RemovedAt  *time.Time `json:"removedAt,omitempty"`
 	RemovedWhy string     `json:"removedWhy,omitempty"`
 	DeviceGone bool       `json:"deviceGone,omitempty"` // no longer in the tailnet
+	// LastOpened is the day the device last used the app from Ovenlight, as 2006-01-02 on
+	// this computer's calendar: a page of it loaded, or one already open made a request
+	// (noteOpened). A date, not a time, so a phone in another time zone reads the same day.
+	LastOpened string `json:"lastOpened,omitempty"`
 }
 
 func (g Guest) Active() bool { return g.RemovedAt == nil }
@@ -104,6 +108,9 @@ type sharingState struct {
 	Invites  []Invite   `json:"invites"`
 	Guests   []Guest    `json:"guests"`
 	Feedback []Feedback `json:"feedback"`
+	// OpenedSince is when the connector began noting when guests open apps. A guest who
+	// joined before then and has no LastOpened hasn't opened the app since.
+	OpenedSince time.Time `json:"openedSince,omitzero"`
 }
 
 // sharing is the daemon's record of invites, guests and feedback, saved in
@@ -114,8 +121,10 @@ type sharing struct {
 	st   sharingState
 
 	unclaimed []tsapi.Device // guest devices in the tailnet that claimed nothing, as of lastSync
+	tagged    *taggedDevices // as of lastSync, nil before the first
 	lastSync  time.Time
 	syncErr   string
+	opened    bool // a guest's LastOpened changed since the last save
 }
 
 func sharingPath(stateDir string) string { return filepath.Join(stateDir, sharingFileName) }
@@ -144,12 +153,43 @@ func openSharing(stateDir string) (*sharing, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &sharing{path: sharingPath(stateDir), st: st}, nil
+	sh := &sharing{path: sharingPath(stateDir), st: st}
+	if st.OpenedSince.IsZero() {
+		// Saved with the first sync when there are guests to note, else with the first change.
+		sh.st.OpenedSince, sh.opened = time.Now(), len(st.Guests) > 0
+	}
+	return sh, nil
 }
 
 // saveLocked writes the state atomically, readable only by the owner.
 func (sh *sharing) saveLocked() error {
-	return jsonfile.Save(sh.path, sh.st)
+	err := jsonfile.Save(sh.path, sh.st)
+	if err == nil {
+		sh.opened = false
+	}
+	return err
+}
+
+// noteOpened records that the device used the app, to the day: the owner sees no more.
+// Only the sync saves it, or any other change, so a busy app doesn't rewrite the file on
+// every request.
+func (sh *sharing) noteOpened(deviceID, app string, now time.Time) {
+	day := now.Format(time.DateOnly)
+	sh.mu.Lock()
+	defer sh.mu.Unlock()
+	if g := sh.st.activeGuest(deviceID, app); g != nil && g.LastOpened < day {
+		g.LastOpened, sh.opened = day, true
+	}
+}
+
+// saveOpened saves the days noteOpened changed, if any.
+func (sh *sharing) saveOpened() error {
+	sh.mu.Lock()
+	defer sh.mu.Unlock()
+	if !sh.opened {
+		return nil
+	}
+	return sh.saveLocked()
 }
 
 // guestFor returns a copy of the active guest record for this device and app.
@@ -524,6 +564,16 @@ type syncResult struct {
 	Expired   []string       // invites that ran out unused
 	Devices   []string       // guest devices whose tags are off: retag, or delete when they hold nothing
 	Unclaimed []tsapi.Device // guest devices this connector has no record of
+	Tagged    taggedDevices
+}
+
+// taggedDevices counts the tagged devices in the tailnet, which Tailscale's plans count
+// apart from people's own devices: this connector's app nodes, its guest devices (claimed
+// or not), and every tagged device, its own and others'.
+type taggedDevices struct {
+	Apps    int `json:"apps"`
+	Guests  int `json:"guests"`
+	Tailnet int `json:"tailnet"`
 }
 
 func (r syncResult) changed() bool { return len(r.Removed)+len(r.Expired) > 0 }
@@ -586,6 +636,20 @@ func (st *sharingState) reconcile(devices []tsapi.Device, apps []string, now tim
 		// listing them lets the owner see and remove them.
 		if !known[d.NodeID] && slices.ContainsFunc(d.Tags, ours) {
 			r.Unclaimed = append(r.Unclaimed, d)
+		}
+	}
+	app := func(tag string) bool {
+		return slices.ContainsFunc(apps, func(slug string) bool { return tag == policy.AppTag(slug) })
+	}
+	for _, d := range devices {
+		if !d.Tagged() {
+			continue
+		}
+		r.Tagged.Tailnet++
+		if slices.ContainsFunc(d.Tags, app) {
+			r.Tagged.Apps++
+		} else if slices.ContainsFunc(d.Tags, ours) {
+			r.Tagged.Guests++
 		}
 	}
 	return r

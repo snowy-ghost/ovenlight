@@ -208,6 +208,11 @@ func (n *appNode) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(rec).Encode(n.siteManifest())
 		return
 	}
+	// The app's own pages in Ovenlight's web view send Fetch Metadata; Ovenlight's checks
+	// and icon fetches don't, and don't count as opening the app.
+	if c.Role == RoleGuest && n.host != nil && r.Header.Get("Sec-Fetch-Site") != "" {
+		n.host.sh.noteOpened(c.DeviceID, n.App().Slug, start)
+	}
 	n.proxy.ServeHTTP(rec, r.WithContext(context.WithValue(r.Context(), callerKey{}, c)))
 }
 

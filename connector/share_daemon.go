@@ -483,21 +483,24 @@ func (d *daemon) handleClaim(w http.ResponseWriter, r *http.Request, caller Iden
 // ---------- guests ----------
 
 type guestList struct {
-	Guests    []Guest        `json:"guests"`
-	Invites   []Invite       `json:"invites"`   // waiting for the guest
-	Unclaimed []tsapi.Device `json:"unclaimed"` // guest devices that never claimed an invite; the owner removes them
-	LastSync  time.Time      `json:"lastSync,omitzero"`
-	SyncError string         `json:"syncError,omitempty"`
+	Guests      []Guest        `json:"guests"`
+	Invites     []Invite       `json:"invites"`   // waiting for the guest
+	Unclaimed   []tsapi.Device `json:"unclaimed"` // guest devices that never claimed an invite; the owner removes them
+	OpenedSince time.Time      `json:"openedSince,omitzero"`
+	Tagged      *taggedDevices `json:"taggedDevices,omitempty"`
+	LastSync    time.Time      `json:"lastSync,omitzero"`
+	SyncError   string         `json:"syncError,omitempty"`
 }
 
 func (d *daemon) guestList() guestList {
 	d.sh.mu.Lock()
 	defer d.sh.mu.Unlock()
-	return buildGuestList(d.sh.st, d.sh.unclaimed, d.sh.lastSync, d.sh.syncErr)
+	return buildGuestList(d.sh.st, d.sh.unclaimed, d.sh.tagged, d.sh.lastSync, d.sh.syncErr)
 }
 
-func buildGuestList(st sharingState, unclaimed []tsapi.Device, lastSync time.Time, syncErr string) guestList {
-	out := guestList{Guests: []Guest{}, Invites: []Invite{}, Unclaimed: slices.Clone(unclaimed), LastSync: lastSync, SyncError: syncErr}
+func buildGuestList(st sharingState, unclaimed []tsapi.Device, tagged *taggedDevices, lastSync time.Time, syncErr string) guestList {
+	out := guestList{Guests: []Guest{}, Invites: []Invite{}, Unclaimed: slices.Clone(unclaimed), OpenedSince: st.OpenedSince,
+		Tagged: tagged, LastSync: lastSync, SyncError: syncErr}
 	if out.Unclaimed == nil {
 		out.Unclaimed = []tsapi.Device{}
 	}
@@ -792,6 +795,10 @@ func (d *daemon) syncOnce() string {
 	// Records an unpublished app gained after its reload (an invite minted meanwhile) go
 	// here; the reconcile and spent keys below take care of their devices and keys.
 	d.retireUnpublished()
+	// Before the API, which may fail for days with an expired credential.
+	if err := d.sh.saveOpened(); err != nil {
+		log.Printf("guest sync: saving when guests last opened apps: %v", err)
+	}
 	// No credential isn't a failed sync: status says there is none, and a fresh install
 	// has none until sharing is set up.
 	setErr := func(err error) string {
@@ -829,7 +836,7 @@ func (d *daemon) syncOnce() string {
 	}
 	d.sh.mu.Lock()
 	res := d.sh.st.reconcile(devices, apps, fetched)
-	d.sh.unclaimed, d.sh.lastSync, d.sh.syncErr = res.Unclaimed, time.Now(), ""
+	d.sh.unclaimed, d.sh.tagged, d.sh.lastSync, d.sh.syncErr = res.Unclaimed, &res.Tagged, time.Now(), ""
 	var saveErr error
 	if res.changed() {
 		saveErr = d.sh.saveLocked()

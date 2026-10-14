@@ -8,6 +8,7 @@ import (
 	"io"
 	"io/fs"
 	"log"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -392,6 +393,57 @@ func TestServeRefusesOtherHostsAndCrossSiteRequests(t *testing.T) {
 	n.ServeHTTP(rec, httptest.NewRequest("GET", self+"/", nil))
 	if rec.Code == http.StatusBadRequest {
 		t.Errorf("a plain request was refused as an upgrade: %s", rec.Body)
+	}
+}
+
+// A guest's request from the app's own pages (Fetch Metadata) notes that they opened the
+// app; Ovenlight's own requests and the connector's paths don't.
+func TestGuestPagesNoteTheOpen(t *testing.T) {
+	d, _ := testDaemon(t)
+	up := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	defer up.Close()
+	addApp(d, App{Name: "Notes", Slug: "notes", Port: up.Listener.Addr().(*net.TCPAddr).Port, Shareable: true})
+	d.sh.st.Guests = []Guest{{DeviceID: "nSam", Person: "pSam", Name: "Sam", App: "notes"}}
+	n := d.nodes["notes"]
+	whoIsAs(n, Identity{Tagged: true, Tags: []string{policy.GuestTag("notes")}, DeviceID: "nSam", DeviceName: "sam-iphone"})
+	get := func(path string, header map[string]string) {
+		t.Helper()
+		req := httptest.NewRequest("GET", "https://notes.tail1.ts.net"+path, nil)
+		for k, v := range header {
+			req.Header.Set(k, v)
+		}
+		rec := httptest.NewRecorder()
+		n.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET %s: %d %s", path, rec.Code, rec.Body)
+		}
+	}
+	page := map[string]string{"Sec-Fetch-Site": "none", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Dest": "document"}
+	opened := func() string { d.sh.mu.Lock(); defer d.sh.mu.Unlock(); return d.sh.st.Guests[0].LastOpened }
+
+	get("/icon.png", nil) // Ovenlight fetching the icon
+	get(whoamiPath, page) // the connector's own path
+	if got := opened(); got != "" {
+		t.Fatalf("noted an open: %v", got)
+	}
+	before := time.Now().Format(time.DateOnly)
+	get("/", page)
+	if got := opened(); got != before && got != time.Now().Format(time.DateOnly) {
+		t.Errorf("after a page load: %q, want today", got)
+	}
+}
+
+// The sync saves when guests last opened apps before it calls the API, which can fail
+// for days with an expired credential.
+func TestSyncSavesOpensWithoutTheAPI(t *testing.T) {
+	d, _ := testDaemon(t)
+	d.sh.st.Guests = []Guest{{DeviceID: "nSam", Person: "pSam", Name: "Sam", App: "coach"}}
+	d.sh.noteOpened("nSam", "coach", t0)
+	os.Remove(credentialsPath(d.configPath))
+	d.syncOnce()
+	st, err := loadSharingState(sharingPath(d.stateDir))
+	if err != nil || len(st.Guests) != 1 || st.Guests[0].LastOpened != "2026-09-28" {
+		t.Errorf("saved %+v, %v", st.Guests, err)
 	}
 }
 
@@ -1637,7 +1689,7 @@ func TestRevokeByNameCancelsOpenInvites(t *testing.T) {
 }
 
 func TestShutdownEndsTaggedWait(t *testing.T) {
-	d := &daemon{nodes: map[string]*appNode{}}
+	d := &daemon{nodes: map[string]*appNode{}, sh: &sharing{}}
 	done := make(chan error, 1)
 	go func() {
 		_, err := waitTagged(&appNode{}, App{Slug: "coach", Name: "Coach"}, d.stopping())

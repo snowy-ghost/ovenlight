@@ -59,8 +59,9 @@ func encoded(v any) *httptest.ResponseRecorder {
 }
 
 // wireFixture is a daemon whose records hold, as stored (key hashes and all), a guest
-// with two devices, a removed guest, an open and a review invite, an unclaimed device
-// and feedback with and without a screenshot.
+// with two devices (one opened the app, one not yet), a removed guest, an open and a
+// review invite, an unclaimed device, feedback with and without a screenshot, and the
+// tailnet's tagged devices.
 func wireFixture(t *testing.T) *daemon {
 	d, _ := wireDaemon(t)
 	day := 24 * time.Hour
@@ -81,7 +82,8 @@ func wireFixture(t *testing.T) *daemon {
 	d.sh.st = sharingState{
 		Invites: []Invite{samPhone, kim, review, lee},
 		Guests: []Guest{
-			{DeviceID: "nSamPhone", Person: "7c2e91a4d0", Name: "Sam", App: "coach", DeviceName: "sam-iphone", InviteID: samPhone.ID, ClaimedAt: claimed},
+			{DeviceID: "nSamPhone", Person: "7c2e91a4d0", Name: "Sam", App: "coach", DeviceName: "sam-iphone", InviteID: samPhone.ID, ClaimedAt: claimed,
+				LastOpened: "2026-09-29"},
 			{DeviceID: "nSamPad", Person: "7c2e91a4d0", Name: "Sam", App: "coach", DeviceName: "sam-ipad", InviteID: "b2c3d4e5f6", ClaimedAt: wireT0},
 			{DeviceID: "nLeePhone", Person: "5d6e7f8091", Name: "Lee", App: "coach", DeviceName: "lee-iphone", InviteID: lee.ID, ClaimedAt: claimed,
 				RemovedAt: &removed, RemovedWhy: "removed by the owner", DeviceGone: true},
@@ -93,10 +95,12 @@ func wireFixture(t *testing.T) *daemon {
 				PageURL: "https://coach.tail1.ts.net/practice?round=2", Note: "The Next button hides behind the keyboard.",
 				Screenshot: "f2a3b4c5d6.png", ScreenshotBytes: 48213},
 		},
+		OpenedSince: wireT0.Add(-30 * day),
 	}
 	guest := []string{policy.GuestTag("coach")}
 	d.sh.unclaimed = []tsapi.Device{{ID: "5550002", NodeID: "nStray", Name: "iphone.tail1.ts.net", Hostname: "iphone",
 		User: "tagged-devices", Tags: guest, Authorized: true, Created: "2026-09-29T08:12:44Z", OS: "iOS", Addresses: []string{"100.101.102.104"}}}
+	d.sh.tagged = &taggedDevices{Apps: 1, Guests: 3, Tailnet: 5}
 	d.sh.lastSync = wireT0.Add(3 * day)
 	d.sh.syncErr = "tailscale api: GET /api/v2/tailnet/-/devices: 401 Unauthorized: API token invalid; run `ovenlight auth set` with a new token"
 	if err := d.sh.saveLocked(); err != nil { // GET /v1/feedback reads the file

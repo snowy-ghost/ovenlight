@@ -165,7 +165,7 @@ CORS preflight the API never grants.
 | `GET /v1/apps` | this connector's apps: `slug`, `name`, `url`, `state`, `online`, `shareable`, `guests` |
 | `POST /v1/invites` | `{"to": "Sam", "app": "<slug>"}` for someone new; for someone already shared with, `{"person": "<ID>", "app": "<slug>"}`, or `{"to": "Sam", "existing": true, "app": "<slug>"}` by name |
 | `DELETE /v1/invites/{id}` | cancel an unused invite |
-| `GET /v1/guests` | `guests` (removed ones too, with `removedAt`), `invites`, `unclaimed`, `lastSync`, `syncError`; `ovenlight guests --json` prints the same |
+| `GET /v1/guests` | `guests` (removed ones too, with `removedAt`; `lastOpened`, the day the device last opened the app, as `2026-10-13` on the computer's calendar, from `openedSince` on), `invites`, `unclaimed`, `openedSince`, `taggedDevices` (`apps`, `guests` and every tagged device in the tailnet, `tailnet`, as of `lastSync`), `lastSync`, `syncError`; `ovenlight guests --json` prints the same |
 | `DELETE /v1/guests/{ref}` | a device ID or invite ID removes that one device; a person ID or name removes every device and open invite of that person. `?app=<slug>` limits it to one app; `?by=person` reads `ref` only as a person ID |
 | `GET /v1/feedback` | the inbox, newest first; `?app=<slug>`, `?limit=<n>`. `ovenlight feedback --json`, the MCP server's `feedback_list` and `status --json` (`sharing.latestFeedback`) use the same view |
 | `GET /v1/feedback/{id}/screenshot` | the PNG |

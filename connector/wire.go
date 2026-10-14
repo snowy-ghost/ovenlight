@@ -79,11 +79,13 @@ type guestView struct {
 	RemovedAt  *time.Time `json:"removedAt,omitempty"`
 	RemovedWhy string     `json:"removedWhy,omitempty"`
 	DeviceGone bool       `json:"deviceGone,omitempty"`
+	// LastOpened is the day (2006-01-02) the device last used the app, if it has since openedSince.
+	LastOpened string `json:"lastOpened,omitempty"`
 }
 
 func (g Guest) view() guestView {
 	return guestView{DeviceID: g.DeviceID, Person: g.Person, Name: g.Name, App: g.App, DeviceName: g.DeviceName, InviteID: g.InviteID,
-		ClaimedAt: g.ClaimedAt, RemovedAt: g.RemovedAt, RemovedWhy: g.RemovedWhy, DeviceGone: g.DeviceGone}
+		ClaimedAt: g.ClaimedAt, RemovedAt: g.RemovedAt, RemovedWhy: g.RemovedWhy, DeviceGone: g.DeviceGone, LastOpened: g.LastOpened}
 }
 
 // deviceView is a guest device in the tailnet that claimed no invite.
@@ -99,11 +101,13 @@ type deviceView struct {
 }
 
 type guestListView struct {
-	Guests    []guestView  `json:"guests"`
-	Invites   []inviteView `json:"invites"` // waiting for the guest
-	Unclaimed []deviceView `json:"unclaimed"`
-	LastSync  time.Time    `json:"lastSync,omitzero"`
-	SyncError string       `json:"syncError,omitempty"`
+	Guests      []guestView    `json:"guests"`
+	Invites     []inviteView   `json:"invites"` // waiting for the guest
+	Unclaimed   []deviceView   `json:"unclaimed"`
+	OpenedSince time.Time      `json:"openedSince,omitzero"`
+	Tagged      *taggedDevices `json:"taggedDevices,omitempty"` // as of lastSync
+	LastSync    time.Time      `json:"lastSync,omitzero"`
+	SyncError   string         `json:"syncError,omitempty"`
 }
 
 type shareView struct {
@@ -183,7 +187,7 @@ func deviceViewOf(d tsapi.Device) deviceView {
 
 func (l guestList) view() guestListView {
 	return guestListView{Guests: views(l.Guests, Guest.view), Invites: views(l.Invites, Invite.view),
-		Unclaimed: views(l.Unclaimed, deviceViewOf), LastSync: l.LastSync, SyncError: l.SyncError}
+		Unclaimed: views(l.Unclaimed, deviceViewOf), OpenedSince: l.OpenedSince, Tagged: l.Tagged, LastSync: l.LastSync, SyncError: l.SyncError}
 }
 
 func (r shareResult) view() shareView {

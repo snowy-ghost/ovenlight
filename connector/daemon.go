@@ -146,6 +146,9 @@ func (d *daemon) shutdown() {
 	}
 	d.mu.Unlock()
 	procs.Wait()
+	if err := d.sh.saveOpened(); err != nil {
+		log.Printf("saving when guests last opened apps: %v", err)
+	}
 }
 
 func (d *daemon) stopping() chan struct{} {

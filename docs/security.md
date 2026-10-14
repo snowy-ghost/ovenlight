@@ -329,6 +329,10 @@ use too.
   Linux. The [table](connector.md#what-it-installs) in connector.md has where the log is.
 - It keeps each request's path, cut at 200 bytes, and never its query, which can carry
   OAuth codes and tokens.
+- With the guest records, it keeps the day each guest's device last opened each app: a
+  request from the app's own pages in Ovenlight, on screen or kept open in the background,
+  which send Fetch Metadata headers. Ovenlight's own checks and icon fetches send none and
+  don't count. `ovenlight guests` and People & Sharing in Ovenlight show it to you.
 - Each node's backend log is `nodes/<slug>/backend.log` in the state directory. At 10 MB
   it moves to `backend.log.1`, replacing the one before.
 - An app the connector runs (`publish --run`) writes its output to `<slug>.log`, readable

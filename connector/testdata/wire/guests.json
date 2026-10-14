@@ -7,7 +7,8 @@
       "app": "coach",
       "deviceName": "sam-iphone",
       "inviteId": "a1b2c3d4e5",
-      "claimedAt": "2026-09-27T12:04:05.123456789-07:00"
+      "claimedAt": "2026-09-27T12:04:05.123456789-07:00",
+      "lastOpened": "2026-09-29"
     },
     {
       "deviceId": "nSamPad",
@@ -68,6 +69,12 @@
       ]
     }
   ],
+  "openedSince": "2026-08-29T12:04:05.123456789-07:00",
+  "taggedDevices": {
+    "apps": 1,
+    "guests": 3,
+    "tailnet": 5
+  },
   "lastSync": "2026-10-01T12:04:05.123456789-07:00",
   "syncError": "tailscale api: GET /api/v2/tailnet/-/devices: 401 Unauthorized: API token invalid; run `ovenlight auth set` with a new token"
 }

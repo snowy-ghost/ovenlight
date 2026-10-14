@@ -238,7 +238,7 @@ func cmdGuests(args []string) error {
 		if err != nil {
 			return err
 		}
-		list = buildGuestList(st, nil, time.Time{}, "the connector isn't running")
+		list = buildGuestList(st, nil, nil, time.Time{}, "the connector isn't running")
 	default:
 		return err
 	}
@@ -252,14 +252,15 @@ func cmdGuests(args []string) error {
 			continue
 		}
 		if shown == 0 {
-			fmt.Fprintln(w, "GUEST\tPERSON\tAPP\tDEVICE\tDEVICE ID\tSINCE\tSTATUS")
+			fmt.Fprintln(w, "GUEST\tPERSON\tAPP\tDEVICE\tDEVICE ID\tSINCE\tOPENED\tSTATUS")
 		}
 		shown++
 		status := "active"
 		if !g.Active() {
 			status = "removed: " + g.RemovedWhy
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", g.Name, g.Person, g.App, orDash(g.DeviceName), g.DeviceID, g.ClaimedAt.Local().Format("2 Jan 15:04"), status)
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", g.Name, g.Person, g.App, orDash(g.DeviceName), g.DeviceID, g.ClaimedAt.Local().Format("2 Jan 15:04"),
+			lastOpened(g, list.OpenedSince), status)
 	}
 	w.Flush()
 	if shown == 0 {
@@ -278,6 +279,14 @@ func cmdGuests(args []string) error {
 		}
 		w.Flush()
 	}
+	if t := list.Tagged; t != nil && t.Tailnet > 0 {
+		all := fmt.Sprintf("%d tagged devices", t.Tailnet)
+		if t.Tailnet == 1 {
+			all = "1 tagged device"
+		}
+		fmt.Printf("\nOvenlight uses %d of your tailnet's %s: %d for shareable apps and %d for guests. Tailscale's plans include a set number of tagged devices and charge for more: https://tailscale.com/pricing\n",
+			t.Apps+t.Guests, all, t.Apps, t.Guests)
+	}
 	if len(list.Unclaimed) > 0 {
 		fmt.Println("\nGuest devices in your tailnet that never claimed an invite (the connector refuses them; remove any you don't expect in the Tailscale admin console, Machines):")
 		for _, d := range list.Unclaimed {
@@ -288,6 +297,23 @@ func cmdGuests(args []string) error {
 		fmt.Printf("\nNot synced with the tailnet: %s\n", list.SyncError)
 	}
 	return nil
+}
+
+// lastOpened is the day the guest last opened the app, as the guests table shows it. The
+// connector notes it only from openedSince on.
+func lastOpened(g Guest, since time.Time) string {
+	switch {
+	case g.LastOpened != "":
+		if day, err := time.Parse(time.DateOnly, g.LastOpened); err == nil {
+			return day.Format("2 Jan")
+		}
+		return g.LastOpened
+	case since.IsZero():
+		return "-"
+	case g.ClaimedAt.Before(since):
+		return "not since " + since.Local().Format("2 Jan")
+	}
+	return "not yet"
 }
 
 // writeGuestsJSON writes the list as GET /v1/guests answers it, without the stored

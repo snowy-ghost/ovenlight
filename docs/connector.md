@@ -306,7 +306,9 @@ Sharing uses tagged devices, which Tailscale's plans count: each shareable app i
 so is each guest's phone, however many of your apps it holds. Three shared apps and ten
 guests use 13, for example. The free Personal plan includes a set number and charges for
 more ([pricing](https://tailscale.com/pricing)). Removing a guest from all your apps
-deletes their device, so it stops counting.
+deletes their device, so it stops counting. `ovenlight guests` says how many tagged
+devices your tailnet has and how many are Ovenlight's, and when each guest last opened
+each app, so you can tell who no longer uses them.
 
 First create an API access token in the Tailscale admin console, under
 [Settings, Keys](https://console.tailscale.com/admin/settings/keys), and store it once;
@@ -342,7 +344,7 @@ It prints a link, a QR code and a message to send. The other sharing commands:
 
 - `ovenlight share garden-log --to "Sam" --existing`: the same Sam, for another app or
   another device.
-- `ovenlight guests`: guests and open invites.
+- `ovenlight guests`: guests, the day each last opened each app, and open invites.
 - `ovenlight revoke Sam`: removes Sam from every app; add `--app <slug>` to remove just
   one.
 - `ovenlight share --cancel <id>`: withdraws an invite that hasn't been used.

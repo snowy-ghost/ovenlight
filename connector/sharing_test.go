@@ -241,6 +241,111 @@ func TestReconcile(t *testing.T) {
 	}
 }
 
+// Tagged devices are counted from the tailnet itself: this connector's app nodes, its
+// guest devices whether or not they claimed, and every tagged device for the total.
+func TestReconcileCountsTaggedDevices(t *testing.T) {
+	st := sharingState{Guests: []Guest{{DeviceID: "nSam", Name: "Sam", App: "coach"}}}
+	devices := []tsapi.Device{
+		{NodeID: "nCoach", Tags: []string{appTag}},
+		{NodeID: "nSam", Tags: []string{guestTag}},
+		{NodeID: "nStray", Tags: []string{guestTag}},                            // never claimed
+		{NodeID: "nOther", Tags: []string{policy.GuestTag("notes")}},            // another connector's guest
+		{NodeID: "nServer", Tags: []string{"tag:server"}},                       // not Ovenlight's
+		{NodeID: "nMBP", User: "alex@example.com"},                              // a person's own device
+		{NodeID: "nOldApp", Tags: []string{policy.AppTag("gone"), "tag:extra"}}, // an app this connector doesn't publish
+	}
+	got := st.reconcile(devices, []string{"coach"}, t0).Tagged
+	if want := (taggedDevices{Apps: 1, Guests: 2, Tailnet: 6}); got != want {
+		t.Errorf("tagged = %+v, want %+v", got, want)
+	}
+}
+
+// An open is noted to the day, for an active guest's own app only, and only moves forward.
+func TestNoteOpened(t *testing.T) {
+	sh, err := openSharing(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	removed := t0
+	sh.st.Guests = []Guest{
+		{DeviceID: "nSam", Name: "Sam", App: "coach"},
+		{DeviceID: "nPat", Name: "Pat", App: "coach", RemovedAt: &removed},
+	}
+	opened := func() string { return sh.st.Guests[0].LastOpened }
+	const day = "2026-09-28" // t0's
+
+	sh.noteOpened("nSam", "coach", t0.Add(42*time.Minute))
+	if got := opened(); got != day || !sh.opened {
+		t.Fatalf("first open: %v, unsaved %v; want %v", got, sh.opened, day)
+	}
+	if err := sh.saveOpened(); err != nil || sh.opened {
+		t.Fatalf("save: %v, still unsaved %v", err, sh.opened)
+	}
+	st, err := loadSharingState(sh.path)
+	if err != nil || st.Guests[0].LastOpened != day {
+		t.Fatalf("saved: %+v %v", st.Guests, err)
+	}
+	sh.noteOpened("nSam", "coach", t0.Add(11*time.Hour))  // the same day
+	sh.noteOpened("nSam", "coach", t0.Add(-13*time.Hour)) // the clock went back
+	if opened() != day || sh.opened {
+		t.Errorf("an earlier or same day changed it: %v, unsaved %v", opened(), sh.opened)
+	}
+	sh.noteOpened("nSam", "coach", t0.Add(12*time.Hour))
+	if opened() != "2026-09-29" || !sh.opened {
+		t.Errorf("the next day: %v, unsaved %v", opened(), sh.opened)
+	}
+	sh.noteOpened("nPat", "coach", t0) // removed
+	sh.noteOpened("nSam", "notes", t0) // not their app
+	sh.noteOpened("nKim", "coach", t0) // no record
+	if sh.st.Guests[1].LastOpened != "" || len(sh.st.Guests) != 2 {
+		t.Errorf("noted for someone who isn't a guest of the app: %+v", sh.st.Guests)
+	}
+}
+
+// The connector notes opens from its first start with this feature: a state without
+// OpenedSince gets the start time, saved by the first sync if there are guests to note.
+func TestOpenSharingStartsNotingOpens(t *testing.T) {
+	dir := t.TempDir()
+	before := time.Now()
+	sh, err := openSharing(dir)
+	if err != nil || sh.st.OpenedSince.Before(before) || sh.opened {
+		t.Fatalf("fresh: since %v, unsaved %v, %v", sh.st.OpenedSince, sh.opened, err)
+	}
+	sh.st.Guests = []Guest{{DeviceID: "nSam", Name: "Sam", App: "coach"}}
+	sh.st.OpenedSince = time.Time{}
+	if err := sh.saveLocked(); err != nil {
+		t.Fatal(err)
+	}
+	if sh, err = openSharing(dir); err != nil || sh.st.OpenedSince.IsZero() || !sh.opened {
+		t.Fatalf("with guests: since %v, unsaved %v, %v", sh.st.OpenedSince, sh.opened, err)
+	}
+	since := sh.st.OpenedSince
+	if err := sh.saveOpened(); err != nil {
+		t.Fatal(err)
+	}
+	if sh, err = openSharing(dir); err != nil || !sh.st.OpenedSince.Equal(since) || sh.opened {
+		t.Errorf("reopened: since %v, want %v, unsaved %v, %v", sh.st.OpenedSince, since, sh.opened, err)
+	}
+}
+
+func TestLastOpenedColumn(t *testing.T) {
+	since := time.Date(2026, 10, 14, 9, 0, 0, 0, time.Local)
+	for _, c := range []struct {
+		g     Guest
+		since time.Time
+		want  string
+	}{
+		{Guest{ClaimedAt: since.Add(-time.Hour), LastOpened: "2026-10-20"}, since, "20 Oct"},
+		{Guest{ClaimedAt: since.Add(-time.Hour)}, since, "not since 14 Oct"},
+		{Guest{ClaimedAt: since.Add(time.Hour)}, since, "not yet"},
+		{Guest{ClaimedAt: since}, time.Time{}, "-"}, // records from a connector that didn't note opens
+	} {
+		if got := lastOpened(c.g, c.since); got != c.want {
+			t.Errorf("lastOpened(%+v, %v) = %q, want %q", c.g, c.since, got, c.want)
+		}
+	}
+}
+
 func TestInviteLinkRoundTrip(t *testing.T) {
 	l := InviteLink{Control: "https://controlplane.tailscale.com", Key: "tskey-auth-kAbc-123&x=y", Owner: "Alex", App: "coach",
 		Invite: "a1b2c3", Host: "coach.tailabc123.ts.net", Name: "Interview Coach", To: "Sam Q"}
