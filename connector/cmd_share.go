@@ -279,13 +279,9 @@ func cmdGuests(args []string) error {
 		}
 		w.Flush()
 	}
-	if t := list.Tagged; t != nil && t.Tailnet > 0 {
-		all := fmt.Sprintf("%d tagged devices", t.Tailnet)
-		if t.Tailnet == 1 {
-			all = "1 tagged device"
-		}
-		fmt.Printf("\nOvenlight uses %d of your tailnet's %s: %d for shareable apps and %d for guests. Tailscale's plans include a set number of tagged devices and charge for more: https://tailscale.com/pricing\n",
-			t.Apps+t.Guests, all, t.Apps, t.Guests)
+	if t := list.Tagged; t != nil && t.Apps+t.Guests > 0 {
+		fmt.Printf("\nOvenlight uses %s: %d for shareable apps and %d for guests. Tailscale's plans include a set number of tagged devices and charge for more: https://tailscale.com/pricing\n",
+			taggedShare(*t), t.Apps, t.Guests)
 	}
 	if len(list.Unclaimed) > 0 {
 		fmt.Println("\nGuest devices in your tailnet that never claimed an invite (the connector refuses them; remove any you don't expect in the Tailscale admin console, Machines):")
@@ -297,6 +293,19 @@ func cmdGuests(args []string) error {
 		fmt.Printf("\nNot synced with the tailnet: %s\n", list.SyncError)
 	}
 	return nil
+}
+
+// taggedShare is how much of the tailnet's tagged devices Ovenlight uses: "3 of your
+// tailnet's 5 tagged devices", or all of them.
+func taggedShare(t taggedDevices) string {
+	switch used := t.Apps + t.Guests; {
+	case used < t.Tailnet:
+		return fmt.Sprintf("%d of your tailnet's %d tagged devices", used, t.Tailnet)
+	case used == 1:
+		return "your tailnet's only tagged device"
+	default:
+		return fmt.Sprintf("all %d of your tailnet's tagged devices", used)
+	}
 }
 
 // lastOpened is the day the guest last opened the app, as the guests table shows it. The

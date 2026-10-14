@@ -328,6 +328,21 @@ func TestOpenSharingStartsNotingOpens(t *testing.T) {
 	}
 }
 
+func TestTaggedShare(t *testing.T) {
+	for _, c := range []struct {
+		t    taggedDevices
+		want string
+	}{
+		{taggedDevices{Apps: 1, Guests: 3, Tailnet: 5}, "4 of your tailnet's 5 tagged devices"},
+		{taggedDevices{Apps: 3, Guests: 4, Tailnet: 7}, "all 7 of your tailnet's tagged devices"},
+		{taggedDevices{Apps: 1, Tailnet: 1}, "your tailnet's only tagged device"},
+	} {
+		if got := taggedShare(c.t); got != c.want {
+			t.Errorf("taggedShare(%+v) = %q, want %q", c.t, got, c.want)
+		}
+	}
+}
+
 func TestLastOpenedColumn(t *testing.T) {
 	since := time.Date(2026, 10, 14, 9, 0, 0, 0, time.Local)
 	for _, c := range []struct {

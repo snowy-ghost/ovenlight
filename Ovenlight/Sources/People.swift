@@ -69,6 +69,8 @@ struct SharingPeopleList: View {
                             }
                         }
                         .tag(ref)
+                        // Removing them would cancel App Review's unused invites: never in passing.
+                        .selectionDisabled(group.machine.guests.hasOpenInvites(person.id, review: true))
                         .swipeActions {
                             Button("Remove", role: .destructive) { removing = [ref] }
                         }

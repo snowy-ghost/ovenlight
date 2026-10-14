@@ -251,8 +251,8 @@ struct AdminGuestList: Decodable, Equatable {
 
     private enum CodingKeys: String, CodingKey { case guests, invites, openedSince, taggedDevices }
 
-    func hasOpenInvites(_ person: String) -> Bool {
-        invites.contains { $0.person == person && $0.state == AdminInvite.sent }
+    func hasOpenInvites(_ person: String, review: Bool = false) -> Bool {
+        invites.contains { $0.person == person && $0.state == AdminInvite.sent && (!review || $0.review == true) }
     }
 }
 
