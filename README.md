@@ -151,7 +151,12 @@ address in your tailnet, and Ovenlight opens apps only over HTTPS.
 
 ### 2. Install the connector
 
-On a Mac, in Terminal:
+Follow the steps for your computer's system. On each, the script installs the `ovenlight`
+command and keeps the connector running.
+
+#### Mac
+
+In Terminal:
 
 ```sh
 mkdir -p ~/ovenlight-connector && cd ~/ovenlight-connector
@@ -160,10 +165,36 @@ curl -fsSL https://downloads.ovenlight.app/connector/latest/ovenlight-connector-
 ./install.sh
 ```
 
-On Linux, use `linux-amd64` or `linux-arm64` in place of `macos`.
+If the script prints a line for your shell profile, as it does on a new Mac, add it:
 
-On Windows, sign in as the account that will own the apps, which must be an
-administrator. Open PowerShell with Run as administrator, then run:
+```sh
+echo >> ~/.zshrc
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
+```
+
+Then open a new Terminal window and run `~/ovenlight-connector/install.sh` again, so the
+commands below work as written.
+
+#### Linux
+
+In a terminal:
+
+```sh
+mkdir -p ~/ovenlight-connector && cd ~/ovenlight-connector
+curl -fsSL https://downloads.ovenlight.app/connector/latest/ovenlight-connector-linux-amd64.tar.gz |
+  tar xz --strip-components 1
+./install.sh
+```
+
+On an Arm computer, use `linux-arm64` in place of `linux-amd64`. If the script prints a
+line for your shell profile, add it to `~/.bashrc`, open a new terminal and run
+`~/ovenlight-connector/install.sh` again. If it prints a `sudo loginctl enable-linger`
+command, run it, so the connector keeps serving with nobody logged in and after a restart.
+
+#### Windows
+
+Sign in as the account that will own the apps, which must be an administrator. Open
+PowerShell with Run as administrator, then run:
 
 ```powershell
 mkdir $HOME\ovenlight-connector -Force | Out-Null; cd $HOME\ovenlight-connector
@@ -172,22 +203,14 @@ tar -xf connector.zip --strip-components 1
 powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
-On an Arm PC, use `windows-arm64` in place of `windows-amd64`.
+On an Arm PC, use `windows-arm64` in place of `windows-amd64`. The `ovenlight` command
+works in PowerShell windows opened after the install.
 
-The script installs the `ovenlight` command and keeps the connector running. If it prints
-a line for your shell profile, as on a new Mac, add that line to the file it names. On a
-Mac, this does it:
+#### Updating
 
-```sh
-echo >> ~/.zshrc
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
-```
-
-Then open a new Terminal window and run `~/ovenlight-connector/install.sh` again, so the
-commands below work as written. On Windows, `ovenlight` works in PowerShell windows opened
-after the install. To update, run the install commands again when `ovenlight doctor` says
-a new release is out. [docs/connector.md](docs/connector.md#install) also covers
-downloading in a browser and checking a download's signature.
+To update, run the same install commands again when `ovenlight doctor` says a new release
+is out. [docs/connector.md](docs/connector.md#install) also covers downloading in a browser
+and checking a download's signature.
 
 ### 3. Publish an app
 
