@@ -5,8 +5,8 @@
 <h1 align="center">Ovenlight</h1>
 
 <p align="center">
-  <strong>Your own AI-built web apps, on your iPhone and your friends'.</strong><br>
-  They run on your own computer, stay off the internet and open behind Face&nbsp;ID.
+  <strong>Cooking up apps with AI? Serve them to the people you made them for, and no one else.</strong><br>
+  Your web apps run on your own computer, stay off the internet and open on iPhone behind Face&nbsp;ID.
 </p>
 
 <p align="center">
@@ -42,11 +42,11 @@
 </p>
 
 You built a small web app for your family, your garden or your book club, maybe in an
-afternoon with a coding agent, and it runs on your own computer. The hard part now is
-getting it to the people it's for. Ovenlight puts it on your iPhone and theirs, and it
-opens wherever the phone is online, at home or away. It takes a computer that stays on,
-with Ovenlight's connector installed, and a Tailscale account of your own (free for
-personal use). The people you share with need only Ovenlight.
+afternoon with a coding agent, and it runs on your own computer. Ovenlight puts it on your
+iPhone and on the iPhone of anyone you invite, and it opens wherever the phone is online,
+at home or away. It takes a computer that stays on, with Ovenlight's connector installed,
+and a Tailscale account of your own (free for personal use). The people you share with
+need only Ovenlight.
 
 Once your computer is [set up](#get-started) and your agent
 [connected](#with-a-coding-agent), ask it to put the app on your phone:
