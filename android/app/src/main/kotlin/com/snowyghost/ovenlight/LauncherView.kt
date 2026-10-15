@@ -62,6 +62,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -161,7 +162,7 @@ fun LauncherView(model: AppModel) {
             phases = phases,
             reachability = reachability,
             iconRevisions = iconRevisions,
-            covered = sheet != null,
+            covered = sheet?.isScreen == true,
             icon = { IconDecoder.load(registry.iconFile(it)) },
             lock = model.lock::lock,
             present = model.router::present,
@@ -212,6 +213,9 @@ fun LauncherView(state: LauncherState) {
     // Covered by a screen, the launcher stays composed beneath it; touch and TalkBack don't reach
     // it, and this keeps a keyboard's Tab from wrapping onto its hidden buttons and tiles.
     val focus = if (state.covered) Modifier.focusProperties { onEnter = { cancelFocusChange() } }.focusGroup() else Modifier
+    // And focus already inside, on More just tapped from a keyboard, say, lets go as it's covered.
+    val focusManager = LocalFocusManager.current
+    LaunchedEffect(state.covered) { if (state.covered) focusManager.clearFocus(force = true) }
     Box(Modifier.fillMaxSize().background(LocalOvenColors.current.ovenInterior).then(focus)) {
         LampLight(level = 0.6f)
         CompositionLocalProvider(LocalContentColor provides colors.onSurface) {

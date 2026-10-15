@@ -160,12 +160,10 @@ class LauncherViewTests {
             focus = LocalFocusManager.current
             OvenlightTheme { LauncherView(LauncherState(apps = apps, covered = covered)) }
         }
-        composeRule.runOnIdle { focus.moveFocus(FocusDirection.Next) }
+        composeRule.runOnIdle { repeat(3) { focus.moveFocus(FocusDirection.Next) } }
         assertTrue("uncovered, a keyboard reaches it", composeRule.onAllNodes(isFocused()).fetchSemanticsNodes().isNotEmpty())
-        composeRule.runOnIdle {
-            focus.clearFocus()
-            covered = true
-        }
+        // Covered while something in it has focus, as after More, then Settings, from a keyboard.
+        composeRule.runOnIdle { covered = true }
         composeRule.runOnIdle { repeat(10) { focus.moveFocus(FocusDirection.Next) } }
         assertTrue("under a screen, nothing in it takes focus", composeRule.onAllNodes(isFocused()).fetchSemanticsNodes().isEmpty())
     }

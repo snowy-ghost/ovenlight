@@ -271,6 +271,12 @@ internal fun sameName(a: String, b: String): Boolean {
 sealed class RootSheet {
     abstract val id: String
 
+    /**
+     * Shown as a screen over the launcher by RootView. The sign-in and Machines pages show in a
+     * Custom Tab instead (see MainActivity), and the rest arrive with their phases.
+     */
+    val isScreen: Boolean get() = this == Settings
+
     /** An invite link, or the Join with Invite entry. */
     data class Join(val request: JoinRequest) : RootSheet() {
         override val id: String get() = "join ${request.id}"
@@ -331,8 +337,7 @@ fun RootView(model: AppModel) {
 private fun ScreenLayer(model: AppModel) {
     val router = model.router
     val sheet by router.sheet.collectAsState()
-    // A Custom Tab shows the sign-in and Machines pages (see MainActivity), not a screen here.
-    val screen = sheet?.takeUnless { it is RootSheet.Login || it == RootSheet.Approve }
+    val screen = sheet?.takeIf { it.isScreen }
     var last by remember { mutableStateOf<RootSheet?>(null) }
     if (screen != null) last = screen
     // A screen closed while the lock kept this layer out of composition never ran its own
