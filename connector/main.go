@@ -52,7 +52,7 @@ Sharing (one-time setup: auth set, then publish --slug <slug> --shareable, which
   ovenlight share <slug> --to "<Name>"            invite link and QR code
   ovenlight share <slug> --to "<Name>" --existing  another app or device for someone you share with
   ovenlight share <slug> --person <ID>            the same, by person ID (see guests)
-  ovenlight share <slug> --to "<Name>" --review   invite for an app store's review (90 days)
+  ovenlight share <slug> --to "<Name>" --review   invite for an app store's review (90 days, 10 devices)
   ovenlight share --cancel <id>                   withdraw an unused invite
   ovenlight guests [--all] [--sync] [--json]
   ovenlight revoke <name | device ID | invite ID> [--app <slug>]

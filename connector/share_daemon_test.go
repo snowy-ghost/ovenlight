@@ -190,29 +190,34 @@ func TestReviewInvite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Each device also carries another app's guest tag, so after its claim the connector
+	// retags it, which it does after deleting a spent key: once the retag is seen, the
+	// claim's key decision is done.
 	var devices []Identity
 	for i := range reviewInviteDevices + 1 {
-		devices = append(devices, Identity{Tagged: true, Tags: []string{guestTag}, DeviceID: fmt.Sprint("nReview", i), DeviceName: fmt.Sprint("review-", i)})
+		devices = append(devices, Identity{Tagged: true, Tags: []string{guestTag, policy.GuestTag("notes")}, DeviceID: fmt.Sprint("nReview", i),
+			DeviceName: fmt.Sprint("review-", i)})
 	}
+	deletes := func() int { return f.RequestCount("DELETE /api/v2/tailnet/-/keys/" + k.ID) }
 	// Each device claims in turn, and the key stays for the next until the last.
 	for i, dev := range devices[:reviewInviteDevices] {
 		if code, out := claim(t, d, dev, link.Key); code != 200 || out["name"] != "App Review" || out["userId"] != "guest:"+inv.Person {
 			t.Fatalf("claim %d: %d %v", i, code, out)
 		}
+		waitFor(t, func() bool { return f.RequestCount("POST /api/v2/device/"+dev.DeviceID+"/tags") == 1 }, "the claiming device's retag")
 		d.sh.mu.Lock()
 		state := d.sh.st.invite(inv.ID).State
 		d.sh.mu.Unlock()
-		want := inviteSent
+		want, wantDeletes := inviteSent, 0
 		if i == reviewInviteDevices-1 {
-			want = inviteClaimed
+			want, wantDeletes = inviteClaimed, 1
 		}
-		if state != want {
-			t.Fatalf("after claim %d the invite is %s", i, state)
+		if state != want || deletes() != wantDeletes {
+			t.Fatalf("after claim %d the invite is %s and its key was deleted %d times", i, state, deletes())
 		}
 	}
-	waitFor(t, func() bool { return keyDeleted(d, inv.ID) }, "the used-up key to be deleted")
-	if n := f.RequestCount("DELETE /api/v2/tailnet/-/keys/" + k.ID); n != 1 {
-		t.Errorf("the key was deleted %d times", n)
+	if !keyDeleted(d, inv.ID) {
+		t.Error("the used-up key is still recorded")
 	}
 	// One more device is refused as for a used invite, and a device that claimed may
 	// claim again.
@@ -231,6 +236,32 @@ func TestReviewInvite(t *testing.T) {
 	notes := reviewNotes(reply.Share)
 	if !strings.Contains(notes, reply.Share.Link) || !strings.Contains(notes, "Report a Problem") || strings.ContainsAny(notes, "\u2013\u2014") {
 		t.Errorf("review notes:\n%s", notes)
+	}
+}
+
+// Revoking a review invite by its ID removes its devices and cancels it, so a removed
+// phone that joins again can't take a place that is left.
+func TestRevokeReviewInviteByID(t *testing.T) {
+	d, f := testDaemon(t)
+	res, err := d.createInvite(guestRef{To: "App Review"}, "coach", "terminal", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	link, err := parseInviteLink(res.Link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code, _ := claim(t, d, samDev, link.Key); code != 200 {
+		t.Fatalf("claim: %d", code)
+	}
+	rr, err := d.revoke(res.Invite.ID, "", false)
+	if err != nil || len(rr.Removed) != 1 || len(rr.Canceled) != 1 || rr.Canceled[0].ID != res.Invite.ID || rr.Canceled[0].KeyID != "" || !f.Keys[0].Deleted {
+		t.Fatalf("revoke: %+v %v", rr, err)
+	}
+	again := samDev
+	again.DeviceID = "nSam2"
+	if code, out := claim(t, d, again, link.Key); code != http.StatusForbidden || out["code"] != codeNotInvited {
+		t.Errorf("the phone joined again and claimed: %d %v", code, out)
 	}
 }
 

@@ -523,9 +523,10 @@ type revokeResult struct {
 	Errors   []string `json:"errors,omitempty"`
 }
 
-// revoke removes guests as matchGuests finds them, and a person's open invites: the connector refuses them at
-// once and ends their open connections, then their devices are deleted from the tailnet,
-// or, if they still hold another of the owner's apps, lose only this app's tag.
+// revoke removes guests as matchGuests finds them, and a person's open invites, or the
+// open invite named by its ID: the connector refuses them at once and ends their open
+// connections, then their devices are deleted from the tailnet, or, if they still hold
+// another of the owner's apps, lose only this app's tag.
 func (d *daemon) revoke(ref, app string, byPerson bool) (revokeResult, error) {
 	var res revokeResult
 	d.sh.mu.Lock()
@@ -534,7 +535,13 @@ func (d *daemon) revoke(ref, app string, byPerson bool) (revokeResult, error) {
 		d.sh.mu.Unlock()
 		return res, err
 	}
-	if len(idx) == 0 && !slices.ContainsFunc(d.sh.st.Invites, func(inv Invite) bool {
+	// An invite named by its ID goes too, or a review invite would keep admitting devices,
+	// the removed ones among them once they join again.
+	named := d.sh.st.invite(ref)
+	if byPerson || person != "" || named == nil || !named.open() || (app != "" && named.App != app) {
+		named = nil
+	}
+	if len(idx) == 0 && named == nil && !slices.ContainsFunc(d.sh.st.Invites, func(inv Invite) bool {
 		return person != "" && inv.Person == person && inv.open() && (app == "" || inv.App == app)
 	}) {
 		d.sh.mu.Unlock()
@@ -545,9 +552,13 @@ func (d *daemon) revoke(ref, app string, byPerson bool) (revokeResult, error) {
 	var devices []string
 	if person != "" {
 		canceled = d.sh.st.cancelInvitesOf(person, app)
-		for _, inv := range canceled {
-			devices = append(devices, d.sh.st.reachOf(inv)...)
-		}
+	}
+	if named != nil {
+		named.State = inviteCanceled
+		canceled = append(canceled, *named)
+	}
+	for _, inv := range canceled {
+		devices = append(devices, d.sh.st.reachOf(inv)...)
 	}
 	for _, i := range idx {
 		devices = append(devices, d.sh.st.Guests[i].DeviceID)
