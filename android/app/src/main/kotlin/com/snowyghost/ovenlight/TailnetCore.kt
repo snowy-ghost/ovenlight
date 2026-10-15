@@ -7,7 +7,20 @@ import android.net.Network
 import android.util.Log
 import com.snowyghost.ovenlight.core.Core
 import com.snowyghost.ovenlight.core.Platform
+import java.io.File
+import java.io.IOException
 import java.net.Inet4Address
+import java.net.InetSocketAddress
+import java.net.Proxy
+import java.util.concurrent.TimeUnit
+import kotlin.coroutines.resume
+import kotlinx.coroutines.suspendCancellableCoroutine
+import okhttp3.Call
+import okhttp3.Callback
+import okhttp3.Credentials
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.Response
 import java.net.NetworkInterface
 import java.util.concurrent.Executors
 import org.json.JSONArray
@@ -17,7 +30,7 @@ import org.json.JSONObject
  * The Go core's Android side: it starts the core and its local proxy, answers its
  * questions about the phone's network, and tells it when the default network changes.
  */
-object TailnetCore : Platform {
+object TailnetCore : Platform, TailnetClients {
     /** "127.0.0.1:<port>", for the WebView proxy override and OkHttp. */
     lateinit var proxyAddress: String
         private set
@@ -94,6 +107,65 @@ object TailnetCore : Platform {
             }
         }
         return list.toString()
+    }
+
+    override fun newNode(id: String, directory: File, hostName: String, controlURL: String, authKey: String): TailnetNode {
+        val node = Core.newNode(id, directory.path, hostName, controlURL, authKey)
+        return object : TailnetNode {
+            override fun start() = node.start()
+            override fun waitUp(timeoutMillis: Long) = node.waitUp(timeoutMillis)
+            override fun statusJSON(): String = node.statusJSON()
+            override fun loginInteractive() = node.loginInteractive()
+            override fun logout() = node.logout()
+            override fun close() = node.close()
+        }
+    }
+
+    override fun forget(membershipID: String) = Core.clearRoute("node-$membershipID")
+
+    /**
+     * Fetches through the proxy with [routeKey], answering its challenge up front. Null when
+     * nothing answered; any HTTP answer, an error page included, is a response. Bodies are
+     * capped, since every fetch here is a small page, manifest or API answer.
+     */
+    override fun fetch(routeKey: String, timeoutMillis: Long, totalMillis: Long): Fetch {
+        val client = http.newBuilder()
+            .proxy(Proxy(Proxy.Type.HTTP, InetSocketAddress("127.0.0.1", proxyAddress.substringAfterLast(':').toInt())))
+            .proxyAuthenticator { _, response ->
+                response.request.newBuilder().header("Proxy-Authorization", Credentials.basic(routeKey, proxySecret)).build()
+            }
+            .connectTimeout(timeoutMillis, TimeUnit.MILLISECONDS)
+            .readTimeout(timeoutMillis, TimeUnit.MILLISECONDS)
+            .writeTimeout(timeoutMillis, TimeUnit.MILLISECONDS)
+            .callTimeout(totalMillis, TimeUnit.MILLISECONDS)
+            .build()
+        return { uri -> client.fetch(Request.Builder().url(uri.toString()).build()) }
+    }
+
+    private val http = OkHttpClient.Builder().cache(null).followRedirects(false).build()
+    private const val MAX_BODY = 4L shl 20
+
+    private suspend fun OkHttpClient.fetch(request: Request): FetchResponse? = suspendCancellableCoroutine { done ->
+        val call = newCall(request)
+        done.invokeOnCancellation { call.cancel() }
+        call.enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                if (done.isActive) done.resume(null)
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                val answer = response.use {
+                    // Buffers up to the cap, or to the end of a shorter body.
+                    val body = runCatching {
+                        val source = it.body.source()
+                        source.request(MAX_BODY)
+                        source.buffer.readByteArray(minOf(source.buffer.size, MAX_BODY))
+                    }.getOrDefault(ByteArray(0))
+                    FetchResponse(it.code, body, it.headers.toMap())
+                }
+                if (done.isActive) done.resume(answer)
+            }
+        })
     }
 
     /** Only debug builds get lines, with sign-in links and keys already removed. */

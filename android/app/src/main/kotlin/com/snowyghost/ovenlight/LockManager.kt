@@ -21,6 +21,11 @@ interface Authenticator {
 interface KeyValueStore {
     fun getInt(key: String, default: Int): Int
     fun putInt(key: String, value: Int)
+    fun getString(key: String): String?
+    fun putString(key: String, value: String)
+    fun getBoolean(key: String): Boolean
+    fun putBoolean(key: String, value: Boolean)
+    fun remove(key: String)
 }
 
 /**
