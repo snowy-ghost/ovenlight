@@ -72,6 +72,9 @@ func checkPublished(p *paths, slug string) ([]Check, error) {
 	if c := heldByOther(app, status, problem != nil && problem.ID == "daemon"); c != nil {
 		checks = append([]Check{*c}, checks...)
 	}
+	if c := certificateFinding(p, app.Slug, status); c != nil {
+		checks = append(checks, *c)
+	}
 	if problem == nil {
 		return checks, nil
 	}

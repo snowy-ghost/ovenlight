@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log"
 	"net"
 	"net/http"
@@ -56,6 +57,7 @@ type appNode struct {
 	untaggedKey bool
 
 	srv    *tsnet.Server
+	logs   *restartingFile // backend.log, which close() closes so the node's directory can go
 	lc     *local.Client
 	whoIs  func(ctx context.Context, remoteAddr string) (*apitype.WhoIsResponse, error) // lc.WhoIs; tests stub it
 	proxy  *httputil.ReverseProxy
@@ -76,6 +78,8 @@ type appNode struct {
 	serving   bool
 	adminUp   bool
 	lastErr   string
+	cert      string // the HTTPS certificate: "" until the node serves, then certFetching, certReady or certFailed
+	certErr   string // why the last try to get it failed
 	meta      *SiteManifest
 	metaAt    time.Time
 	metaErr   error
@@ -95,6 +99,28 @@ type appNode struct {
 
 // nodeDir is where an app's node keeps its tailnet state.
 func nodeDir(stateDir, slug string) string { return filepath.Join(stateDir, "nodes", slug) }
+
+// clearNodeState deletes a node's state but keeps its certs folder, where tsnet keeps the
+// certificate for the app's name and the ACME account key that renews it. The node that
+// logs in next under the same name serves that certificate rather than asking for one:
+// Let's Encrypt issues only 5 a week for one name.
+func clearNodeState(dir string) error {
+	if _, err := os.Stat(filepath.Join(dir, "certs")); errors.Is(err, fs.ErrNotExist) {
+		return os.RemoveAll(dir)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if e.Name() != "certs" {
+			if err := os.RemoveAll(filepath.Join(dir, e.Name())); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
 
 // nodeLoggedIn reports whether the app's node has logged in: its state holds a login
 // profile, which tsnet saves once the node has one, not before.
@@ -185,13 +211,15 @@ func (n *appNode) start() error {
 	if n.App().Shareable && n.authKey == "" && !n.hasState() {
 		tags = []string{policy.AppTag(n.App().Slug)}
 	}
+	var logf func(string, ...any)
+	n.logs, logf = backendLogger(filepath.Join(n.dir, "backend.log"))
 	n.srv = &tsnet.Server{
 		Dir:           n.dir,
 		Hostname:      n.App().Slug,
 		ControlURL:    n.dev.ControlURL,
 		AuthKey:       authKey,
 		AdvertiseTags: tags,
-		Logf:          backendLogger(filepath.Join(n.dir, "backend.log")),
+		Logf:          logf,
 		UserLogf: func(format string, args ...any) {
 			// tsnet's own login hint talks about TS_AUTHKEY; watch() prints a clearer one.
 			if msg := fmt.Sprintf(format, args...); !strings.Contains(msg, "go to: ") {
@@ -200,11 +228,12 @@ func (n *appNode) start() error {
 		},
 	}
 	if err := n.srv.Start(); err != nil {
+		n.logs.Close()
 		return err
 	}
 	lc, err := n.srv.LocalClient()
 	if err != nil {
-		n.srv.Close()
+		n.close()
 		return err
 	}
 	n.lc, n.whoIs = lc, lc.WhoIs
@@ -223,6 +252,9 @@ func (n *appNode) close() {
 	n.cancel()
 	if n.srv != nil {
 		n.srv.Close()
+	}
+	if n.logs != nil {
+		n.logs.Close() // Windows can't delete the directory while it's open
 	}
 }
 
@@ -450,6 +482,9 @@ func (n *appNode) serve(port int, handler http.Handler, report func(up bool, err
 		ln, err := n.listen(port)
 		if err == nil {
 			n.refreshStatus() // the owner must be known before the first request
+			if port == 443 {
+				n.warmCertificate() // before it reports serving, so status never shows one without the other
+			}
 			report(true, "")
 			if port == 443 {
 				n.logf("serving https://%s/ -> %s", n.DNSName(), n.upstream())
@@ -653,6 +688,8 @@ type NodeStatus struct {
 	DeviceID  string     `json:"deviceId,omitempty"`
 	KeyExpiry *time.Time `json:"keyExpiry,omitempty"` // nil when the node's key doesn't expire
 	Error     string     `json:"error,omitempty"`
+	Cert      string     `json:"certificate,omitempty"`      // fetching, ready or failed, once the node serves HTTPS
+	CertErr   string     `json:"certificateError,omitempty"` // why the last try to get it failed
 }
 
 func (n *appNode) status() NodeStatus {
@@ -663,7 +700,7 @@ func (n *appNode) status() NodeStatus {
 		owner = n.owner
 	}
 	s := NodeStatus{appInfo: n.app.view(), Backend: n.backend, DNSName: n.dnsName, Owner: owner, NodeUser: n.owner, OwnerName: n.ownerName,
-		Tags: slices.Clone(n.tags), DeviceID: n.selfID, KeyExpiry: n.keyExpiry, Error: n.lastErr}
+		Tags: slices.Clone(n.tags), DeviceID: n.selfID, KeyExpiry: n.keyExpiry, Error: n.lastErr, Cert: n.cert, CertErr: n.certErr}
 	switch {
 	case n.serving:
 		s.State = "serving"
@@ -691,6 +728,77 @@ func (n *appNode) status() NodeStatus {
 	return s
 }
 
+// Certificate states, as status reports them once the node serves HTTPS.
+const (
+	certFetching = "fetching"
+	certReady    = "ready"
+	certFailed   = "failed"
+)
+
+// certRefresh is how often a node asks for its certificate again once it has one. tsnet
+// answers from its cache, and starts a renewal in the background once one is due, so
+// it happens before anyone opens the app rather than during their visit.
+const certRefresh = 12 * time.Hour
+
+// certTimeout bounds one try. The first certificate can take over half a minute.
+const certTimeout = 5 * time.Minute
+
+// warmCertificate starts keepCertificate, once, as the node starts serving HTTPS.
+func (n *appNode) warmCertificate() {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.cert == "" {
+		n.cert = certFetching
+		go n.keepCertificate()
+	}
+}
+
+// keepCertificate gets the node's certificate now, which tsnet would otherwise do only
+// at the first visit, keeping that visit waiting for it, and again every certRefresh. A
+// failure is tried again after a minute, then less often, up to hourly, so a fix in the
+// admin console shows without a restart.
+func (n *appNode) keepCertificate() {
+	retry := time.Minute
+	for {
+		ctx, cancel := context.WithTimeout(n.ctx, certTimeout)
+		err := n.checkCertificate(ctx)
+		cancel()
+		if n.ctx.Err() != nil {
+			return
+		}
+		n.noteCertificate(err)
+		wait := certRefresh
+		if err != nil {
+			wait, retry = retry, min(retry*2, time.Hour)
+		} else {
+			retry = time.Minute
+		}
+		select {
+		case <-n.ctx.Done():
+			return
+		case <-time.After(wait):
+		}
+	}
+}
+
+// noteCertificate records how the last try to get the certificate went, for status,
+// once the node serves HTTPS.
+func (n *appNode) noteCertificate(err error) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.cert == "" {
+		return
+	}
+	switch {
+	case err == nil && n.cert != certReady:
+		n.logf("HTTPS certificate ready")
+		n.cert, n.certErr = certReady, ""
+	case err != nil && n.certErr != err.Error():
+		n.logf("can't get its HTTPS certificate: %v", err)
+		n.cert, n.certErr = certFailed, err.Error()
+	}
+}
+
 // checkCertificate asks the tailnet for this node's certificate, which is what HTTPS
 // needs; it fails when MagicDNS or HTTPS certificates are off for the tailnet.
 func (n *appNode) checkCertificate(ctx context.Context) error {
@@ -710,24 +818,26 @@ func (n *appNode) checkCertificate(ctx context.Context) error {
 }
 
 // backendLogger writes tsnet's verbose backend log to a file in the node's directory,
-// moving it to backend.log.1 whenever it grows past 10 MB.
-func backendLogger(path string) func(string, ...any) {
+// moving it to backend.log.1 whenever it grows past 10 MB. Lines after the file is
+// closed, or when it can't be opened, are dropped.
+func backendLogger(path string) (*restartingFile, func(string, ...any)) {
 	f := &restartingFile{path: path, max: 10 << 20}
 	if err := f.open(0); err != nil {
-		return func(string, ...any) {}
+		f.closed = true
 	}
-	return log.New(f, "", log.LstdFlags|log.Lmicroseconds).Printf
+	return f, log.New(f, "", log.LstdFlags|log.Lmicroseconds).Printf
 }
 
 // restartingFile is a log file that starts over once it would grow past max bytes,
 // keeping the full one as path.1 (replacing an older one there). Several loggers may
-// share one.
+// share one. Once closed, it takes no more writes and never opens the file again.
 type restartingFile struct {
-	path string
-	max  int64
-	mu   sync.Mutex
-	f    *os.File
-	size int64
+	path   string
+	max    int64
+	mu     sync.Mutex
+	f      *os.File
+	size   int64
+	closed bool
 }
 
 func (r *restartingFile) open(flag int) error {
@@ -747,6 +857,9 @@ func (r *restartingFile) open(flag int) error {
 func (r *restartingFile) Write(p []byte) (int, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.closed {
+		return 0, os.ErrClosed
+	}
 	if r.size+int64(len(p)) > r.max {
 		r.f.Close()
 		os.Rename(r.path, r.path+".1") // Windows refuses while another process has it open; O_TRUNC then starts it over in place
@@ -762,5 +875,9 @@ func (r *restartingFile) Write(p []byte) (int, error) {
 func (r *restartingFile) Close() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.closed {
+		return nil
+	}
+	r.closed = true
 	return r.f.Close()
 }

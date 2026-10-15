@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/base64"
@@ -9,6 +10,8 @@ import (
 	"fmt"
 	"image"
 	"image/png"
+	"io"
+	"io/fs"
 	"log"
 	"net"
 	"net/http"
@@ -20,6 +23,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 	"unicode/utf8"
@@ -119,6 +123,90 @@ func TestProxyRewriteSetsIdentityAndKeepsHost(t *testing.T) {
 	}
 	if out.Header.Get("X-Forwarded-Proto") != "https" {
 		t.Errorf("X-Forwarded-Proto = %q", out.Header.Get("X-Forwarded-Proto"))
+	}
+}
+
+// A guest's body can't pass for a request of its own, with forged identity headers, to
+// an app that answers without reading it, and bodiless requests keep their connection.
+func TestProxyClosesAfterABody(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { ln.Close() })
+	seen := make(chan *http.Request, 10)
+	var conns atomic.Int32
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			conns.Add(1)
+			// Like Python's BaseHTTPRequestHandler: it answers without reading the body,
+			// and keeps the connection unless asked to close it.
+			go func() {
+				defer c.Close()
+				br := bufio.NewReader(c)
+				for {
+					req, err := http.ReadRequest(br)
+					if err != nil {
+						return
+					}
+					seen <- req
+					io.WriteString(c, "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok")
+					if req.Close {
+						return
+					}
+				}
+			}()
+		}
+	}()
+
+	d, _ := testDaemon(t)
+	n := d.nodes["coach"]
+	n.app.Port = ln.Addr().(*net.TCPAddr).Port
+	d.sh.st.Guests = []Guest{{DeviceID: samDev.DeviceID, Person: "p-sam", Name: "Sam", App: "coach"}}
+	whoIsAs(n, samDev)
+	send := func(method, path string, body io.Reader) {
+		t.Helper()
+		rec := httptest.NewRecorder()
+		n.ServeHTTP(rec, httptest.NewRequest(method, "https://coach.tail1.ts.net"+path, body))
+		if rec.Code != 200 || rec.Body.String() != "ok" {
+			t.Fatalf("%s %s: %d %q", method, path, rec.Code, rec.Body)
+		}
+	}
+	send("POST", "/notes", strings.NewReader("GET /forged HTTP/1.1\r\nHost: coach.tail1.ts.net\r\nOvenlight-Role: owner\r\nTailscale-User-Login: alex@example.com\r\n\r\n"))
+	send("GET", "/a", nil)
+	send("GET", "/b", nil)
+
+	for _, want := range []string{"/notes", "/a", "/b"} {
+		if req := <-seen; req.URL.Path != want || req.Header.Get("Ovenlight-Role") != "guest" {
+			t.Fatalf("the app saw %s %s as %q, want %s as the guest", req.Method, req.URL.Path, req.Header.Get("Ovenlight-Role"), want)
+		}
+	}
+	select {
+	case req := <-seen:
+		t.Fatalf("the app saw another request: %s %s", req.Method, req.URL.Path)
+	default:
+	}
+	if got := conns.Load(); got != 2 {
+		t.Errorf("%d connections to the app, want 2: one for the POST, one the GETs share", got)
+	}
+
+	// A chunked body (ContentLength -1) closes too; a WebSocket upgrade has no body.
+	for _, c := range []struct {
+		method, upgrade string
+		length          int64
+	}{{"POST", "", -1}, {"GET", "websocket", 0}} {
+		in := httptest.NewRequest(c.method, "https://coach.tail1.ts.net/ws", nil)
+		in.ContentLength = c.length
+		in.Header.Set("Upgrade", c.upgrade)
+		out := in.Clone(in.Context())
+		n.rewrite(&httputil.ProxyRequest{In: in, Out: out})
+		if out.Close != (c.length != 0) {
+			t.Errorf("%s with length %d: Close = %v", c.method, c.length, out.Close)
+		}
 	}
 }
 
@@ -784,6 +872,70 @@ func TestStrayArgumentsAreRefused(t *testing.T) {
 
 // A node has logged in once its state holds a login profile; a node that only started
 // has a machine key and nothing more.
+// Closing a node closes its backend.log, so making the app shareable or unpublishing it
+// can delete the node's directory (Windows refuses while the file is open), and a line
+// tsnet logs afterwards is dropped rather than opening it again.
+func TestNodeCloseClosesItsLog(t *testing.T) {
+	n := newAppNode(App{Name: "Coach", Slug: "coach", Port: 4317}, t.TempDir(), devOptions{ControlURL: "http://127.0.0.1:9"}, nil)
+	if err := n.start(); err != nil {
+		t.Fatal(err)
+	}
+	n.close()
+	if err := os.RemoveAll(n.dir); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := n.logs.Write([]byte("late line\n")); !errors.Is(err, os.ErrClosed) {
+		t.Errorf("write after close: %v", err)
+	}
+	if _, err := os.Stat(n.dir); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("the node's directory is back: %v", err)
+	}
+}
+
+// Replacing an app's node (making it shareable, or unpublishing a shareable app) keeps
+// tsnet's certs folder, so the next node with the name serves its certificate rather
+// than asking Let's Encrypt for another; a node without one leaves nothing behind.
+func TestClearNodeStateKeepsCertificates(t *testing.T) {
+	state := t.TempDir()
+	dir := nodeDir(state, "coach")
+	for name, data := range map[string]string{
+		"tailscaled.state": "{}", "backend.log": "x",
+		"certs/coach.tail1.ts.net.crt": "cert", "certs/coach.tail1.ts.net.key": "key", "certs/acme-account.key.pem": "account",
+	} {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, name)), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(data), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := clearNodeState(dir); err != nil {
+		t.Fatal(err)
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) != 1 || entries[0].Name() != "certs" {
+		t.Errorf("left %v, want only certs", entries)
+	}
+	if certs, _ := os.ReadDir(filepath.Join(dir, "certs")); len(certs) != 3 {
+		t.Errorf("certs left: %v", certs)
+	}
+	if nodeLoggedIn(state, "coach") {
+		t.Error("the node still looks logged in")
+	}
+
+	if err := os.RemoveAll(filepath.Join(dir, "certs")); err != nil {
+		t.Fatal(err)
+	}
+	if err := clearNodeState(dir); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(dir); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("a node without certificates left its folder: %v", err)
+	}
+	if err := clearNodeState(dir); err != nil {
+		t.Errorf("clearing it again: %v", err)
+	}
+}
+
 func TestNodeLoggedIn(t *testing.T) {
 	state := t.TempDir()
 	write := func(slug string, keys map[string][]byte) {

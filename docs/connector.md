@@ -216,11 +216,13 @@ way:
   to publish it.
 - `ovenlight version`: the connector's version.
 
-Recipe Box becomes its own node, at `https://recipe-box.<your-tailnet>.ts.net/`. When a
-node gets its HTTPS certificate, its full address, including your tailnet's name, is
-listed in public Certificate Transparency logs, so choose names and slugs you don't mind
-people seeing. For each new app, `publish` prints a login link: open it and sign in with
-your Tailscale account. Once you store an API access token of your own (see
+Recipe Box becomes its own node, at `https://recipe-box.<your-tailnet>.ts.net/`.
+`publish` waits for the node's HTTPS certificate, which can take up to a minute the first
+time, and the connector renews it before it runs out. Once a node has its certificate,
+its full address, including your tailnet's name, is listed in public Certificate
+Transparency logs, so choose names and slugs you don't mind people seeing. For each new
+app, `publish` prints a login link: open it and sign in with your Tailscale account. Once
+you store an API access token of your own (see
 [Share an app](#share-an-app)), later apps sign in as you without the browser; the first
 app on a fresh install still needs its link. Without a stored API credential, each app's
 sign-in expires on your tailnet's key expiry schedule (180 days by default), and `doctor`
@@ -367,8 +369,8 @@ off, a screenshot of the page. `ovenlight feedback` lists what arrives, and so d
 & Sharing in Ovenlight; [security.md](security.md#feedback) has the limits.
 
 Unpublishing a shareable app removes its guests, cancels its open invites, deletes its
-node from the tailnet (so publishing it again logs in a new one) and offers to take its
-tags and guest rule out of your policy. When any of that fails or has to wait, `unpublish`
+node from the tailnet (so publishing it again logs in a new one, which keeps its HTTPS
+certificate) and offers to take its tags and guest rule out of your policy. When any of that fails or has to wait, `unpublish`
 says what's left and what to run, and [security.md](security.md#later-changes) has the
 details.
 

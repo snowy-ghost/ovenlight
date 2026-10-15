@@ -478,6 +478,35 @@ func publishApp(p *paths, app App, run, dir *string, shareable bool) (*publishRe
 	return res, nil
 }
 
+// certWait bounds how long publish waits for a serving node's certificate. The first one
+// can take a minute.
+const certWait = 90 * time.Second
+
+// waitCertificate waits up to certWait for the node publish found serving to have its
+// HTTPS certificate, calling waiting first if it has to wait, and adds the finding when
+// it has none.
+func waitCertificate(p *paths, res *publishResult, waiting func()) {
+	if res.State != "serving" {
+		return
+	}
+	reply := &controlReply{Apps: []NodeStatus{*res.node}}
+	for deadline := time.Now().Add(certWait); nodeStatus(res.App.Slug, reply).Cert == certFetching && time.Now().Before(deadline); {
+		if waiting != nil {
+			waiting()
+			waiting = nil
+		}
+		time.Sleep(time.Second)
+		again, err := callDaemon(p.state, "status", 10*time.Second)
+		if err != nil || nodeStatus(res.App.Slug, again) == nil {
+			break
+		}
+		reply = again
+	}
+	if c := certificateFinding(p, res.App.Slug, reply); c != nil && c.Status != statusOK {
+		res.Problems = append(res.Problems, *c)
+	}
+}
+
 // restartLoginFix restarts the connector so a node that lost its login asks for a new
 // login link, which tsnet does only as it starts; a fix for the person.
 func restartLoginFix(p *paths) string {
@@ -628,7 +657,15 @@ func cmdPublish(args []string) error {
 	case res.State == "needs-approval":
 		fmt.Printf("\nApprove this app's node, %s, in the Tailscale admin console: %s\n", res.App.Slug, consoleMachines)
 	case res.State == "serving":
-		fmt.Printf("\nServing at %s\n", res.URL)
+		waitCertificate(p, res, func() {
+			fmt.Printf("\nGetting the HTTPS certificate for %s, which can take up to a minute the first time...\n", res.URL)
+		})
+		if c := findID(res.Problems, "certificate"); c != nil {
+			fmt.Println()
+			printChecks([]Check{*c}, true)
+		} else {
+			fmt.Printf("\nServing at %s\n", res.URL)
+		}
 	default:
 		fmt.Println("\nThe node is still starting; run `ovenlight status` in a moment.")
 	}
@@ -752,7 +789,7 @@ func forgetAppNode(p *paths, slug string) string {
 		return fmt.Sprintf("Its node stays in your tailnet, offline, as Ovenlight couldn't delete it (%v): delete it in the Tailscale admin console (Machines), "+
 			"since no other app can be made shareable while it's there.", err)
 	}
-	if err := os.RemoveAll(nodeDir(p.state, slug)); err != nil {
+	if err := clearNodeState(nodeDir(p.state, slug)); err != nil {
 		return fmt.Sprintf("Its node is deleted from your tailnet, but not its state here (%v): delete %s before publishing it again.", err, nodeDir(p.state, slug))
 	}
 	return "Its node is deleted from your tailnet; publishing it again logs in a new one."
@@ -953,7 +990,14 @@ func cmdStatus(args []string) error {
 			if a.Shareable {
 				share = "yes"
 			}
-			fmt.Fprintf(w, "%s\t%s\t%d\t%s\t%s\t%s\t%s\t%s\n", a.Name, a.Slug, a.Port, a.State, share, orDash(a.URL), orDash(a.Owner), upText)
+			node := a.State
+			switch a.Cert {
+			case certFetching:
+				node += " (getting certificate)"
+			case certFailed:
+				node += " (no certificate)"
+			}
+			fmt.Fprintf(w, "%s\t%s\t%d\t%s\t%s\t%s\t%s\t%s\n", a.Name, a.Slug, a.Port, node, share, orDash(a.URL), orDash(a.Owner), upText)
 		}
 		w.Flush()
 		sep := "\n"
@@ -977,6 +1021,9 @@ func cmdStatus(args []string) error {
 				fmt.Printf("\nLOGIN NEEDED for %s: open this link and sign in to your tailnet\n  %s\n", a.Name, a.LoginURL)
 			case a.State == "needs-approval":
 				fmt.Printf("\nAPPROVAL NEEDED for %s: approve its node, %s, in the Tailscale admin console: %s\n", a.Name, a.Slug, consoleMachines)
+			case a.Cert == certFailed:
+				c := certificateCheck(a.Slug, a.DNSName, a.Cert, a.CertErr)
+				fmt.Printf("\nNO HTTPS CERTIFICATE for %s, so the phone can't open it: %s\n  Fix (the person): %s: %s\n", a.Name, a.CertErr, c.Fix, c.URL)
 			}
 			if a.Error != "" && a.State != "needs-login" {
 				fmt.Printf("\n%s: %s\n", a.Name, a.Error)

@@ -87,9 +87,9 @@ a foreign `Host` with 400.
 `GET /` must answer with a page, or a redirect to one, that loads even without identity
 headers, since the connector reads it (and the web manifest) to find the app's icon and
 color. And a GET must never change anything: a link on another site can send one.
-Read each request's body in full, or close the connection: the connector reuses its
-connections, so an unread body can pass for a request of its own, with forged identity
-headers.
+Read each request's body in full, or close the connection: the connector asks the app
+to close the connection after a request with a body, but a server that ignores that can
+take an unread body for a request of its own, with forged identity headers.
 
 ## Keep it running
 

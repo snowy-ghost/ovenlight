@@ -217,10 +217,16 @@ func (n *appNode) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // rewrite routes the request to the app on 127.0.0.1, keeps the tailnet Host (as
-// `tailscale serve` does) and replaces the identity and client-address headers.
+// `tailscale serve` does) and replaces the identity and client-address headers. A request
+// with a body (ContentLength is -1 when chunked) closes its connection to the app, so an
+// app that answers without reading the body can't take it for a request of its own,
+// with identity headers the caller wrote into it.
 func (n *appNode) rewrite(pr *httputil.ProxyRequest) {
 	pr.SetURL(n.upstream())
 	pr.Out.Host = pr.In.Host
+	if pr.In.ContentLength != 0 {
+		pr.Out.Close = true
+	}
 	c, _ := pr.In.Context().Value(callerKey{}).(caller)
 	applyIdentity(pr.Out.Header, c)
 	pr.SetXForwarded() // after applyIdentity, which drops every client-sent copy

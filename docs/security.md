@@ -258,6 +258,9 @@ A guest who leaves in Ovenlight stays in your guest list until you remove them
   identity and forwarding headers itself.
 - **Upgrades.** Only WebSocket upgrades pass; any other gets 400, since a protocol such as
   h2c would carry requests past these checks.
+- **Bodies.** A request with a body goes to the app with `Connection: close`, so an app
+  that answers without reading it can't take it for a request of its own, as long as the
+  app honors that header ([app-contract.md](app-contract.md#read-each-request-body)).
 - `/__ovenlight/` never reaches the app.
 - **Admin API.** Owner only, and requests that change something need
   `X-Ovenlight-Request: 1` ([protocol.md](protocol.md#port-8443-the-admin-api)).
@@ -425,7 +428,8 @@ the web manifest, from `127.0.0.1` without identity headers too, as the connecto
 them for the app's icon and color. The agent chooses none of them. What guests wrote in
 feedback, and the output of the apps the connector runs, reach the agent fenced as
 untrusted data: that output holds what requests sent the app, which a guest, or any
-website open in this computer's browser, can choose.
+website open in this computer's browser, can choose. A screenshot can't be fenced, so the
+agent is told that it is an image its sender chose, and any text in it is data.
 
 ## On the iPhone
 

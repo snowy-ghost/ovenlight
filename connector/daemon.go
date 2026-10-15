@@ -424,17 +424,25 @@ func (d *daemon) handleControl(conn net.Conn) {
 	case "share", "share-cancel", "guests", "revoke", "make-shareable", "health", "sync":
 		reply = d.handleSharingControl(req, reply)
 	case "certs":
-		// At once, so that a few slow ones still answer within doctor's wait.
+		// At once, so that a few slow ones still answer within doctor's wait. Slug, when
+		// set, limits it to that app's node.
 		reply.Certs = map[string]string{}
 		var mu sync.Mutex
 		var wg sync.WaitGroup
 		for _, n := range d.snapshot() {
+			if req.Slug != "" && n.App().Slug != req.Slug {
+				continue
+			}
 			wg.Go(func() {
 				ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 				defer cancel()
 				msg := ""
-				if err := n.checkCertificate(ctx); err != nil {
+				err := n.checkCertificate(ctx)
+				if err != nil {
 					msg = err.Error()
+				}
+				if ctx.Err() == nil { // a try cut short says nothing new; keepCertificate's goes on
+					n.noteCertificate(err)
 				}
 				mu.Lock()
 				reply.Certs[n.App().Slug] = msg
