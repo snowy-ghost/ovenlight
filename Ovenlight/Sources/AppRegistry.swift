@@ -25,7 +25,7 @@ final class AppRegistry: ObservableObject {
     private var dismissedURL: URL { directory.appendingPathComponent("dismissed-hosts.json") }
     var iconsDirectory: URL { directory.appendingPathComponent("icons", isDirectory: true) }
     /// The session to fetch an app's page and icon with: through the app's node (nil
-    /// while it isn't up), directly for apps outside any tailnet.
+    /// while it isn't up, and for a refused app; see `NodeManager.session(for:)`).
     private let session: @MainActor (WebApp) -> URLSession?
 
     init(directory: URL? = nil, session: (@MainActor (WebApp) -> URLSession?)? = nil) {

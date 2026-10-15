@@ -33,8 +33,8 @@ struct MailDraft: Identifiable, Equatable {
     }
 
     /// Report a Problem for one app: what it is and where it comes from, how its connection
-    /// is doing (none for an app loaded directly) and where opening it got, with room at the
-    /// top for what went wrong. Nothing else is attached.
+    /// is doing (whether it was refused, for an app with no node) and where opening it got,
+    /// with room at the top for what went wrong. Nothing else is attached.
     static func problemReport(appName: String, host: String, sharedBy: String?, connection: String?,
                               opening: String? = nil, version: String, iOS: String) -> MailDraft {
         var lines = ["What happened:", "", "", "", "App: \(appName)", "Address: \(host)"]
@@ -47,10 +47,12 @@ struct MailDraft: Identifiable, Equatable {
 
     @MainActor
     static func problemReport(for app: WebApp) -> MailDraft {
-        problemReport(appName: app.name, host: app.host, sharedBy: app.sharedBy,
-                      connection: NodeManager.shared.node(for: app).map { connection($0.state, listedOffline: $0.isListedOffline(app.host)) },
-                      opening: WebViewPool.shared.gate(of: app.id).map { String(describing: $0) },
-                      version: Bundle.main.versionString, iOS: UIDevice.current.systemVersion)
+        let refused = !app.isShared && NodeManager.shared.route(for: app.startURL) == .refused
+        return problemReport(appName: app.name, host: app.host, sharedBy: app.sharedBy,
+                             connection: refused ? "Refused (on no known tailnet)"
+                                 : NodeManager.shared.node(for: app).map { connection($0.state, listedOffline: $0.isListedOffline(app.host)) },
+                             opening: WebViewPool.shared.gate(of: app.id).map { String(describing: $0) },
+                             version: Bundle.main.versionString, iOS: UIDevice.current.systemVersion)
     }
 
     /// The state as shown, then in detail as the log has it (no sign-in link), and whether

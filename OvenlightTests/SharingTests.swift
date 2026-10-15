@@ -718,7 +718,7 @@ final class SupportMailTests: XCTestCase {
             """)
     }
 
-    func testProblemReportForOwnAppLoadedDirectly() {
+    func testProblemReportWithoutAConnection() {
         let draft = MailDraft.problemReport(appName: "Coach", host: "coach.example.com", sharedBy: nil, connection: nil,
                                             version: "1.0 (1)", iOS: "26.5")
         XCTAssertFalse(draft.body.contains("Shared by"))
