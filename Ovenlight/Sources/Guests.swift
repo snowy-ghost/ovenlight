@@ -180,6 +180,9 @@ final class GuestManager: ObservableObject {
     /// The last join queued for each membership; each waits for the one before.
     private var joins: [String: Task<Void, Never>] = [:]
     private var verifying: Set<UUID> = []
+    /// Memberships being left, so two orphan sweeps at once (an ended share and the app's
+    /// view closing) log one out once.
+    private var leaving: Set<String> = []
     private var nodes: NodeManager { .shared }
     private var store: MembershipStore { NodeManager.shared.memberships }
     private let log = Logger(subsystem: "com.snowyghost.ovenlight", category: "guests")
@@ -498,9 +501,11 @@ final class GuestManager: ObservableObject {
             await registry.remove(app.id)
         }
         let apps = registry.apps
-        for id in GuestCleanup.orphans(store.memberships, apps: apps) {
+        for id in GuestCleanup.orphans(store.memberships, apps: apps) where !leaving.contains(id) {
+            leaving.insert(id)
             log.notice("\(id, privacy: .public): no apps left, leaving")
             await nodes.removeGuest(id)
+            leaving.remove(id)
         }
     }
 }
