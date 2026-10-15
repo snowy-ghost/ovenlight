@@ -8,6 +8,7 @@ fun intProperty(name: String) = providers.gradleProperty(name).get().toInt()
 android {
     namespace = "com.snowyghost.ovenlight"
     compileSdk = intProperty("ovenlight.compileSdk")
+    buildToolsVersion = providers.gradleProperty("ovenlight.buildTools").get()
     ndkVersion = providers.gradleProperty("ovenlight.ndkVersion").get()
 
     defaultConfig {

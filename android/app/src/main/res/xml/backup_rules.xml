@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Android 10 and 11's counterpart of data_extraction_rules.xml: nothing is backed up. -->
+<!-- On Android 10 and 11 allowBackup="false" already stops backups. Lint asks for this file
+     beside data_extraction_rules.xml, and it excludes everything too. -->
 <full-backup-content>
     <exclude domain="root" path="." />
     <exclude domain="file" path="." />
