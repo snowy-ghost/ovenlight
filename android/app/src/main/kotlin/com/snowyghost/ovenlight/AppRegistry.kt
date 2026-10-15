@@ -5,10 +5,12 @@ import java.net.URI
 import java.util.UUID
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.JsonElement
@@ -179,8 +181,8 @@ class AppRegistry(
      * Removes the app and deletes everything it stored (cookies, storage, caches). Discovery
      * won't add one of the owner's own apps back.
      */
-    suspend fun remove(id: UUID) {
-        val app = apps.firstOrNull { it.id == id } ?: return
+    suspend fun remove(id: UUID) = withContext(NonCancellable) {
+        val app = apps.firstOrNull { it.id == id } ?: return@withContext
         apps = apps.filter { it.id != id }
         if (!app.isShared) dismissedHosts = dismissedHosts + Discovery.normalizedHost(app.host)
         save()
@@ -216,8 +218,8 @@ class AppRegistry(
     }
 
     /** Signs the app out of everything by wiping its data store and starting a fresh one. */
-    suspend fun clearData(id: UUID) {
-        val old = apps.firstOrNull { it.id == id }?.dataStoreID ?: return
+    suspend fun clearData(id: UUID) = withContext(NonCancellable) {
+        val old = apps.firstOrNull { it.id == id }?.dataStoreID ?: return@withContext
         webData.discard(id)
         apps = apps.map { if (it.id == id) it.copy(dataStoreID = UUID.randomUUID()) else it }
         save()

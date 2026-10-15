@@ -247,6 +247,8 @@ class MembershipNode(
     private val log: (String) -> Unit,
     /** The owner's node saw its tailnet's MagicDNS suffix. */
     private val rememberOwnerSuffix: (String) -> Unit = {},
+    /** Ovenlight is away (see AppLifecycle): the node idles until it comes back. */
+    private val pollingPaused: () -> Boolean = { false },
 ) {
     data class Settings(
         val controlURL: String,
@@ -321,28 +323,28 @@ class MembershipNode(
      * task of its own: one cut short would leave a node open in the core that nothing holds.
      */
     suspend fun start() = withContext(NonCancellable) {
-        lifecycle.withLock {
-            if (node != null) return@withLock
-            val settings = settings() ?: return@withLock
-            generation += 1
-            send(NodeEvent.Start)
-            launch(settings, generation)
-        }
+    lifecycle.withLock {
+        if (node != null) return@withLock
+        val settings = settings() ?: return@withLock
+        generation += 1
+        send(NodeEvent.Start)
+        launch(settings, generation)
+    }
     }
 
     /** Closes the node, keeping its state on disk. Finishes even when its caller is canceled (see [start]). */
     suspend fun stop() = withContext(NonCancellable) {
-        generation += 1
-        mutableStatus.value = null // so a wait on this node reads the next one's status, not this one's last
-        lifecycle.withLock {
-            pollJob?.cancel()
-            pollJob = null
-            cachedFetch = null
-            send(NodeEvent.Stop)
-            val node = node ?: return@withLock
-            withContext(io) { runCatching { node.close() }.onFailure { log("$id: close failed: ${it.message}") } }
-            this@MembershipNode.node = null
-        }
+    generation += 1
+    mutableStatus.value = null // so a wait on this node reads the next one's status, not this one's last
+    lifecycle.withLock {
+        pollJob?.cancel()
+        pollJob = null
+        cachedFetch = null
+        send(NodeEvent.Stop)
+        val node = node ?: return@withLock
+        withContext(io) { runCatching { node.close() }.onFailure { log("$id: close failed: ${it.message}") } }
+        this@MembershipNode.node = null
+    }
     }
 
     private suspend fun launch(settings: Settings, current: Int) {
@@ -414,7 +416,7 @@ class MembershipNode(
     }
 
     /** Logs the node out of its network, closes it and deletes its state. */
-    suspend fun logOutAndForget() {
+    suspend fun logOutAndForget() = withContext(NonCancellable) {
         node?.let { node -> withContext(io) { runCatching { node.logout() } } }
         stop()
         withContext(io) { stateDirectory(id).deleteRecursively() }
@@ -427,6 +429,10 @@ class MembershipNode(
 
     private suspend fun poll(current: Int) {
         while (current == generation) {
+            if (pollingPaused()) {
+                delay(1_000)
+                continue
+            }
             val node = node ?: return
             val status = withContext(io) { runCatching { node.statusJSON() }.getOrNull() }?.let(TailnetStatus::decode)
             if (status != null && current == generation) {
@@ -650,7 +656,11 @@ class NodeManager(
 
     private fun node(id: String, settings: () -> MembershipNode.Settings?) = MembershipNode(
         id, settings, clients, ::stateDirectory, preferences, scope, io, now, log, rememberOwnerSuffix = ::rememberOwnerSuffix,
+        pollingPaused = { pollingPaused },
     )
+
+    /** Set while Ovenlight is away, so no node polls (see AppLifecycle). */
+    var pollingPaused = false
 
     // The owner's own tailnet (what the launcher and Settings show)
 
@@ -689,7 +699,7 @@ class NodeManager(
      * forgotten with its tailnet, and the launcher goes back to its welcome when nothing else
      * is saved.
      */
-    suspend fun disableOwner() {
+    suspend fun disableOwner() = withContext(NonCancellable) {
         mutableOwnerEnabled.value = false
         preferences.remove(OWNER_ENABLED_KEY)
         owner.logOutAndForget()
@@ -722,7 +732,7 @@ class NodeManager(
     suspend fun restart() = owner.restart()
 
     /** Signs this phone out of the owner's tailnet and forgets its node, then starts over at login. Guest nodes are untouched. */
-    suspend fun signOut() {
+    suspend fun signOut() = withContext(NonCancellable) {
         owner.logOutAndForget()
         owner.start()
     }
@@ -753,7 +763,7 @@ class NodeManager(
     }
 
     /** Logs a guest node out, deletes its state and forgets the membership. */
-    suspend fun removeGuest(membershipID: String) {
+    suspend fun removeGuest(membershipID: String) = withContext(NonCancellable) {
         val node = mutableGuests.value[membershipID]
         if (node != null) node.logOutAndForget() else withContext(io) { stateDirectory(membershipID).deleteRecursively() }
         mutableGuests.value = mutableGuests.value - membershipID

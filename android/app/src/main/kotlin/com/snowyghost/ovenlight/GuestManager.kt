@@ -122,10 +122,10 @@ class GuestManager(
      * one that keeps another invite stops a node registering with this one's key (the next
      * start registers with the next invite's).
      */
-    suspend fun cancel(inviteID: String) {
+    suspend fun cancel(inviteID: String) = withContext(NonCancellable) {
         setPhase(inviteID, null)
-        val id = membershipID(inviteID) ?: return
-        val membership = store[id] ?: return
+        val id = membershipID(inviteID) ?: return@withContext
+        val membership = store[id] ?: return@withContext
         store.update(id) { m -> m.copy(pendingClaims = m.pendingClaims.filter { it.invite.invite != inviteID }) }
         collectOrphans()
         if (store[id] != null && GuestCleanup.isRegistering(membership, inviteID)) nodes.guestNode(id)?.stop()
@@ -319,7 +319,7 @@ class GuestManager(
     }
 
     /** Leaves someone's network on purpose: removes their apps and data, and logs out. */
-    suspend fun leave(membershipID: String) {
+    suspend fun leave(membershipID: String) = withContext(NonCancellable) {
         store.update(membershipID) { it.copy(pendingClaims = emptyList()) }
         for (app in registry.apps.filter { it.membershipID == membershipID }) registry.remove(app.id)
         nodes.removeGuest(membershipID)

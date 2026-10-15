@@ -21,17 +21,27 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 class MainActivity : ComponentActivity() {
     private lateinit var unlockPrompt: UnlockPrompt
-    private val lock get() = OvenlightApp.lock
+    private val model get() = OvenlightApp.model
+    private val lock get() = model.lock
+
+    /** The router's sheet showing in a Custom Tab, and the return from it under way. */
+    private var tab: RootSheet? = null
+    private var returning: Job? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         unlockPrompt = UnlockPrompt(this)
         lifecycleScope.launch { repeatOnLifecycle(Lifecycle.State.CREATED) { lock.isLocked.collect(::guardWhileLocked) } }
+        // Collected while stopped too: the tab is in front then, and Ovenlight comes back over it.
+        lifecycleScope.launch { repeatOnLifecycle(Lifecycle.State.CREATED) { model.router.sheet.collect(::sheetChanged) } }
         clearNavigationBarScrim()
         if (Build.VERSION.SDK_INT >= 33) setRecentsScreenshotEnabled(false)
         // A launch intent is handled once: not again after a restore from process death,
@@ -49,19 +59,70 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         lock.willBecomeActive()
-        TailnetCore.reportNetwork()
+        model.lifecycle.activityStarted()
     }
 
     override fun onResume() {
         super.onResume()
         lifecycleScope.launch { lock.didBecomeActive(unlockPrompt) }
+        returnedFromTab()
     }
 
     override fun onStop() {
         super.onStop()
+        if (isChangingConfigurations) return
         // Android 10's screen lock screen, asked for while locked, stops Ovenlight without
-        // the person leaving it.
-        if (!unlockPrompt.showingCredentialScreen && !isChangingConfigurations) lock.didEnterBackground()
+        // the person leaving it: an excursion that doesn't start the lock's clock.
+        if (unlockPrompt.showingCredentialScreen) model.lifecycle.beginExcursion() else lock.didEnterBackground()
+        model.lifecycle.activityStopped()
+    }
+
+    /**
+     * Tailscale's sign-in and Machines pages show in a Custom Tab, an excursion. When the
+     * router closes the sheet (the phone connected) while the tab is in front, Ovenlight comes
+     * back over it.
+     */
+    private fun sheetChanged(sheet: RootSheet?) {
+        val open = tab
+        if (open != null && open.id != sheet?.id) {
+            tab = null
+            returning?.cancel()
+            if (!lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+            }
+            model.router.sheetDismissed()
+        }
+        val url = when (sheet) {
+            is RootSheet.Login -> sheet.url
+            RootSheet.Approve -> machinesPage
+            else -> return
+        }
+        if (tab != null) return
+        tab = sheet
+        model.router.sheetAppeared()
+        model.lifecycle.beginExcursion()
+        if (!CustomTabs.open(this, url)) {
+            tab = null
+            model.router.sheet.value = null
+            model.router.sheetDismissed()
+        }
+    }
+
+    /**
+     * Back from the tab, closed or left behind. Android may have frozen Ovenlight meanwhile, so
+     * the node gets up to 10 seconds to say where the sign-in got before Ovenlight acts on it:
+     * still waiting for approval goes on to the Machines page, as on iOS.
+     */
+    private fun returnedFromTab() {
+        val open = tab ?: return
+        if (returning?.isActive == true) return
+        val owner = model.nodes.owner
+        returning = lifecycleScope.launch {
+            val state = withTimeoutOrNull(10_000) { owner.state.first { it !is NodeState.NeedsLogin && !it.isBusy } } ?: owner.state.value
+            if (tab?.id != open.id) return@launch
+            model.router.sheet.value = null
+            if (open is RootSheet.Login && state == NodeState.AwaitingApproval) model.router.present(RootSheet.Approve)
+        }
     }
 
     /**
@@ -106,6 +167,9 @@ class MainActivity : ComponentActivity() {
 
     private companion object {
         const val HANDLED_LAUNCH = "handledLaunch"
+
+        /** Tailscale's device list, where a new device waits for approval. */
+        val machinesPage = URI("https://login.tailscale.com/admin/machines")
     }
 }
 

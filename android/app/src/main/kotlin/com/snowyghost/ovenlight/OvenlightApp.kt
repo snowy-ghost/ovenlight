@@ -21,9 +21,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.ProcessLifecycleOwner
 import java.io.File
 import java.net.URI
 import java.text.Normalizer
@@ -44,9 +41,6 @@ class OvenlightApp : Application() {
         TailnetCore.start(this)
         WebViewSetup.start(this)
         model = AppModel(this)
-        ProcessLifecycleOwner.get().lifecycle.addObserver(
-            LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_START) model.didBecomeActive() },
-        )
     }
 
     companion object {
@@ -97,12 +91,16 @@ class AppModel(context: Context) {
         iconPNG = { withContext(Dispatchers.Default) { IconDecoder.png(it) } }, scope = scope,
     )
     val guests = GuestManager(nodes, registry, router, scope, SystemClock::elapsedRealtime, log = { Log.i(TAG, it) })
+    val lifecycle = AppLifecycle(
+        scope, SystemClock::elapsedRealtime, pausePolling = { nodes.pollingPaused = it }, closeNodes = nodes::closeAll,
+        cameToFront = ::didBecomeActive,
+    )
 
     init {
         scope.launch {
             registry.appsFlow.drop(1).collect { apps ->
                 router.appsChanged(apps)
-                guests.collectOrphans()
+                launch { guests.collectOrphans() }
             }
         }
         scope.launch { nodes.owner.discovered.collect { registry.mergeDiscovered(it) } }
@@ -112,7 +110,11 @@ class AppModel(context: Context) {
         // owner can carry on in Tailscale's pages, and closes once the phone is approved.
         scope.launch {
             nodes.owner.state.collect { state ->
-                if (state !is NodeState.NeedsLogin && state != NodeState.AwaitingApproval && router.sheet.value is RootSheet.Login) router.sheet.value = null
+                val sheet = router.sheet.value
+                if (state !is NodeState.NeedsLogin && state != NodeState.AwaitingApproval && sheet is RootSheet.Login) router.sheet.value = null
+                // Android only: the Machines page is a Custom Tab over Ovenlight, so once the phone
+                // is approved Ovenlight comes back rather than waiting for the tab to close.
+                if (state == NodeState.Ready && sheet == RootSheet.Approve) router.sheet.value = null
             }
         }
         // An app a link asked for while locked opens once Ovenlight unlocks.
@@ -124,19 +126,18 @@ class AppModel(context: Context) {
         }
     }
 
-    /** Ovenlight came to the front. */
-    fun didBecomeActive() {
+    /** Ovenlight came to the front (see [AppLifecycle]). */
+    private suspend fun didBecomeActive() {
         // A launch before the first unlock after a reboot couldn't read the saved lists.
         registry.reloadIfFailed()
         nodes.memberships.reloadIfFailed()
-        scope.launch {
-            nodes.didBecomeActive()
-            guests.resumePending()
-            // The launcher has no pull to refresh; Ovenlight looks for new apps each time it
-            // comes to the front instead.
-            nodes.rediscover()
-            registry.refreshAllMissingIcons()
-        }
+        TailnetCore.reportNetwork()
+        nodes.didBecomeActive()
+        guests.resumePending()
+        // The launcher has no pull to refresh; Ovenlight looks for new apps each time it comes
+        // to the front instead.
+        nodes.rediscover()
+        registry.refreshAllMissingIcons()
     }
 
     private companion object {
