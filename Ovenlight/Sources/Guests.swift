@@ -58,7 +58,7 @@ enum JoinError: Error, Equatable {
         // A connector expires an invite's key once it's claimed, so "expired" also means used.
         case .expired: "This Invite No Longer Works"
         case .keyRefused, .notInvited: "This Invite Didn’t Work"
-        case .usedOnAnotherDevice: "This Invite Was Used on Another iPhone"
+        case .usedOnAnotherDevice: "This Invite Was Used on Another Phone"
         case .someoneElses: "This Invite Is for Someone Else"
         case .network: "Can’t Reach \(owner)’s \(app)"
         case .canceled: "Joining Canceled"

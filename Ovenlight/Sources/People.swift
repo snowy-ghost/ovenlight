@@ -246,7 +246,7 @@ struct SharingPersonView: View {
                     } header: {
                         Text("Devices")
                     } footer: {
-                        Text("Swipe to remove a device they no longer use, such as an old iPhone. It leaves your Tailscale network.")
+                        Text("Swipe to remove a device they no longer use, such as an old phone. It leaves your Tailscale network.")
                     }
                     .ovenlightRows()
                 }

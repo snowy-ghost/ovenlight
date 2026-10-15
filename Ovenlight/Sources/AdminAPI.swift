@@ -142,7 +142,7 @@ struct GuestPerson: Identifiable, Equatable {
         return everyone(in: list).filter { !review.contains($0.id) }
     }
 
-    /// How many devices, each counted once whatever apps it has: "2 devices". Guest iPhones
+    /// How many devices, each counted once whatever apps it has: "2 devices". Guest phones
     /// join under random names, which would tell the owner nothing.
     var devices: String {
         let count = Set(guests.map(\.deviceId)).count

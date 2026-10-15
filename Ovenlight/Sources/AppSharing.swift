@@ -50,7 +50,7 @@ struct AppPeopleSheet: View {
 /// Simulator screenshots of sharing without a connector: `-sharingFixture YES` fills in
 /// what a connector would report for Book Club (shareable, two guests, an open
 /// invite) and Budget (not shareable), and shows Echo Board as shared by Riley. Sam's
-/// first iPhone hasn't opened Book Club for two months, since a new one joined.
+/// first phone hasn't opened Book Club for two months, since a new one joined.
 enum SharingFixture {
     static var isOn: Bool { UserDefaults.standard.bool(forKey: "sharingFixture") }
 

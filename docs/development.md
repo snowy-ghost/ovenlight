@@ -309,7 +309,7 @@ Sign Ovenlight in to the first with `-authKey`, and open the second owner's invi
   Again rather than claiming on its own, and a membership's saved names change only when
   a claim succeeds.
 - **Failures** say what happened without naming the network: key already used, no longer
-  valid, invite canceled, used on another iPhone, or the owner's computer not answering
+  valid, invite canceled, used on another phone, or the owner's computer not answering
   (the invite is kept for Try Again).
 - **Report a Problem** (every app's menu, and a guest's long-press menu) opens a mail to
   team@snowyghost.com with the app, its address, who shared it, its connection state (in

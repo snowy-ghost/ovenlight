@@ -217,7 +217,7 @@ struct SharingAppView: View {
                     }
                 } footer: {
                     if app.shareable {
-                        Text("Each invite is a link that works once, on one iPhone, for 7 days. Guests reach only this app.")
+                        Text("Each invite is a link that works once, on one phone, for 7 days. Guests reach only this app.")
                     } else {
                         Text("To share it, run this on its computer: ovenlight publish --slug \(app.slug) --shareable")
                     }
@@ -369,7 +369,7 @@ struct InviteComposer: View {
                         Section {
                             LabeledContent(person.name, value: person.devices)
                         } footer: {
-                            footer("The invite adds an iPhone for \(person.name): \(app.name) sees one person on all of them. It works once, on one iPhone, for 7 days.")
+                            footer("The invite adds a phone for \(person.name): \(app.name) sees one person on all of them. It works once, on one phone, for 7 days.")
                         }
                         .ovenlightRows()
                     } else {
@@ -432,7 +432,7 @@ struct InviteComposer: View {
                       : "\(namesake.name) already has an invite. Use a name that tells them apart, like \(namesake.name) L.", systemImage: "person.2.fill")
                     .labelStyle(.warning)
             } else {
-                footer("\(trimmed.isEmpty ? "They see" : "\(trimmed) sees") this name on the invite, and \(app.name) knows them by it. You send the invite yourself next, by message or QR code. It works once, on one iPhone, for 7 days.")
+                footer("\(trimmed.isEmpty ? "They see" : "\(trimmed) sees") this name on the invite, and \(app.name) knows them by it. You send the invite yourself next, by message or QR code. It works once, on one phone, for 7 days.")
             }
         }
     }
@@ -513,7 +513,7 @@ struct InviteResultView: View {
                             .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(Color.primary.opacity(0.08)))
                             .frame(maxWidth: 260)
                             .accessibilityLabel("Invite code")
-                        Text("In person: they scan this with their iPhone camera.")
+                        Text("In person: they scan this with their phone's camera.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
