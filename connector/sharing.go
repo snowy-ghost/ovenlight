@@ -30,7 +30,7 @@ const (
 
 const (
 	inviteTTL       = 7 * 24 * time.Hour  // key lifetime
-	reviewInviteTTL = 90 * 24 * time.Hour // a review invite's key: App Review may test weeks later; Tailscale's maximum
+	reviewInviteTTL = 90 * 24 * time.Hour // a review invite's key: a store's review may come weeks later; Tailscale's maximum
 	claimGrace      = time.Hour           // a device that joined just before expiry may still claim
 	reconcileEvery  = 3 * time.Minute
 	appKeyTTL       = 10 * time.Minute
@@ -51,7 +51,7 @@ type Invite struct {
 	Expires     time.Time `json:"expires"`
 	KeyID       string    `json:"keyId,omitempty"` // cleared once the key is deleted in the tailnet (or found gone)
 	KeyHash     string    `json:"keyHash,omitempty"`
-	// Review marks an invite for Apple's App Review: its key lasts reviewInviteTTL.
+	// Review marks an invite for an app store's review: its key lasts reviewInviteTTL.
 	Review    bool       `json:"review,omitempty"`
 	ClaimedBy string     `json:"claimedBy,omitempty"` // device ID
 	ClaimedAt *time.Time `json:"claimedAt,omitempty"`

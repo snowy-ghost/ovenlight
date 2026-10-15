@@ -98,8 +98,8 @@ type manifestIcon struct {
 }
 
 // bestIcon picks the raster icon closest to 512 px, the larger of two as close (a
-// smaller one looks blurry, a bigger one only costs download), and skips SVG, which iOS
-// can't use as an image.
+// smaller one looks blurry, a bigger one only costs download), and skips SVG, which
+// Ovenlight can't use as an image.
 func (m webManifest) bestIcon() string {
 	best, bestScore := "", math.MinInt
 	for _, icon := range m.Icons {

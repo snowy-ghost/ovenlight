@@ -101,7 +101,7 @@ func cmdShare(args []string) error {
 	existing := fs.Bool("existing", false, "the invite is for someone you already share with, named by --to")
 	person := fs.String("person", "", "the invite is for someone you already share with, by person ID (see `ovenlight guests`)")
 	cancelID := fs.String("cancel", "", "withdraw an unused invite, by its ID")
-	review := fs.Bool("review", false, "an invite for Apple's App Review: valid 90 days")
+	review := fs.Bool("review", false, "an invite for an app store's review: valid 90 days")
 	pos, err := parseArgs(fs, args, 1)
 	if err != nil {
 		return err
@@ -137,8 +137,8 @@ func cmdShare(args []string) error {
 	return nil
 }
 
-// printReviewInvite shows an invite for App Review: the link, how to take it back, and
-// notes to paste into App Store Connect (App Review Information, Notes).
+// printReviewInvite shows an invite for an app store's review: the link, how to take it
+// back, and notes to paste into the submission.
 func printReviewInvite(res *shareResult) {
 	if res == nil {
 		return
@@ -152,10 +152,10 @@ func printReviewInvite(res *shareResult) {
 	}
 	fmt.Printf("\nLink (it's a credential until it's used):\n  %s\n", res.Link)
 	printAppLink(res)
-	fmt.Printf("\nFor App Store Connect, App Review Information, Notes:\n\n%s\n", reviewNotes(res))
+	fmt.Printf("\nInstructions for the reviewers, to paste into the submission:\n\n%s\n", reviewNotes(res))
 }
 
-// reviewNotes is the paste-ready text telling App Review how to open the shared app.
+// reviewNotes is the paste-ready text telling a store's reviewers how to open the shared app.
 func reviewNotes(res *shareResult) string {
 	app := res.AppName
 	return fmt.Sprintf(`Ovenlight opens web apps that their owner runs on their own computer and shares by private invite. There is no account or sign-in.
@@ -166,7 +166,7 @@ To open a shared app:
 %s
 3. Tap Join. When it says "%s Is Ready", tap Open %s.
 
-The invite works once, on one device, until %s. If it has run out, reply in App Store Connect and we'll send a new one.
+The invite works once, on one device, until %s. If it has run out, let us know and we'll send a new one.
 
 To report a problem with a shared app or stop seeing it: open the app, tap its name at the top of the screen (tap the small handle there if the bar is hidden), then Report a Problem, or Leave %s's Apps.`,
 		res.Link, app, app, res.Invite.Expires.UTC().Format("Mon 2 Jan 2006 15:04 MST"), cmp.Or(res.Owner, "the owner"))
@@ -187,7 +187,7 @@ func printInvite(res *shareResult) {
 		fmt.Printf("Warning: %s\n", e)
 	}
 	if term.IsTerminal(int(os.Stdout.Fd())) {
-		fmt.Printf("\nScan with the iPhone camera:\n")
+		fmt.Printf("\nScan with the phone's camera:\n")
 		if err := writeQR(os.Stdout, res.Link); err != nil {
 			fmt.Printf("(no QR code: %v)\n", err)
 		}
@@ -209,7 +209,7 @@ func printAppLink(res *shareResult) {
 func inviteMessage(res *shareResult) string {
 	// The owner sends this from their own phone or computer, so it speaks as them: a
 	// third-person template next to a long link reads like phishing.
-	return fmt.Sprintf("I'm sharing %s with you in Ovenlight, an iPhone app. Open this link on your iPhone within %s to join: %s",
+	return fmt.Sprintf("I'm sharing %s with you in Ovenlight, an app for your phone. Open this link on your phone within %s to join: %s",
 		res.AppName, humanDuration(res.Invite.lifetime()), res.Link)
 }
 

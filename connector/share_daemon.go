@@ -273,7 +273,7 @@ func (st *sharingState) resolvePerson(ref guestRef) (person, name string, err er
 }
 
 // createInvite mints an invite a person asked for, in a terminal or in Ovenlight. A
-// review invite, for Apple's App Review, has the same single-use key for the app's guest
+// review invite, for an app store's review, has the same single-use key for the app's guest
 // tag, but valid for reviewInviteTTL, because the reviewer may test weeks later. Only
 // `share --review` in a terminal asks for one.
 func (d *daemon) createInvite(ref guestRef, slug, by string, review bool) (shareResult, error) {

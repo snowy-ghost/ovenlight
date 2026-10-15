@@ -24,8 +24,8 @@ type InviteLink struct {
 	To      string // the guest's name as the owner typed it
 }
 
-// joinPage is the universal link's page. iOS opens Ovenlight for it when Ovenlight is
-// installed; otherwise the page offers the app. The fields ride in the fragment, which
+// joinPage is the universal link's page. The phone opens Ovenlight for it when Ovenlight
+// is installed; otherwise the page offers the app. The fields ride in the fragment, which
 // browsers never send to a server, so the key never reaches the website.
 const joinPage = "https://ovenlight.app/join"
 
