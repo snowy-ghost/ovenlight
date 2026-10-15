@@ -14,6 +14,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import okhttp3.Request
 import org.junit.Test
 
 /** A node that reports whatever status the test sets. */
@@ -28,7 +29,7 @@ class FakeNode(val id: String, private val clients: FakeClients) : TailnetNode {
     override fun waitUp(timeoutMillis: Long) {
         clients.upError?.let { throw Exception(it) }
     }
-    override fun statusJSON(): String = clients.status[id] ?: error("no status")
+    override fun statusJSON(): String = clients.status[id] ?: clients.anyStatus ?: error("no status")
     override fun loginInteractive() {
         clients.loginRequests += 1
     }
@@ -40,13 +41,21 @@ class FakeNode(val id: String, private val clients: FakeClients) : TailnetNode {
     }
 }
 
-/** The Go core and its proxy, faked: nodes report the statuses set here, and fetches answer by URL. */
+/**
+ * The Go core and its proxy, faked: nodes report the statuses set here (by membership, else
+ * [anyStatus]), and requests answer by URL from [pages], or from [respond] when it's set.
+ */
 class FakeClients : TailnetClients {
     val status = mutableMapOf<String, String>()
+    var anyStatus: String? = null
     val pages = mutableMapOf<String, FetchResponse>()
+    var respond: ((Request) -> FetchResponse?)? = null
     val nodes = mutableListOf<FakeNode>()
     val forgotten = mutableListOf<String>()
+
+    /** Each request's route key and URL. */
     val fetched = mutableListOf<Pair<String, String>>()
+    val requests = mutableListOf<Request>()
     var upError: String? = null
     var loginRequests = 0
 
@@ -55,9 +64,10 @@ class FakeClients : TailnetClients {
         return FakeNode(id, this).also { nodes += it }
     }
 
-    override fun fetch(routeKey: String, timeoutMillis: Long, totalMillis: Long): Fetch = { uri ->
-        fetched += routeKey to uri.toString()
-        pages[uri.toString()]
+    override fun session(routeKey: String, timeoutMillis: Long, totalMillis: Long): Send = { request ->
+        fetched += routeKey to request.url.toString()
+        requests += request
+        respond?.invoke(request) ?: pages[request.url.toString()]
     }
 
     override fun forget(membershipID: String) {
@@ -65,9 +75,10 @@ class FakeClients : TailnetClients {
     }
 }
 
-private fun status(backend: String, authURL: String = "", peers: String = "", self: String = "") =
+/** A node's status as the Go core writes it, in the tailnet [suffix] names. */
+internal fun status(backend: String, authURL: String = "", peers: String = "", self: String = "", suffix: String = "tailabc123.ts.net") =
     """{"BackendState":"$backend","AuthURL":"$authURL",$self"Peer":{$peers},"User":{"1":{"LoginName":"riley@example.com","DisplayName":"Riley"}},""" +
-        """"CurrentTailnet":{"Name":"riley@example.com","MagicDNSSuffix":"tailabc123.ts.net"}}"""
+        """"CurrentTailnet":{"Name":"riley@example.com","MagicDNSSuffix":"$suffix"}}"""
 
 private const val ownerSelf = """"Self":{"HostName":"phone","DNSName":"pixel-ab12.tailabc123.ts.net.","OS":"android","Online":true,"UserID":1},"""
 private const val laptop = """"k1":{"HostName":"laptop","DNSName":"laptop.tailabc123.ts.net.","OS":"macOS","Online":true,"UserID":1}"""
@@ -156,7 +167,6 @@ class NodeManagerTests {
         )
         val membership = Membership(invite)
         nodes.memberships.upsert(membership)
-        nodes.syncGuestNodes()
         val guest = nodes.guestNode(membership.id)!!
         clients.status[membership.id] = status("Running")
         guest.start()

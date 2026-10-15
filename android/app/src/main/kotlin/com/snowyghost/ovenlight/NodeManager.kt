@@ -20,6 +20,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
+import okhttp3.Request
 
 /**
  * Where one of Ovenlight's connections is: the owner's own tailnet, or a guest node in someone
@@ -208,11 +209,17 @@ interface TailnetNode {
 }
 
 /** What the managers need from the Go core: nodes, and fetches through its proxy. */
+/** Sends one request through a node, as a [Fetch] sends a GET: null when no answer came. */
+typealias Send = suspend (Request) -> FetchResponse?
+
+/** GETs through this session. */
+fun Send.asFetch(): Fetch = { uri -> this(Request.Builder().url(uri.toString()).build()) }
+
 interface TailnetClients {
     fun newNode(id: String, directory: File, hostName: String, controlURL: String, authKey: String): TailnetNode
 
-    /** Fetches through the proxy with a route key (app-<store> or node-<membership>). */
-    fun fetch(routeKey: String, timeoutMillis: Long, totalMillis: Long): Fetch
+    /** Sends requests through the proxy with a route key (app-<store> or node-<membership>). */
+    fun session(routeKey: String, timeoutMillis: Long, totalMillis: Long): Send
 
     /** The membership is gone: its node- key routes nowhere any more. */
     fun forget(membershipID: String)
@@ -574,12 +581,12 @@ class MembershipNode(
     /** A short fetch through the node for quick checks and page metadata; null until the node is up. */
     fun fetch(): Fetch? {
         if (node == null) return null
-        return cachedFetch ?: clients.fetch(routeKey, 4_000, 8_000).also { cachedFetch = it }
+        return cachedFetch ?: clients.session(routeKey, 4_000, 8_000).asFetch().also { cachedFetch = it }
     }
 
-    /** A fetch through the node with its own timeouts, for claims, admin calls and feedback uploads. */
-    fun makeFetch(timeoutMillis: Long, totalMillis: Long = timeoutMillis * 2): Fetch? =
-        if (node == null) null else clients.fetch(routeKey, timeoutMillis, totalMillis)
+    /** A session through the node with its own timeouts, for claims, admin calls and feedback uploads. */
+    fun makeSession(timeoutMillis: Long, totalMillis: Long = timeoutMillis * 2): Send? =
+        if (node == null) null else clients.session(routeKey, timeoutMillis, totalMillis)
 }
 
 /**
@@ -624,6 +631,7 @@ class NodeManager(
         }
 
     init {
+        memberships.onChange = ::syncGuestNodes
         syncGuestNodes()
     }
 
@@ -716,8 +724,8 @@ class NodeManager(
     /** The node for a guest membership. Null if there is no such membership (it was removed). */
     fun guestNode(membershipID: String): MembershipNode? = mutableGuests.value[membershipID]
 
-    /** Makes the node of each membership that has none. Call it once memberships are loaded or one is added. */
-    fun syncGuestNodes() {
+    /** Makes the node of each membership that has none, as memberships load and are added. */
+    private fun syncGuestNodes() {
         val made = mutableGuests.value.toMutableMap()
         for (membership in memberships.memberships) {
             if (made.containsKey(membership.id)) continue
@@ -751,10 +759,10 @@ class NodeManager(
     fun fetch(app: WebApp): Fetch? = node(app)?.fetch()
 
     /** A fetch for posting to an app (feedback), with its own timeouts, through the app's node; null without one. */
-    fun uploadFetch(app: WebApp, timeoutMillis: Long): Fetch? = node(app)?.makeFetch(timeoutMillis)
+    fun uploadSession(app: WebApp, timeoutMillis: Long): Send? = node(app)?.makeSession(timeoutMillis)
 
     /** A fetch for the owner's admin API, with its own timeouts; null while the owner's node isn't up. */
-    fun ownerFetch(timeoutMillis: Long): Fetch? = owner.makeFetch(timeoutMillis)
+    fun ownerSession(timeoutMillis: Long): Send? = owner.makeSession(timeoutMillis)
 
     /** What an app's launcher tile shows about its computer. */
     fun reachability(app: WebApp): AppReachability? {

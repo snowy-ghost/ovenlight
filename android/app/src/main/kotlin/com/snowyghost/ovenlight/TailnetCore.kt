@@ -128,7 +128,7 @@ object TailnetCore : Platform, TailnetClients {
      * nothing answered; any HTTP answer, an error page included, is a response. Bodies are
      * capped, since every fetch here is a small page, manifest or API answer.
      */
-    override fun fetch(routeKey: String, timeoutMillis: Long, totalMillis: Long): Fetch {
+    override fun session(routeKey: String, timeoutMillis: Long, totalMillis: Long): Send {
         val client = http.newBuilder()
             .proxy(Proxy(Proxy.Type.HTTP, InetSocketAddress("127.0.0.1", proxyAddress.substringAfterLast(':').toInt())))
             .proxyAuthenticator { _, response ->
@@ -139,7 +139,7 @@ object TailnetCore : Platform, TailnetClients {
             .writeTimeout(timeoutMillis, TimeUnit.MILLISECONDS)
             .callTimeout(totalMillis, TimeUnit.MILLISECONDS)
             .build()
-        return { uri -> client.fetch(Request.Builder().url(uri.toString()).build()) }
+        return { request -> client.fetch(request) }
     }
 
     private val http = OkHttpClient.Builder().cache(null).followRedirects(false).build()

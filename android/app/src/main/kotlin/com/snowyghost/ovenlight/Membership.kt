@@ -144,7 +144,13 @@ data class PendingClaim(val invite: InviteLink, @Serializable(with = SavedDate::
  */
 class MembershipStore(directory: File) {
     var memberships: List<Membership> = emptyList()
-        private set
+        private set(value) {
+            field = value
+            onChange()
+        }
+
+    /** Runs after every change to [memberships]: the node manager makes the nodes of new ones. */
+    var onChange: () -> Unit = {}
 
     /**
      * The file is there but couldn't be read or decoded. Nothing is saved over it, and nothing
