@@ -110,7 +110,7 @@ class GuestManagerRulesTests {
                 assertFalse(text, text.contains("iPhone"))
             }
         }
-        assertEquals("This Invite Was Used on Another Phone", JoinError.UsedOnAnotherDevice.title("Riley", "Echo Board"))
+        assertEquals("This invite was used on another phone", JoinError.UsedOnAnotherDevice.title("Riley", "Echo Board"))
         assertTrue(JoinError.SomeoneElses.message("Riley", "Echo Board").startsWith("This phone already joined Riley's apps"))
         assertEquals("a Go error's text is read as up()'s", JoinError.KeyUsed, JoinError(upError = Exception("backend: authkey already used")))
     }

@@ -44,16 +44,16 @@ enum class JoinError {
     val isRetryable: Boolean get() = this == Network
 
     fun title(owner: String, app: String): String = when (this) {
-        KeyUsed -> "This Invite Was Already Used"
+        KeyUsed -> "This invite was already used"
         // A connector expires an invite's key once it's claimed, so "expired" also means used.
-        Expired -> "This Invite No Longer Works"
-        KeyRefused, NotInvited -> "This Invite Didn't Work"
-        UsedOnAnotherDevice -> "This Invite Was Used on Another Phone"
-        SomeoneElses -> "This Invite Is for Someone Else"
-        Network -> "Can't Reach $owner's $app"
-        Canceled -> "Joining Canceled"
-        OwnApp -> "$app Is Already Yours"
-        WrongNetwork -> "This Invite Leads Somewhere Else"
+        Expired -> "This invite no longer works"
+        KeyRefused, NotInvited -> "This invite didn't work"
+        UsedOnAnotherDevice -> "This invite was used on another phone"
+        SomeoneElses -> "This invite is for someone else"
+        Network -> "Can't reach $owner's $app"
+        Canceled -> "Joining canceled"
+        OwnApp -> "$app is already yours"
+        WrongNetwork -> "This invite leads somewhere else"
     }
 
     fun message(owner: String, app: String): String = when (this) {

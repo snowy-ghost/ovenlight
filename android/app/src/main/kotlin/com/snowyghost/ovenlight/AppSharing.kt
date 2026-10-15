@@ -25,7 +25,7 @@ data class AppMenuPlan(
 
         /** [admin] is the connector's view of the app and its computer's guests, when there is one. */
         fun plan(app: WebApp, admin: Pair<AdminApp, AdminGuestList>?): AppMenuPlan {
-            if (app.isShared) return AppMenuPlan(reportProblem = true, leaveOwner = app.sharedBy ?: "Its Owner")
+            if (app.isShared) return AppMenuPlan(reportProblem = true, leaveOwner = app.sharedBy ?: "Its owner")
             val (adminApp, guests) = admin ?: return AppMenuPlan()
             if (!adminApp.shareable) return AppMenuPlan(share = Share.NotShareable)
             val people = GuestPerson.all(guests.guests.filter { it.app == adminApp.slug }).size

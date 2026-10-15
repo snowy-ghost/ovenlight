@@ -93,10 +93,10 @@ object ConnectionCopy {
     const val couldNotStart = "Ovenlight couldn't connect."
 
     fun connecting(to: String) = "Connecting to $to…"
-    fun cantReach(app: String) = "Can't Reach $app"
+    fun cantReach(app: String) = "Can't reach $app"
     const val cantReachDetail = "Its computer may be asleep or offline. Try again in a moment."
     fun notResponding(app: String) = "$app isn't responding on its computer right now. Try again in a moment."
-    fun signIn(toOpen: String) = "Sign In to Open $toOpen"
+    fun signIn(toOpen: String) = "Sign in to open $toOpen"
 
     // Apps someone shared, and joining them. Guests see all of these.
 
@@ -111,21 +111,21 @@ object ConnectionCopy {
         "This invite uses $server, a connection server $owner chose. Join only if you know this invite came from $owner."
     fun joining(owner: String, app: String) = "Joining $owner's $app…"
     const val joiningDetail = "This can take up to a minute."
-    fun joined(app: String) = "$app Is Ready"
-    const val noLongerSharedTitle = "No Longer Shared with You"
+    fun joined(app: String) = "$app is ready"
+    const val noLongerSharedTitle = "No longer shared with you"
     fun noLongerShared(apps: List<String>, owner: String): String {
         val them = if (apps.size == 1) "it and everything it" else "them and everything they"
         return "$owner stopped sharing ${listed(apps)} with you, so Ovenlight removed $them stored on this phone."
     }
-    const val joinWithInvite = "Join with Invite"
+    const val joinWithInvite = "Join with invite"
     const val invitePrompt = "Paste the invite link you were sent, or scan its code."
-    const val feedbackSent = "Feedback Sent"
+    const val feedbackSent = "Feedback sent"
     fun feedbackSentDetail(to: String?) = to?.let { "$it will see it." } ?: "It's in your feedback in People & Sharing."
-    const val feedbackFailed = "Couldn't Send Feedback"
+    const val feedbackFailed = "Couldn't send feedback"
     const val feedbackTooMany = "That's a lot of feedback for one hour. Try again later."
     const val feedbackNetwork = "Ovenlight couldn't reach the app's computer. Try again in a moment."
-    const val reportProblem = "Report a Problem"
-    fun leaveApps(owner: String) = "Leave $owner's Apps"
+    const val reportProblem = "Report a problem"
+    fun leaveApps(owner: String) = "Leave $owner's apps"
     fun leaveTitle(owner: String) = "Leave $owner's apps?"
     fun leaveDetail(owner: String) =
         "$owner's apps and everything they stored on this phone will be removed. You'll need a new invite from $owner to open them again."
