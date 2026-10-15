@@ -15,6 +15,8 @@ excluded() {
 testTheShareSheetClosesOnce              # iOS presentation only: Android has its own Save, Share and Open sheet
 testOnlyAShownSheetTakesItsFiles         # iOS presentation only, as above
 testPagesStillSeeMobileSafari            # pending, Phase 4: needs a WebView (instrumented)
+testShrinksLargeScreenshotsUnderTheLimit # pending, Phase 4: Android's Bitmap, with the snapshot
+testScreenshotsAreDecodedSmall           # pending, Phase 6: Android's Bitmap, with the feedback inbox
 EOF
 }
 
