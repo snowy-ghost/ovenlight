@@ -5,7 +5,7 @@
 # connector runs from this run's folder with its own HOME, config and state, logs in only to
 # the local Headscale, and stops by its recorded pid.
 #
-#   android/e2e/e2e.sh [gates | owner | signin [seconds] | screens | app] [avd]
+#   android/e2e/e2e.sh [gates | owner | signin [seconds] | screens | app | chrome] [avd]
 #
 # gates runs Phase 1's checks G2 to G5 through the debug lab. owner signs the owner's node in
 # with a preauth key and waits for the launcher to show both test apps. signin goes through
@@ -14,7 +14,9 @@
 # takes the launcher, Settings and lock screenshots in light and dark, and checks the lock: at
 # Immediately, Home and back through the icon or Recents asks for it, and a canceled prompt
 # doesn't come back by itself. app opens Recipes from the launcher and waits for its page.
-# Each writes what it saw to
+# chrome opens Recipes, closes the pill's one-time tip, brings the pill back with its handle,
+# opens the app menu and sends feedback, and checks that the connector got it, screenshot
+# and all, with no pill or handle in the screenshot. Each writes what it saw to
 # android/e2e/out/: gates.txt, logs and screenshots.
 #
 # Needs Headscale v0.29.4 (docs/development.md#local-headscale) and the fixed AVD set
@@ -97,7 +99,7 @@ until_ok() {
 }
 
 [[ -x $HS ]] || fail "no headscale at $HS"
-[[ $SCENARIO =~ ^(gates|owner|signin|screens|app)$ ]] || fail "unknown scenario $SCENARIO"
+[[ $SCENARIO =~ ^(gates|owner|signin|screens|app|chrome)$ ]] || fail "unknown scenario $SCENARIO"
 
 say "the test CA in $CA, made once, and a *.$BASE certificate for this run"
 if [[ ! -f $CA/ca.pem ]]; then
@@ -279,6 +281,28 @@ for line in sys.stdin:
   [[ -n $spot ]] || return 1
   a shell input tap $spot
 }
+# The bounds, "x1 y1 x2 y2", of the first element whose text or description is exactly $2, or
+# with class=text whose class is $2 (android.widget.EditText, say).
+bounds() {
+  a exec-out uiautomator dump /dev/tty 2>/dev/null | tr '>' '\n' | python3 -c '
+import re, sys
+by, want = sys.argv[1], sys.argv[2]
+for line in sys.stdin:
+    hit = ("class=\"%s\"" % want in line) if by == "class" else re.search(r"(text|content-desc)=\"%s\"" % re.escape(want), line)
+    m = hit and re.search(r"bounds=\"\[(\d+),(\d+)\]\[(\d+),(\d+)\]\"", line)
+    if m:
+        print(*m.groups()); break
+' "$1" "$2"
+}
+# Taps the first element of class $1.
+tap_class() {
+  local box
+  box=($(bounds class "$1"))
+  [[ ${#box[@]} == 4 ]] || return 1
+  a shell input tap $(((box[0] + box[2]) / 2)) $(((box[1] + box[3]) / 2))
+}
+# The first app Ovenlight opens shows its pill with a one-time tip, in a popup of its own: closed here.
+close_tip() { if await_text ${1:-10} "Got it"; then tap_text "Got it"; sleep 1; fi; }
 # Waits up to $1 seconds until every one of the other arguments is on screen.
 await_text() {
   local seconds=$1; shift
@@ -301,6 +325,7 @@ if [[ $SCENARIO == app ]]; then
   a shell "am start -W -n $PKG/.MainActivity --es controlURL $CTRL --es authKey $KEY" >/dev/null
   await_text 90 Recipes Pantry || fail "the launcher never showed both apps: $(screen_text | tr '\n' '|')"
   tap_text Recipes
+  close_tip
   # The page's own heading, read from the web view.
   await_text 40 "Recipe Box" || { shot app-failed; fail "Recipes never loaded: $(screen_text | tr '\n' '|')"; }
   sleep 8; shot app-recipes
@@ -316,6 +341,97 @@ if [[ $SCENARIO == app ]]; then
   tap_text Recipes
   await_text 10 "Recipe Box" || fail "Recipes didn't reopen from the pool"
   note "Back closed it, and it reopened from the pool"
+  say "PASSED"
+  exit 0
+fi
+
+if [[ $SCENARIO == chrome ]]; then
+  say "chrome: the owner signs in, opens Recipes, and sends feedback from the app menu"
+  a shell "am start -W -n $PKG/.MainActivity --es controlURL $CTRL --es authKey $KEY" >/dev/null
+  await_text 90 Recipes Pantry || fail "the launcher never showed both apps: $(screen_text | tr '\n' '|')"
+  tap_text Recipes
+  # Until its tip is closed, the pill shows with it, even before the page loads.
+  await_text 20 "Your apps are up here" "Got it" || { shot chrome-failed; fail "no tip over the pill: $(screen_text | tr '\n' '|')"; }
+  shot chrome-tip
+  tap_text "Got it"
+  await_text 40 "Recipe Box" || { shot chrome-failed; fail "Recipes never loaded: $(screen_text | tr '\n' '|')"; }
+  # Loaded, the pill tucks itself away 2.5 s later, leaving its handle.
+  await_text 10 "Show app menu" || { shot chrome-failed; fail "the pill didn't tuck away: $(screen_text | tr '\n' '|')"; }
+  ! screen_text | grep -qxF "Recipes options" || fail "the pill still shows beside its handle"
+  shot chrome-tucked
+  note "the tip showed with the pill; once closed, the pill tucked away to its handle after the load"
+  tap_text "Show app menu"
+  await_text 5 "All apps" "Recipes options" || fail "the handle didn't bring the pill back: $(screen_text | tr '\n' '|')"
+  # Where the pill reaches down to, for the screenshot's check.
+  pill=($(bounds text "Recipes options"))
+  [[ ${#pill[@]} == 4 ]] || fail "no bounds for the pill"
+  tap_text "Recipes options"
+  await_text 5 "Reload" "Send feedback" "Report a problem" "Lock Ovenlight" || { shot chrome-failed; fail "the app menu is missing items: $(screen_text | tr '\n' '|')"; }
+  shot chrome-menu
+  note "the handle brought the pill back, and its menu has Reload, Send feedback, Report a problem and Lock Ovenlight"
+  tap_text "Send feedback"
+  await_text 10 "Include screenshot" "Screenshot of Recipes" || { shot chrome-failed; fail "Send feedback has no screenshot: $(screen_text | tr '\n' '|')"; }
+  tap_class android.widget.EditText || fail "no note field"
+  sleep 1
+  # input text takes %s for a space.
+  a shell input text 'e2e%snote%sfrom%sthe%sapp%smenu'
+  sleep 1
+  shot chrome-feedback
+  tap_text Send || fail "no Send button"
+  await_text 30 "Feedback sent" || { shot chrome-failed; fail "the feedback wasn't sent: $(screen_text | tr '\n' '|')"; }
+  # It closes by itself 1.4 s later.
+  for i in $(seq 1 10); do screen_text | grep -qxF "Feedback sent" || break; sleep 1; done
+  ! screen_text | grep -qxF "Feedback sent" || fail "Send feedback didn't close after sending"
+  await_text 5 "Recipe Box" || fail "the page isn't back after Send feedback: $(screen_text | tr '\n' '|')"
+  note "Send feedback showed Feedback sent and closed by itself"
+  inbox=$(env HOME=$D/home $D/ovenlight feedback --config $D/config.json --state $D/st --app recipes --json)
+  printf '%s\n' "$inbox" > $OUT/chrome-feedback.json
+  size=$(a shell wm size | tail -1 | sed 's/.*: //' | tr -d '\r')
+  # The note, the page and a PNG as wide as the screen. Its column at 60 percent across runs
+  # through the pill and the handle, right of the page's heading: from the top to the pill's
+  # bottom it must be all the page's own white.
+  python3 - "$size" "$OUT/chrome-feedback.json" "${pill[3]}" <<'PY' || fail "the connector's feedback isn't as sent: $inbox"
+import json, struct, sys, zlib
+width, height = map(int, sys.argv[1].split("x"))
+bottom = int(sys.argv[3])
+items = json.load(open(sys.argv[2]))
+assert len(items) == 1, items
+item = items[0]
+assert item["note"] == "e2e note from the app menu", item
+assert item["pageUrl"].startswith("https://recipes.e2e.ts.net/"), item
+data = open(item["screenshotPath"], "rb").read()
+assert data[:8] == b"\x89PNG\r\n\x1a\n", "not a PNG"
+chunks, i = {}, 8
+while i < len(data):
+    n, kind = struct.unpack(">I4s", data[i:i + 8])
+    chunks.setdefault(kind, []).append(data[i + 8:i + 8 + n])
+    i += 12 + n
+w, h, depth, color = struct.unpack(">IIBB", chunks[b"IHDR"][0][:10])
+assert w == width and h <= height, (w, h, width, height)
+assert depth == 8 and color in (2, 6), (depth, color)
+bpp = 4 if color == 6 else 3
+raw = zlib.decompress(b"".join(chunks[b"IDAT"]))
+stride, rows, prev = w * bpp, [], bytearray(w * bpp)
+for y in range(h):
+    kind, line = raw[y * (stride + 1)], bytearray(raw[y * (stride + 1) + 1:(y + 1) * (stride + 1)])
+    for x in range(stride):
+        left = line[x - bpp] if x >= bpp else 0
+        up, corner = prev[x], prev[x - bpp] if x >= bpp else 0
+        if kind == 1: line[x] = (line[x] + left) & 0xFF
+        elif kind == 2: line[x] = (line[x] + up) & 0xFF
+        elif kind == 3: line[x] = (line[x] + (left + up) // 2) & 0xFF
+        elif kind == 4:
+            p = left + up - corner
+            pa, pb, pc = abs(p - left), abs(p - up), abs(p - corner)
+            line[x] = (line[x] + (left if pa <= pb and pa <= pc else up if pb <= pc else corner)) & 0xFF
+    rows.append(line)
+    prev = line
+at = int(w * 0.6) * bpp
+column = {tuple(rows[y][at:at + 3]) for y in range(min(h, bottom))}
+assert column == {(255, 255, 255)}, "the screenshot shows more than the page under the pill: %s" % sorted(column)[:5]
+print("feedback: %s, %dx%d PNG, no chrome in it" % (item["note"], w, h))
+PY
+  note "the connector has the note, the page and a $size PNG with no pill or handle in it"
   say "PASSED"
   exit 0
 fi

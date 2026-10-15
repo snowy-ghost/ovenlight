@@ -1,8 +1,6 @@
 package com.snowyghost.ovenlight
 
-import android.content.Context
 import android.graphics.Bitmap
-import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusGroup
@@ -78,7 +76,6 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
-import androidx.webkit.WebViewCompat
 import java.net.URI
 import java.util.UUID
 import kotlinx.coroutines.launch
@@ -175,25 +172,11 @@ fun LauncherView(model: AppModel) {
             clearData = { scope.launch { registry.clearData(it) } },
             remove = { scope.launch { registry.remove(it) } },
             leave = { scope.launch { model.guests.leave(it) } },
-            problemReport = { app -> problemReport(context, nodes, app) },
+            problemReport = { app -> MailDraft.problemReport(context, nodes, model.pool, app) },
             openLink = { CustomTabs.open(context, URI(it)) },
         ),
     )
 }
-
-/**
- * Report a Problem for one app, with Android's lines where iOS has its version: the release,
- * the WebView build (which decides most page bugs) and the phone's model.
- */
-private fun problemReport(context: Context, nodes: NodeManager, app: WebApp): MailDraft = MailDraft.problemReport(
-    appName = app.name, host = app.host, sharedBy = app.sharedBy,
-    connection = nodes.node(app)?.let { MailDraft.connection(it.state.value, it.isListedOffline(app.host)) },
-    // The Opening line, where loading the app got, comes with the app host's pool.
-    version = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
-    android = Build.VERSION.RELEASE,
-    webView = WebViewCompat.getCurrentWebViewPackage(context)?.versionName ?: "unknown",
-    model = "${Build.MANUFACTURER} ${Build.MODEL}",
-)
 
 /**
  * The home screen of apps: the oven's interior with its light on, the lock and the menu on top,
@@ -283,7 +266,7 @@ fun LauncherView(state: LauncherState) {
 
 /** The text in the top row and the pill stops growing at 1.3 times, so the row keeps its height. */
 @Composable
-private fun CappedFontScale(content: @Composable () -> Unit) {
+internal fun CappedFontScale(content: @Composable () -> Unit) {
     val density = LocalDensity.current
     val capped = remember(density) { if (density.fontScale > 1.3f) Density(density.density, 1.3f) else density }
     CompositionLocalProvider(LocalDensity provides capped, content = content)
@@ -482,7 +465,7 @@ private fun RenameDialog(app: WebApp, onDismiss: () -> Unit, save: (String) -> U
 
 /** A confirmation whose button is in the error color, as iOS marks destructive ones red. */
 @Composable
-private fun Confirmation(title: String, message: String, confirm: String, onDismiss: () -> Unit, action: () -> Unit) {
+internal fun Confirmation(title: String, message: String, confirm: String, onDismiss: () -> Unit, action: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },

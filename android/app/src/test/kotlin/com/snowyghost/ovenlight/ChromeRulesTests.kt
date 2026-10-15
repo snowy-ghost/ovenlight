@@ -1,0 +1,142 @@
+package com.snowyghost.ovenlight
+
+import android.view.MotionEvent
+import java.net.URI
+import java.util.UUID
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Test
+
+/** When the chrome follows the page (AppChrome.swift's WebViewObserver), and which header color an app remembers. */
+class ChromeRulesTests {
+    private val events = mutableListOf<String>()
+
+    /** At 2 pixels a dp, with an 8 px touch slop. */
+    private val gestures = ChromeGestures(density = 2f, touchSlop = 8f, onScroll = { events += if (it) "up" else "down" }, onTap = { events += "tap" })
+
+    private fun down(y: Float, atTop: Boolean = false, at: Long = 0) = gestures.touched(MotionEvent.ACTION_DOWN, y, atTop, at)
+    private fun move(y: Float, atTop: Boolean = false, at: Long = 0) = gestures.touched(MotionEvent.ACTION_MOVE, y, atTop, at)
+    private fun up(y: Float, atTop: Boolean = false, at: Long = 0) = gestures.touched(MotionEvent.ACTION_UP, y, atTop, at)
+
+    @Test
+    fun testScrollingDownHidesAndScrollingUpBringsItBack() {
+        down(800f)
+        move(700f)
+        // 12 dp is 24 px: 20 isn't enough, 30 is.
+        gestures.scrolled(100, 120, 0)
+        assertEquals(emptyList<String>(), events)
+        gestures.scrolled(120, 130, 0)
+        assertEquals(listOf("down"), events)
+        // Turning back starts the count again; 60 dp is 120 px.
+        gestures.scrolled(130, 20, 0)
+        assertEquals(listOf("down"), events)
+        gestures.scrolled(20, 5, 0)
+        assertEquals(listOf("down", "up"), events)
+        up(900f)
+        assertEquals("a drag is no tap", listOf("down", "up"), events)
+    }
+
+    @Test
+    fun testOnlyThePersonsOwnScrollingCounts() {
+        // The page scrolling itself, with no finger down and no fling.
+        gestures.scrolled(0, 400, 10_000)
+        gestures.scrolled(400, 0, 10_000)
+        assertEquals(emptyList<String>(), events)
+        // A drag's fling carries on after the finger lifts, for a moment.
+        down(800f, at = 0)
+        move(780f, at = 10)
+        up(760f, at = 20)
+        gestures.scrolled(100, 130, 500)
+        assertEquals(listOf("down"), events)
+        gestures.scrolled(130, 160, 5_000)
+        assertEquals("long after the fling", listOf("down"), events)
+        // And a tap's doesn't: it never moved.
+        events.clear()
+        down(800f, at = 6_000)
+        up(800f, at = 6_050)
+        gestures.scrolled(160, 200, 6_100)
+        assertEquals(listOf("tap"), events)
+    }
+
+    @Test
+    fun testPullingDownAtTheTopBringsItBackOnce() {
+        down(100f, atTop = true)
+        // 40 dp is 80 px.
+        move(170f, atTop = true)
+        assertEquals(emptyList<String>(), events)
+        move(190f, atTop = true)
+        move(400f, atTop = true)
+        assertEquals(listOf("up"), events)
+        up(400f, atTop = true)
+        assertEquals("a pull is no tap", listOf("up"), events)
+    }
+
+    @Test
+    fun testAPullCountsFromWhereThePageReachedItsTop() {
+        down(100f)
+        move(300f)
+        // Scrolled back to the top here: the pull starts now.
+        move(350f, atTop = true)
+        move(420f, atTop = true)
+        assertEquals(emptyList<String>(), events)
+        move(431f, atTop = true)
+        assertEquals(listOf("up"), events)
+    }
+
+    @Test
+    fun testATapOnThePageHidesIt() {
+        down(500f)
+        move(505f)
+        up(505f)
+        assertEquals(listOf("tap"), events)
+        gestures.touched(MotionEvent.ACTION_DOWN, 500f, false, 0)
+        gestures.touched(MotionEvent.ACTION_CANCEL, 500f, false, 0)
+        assertEquals("a cancelled touch is no tap", listOf("tap"), events)
+    }
+
+    private val app = WebApp(name = "Recipes", startURL = URI("https://recipes.tail1.ts.net/"), themeColorHex = "#336699", id = UUID.fromString("0f0e0d0c-0b0a-0908-0706-050403020100"))
+
+    @Test
+    fun testBeforeAnyLoadTheManifestColorStandsInInLightModeOnly() {
+        val tint = StatusBarTint(MemoryStore())
+        assertEquals(themeColor("#336699"), tint.color(app, dark = false))
+        assertNull(tint.color(app, dark = true))
+        assertNull(tint.color(app.copy(themeColorHex = null), dark = false))
+    }
+
+    @Test
+    fun testRemembersEachAppearanceOnItsOwnWhenMostlyOpaque() {
+        val store = MemoryStore()
+        val tint = StatusBarTint(store)
+        tint.remember("rgb(251, 244, 234)", app, dark = false)
+        tint.remember("#1a1c1e", app, dark = true)
+        assertEquals(themeColor("#fbf4ea"), tint.color(app, dark = false))
+        assertEquals(themeColor("#1a1c1e"), tint.color(app, dark = true))
+        assertEquals("under iOS's key", "#fbf4ea", store.getString("statusBarTint.0F0E0D0C-0B0A-0908-0706-050403020100.light"))
+        // Half transparent or less, or not a color, leaves what was saved.
+        tint.remember("rgba(0, 0, 0, 0.5)", app, dark = false)
+        tint.remember("oklch(0.5 0.1 200)", app, dark = false)
+        tint.remember(null, app, dark = false)
+        assertEquals(themeColor("#fbf4ea"), tint.color(app, dark = false))
+        tint.remember("rgba(10, 20, 30, 0.8)", app, dark = false)
+        assertEquals(themeColor("#0a141e"), tint.color(app, dark = false))
+
+        tint.forget(app)
+        assertEquals("forgotten, the manifest's color again", themeColor("#336699"), tint.color(app, dark = false))
+        assertNull(tint.color(app, dark = true))
+    }
+
+    @Test
+    fun testReadsTheColorsChromiumWrites() {
+        assertEquals("#fbf4ea", StatusBarTint.opaqueHex("rgb(251, 244, 234)"))
+        assertEquals("#fbf4ea", StatusBarTint.opaqueHex("#FBF4EA"))
+        assertEquals("#0a141e", StatusBarTint.opaqueHex("rgba(10, 20, 30, 0.51)"))
+        assertNull(StatusBarTint.opaqueHex("rgba(0, 0, 0, 0)"))
+        assertNull(StatusBarTint.opaqueHex("transparent"))
+        assertNull(StatusBarTint.opaqueHex("#fff"))
+        assertEquals("rgb(1, 2, 3)", StatusBarTint.decoded("\"rgb(1, 2, 3)\""))
+        assertNull(StatusBarTint.decoded("null"))
+        assertNull(StatusBarTint.decoded("42"))
+        assertNull(StatusBarTint.decoded(null))
+    }
+}

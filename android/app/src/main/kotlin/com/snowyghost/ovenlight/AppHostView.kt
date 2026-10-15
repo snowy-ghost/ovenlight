@@ -2,7 +2,6 @@ package com.snowyghost.ovenlight
 
 import android.graphics.Bitmap
 import android.view.ViewGroup
-import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -15,11 +14,13 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -41,8 +42,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -121,9 +126,10 @@ private fun AppPageView(model: AppModel, page: AppPage, onClose: () -> Unit) {
             page.detach()
         }
     }
-    BackHandler { if (page.view.canGoBack()) page.view.goBack() else onClose() }
+    val back = rememberAppBack(canGoBack = page.view::canGoBack, goBack = page.view::goBack, close = onClose)
+    val tint = rememberStatusBarTint(app)
 
-    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+    Box(Modifier.backShrink(back).fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         AndroidView(
             factory = { page.view.also { (it.parent as? ViewGroup)?.removeView(it) } },
             modifier = Modifier.fillMaxSize(),
@@ -146,7 +152,7 @@ private fun AppPageView(model: AppModel, page: AppPage, onClose: () -> Unit) {
         ) { cover ->
             when (cover) {
                 Cover.None -> Unit
-                Cover.Placeholder -> LaunchPlaceholder(app, icon)
+                Cover.Placeholder -> LaunchPlaceholder(app, icon, tint)
                 Cover.CantReach -> LoadErrorView(ConnectionCopy.cantReach(app.name), ConnectionCopy.cantReachDetail, page::reload, onClose)
                 Cover.Error -> LoadErrorView(stringResource(R.string.app_cant_open, app.name), error.orEmpty(), page::reload, onClose)
                 Cover.Node -> action?.let {
@@ -165,6 +171,7 @@ private fun AppPageView(model: AppModel, page: AppPage, onClose: () -> Unit) {
                 }
             }
         }
+        AppChromeHost(model, page, icon, onClose)
     }
     if (cantReach) {
         AlertDialog(
@@ -179,19 +186,23 @@ private fun AppPageView(model: AppModel, page: AppPage, onClose: () -> Unit) {
 private enum class Cover { None, Placeholder, CantReach, Error, Node }
 
 /**
- * What an app shows until its first page loads: its icon in the middle, and a spinner with
- * "Connecting…" only after a beat, so fast loads never show one.
+ * What an app shows until its first page loads: its header color behind the status bar, its icon
+ * in the middle, and a spinner with "Connecting…" only after a beat, so fast loads never show one.
  */
 @Composable
-private fun LaunchPlaceholder(app: WebApp, icon: Bitmap?) {
+private fun LaunchPlaceholder(app: WebApp, icon: Bitmap?, tint: Color?) {
     var spinner by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         delay(700)
         spinner = true
     }
     val label = ConnectionCopy.connecting(to = app.name)
+    val background = LocalOvenColors.current.pageBackground
+    val statusBar = WindowInsets.statusBars.getTop(LocalDensity.current).toFloat()
     Column(
-        Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).clearAndSetSemantics { contentDescription = label },
+        Modifier.fillMaxSize().background(background)
+            .drawBehind { if (tint != null) drawRect(tint, size = Size(size.width, statusBar)) }
+            .clearAndSetSemantics { contentDescription = label },
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {

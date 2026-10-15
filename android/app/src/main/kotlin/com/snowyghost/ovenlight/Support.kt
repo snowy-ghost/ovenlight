@@ -4,6 +4,7 @@ import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -15,6 +16,7 @@ import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.core.net.toUri
+import androidx.webkit.WebViewCompat
 import java.io.IOException
 import java.io.InputStream
 import java.net.URI
@@ -57,6 +59,21 @@ data class MailDraft(val to: String = AppLinks.supportEmail, val subject: String
             lines += listOf("Ovenlight: $version", "Android: $android", "WebView: $webView", "Model: $model")
             return MailDraft(subject = "Ovenlight report: $appName", body = lines.joinToString("\n"))
         }
+
+        /**
+         * Report a Problem for one app as it is now: its connection, where opening it got, and
+         * Android's lines where iOS has its version: the release, the WebView build (which
+         * decides most page bugs) and the phone's model.
+         */
+        fun problemReport(context: Context, nodes: NodeManager, pool: WebViewPool, app: WebApp): MailDraft = problemReport(
+            appName = app.name, host = app.host, sharedBy = app.sharedBy,
+            connection = nodes.node(app)?.let { connection(it.state.value, it.isListedOffline(app.host)) },
+            opening = pool.gate(app.id)?.logDescription,
+            version = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+            android = Build.VERSION.RELEASE,
+            webView = WebViewCompat.getCurrentWebViewPackage(context)?.versionName ?: "unknown",
+            model = "${Build.MANUFACTURER} ${Build.MODEL}",
+        )
 
         /**
          * The state as shown, then in detail as the log has it (no sign-in link), and whether

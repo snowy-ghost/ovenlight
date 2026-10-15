@@ -8,8 +8,8 @@ import org.junit.Assert.assertThrows
 import org.junit.Test
 
 /**
- * The image tests need Android's Bitmap: testShrinksLargeScreenshotsUnderTheLimit lands with
- * the snapshot in Phase 4, testScreenshotsAreDecodedSmall with the feedback inbox.
+ * The image tests need Android's Bitmap: testShrinksLargeScreenshotsUnderTheLimit is in
+ * FeedbackSheetTests, under Robolectric; testScreenshotsAreDecodedSmall lands with the feedback inbox.
  */
 class FeedbackTests {
     private fun json(payload: FeedbackPayload) = ovenlightJSON.encodeToJsonElement(FeedbackPayload.serializer(), payload)

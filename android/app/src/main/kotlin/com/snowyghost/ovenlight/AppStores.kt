@@ -27,6 +27,8 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 class WebProfiles(private val context: Context, private val discard: (UUID) -> Unit) : AppRegistry.WebData {
     override fun discard(app: UUID) = discard.invoke(app)
 
+    override fun forget(app: WebApp) = StatusBarTint(PreferencesStore(context)).forget(app)
+
     override suspend fun clear(store: UUID) {
         val name = profileName(store)
         // A view still showing it routes nowhere from now on.
