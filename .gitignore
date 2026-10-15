@@ -23,3 +23,6 @@ captures/
 *.keystore
 keystore.properties
 /android/app/libs/
+
+# The Android e2e harness output
+/android/e2e/out/
