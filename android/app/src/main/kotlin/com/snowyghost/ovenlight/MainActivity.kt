@@ -6,10 +6,6 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -55,7 +51,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun Root() {
-    MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()) {
+    OvenlightTheme {
         val state by WebViewSetup.state.collectAsState()
         when (val s = state) {
             is WebViewSetup.State.NeedsUpdate -> WebViewUpdateScreen(s.webViewPackage)
