@@ -1,15 +1,532 @@
 package com.snowyghost.ovenlight
 
+import android.content.ActivityNotFoundException
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
+import android.graphics.Bitmap
+import android.os.Build
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.input.TextFieldLineLimits
+import androidx.compose.foundation.text.input.rememberTextFieldState
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MenuDefaults
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
+import androidx.webkit.WebViewCompat
+import java.net.URI
+import java.util.UUID
+import kotlinx.coroutines.launch
 
-/** The home screen of apps (LauncherView.swift). */
+/**
+ * What the launcher shows and what its controls do, made from the model each time it changes
+ * (see [LauncherView]), so tests can give it their own.
+ */
+data class LauncherState(
+    val apps: List<WebApp> = emptyList(),
+    val ownerEnabled: Boolean = false,
+    /** The owner's node, Idle while Ovenlight isn't set up for their own computers. */
+    val ownerState: NodeState = NodeState.Idle,
+    /** This phone as the owner's tailnet lists it, for the approval card. */
+    val deviceName: String = "",
+    val memberships: List<Membership> = emptyList(),
+    /** Invites being accepted this session, by invite ID. */
+    val phases: Map<String, JoinPhase> = emptyMap(),
+    /** The apps whose computers aren't answering. */
+    val reachability: Map<UUID, AppReachability> = emptyMap(),
+    /** Goes up with each icon saved, so a refreshed icon redraws. */
+    val iconRevision: Int = 0,
+    val icon: (WebApp) -> Bitmap? = { null },
+    val lock: () -> Unit = {},
+    val present: (RootSheet) -> Unit = {},
+    val open: (WebApp) -> Unit = {},
+    /** Try again, after the owner's node failed. */
+    val retry: () -> Unit = {},
+    val enableOwner: () -> Unit = {},
+    val move: (UUID, Int) -> Unit = { _, _ -> },
+    val rename: (UUID, String) -> Unit = { _, _ -> },
+    val refreshIcon: (UUID) -> Unit = {},
+    val clearData: (UUID) -> Unit = {},
+    val remove: (UUID) -> Unit = {},
+    /** Leaves a guest membership: its apps, their data and its node. */
+    val leave: (String) -> Unit = {},
+    val problemReport: (WebApp) -> MailDraft? = { null },
+    val openLink: (String) -> Unit = {},
+) {
+    /** Nothing saved yet: the welcome, in place of the grid. */
+    val showsWelcome: Boolean get() = apps.isEmpty() && !ownerEnabled && memberships.isEmpty()
+
+    /** People & Sharing, for an owner who is connected and whose connectors Ovenlight found. */
+    val showsSharing: Boolean get() = ownerEnabled && ownerState == NodeState.Ready && apps.any { !it.isShared && it.discovered }
+
+    val pendingInvites: List<InviteLink> get() = memberships.flatMap { m -> m.pendingClaims.map { it.invite } }
+}
+
+/** The home screen of apps (LauncherView.swift), from the model. */
 @Composable
 fun LauncherView(model: AppModel) {
+    val nodes = model.nodes
+    val registry = model.registry
+    val context = LocalContext.current
+    val apps by registry.appsFlow.collectAsState()
+    val ownerEnabled by nodes.ownerEnabled.collectAsState()
+    val ownerState by nodes.owner.state.collectAsState()
+    val ownerStatus by nodes.owner.status.collectAsState()
+    val ownerAnswers by nodes.owner.answers.collectAsState()
+    val guestNodes by nodes.guests.collectAsState()
+    // Each node's state and answers, so a tile dims or brightens as its computer comes and goes.
+    val guestStates = guestNodes.values.map { node -> key(node.id) { node.state.collectAsState().value to node.answers.collectAsState().value } }
+    val memberships by nodes.memberships.membershipsFlow.collectAsState()
+    val phases by model.guests.phases.collectAsState()
+    val iconRevision by registry.iconRevision.collectAsState()
+    val reachability = remember(apps, ownerState, ownerStatus, ownerAnswers, guestStates) {
+        apps.mapNotNull { app -> nodes.reachability(app)?.let { app.id to it } }.toMap()
+    }
+    val scope = model.scope
+    LauncherView(
+        LauncherState(
+            apps = apps,
+            ownerEnabled = ownerEnabled,
+            // The owner's own connection only once they set Ovenlight up for their computers.
+            ownerState = if (ownerEnabled) ownerState else NodeState.Idle,
+            deviceName = NodeManager.deviceName(ownerStatus, nodes.hostName),
+            memberships = memberships,
+            phases = phases,
+            reachability = reachability,
+            iconRevision = iconRevision,
+            icon = { IconDecoder.load(registry.iconFile(it)) },
+            lock = model.lock::lock,
+            present = model.router::present,
+            open = model.router::open,
+            retry = { scope.launch { nodes.restart() } },
+            enableOwner = nodes::enableOwner,
+            move = registry::move,
+            rename = registry::rename,
+            refreshIcon = { scope.launch { registry.refreshMetadata(it) } },
+            clearData = { scope.launch { registry.clearData(it) } },
+            remove = { scope.launch { registry.remove(it) } },
+            leave = { scope.launch { model.guests.leave(it) } },
+            problemReport = { app -> problemReport(context, nodes, app) },
+            openLink = { openInBrowser(context, it) },
+        ),
+    )
+}
+
+/**
+ * Report a Problem for one app, with Android's lines where iOS has its version: the release,
+ * the WebView build (which decides most page bugs) and the phone's model.
+ */
+private fun problemReport(context: Context, nodes: NodeManager, app: WebApp): MailDraft = MailDraft.problemReport(
+    appName = app.name, host = app.host, sharedBy = app.sharedBy,
+    connection = nodes.node(app)?.let { MailDraft.connection(it.state.value, it.isListedOffline(app.host)) },
+    // The Opening line, where loading the app got, comes with the app host's pool.
+    version = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+    android = Build.VERSION.RELEASE,
+    webView = WebViewCompat.getCurrentWebViewPackage(context)?.versionName ?: "unknown",
+    model = "${Build.MANUFACTURER} ${Build.MODEL}",
+)
+
+/** The page in the person's browser. Custom Tabs aren't a dependency yet, so a plain view intent. */
+private fun openInBrowser(context: Context, url: String) {
+    try {
+        context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
+    } catch (_: ActivityNotFoundException) {
+    }
+}
+
+/**
+ * The draft in the person's mail app, with the fields in the link and in the extras, since mail
+ * apps read one or the other. False when no app takes it.
+ */
+private fun sendMail(context: Context, draft: MailDraft): Boolean {
+    val url = draft.mailtoURL ?: return false
+    val intent = Intent(Intent.ACTION_SENDTO, url.toString().toUri())
+        .putExtra(Intent.EXTRA_EMAIL, arrayOf(draft.to))
+        .putExtra(Intent.EXTRA_SUBJECT, draft.subject)
+        .putExtra(Intent.EXTRA_TEXT, draft.body)
+    return try {
+        context.startActivity(intent)
+        true
+    } catch (_: ActivityNotFoundException) {
+        false
+    }
+}
+
+/**
+ * The home screen of apps: the oven's interior with its light on, the lock and the menu on top,
+ * the owner's sign-in or approval card and any invite still joining, then the apps. Before
+ * anything is saved, the welcome takes the grid's place.
+ */
+@Composable
+fun LauncherView(state: LauncherState) {
+    val colors = MaterialTheme.colorScheme
+    val haptics = LocalHapticFeedback.current
+    val context = LocalContext.current
+    var renaming by remember { mutableStateOf<WebApp?>(null) }
+    var clearing by remember { mutableStateOf<WebApp?>(null) }
+    var removing by remember { mutableStateOf<WebApp?>(null) }
+    var leaving by remember { mutableStateOf<Membership?>(null) }
+    var noMailApp by remember { mutableStateOf(false) }
     Box(Modifier.fillMaxSize().background(LocalOvenColors.current.ovenInterior)) {
         LampLight(level = 0.6f)
+        CompositionLocalProvider(LocalContentColor provides colors.onSurface) {
+            Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
+                HomeTopBar(state)
+                if (state.showsWelcome) {
+                    LauncherWelcome(
+                        join = { state.present(RootSheet.Join(JoinRequest())) }, useOwnComputers = state.enableOwner,
+                        modifier = Modifier.weight(1f),
+                    )
+                } else {
+                    HomeScreenGrid(
+                        apps = state.apps, ownerEnabled = state.ownerEnabled, icon = state.icon, iconRevision = state.iconRevision,
+                        reachability = state.reachability, open = state.open, move = state.move,
+                        addApp = { state.present(RootSheet.AddApp) }, openLink = state.openLink,
+                        modifier = Modifier.weight(1f),
+                        header = {
+                            TailnetBanner(state.ownerState, state.deviceName, connect = { state.present(RootSheet.Login(it)) }, approve = { state.present(RootSheet.Approve) })
+                            PendingInvitesBanner(
+                                state.pendingInvites, state.phases, open = { state.present(RootSheet.Join(JoinRequest(Result.success(it)))) },
+                                modifier = Modifier.padding(horizontal = 24.dp),
+                            )
+                        },
+                    ) { app, close ->
+                        AppMenu(
+                            app, close,
+                            rename = { renaming = app },
+                            refreshIcon = { state.refreshIcon(app.id) },
+                            reportProblem = { state.problemReport(app)?.let { if (!sendMail(context, it)) noMailApp = true } },
+                            leave = { leaving = state.memberships.firstOrNull { it.id == app.membershipID } },
+                            clearData = { clearing = app },
+                            remove = { removing = app },
+                        )
+                    }
+                }
+            }
+        }
     }
+
+    renaming?.let { app -> RenameDialog(app, onDismiss = { renaming = null }) { state.rename(app.id, it) } }
+    clearing?.let { app ->
+        Confirmation(
+            title = stringResource(R.string.launcher_sign_out_title, app.name), message = stringResource(R.string.launcher_sign_out_message),
+            confirm = stringResource(R.string.launcher_sign_out_clear), onDismiss = { clearing = null },
+        ) { state.clearData(app.id) }
+    }
+    removing?.let { app ->
+        Confirmation(
+            title = stringResource(R.string.launcher_remove_title, app.name),
+            message = app.sharedBy?.let(ConnectionCopy::removeSharedDetail) ?: stringResource(R.string.launcher_remove_message),
+            confirm = stringResource(R.string.launcher_remove_app), onDismiss = { removing = null },
+        ) {
+            haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+            state.remove(app.id)
+        }
+    }
+    leaving?.let { membership ->
+        Confirmation(
+            title = ConnectionCopy.leaveTitle(membership.ownerName), message = ConnectionCopy.leaveDetail(membership.ownerName),
+            confirm = stringResource(R.string.launcher_leave), onDismiss = { leaving = null },
+        ) { state.leave(membership.id) }
+    }
+    if (noMailApp) {
+        AlertDialog(
+            onDismissRequest = { noMailApp = false },
+            title = { Text(stringResource(R.string.launcher_no_email_title)) },
+            text = { Text(stringResource(R.string.launcher_no_email_message, AppLinks.supportEmail)) },
+            confirmButton = { TextButton(onClick = { noMailApp = false }) { Text(stringResource(R.string.launcher_ok)) } },
+            dismissButton = {
+                TextButton(onClick = {
+                    context.getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText(AppLinks.supportEmail, AppLinks.supportEmail))
+                    haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+                    noMailApp = false
+                }) { Text(stringResource(R.string.launcher_copy_address)) }
+            },
+        )
+    }
+}
+
+/** The text in the top row and the pill stops growing at 1.3 times, so the row keeps its height. */
+@Composable
+private fun CappedFontScale(content: @Composable () -> Unit) {
+    val density = LocalDensity.current
+    val capped = remember(density) { if (density.fontScale > 1.3f) Density(density.density, 1.3f) else density }
+    CompositionLocalProvider(LocalDensity provides capped, content = content)
+}
+
+/**
+ * The launcher's only controls, bare icons as on a phone's home screen: Lock on the start side
+ * and the menu on the end, with Ovenlight's connection between them while it matters.
+ */
+@Composable
+private fun HomeTopBar(state: LauncherState) {
+    CappedFontScale {
+        // Icons 16 dp from the edges, as in a top app bar.
+        Row(Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = state.lock) {
+                Icon(painterResource(R.drawable.ic_lock), contentDescription = stringResource(R.string.launcher_lock))
+            }
+            Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                TailnetStatusPill(state.ownerState, state.retry)
+            }
+            Box {
+                var expanded by remember { mutableStateOf(false) }
+                IconButton(onClick = { expanded = true }) {
+                    Icon(painterResource(R.drawable.ic_more_vert), contentDescription = stringResource(R.string.launcher_more))
+                }
+                DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                    @Composable
+                    fun item(label: String, sheet: RootSheet) = DropdownMenuItem(text = { Text(label) }, onClick = {
+                        expanded = false
+                        state.present(sheet)
+                    })
+                    item(stringResource(R.string.launcher_add_app), RootSheet.AddApp)
+                    item(ConnectionCopy.joinWithInvite, RootSheet.Join(JoinRequest()))
+                    if (state.showsSharing) item(stringResource(R.string.launcher_people_sharing), RootSheet.Sharing)
+                    HorizontalDivider()
+                    item(stringResource(R.string.launcher_settings), RootSheet.Settings)
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Connecting, or a failure with a retry, in a small pill between the corner controls. Nothing
+ * when connected or off; signing in and approval have a card instead.
+ */
+@Composable
+private fun TailnetStatusPill(state: NodeState, retry: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    val pill = Modifier.minimumInteractiveComponentSize().height(32.dp).clip(CircleShape).background(colors.surfaceContainerHigh)
+    val text = MaterialTheme.typography.labelLarge
+    when {
+        state.isBusy -> Row(
+            pill.semantics(mergeDescendants = true) {}.padding(horizontal = 14.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CircularProgressIndicator(Modifier.size(16.dp).clearAndSetSemantics {}, strokeWidth = 2.dp)
+            Text(ConnectionCopy.connecting, style = text, color = colors.onSurfaceVariant, maxLines = 1)
+        }
+        state is NodeState.Failed -> {
+            val tryAgain = stringResource(R.string.launcher_try_again)
+            Row(
+                pill.clickable(onClickLabel = tryAgain, role = Role.Button, onClick = retry).padding(horizontal = 14.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(painterResource(R.drawable.ic_warning), contentDescription = null, tint = colors.tertiary, modifier = Modifier.size(18.dp))
+                // The message gives way to Try again when the pill runs out of room.
+                Text(state.message, style = text, color = colors.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                Text(tryAgain, style = text, color = colors.primary, maxLines = 1, modifier = Modifier.clearAndSetSemantics {})
+            }
+        }
+    }
+}
+
+/**
+ * The owner's sign-in or approval card, above the apps until Ovenlight is connected to their
+ * tailnet. The only place on the launcher that names Tailscale.
+ */
+@Composable
+private fun TailnetBanner(state: NodeState, deviceName: String, connect: (URI) -> Unit, approve: () -> Unit) {
+    when (state) {
+        is NodeState.NeedsLogin -> LauncherCard(
+            R.drawable.ic_lan, stringResource(R.string.launcher_connect_title), AnnotatedString(stringResource(R.string.launcher_connect_body)),
+            stringResource(R.string.launcher_connect),
+        ) { connect(state.url) }
+        NodeState.AwaitingApproval -> {
+            val body = stringResource(R.string.launcher_approve_body, deviceName)
+            val start = body.indexOf(deviceName)
+            val text = buildAnnotatedString {
+                append(body)
+                if (deviceName.isNotEmpty() && start >= 0) addStyle(SpanStyle(fontWeight = FontWeight.Bold), start, start + deviceName.length)
+            }
+            LauncherCard(R.drawable.ic_verified_user, stringResource(R.string.launcher_approve_title), text, stringResource(R.string.launcher_open_machines), approve)
+        }
+        else -> Unit
+    }
+}
+
+@Composable
+private fun LauncherCard(icon: Int, title: String, body: AnnotatedString, button: String, action: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    ElevatedCard(
+        shape = RoundedCornerShape(28.dp),
+        colors = CardDefaults.elevatedCardColors(containerColor = if (isSystemInDarkTheme()) colors.surfaceContainerHigh else colors.surfaceContainerLowest),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 6.dp),
+    ) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(40.dp).background(colors.primaryContainer, CircleShape), contentAlignment = Alignment.Center) {
+                    Icon(painterResource(icon), contentDescription = null, tint = colors.onPrimaryContainer)
+                }
+                Text(title, style = MaterialTheme.typography.titleMedium, color = colors.onSurface, modifier = Modifier.semantics { heading() })
+            }
+            Text(body, style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
+            Button(onClick = action, modifier = Modifier.fillMaxWidth().height(56.dp)) {
+                Text(button, style = MaterialTheme.typography.titleMedium)
+            }
+        }
+    }
+}
+
+/**
+ * An app's touch-and-hold menu: a header naming it and where it comes from (iOS's preview
+ * card), then what the person can do with it, the destructive actions last.
+ */
+@Composable
+private fun ColumnScope.AppMenu(
+    app: WebApp,
+    close: () -> Unit,
+    rename: () -> Unit,
+    refreshIcon: () -> Unit,
+    reportProblem: () -> Unit,
+    leave: () -> Unit,
+    clearData: () -> Unit,
+    remove: () -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    // Share and People come with the owner's sharing; until then an own app's plan is empty.
+    val plan = AppMenuPlan.plan(app, admin = null)
+    Column(Modifier.widthIn(max = 280.dp).padding(horizontal = 12.dp, vertical = 8.dp).semantics(mergeDescendants = true) { heading() }) {
+        Text(app.name, style = MaterialTheme.typography.titleSmall, color = colors.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text(
+            app.sharedBy?.let(ConnectionCopy::sharedBy) ?: app.host, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant,
+            maxLines = 1, overflow = TextOverflow.Ellipsis,
+        )
+    }
+
+    @Composable
+    fun item(label: String, icon: Int, destructive: Boolean = false, action: () -> Unit) = DropdownMenuItem(
+        text = { Text(label) },
+        leadingIcon = { Icon(painterResource(icon), contentDescription = null) },
+        onClick = {
+            close()
+            action()
+        },
+        colors = if (destructive) MenuDefaults.itemColors(textColor = colors.error, leadingIconColor = colors.error) else MenuDefaults.itemColors(),
+    )
+    // Add to Home screen comes first here, with Phase 7's pinned shortcuts.
+    item(stringResource(R.string.launcher_rename), R.drawable.ic_edit, action = rename)
+    item(stringResource(R.string.launcher_refresh_icon), R.drawable.ic_refresh, action = refreshIcon)
+    // Share… and People (n) open this section for the owner's apps, with Phase 6.
+    if (plan.reportProblem || plan.leaveOwner != null) {
+        HorizontalDivider()
+        if (plan.reportProblem) item(ConnectionCopy.reportProblem, R.drawable.ic_flag, action = reportProblem)
+        plan.leaveOwner?.let { item(ConnectionCopy.leaveApps(it), R.drawable.ic_logout, destructive = true, action = leave) }
+    }
+    HorizontalDivider()
+    item(stringResource(R.string.launcher_sign_out_clear), R.drawable.ic_ink_eraser, action = clearData)
+    item(stringResource(R.string.launcher_remove_app), R.drawable.ic_delete, destructive = true, action = remove)
+}
+
+@Composable
+private fun RenameDialog(app: WebApp, onDismiss: () -> Unit, save: (String) -> Unit) {
+    val name = rememberTextFieldState(app.name)
+    val focus = remember { FocusRequester() }
+    val done = {
+        name.text.toString().takeIf { it.isNotEmpty() }?.let(save)
+        onDismiss()
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.launcher_rename_title)) },
+        text = {
+            OutlinedTextField(
+                name, label = { Text(stringResource(R.string.launcher_name)) }, lineLimits = TextFieldLineLimits.SingleLine,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), onKeyboardAction = { done() },
+                modifier = Modifier.focusRequester(focus),
+            )
+        },
+        confirmButton = { TextButton(onClick = done, enabled = name.text.isNotEmpty()) { Text(stringResource(R.string.launcher_save)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.launcher_cancel)) } },
+    )
+    LaunchedEffect(Unit) { focus.requestFocus() }
+}
+
+/** A confirmation whose button is in the error color, as iOS marks destructive ones red. */
+@Composable
+private fun Confirmation(title: String, message: String, confirm: String, onDismiss: () -> Unit, action: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = { Text(message) },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    onDismiss()
+                    action()
+                },
+                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+            ) { Text(confirm) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.launcher_cancel)) } },
+    )
 }

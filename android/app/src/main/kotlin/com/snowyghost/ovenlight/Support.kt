@@ -110,7 +110,7 @@ fun NoEmailAppDialog(onDismiss: () -> Unit) {
 
 /** Every license the app ships, which the build writes into assets/licenses. */
 object Acknowledgements {
-    val files = listOf("android-libraries.txt", "go-core.txt", "source-serif-4.txt")
+    val files = listOf("android-libraries.txt", "go-core.txt", "material-symbols.txt", "source-serif-4.txt")
 
     /** All of them in one text, or null when any is missing; [open] opens an asset by path. */
     fun notices(open: (String) -> InputStream): String? = try {

@@ -22,6 +22,7 @@ class AcknowledgementsTests {
         assertTrue(notices.contains("tailscale.com"))
         assertTrue(notices.contains("androidx.compose.ui:ui"))
         assertTrue(notices.contains("Source Serif 4"))
+        assertTrue(notices.contains("Material Symbols"))
     }
 
     @Test
