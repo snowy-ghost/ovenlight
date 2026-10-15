@@ -36,6 +36,15 @@ enum NodeState: Equatable {
         case .failed(let message): return message
         }
     }
+
+    /// For the log, which is public: the sign-in link is left out, since whoever opens it
+    /// first can sign the node in to their own account.
+    var logDescription: String {
+        switch self {
+        case .needsLogin: return "needsLogin"
+        default: return String(describing: self)
+        }
+    }
 }
 
 /// Inputs to the state machine: lifecycle calls, the node's backend state, and the
@@ -570,7 +579,7 @@ final class MembershipNode: ObservableObject {
     private func send(_ event: NodeEvent) {
         let next = NodeMachine.next(state, event)
         if next != state {
-            log.info("\(self.id, privacy: .public): state \(String(describing: self.state), privacy: .public) -> \(String(describing: next), privacy: .public)")
+            log.info("\(self.id, privacy: .public): state \(self.state.logDescription, privacy: .public) -> \(next.logDescription, privacy: .public)")
             state = next
         }
     }

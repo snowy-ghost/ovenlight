@@ -549,6 +549,12 @@ final class NodeMachineTests: XCTestCase {
         XCTAssertEqual(run([.reachable], from: .needsLogin(login)), .needsLogin(login), "a stray probe result can't skip login")
     }
 
+    func testTheLogNeverCarriesTheSignInLink() {
+        XCTAssertEqual(NodeState.needsLogin(login).logDescription, "needsLogin")
+        XCTAssertEqual(NodeState.retrying(attempt: 2).logDescription, "retrying(attempt: 2)")
+        XCTAssertEqual(NodeState.failed("boom").logDescription, #"failed("boom")"#)
+    }
+
     func testStatusDecoding() throws {
         let json = """
         {"BackendState":"Running","AuthURL":"","Self":{"HostName":"ovenlight-abc123","DNSName":"ovenlight-abc123.tailabc123.ts.net.","OS":"iOS","Online":true,"UserID":42},
