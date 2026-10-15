@@ -782,9 +782,7 @@ enum DownloadPolicy {
         case "http", "https":
             return Discovery.normalizedHost(url.host ?? "") == app
         case "blob":
-            // blob:https://host/<uuid> names the origin of the page that made it.
-            return URL(string: String(url.absoluteString.dropFirst("blob:".count)))
-                .map { Discovery.normalizedHost($0.host ?? "") } == app
+            return NavigationPolicy.blobHost(url) == app
         case "data":
             // Has no origin of its own: only one the app's own page started.
             return sourceHost != nil

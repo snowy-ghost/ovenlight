@@ -75,6 +75,13 @@ final class NavigationPolicyTests: XCTestCase {
         XCTAssertEqual(decide("about:blank"), .allow)
     }
 
+    func testThePageShowsOnlyTheAppsOwnBlobs() {
+        XCTAssertEqual(decide("blob:https://Alex-Mac.example.ts.net:8443/6f1c"), .allow)
+        XCTAssertEqual(decide("blob:https://evil.example.com/6f1c"), .refuse, "a frame of another site made it")
+        XCTAssertEqual(decide("blob:null/6f1c"), .refuse)
+        XCTAssertEqual(decide("blob:https://evil.example.com/6f1c", mainFrame: false), .allow, "a frame shows its own")
+    }
+
     func testPagesNeverOpenOvenlightsOwnLinks() throws {
         for link in ["ovenlight://join?v=1&key=k", "Ovenlight://join?v=1", "ovenlight://open?app=Coach"] {
             XCTAssertEqual(decide(link, tapped: true), .refuse, link)

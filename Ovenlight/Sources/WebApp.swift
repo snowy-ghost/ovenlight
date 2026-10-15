@@ -211,12 +211,20 @@ enum NavigationPolicy {
         case "http", "https":
             if !isMainFrame { return .allow }
             return Discovery.normalizedHost(url.host ?? "") == Discovery.normalizedHost(appHost) ? .allow : .openExternally(url)
-        case "about", "data", "blob", "javascript":
+        case "blob":
+            // A frame of another site can make one too: the page shows only the app's own.
+            return !isMainFrame || blobHost(url) == Discovery.normalizedHost(appHost) ? .allow : .refuse
+        case "about", "data", "javascript":
             return .allow
         default:
             // Never Ovenlight's own scheme: a page could hand it an invite of its choosing.
             return tapped && isMainFrame && scheme != InviteLink.scheme ? .openExternally(url) : .refuse
         }
+    }
+
+    /// The host of the page that made a blob URL: `blob:https://host/<uuid>` names its origin.
+    static func blobHost(_ url: URL) -> String? {
+        URL(string: String(url.absoluteString.dropFirst("blob:".count))).map { Discovery.normalizedHost($0.host ?? "") }
     }
 
     /// A popup loaded in the app's own view goes out as Ovenlight's load, without the
