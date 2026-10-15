@@ -73,7 +73,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -85,12 +84,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -148,22 +145,18 @@ class ChromeController(private val store: KeyValueStore) {
     /** Off for the frame a feedback snapshot takes, so the page is all it shows. */
     var hiddenForSnapshot by mutableStateOf(false)
 
-    /** Goes up with each reveal from the handle, for its haptic. */
-    var reveals by mutableIntStateOf(0)
-        private set
-
     init {
         // While the tip is due, the chrome shows, so the tip can point at it.
         if (tipShowing) isShown = true
     }
 
-    /** The handle (with a haptic), or the page scrolled up or pulled down at its top (without). */
-    fun reveal(haptic: Boolean = true) {
-        if (!isShown) {
-            isShown = true
-            if (haptic) reveals += 1
-        }
-        if (haptic) closeTip()
+    /**
+     * The handle, or the page scrolled up or pulled down at its top. No haptic either way:
+     * design.md keeps them for actions, not for revealing the pill.
+     */
+    fun reveal(fromHandle: Boolean = true) {
+        isShown = true
+        if (fromHandle) closeTip()
         autoHides = false
     }
 
@@ -425,8 +418,6 @@ fun AppChrome(
     controller: ChromeController,
     touchExploration: Boolean = rememberTouchExploration(),
 ) {
-    val haptics = LocalHapticFeedback.current
-    LaunchedEffect(controller.reveals) { if (controller.reveals > 0) haptics.performHapticFeedback(HapticFeedbackType.SegmentTick) }
     LaunchedEffect(isLoaded, controller.autoHides, controller.tipShowing) {
         if (!isLoaded || !controller.autoHides || controller.tipShowing) return@LaunchedEffect
         delay(ChromeController.AUTO_HIDE_MILLIS)
@@ -591,7 +582,7 @@ private fun WatchPage(view: PageWebView, controller: ChromeController) {
     DisposableEffect(view, controller) {
         val gestures = ChromeGestures(
             density, ViewConfiguration.get(view.context).scaledTouchSlop.toFloat(),
-            onScroll = { up -> if (up) controller.reveal(haptic = false) else controller.hide() },
+            onScroll = { up -> if (up) controller.reveal(fromHandle = false) else controller.hide() },
             onTap = controller::hide,
         )
         view.setOnScrollChangeListener { _, _, y, _, oldY -> gestures.scrolled(oldY, y, SystemClock.uptimeMillis()) }

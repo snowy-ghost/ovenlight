@@ -108,7 +108,6 @@ class AppChromeTests {
         inEveryLook { assertTucked() }
         node("Show app menu").performClick()
         inEveryLook { assertShown(recipes) }
-        assertEquals("a reveal from the handle gives its haptic", 1, controller.reveals)
         node("All apps").performClick()
         assertEquals(listOf("home"), done)
     }
@@ -147,14 +146,13 @@ class AppChromeTests {
     fun testItTucksAwayOnScrollAndComesBackOnAPull() {
         val controller = controller()
         show(recipes, controller)
-        controller.reveal(haptic = false)
+        controller.reveal(fromHandle = false)
         composeRule.waitForIdle()
         assertShown(recipes)
-        assertEquals("only the handle's reveal buzzes", 0, controller.reveals)
         controller.hide()
         composeRule.waitForIdle()
         assertTucked()
-        controller.reveal(haptic = false)
+        controller.reveal(fromHandle = false)
         composeRule.waitForIdle()
         assertShown(recipes)
         // Once revealed, the person has it: a load doesn't hide it on its own.
