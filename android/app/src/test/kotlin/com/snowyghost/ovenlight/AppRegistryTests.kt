@@ -1,5 +1,10 @@
 package com.snowyghost.ovenlight
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Color
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.net.URI
 import java.nio.file.Files
@@ -14,8 +19,11 @@ import kotlinx.serialization.json.JsonPrimitive
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.annotation.GraphicsMode
 
 /** A registry with no network, no web views and no icons, as the iOS tests make one. */
 internal fun offlineRegistry(dir: File) = AppRegistry(
@@ -154,5 +162,36 @@ class AppRegistryTests {
         val reopened = makeRegistry(dir)
         assertEquals(listOf("Coach", "notes.example.com"), reopened.apps.map { it.name })
         assertFalse(reopened.readInFull)
+    }
+}
+
+/** The registry's tests that need Android's own image decoding, run under Robolectric with its native graphics. */
+@RunWith(AndroidJUnit4::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class AppRegistryIconTests {
+    private fun png(width: Int, height: Int): ByteArray {
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.rgb(255, 128, 0)) }
+        return ByteArrayOutputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it); it.toByteArray() }
+    }
+
+    private fun size(bitmap: Bitmap?) = bitmap?.let { listOf(it.width, it.height) }
+
+    @Test
+    fun testIconsAreDecodedSmall() {
+        val dir = Files.createTempDirectory("icons").toFile()
+        try {
+            val png = png(2048, 1024)
+            assertEquals("what a save writes", listOf(288, 144), size(IconDecoder.png(png)?.let { BitmapFactory.decodeByteArray(it, 0, it.size) }))
+            assertNull("over 4096 pixels a side, refused before decoding", IconDecoder.png(png(4097, 8)))
+            assertNull("over 4096 pixels high, refused too", IconDecoder.png(png(8, 4097)))
+
+            // One an earlier build saved as the server sent it.
+            val registry = offlineRegistry(dir)
+            val app = WebApp(name = "Coach", startURL = URI("https://coach.tailabc123.ts.net/"), iconFile = "coach.png")
+            File(registry.iconsDirectory, "coach.png").writeBytes(png)
+            assertEquals(listOf(288, 144), size(IconDecoder.load(registry.iconFile(app))))
+        } finally {
+            dir.deleteRecursively()
+        }
     }
 }

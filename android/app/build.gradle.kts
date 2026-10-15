@@ -186,6 +186,9 @@ android {
         buildConfig = true
     }
 
+    // Robolectric runs the screens' Compose tests and Android's image decoding on the JVM.
+    testOptions.unitTests.isIncludeAndroidResources = true
+
     lint {
         warningsAsErrors = true
         abortOnError = true
@@ -216,6 +219,12 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.kotlin.test.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.ext.junit)
+    testImplementation(platform(libs.compose.bom))
+    testImplementation(libs.compose.ui.test.junit4)
+    testImplementation(libs.compose.ui.test.junit4.accessibility)
+    debugImplementation(libs.compose.ui.test.manifest)
 }
 
 // The connector's wire fixtures, which the wire test decodes, so a connector change that
@@ -228,4 +237,6 @@ tasks.withType<Test>().configureEach {
     dependsOn(acknowledgements)
     val assetDirs = listOf(layout.buildDirectory.dir("generated/acknowledgements").get().asFile, file("src/main/assets"))
     systemProperty("ovenlight.assetDirs", assetDirs.joinToString(File.pathSeparator))
+    // Robolectric reaches into FileDescriptor to fake Android's shared memory.
+    jvmArgs("--add-opens=java.base/java.io=ALL-UNNAMED", "--add-exports=java.base/jdk.internal.access=ALL-UNNAMED")
 }
