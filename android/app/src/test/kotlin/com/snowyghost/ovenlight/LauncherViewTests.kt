@@ -1,12 +1,16 @@
 package com.snowyghost.ovenlight
 
+import android.app.Application
+import android.content.ClipboardManager
 import android.content.Context
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
@@ -21,10 +25,14 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performFirstLinkClick
+import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.pressKey
+import androidx.compose.ui.test.requestFocus
 import androidx.compose.ui.test.tryPerformAccessibilityChecks
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.net.URI
@@ -36,6 +44,7 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
@@ -335,26 +344,120 @@ class LauncherViewTests {
         assertEquals(0 to 2, item?.rowIndex to item?.columnIndex)
     }
 
-    @Test
-    fun testDragMovesAnApp() {
+    /** Shows the grid with a list the moves change, as the registry's does. */
+    private fun showMovable(moves: MutableList<Pair<UUID, Int>>): () -> List<WebApp> {
         var order by mutableStateOf(apps)
-        val moves = mutableListOf<Pair<UUID, Int>>()
         composeRule.setContent {
             OvenlightTheme {
                 LauncherView(LauncherState(apps = order, move = { id, index -> moves += id to index; order = HomeReorder.moving(order, id, index) { it.id } }))
             }
         }
-        val from = tile("Recipe Box").fetchSemanticsNode().boundsInRoot.center
-        val to = tile("Garden Log").fetchSemanticsNode().boundsInRoot.center
-        tile("Recipe Box").performTouchInput {
+        return { order }
+    }
+
+    /** Holds [from], then drags it to [to] in ten steps [stepMillis] apart and lets go. */
+    private fun drag(from: String, to: String, stepMillis: Long) {
+        val start = tile(from).fetchSemanticsNode().boundsInRoot.center
+        val end = tile(to).fetchSemanticsNode().boundsInRoot.center
+        tile(from).performTouchInput {
             down(center)
             advanceEventTime(viewConfiguration.longPressTimeoutMillis + 100)
-            for (step in 1..10) moveBy(Offset((to.x - from.x) / 10, (to.y - from.y) / 10), delayMillis = 30)
-            advanceEventTime(200)
+            for (step in 1..10) moveBy(Offset((end.x - start.x) / 10, (end.y - start.y) / 10), delayMillis = stepMillis)
             up()
         }
         composeRule.waitForIdle()
+    }
+
+    @Test
+    fun testDragMovesAnApp() {
+        val moves = mutableListOf<Pair<UUID, Int>>()
+        val order = showMovable(moves)
+        drag("Recipe Box", "Garden Log", stepMillis = 30)
         assertEquals(listOf(recipes.id to 2), moves)
-        assertEquals(listOf(guide, garden, recipes), order)
+        assertEquals(listOf(guide, garden, recipes), order())
+    }
+
+    @Test
+    fun testADropLandsWhereReleasedWithoutResting() {
+        val moves = mutableListOf<Pair<UUID, Int>>()
+        val order = showMovable(moves)
+        drag("Garden Log", "Recipe Box", stepMillis = 5)
+        assertEquals(listOf(garden.id to 0), moves)
+        assertEquals(listOf(garden, recipes, guide), order())
+    }
+
+    @Test
+    fun testADropOnItsOwnSlotKeepsTheOrder() {
+        val moves = mutableListOf<Pair<UUID, Int>>()
+        val order = showMovable(moves)
+        tile("Recipe Box").performTouchInput {
+            down(center)
+            advanceEventTime(viewConfiguration.longPressTimeoutMillis + 100)
+            moveBy(Offset(viewConfiguration.touchSlop * 2, 0f), delayMillis = 30)
+            up()
+        }
+        composeRule.waitForIdle()
+        assertEquals(listOf(recipes.id to 0), moves)
+        assertEquals(apps, order())
+    }
+
+    @Test
+    fun testAScrollStartingOnAnIconDoesntOpenIt() {
+        val opened = mutableListOf<WebApp>()
+        show(LauncherState(apps = apps, open = { opened += it }))
+        tile("Recipe Box").performTouchInput {
+            down(center)
+            moveBy(Offset(0f, 200f), delayMillis = 20)
+            up()
+        }
+        assertTrue(opened.isEmpty())
+    }
+
+    @Test
+    fun testRightToLeftTapOpensTheTouchedApp() {
+        val opened = mutableListOf<WebApp>()
+        composeRule.setContent {
+            OvenlightTheme {
+                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) { LauncherView(LauncherState(apps = apps, open = { opened += it })) }
+            }
+        }
+        composeRule.onRoot().tryPerformAccessibilityChecks()
+        assertTrue(tile("Recipe Box").fetchSemanticsNode().boundsInRoot.left > tile("Garden Log").fetchSemanticsNode().boundsInRoot.left)
+        tile("Recipe Box").performClick()
+        tile("Garden Log").performClick()
+        assertEquals(listOf(recipes, garden), opened)
+    }
+
+    @Test
+    fun testRefreshIcon() {
+        val refreshed = mutableListOf<UUID>()
+        show(LauncherState(apps = apps, refreshIcon = { refreshed += it }))
+        tile("Garden Log").performTouchInput { longClick() }
+        composeRule.onNodeWithText("Refresh icon").performClick()
+        assertEquals(listOf(garden.id), refreshed)
+    }
+
+    @Test
+    fun testNoEmailApp() {
+        val context = ApplicationProvider.getApplicationContext<Application>()
+        // No app takes the mail link, as on a phone with no email app.
+        shadowOf(context).checkActivities(true)
+        show(LauncherState(apps = apps, problemReport = { MailDraft(subject = "Ovenlight report: ${it.name}", body = "") }))
+        tile(sharedTile).performTouchInput { longClick() }
+        composeRule.onNodeWithText(ConnectionCopy.reportProblem).performClick()
+        composeRule.onNodeWithText("No email app").assertIsDisplayed()
+        composeRule.onNodeWithText("Write to ${AppLinks.supportEmail}.").assertIsDisplayed()
+        composeRule.onNodeWithText("Copy address").performClick()
+        val clip = context.getSystemService(ClipboardManager::class.java).primaryClip
+        assertEquals(AppLinks.supportEmail, clip?.getItemAt(0)?.text?.toString())
+        composeRule.onNodeWithText("No email app").assertDoesNotExist()
+    }
+
+    @Test
+    fun testKeyboardOpensAnApp() {
+        val opened = mutableListOf<WebApp>()
+        show(LauncherState(apps = apps, open = { opened += it }))
+        tile("Garden Log").requestFocus().performKeyInput { pressKey(Key.Enter) }
+        assertEquals(listOf(garden), opened)
     }
 }

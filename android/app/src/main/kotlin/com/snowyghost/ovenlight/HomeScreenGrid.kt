@@ -1,6 +1,7 @@
 package com.snowyghost.ovenlight
 
 import android.graphics.Bitmap
+import android.util.LruCache
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector2D
 import androidx.compose.animation.core.Spring
@@ -13,6 +14,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -44,6 +46,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -52,6 +55,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -68,6 +78,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CollectionInfo
@@ -92,6 +103,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import java.util.UUID
@@ -103,9 +115,11 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlin.math.sign
 import kotlin.math.truncate
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Where each icon sits in the launcher's grid: equal columns across the width and rows of one
@@ -194,9 +208,12 @@ const val CONNECTOR_SUPPORT_URL = "https://ovenlight.app/support#own-computer"
 /**
  * An icon being moved: where the finger is, where on the tile it took hold (from the tile's
  * center), and the slot the icon would drop into. In the grid's own pixels, which hold still
- * because scrolling stops meanwhile. [dropped] holds the new order until the saved list has it.
+ * because scrolling stops meanwhile. Once dropped, it holds the new order until the list changes
+ * from [droppedOn], the list at the drop.
  */
-private data class IconDrag(val id: UUID, val location: Offset, val grab: Offset, val target: Int, val dropped: Boolean = false)
+private data class IconDrag(val id: UUID, val location: Offset, val grab: Offset, val target: Int, val droppedOn: List<WebApp>? = null) {
+    val dropped: Boolean get() = droppedOn != null
+}
 
 /**
  * The apps as one scrolling grid of icons, the way a phone's home screen holds them. Tap an
@@ -233,7 +250,12 @@ fun HomeScreenGrid(
     var pressed by remember { mutableStateOf<UUID?>(null) }
     // While dragging, the moved app sits in its target slot.
     val order = drag?.let { d -> HomeReorder.moving(apps, d.id, d.target) { it.id } } ?: apps
-    LaunchedEffect(apps) { if (drag?.dropped == true) drag = null }
+    // A dropped icon keeps its new place until the saved list has it, or briefly when the move saved nothing.
+    LaunchedEffect(apps, drag?.dropped) {
+        val droppedOn = drag?.droppedOn ?: return@LaunchedEffect
+        if (apps === droppedOn) delay(300)
+        drag = null
+    }
     Column(modifier.verticalScroll(rememberScrollState(), enabled = drag == null)) {
         header()
         BoxWithConstraints(Modifier.fillMaxWidth()) {
@@ -252,6 +274,7 @@ fun HomeScreenGrid(
             val currentApps by rememberUpdatedState(apps)
             val currentOpen by rememberUpdatedState(open)
             val currentMove by rememberUpdatedState(move)
+            val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
             var retarget by remember { mutableStateOf<Job?>(null) }
             var pendingSlot by remember { mutableStateOf<Int?>(null) }
 
@@ -289,7 +312,7 @@ fun HomeScreenGrid(
                 pendingSlot = null
                 val d = drag ?: return
                 val target = slotUnder(d)
-                drag = if (currentApps.indexOfFirst { it.id == d.id } == target) null else d.copy(target = target, dropped = true)
+                drag = if (currentApps.indexOfFirst { it.id == d.id } == target) null else d.copy(target = target, droppedOn = currentApps)
                 currentMove(d.id, target)
                 haptics.performHapticFeedback(HapticFeedbackType.GestureEnd)
             }
@@ -300,31 +323,43 @@ fun HomeScreenGrid(
                         .fillMaxWidth()
                         .height((HomeGridLayout.topMargin + rows * layout.rowPitch).dp)
                         .semantics { collectionInfo = CollectionInfo(rowCount = rows, columnCount = layout.columns) }
-                        .pointerInput(layout) {
+                        .pointerInput(layout, rtl) {
                             awaitEachGesture {
+                                // Touches are in the grid's own pixels; tiles are laid out from the start
+                                // edge, so right to left they're mirrored first.
+                                fun grid(point: Offset) = if (rtl) Offset(size.width - point.x, point.y) else point
                                 val down = awaitFirstDown()
+                                val start = grid(down.position)
                                 val index = current.indices.firstOrNull { i ->
                                     val c = center(i)
-                                    abs(down.position.x - c.x) <= half.x && abs(down.position.y - c.y) <= half.y
+                                    abs(start.x - c.x) <= half.x && abs(start.y - c.y) <= half.y
                                 } ?: return@awaitEachGesture
                                 val app = current[index]
                                 val slop = viewConfiguration.touchSlop
-                                pressed = app.id
-                                // True for a tap, false when a scroll took the touch, null once held.
-                                val tapped = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
-                                    var up = false
-                                    while (true) {
-                                        val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
-                                        if (change.changedToUp()) {
-                                            change.consume()
-                                            up = true
-                                            break
-                                        }
-                                        if (change.isConsumed || (change.position - down.position).getDistance() > slop) break
-                                    }
-                                    up
+                                // The icon sinks only once the touch isn't a scroll starting, as a clickable's press waits.
+                                val press = scope.launch {
+                                    delay(PRESS_DELAY_MS)
+                                    pressed = app.id
                                 }
-                                pressed = null
+                                // True for a tap, false when a scroll took the touch, null once held.
+                                val tapped = try {
+                                    withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
+                                        var up = false
+                                        while (true) {
+                                            val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
+                                            if (change.changedToUp()) {
+                                                change.consume()
+                                                up = true
+                                                break
+                                            }
+                                            if (change.isConsumed || (change.position - down.position).getDistance() > slop) break
+                                        }
+                                        up
+                                    }
+                                } finally {
+                                    press.cancel()
+                                    pressed = null
+                                }
                                 if (tapped == true) currentOpen(app)
                                 if (tapped != null) return@awaitEachGesture
                                 haptics.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -339,10 +374,10 @@ fun HomeScreenGrid(
                                         if (!moving && (change.position - down.position).getDistance() > slop) {
                                             moving = true
                                             menuFor = null
-                                            drag = IconDrag(app.id, change.position, grab = down.position - center(index), target = index)
+                                            drag = IconDrag(app.id, grid(change.position), grab = start - center(index), target = index)
                                         }
                                         if (!moving) continue
-                                        val d = drag?.copy(location = change.position) ?: break
+                                        val d = drag?.copy(location = grid(change.position)) ?: break
                                         drag = d
                                         val moved = positions[app.id]
                                         scope.launch { moved?.snapTo(d.location - d.grab - half) }
@@ -376,17 +411,30 @@ fun HomeScreenGrid(
                             LaunchedEffect(slot, moving) {
                                 if (!moving) position.animateTo(slot, spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessMediumLow))
                             }
-                            val image = remember(app.id, app.iconFile, iconRevision) { icon(app) }
+                            val image = rememberIcon(app, iconRevision, icon)
                             val status = reachability[app.id]
                             val before = order.getOrNull(index - 1)
                             val after = order.getOrNull(index + 1)
                             val moveBefore = before?.let { stringResource(R.string.launcher_move_before, it.name) }
                             val moveAfter = after?.let { stringResource(R.string.launcher_move_after, it.name) }
+                            var focused by remember { mutableStateOf(false) }
                             Box(
                                 Modifier
                                     .offset { position.value.round() }
                                     .zIndex(if (moving || menuFor == app.id) 1f else 0f)
                                     .size(tileSize.width.dp, tileSize.height.dp)
+                                    // A keyboard reaches each app: Enter opens it, the menu key or Shift+F10 shows its menu.
+                                    .onFocusChanged { focused = it.isFocused }
+                                    .onKeyEvent { event ->
+                                        if (event.type != KeyEventType.KeyUp) return@onKeyEvent false
+                                        when {
+                                            event.key == Key.Enter || event.key == Key.NumPadEnter || event.key == Key.DirectionCenter -> open(app)
+                                            event.key == Key.Menu || (event.key == Key.F10 && event.isShiftPressed) -> menuFor = app.id
+                                            else -> return@onKeyEvent false
+                                        }
+                                        true
+                                    }
+                                    .focusable()
                                     .clearAndSetSemantics {
                                         contentDescription = app.sharedBy?.let { "${app.name}, ${ConnectionCopy.sharedBy(it)}" } ?: app.name
                                         val states = listOfNotNull(if (app.isNew) newLabel else null, status?.label)
@@ -404,7 +452,7 @@ fun HomeScreenGrid(
                             ) {
                                 AppTile(
                                     app, image, status, layout.iconSize.dp, largeText,
-                                    pressed = pressed == app.id, lifted = moving || menuFor == app.id, labelShown = !moving,
+                                    pressed = pressed == app.id, lifted = moving || menuFor == app.id, labelShown = !moving, focused = focused,
                                 )
                                 DropdownMenu(expanded = menuFor == app.id, onDismissRequest = { menuFor = null }) {
                                     menu(this, app) { menuFor = null }
@@ -423,6 +471,27 @@ fun HomeScreenGrid(
 
 private fun Offset.round() = IntOffset(x.roundToInt(), y.roundToInt())
 
+/** How long a touch on an icon waits before the icon sinks, so a scroll that starts there doesn't flicker it. */
+private const val PRESS_DELAY_MS = 100L
+
+/**
+ * Decoded icons, by app, file and icon revision, so the launcher coming back after the lock
+ * draws them in its first frame. About 50 at the largest size.
+ */
+private val decodedIcons = object : LruCache<String, Bitmap>(16 * 1024 * 1024) {
+    override fun sizeOf(key: String, value: Bitmap) = value.allocationByteCount
+}
+
+/** The app's icon, read and decoded off the main thread; the last one stays until a newer one is ready. */
+@Composable
+private fun rememberIcon(app: WebApp, iconRevision: Int, load: (WebApp) -> Bitmap?): Bitmap? {
+    val key = "${app.id} ${app.iconFile} $iconRevision"
+    val image by produceState(decodedIcons[key], key) {
+        value = decodedIcons[key] ?: withContext(Dispatchers.IO) { load(app) }?.also { decodedIcons.put(key, it) }
+    }
+    return image
+}
+
 /**
  * One app on the home screen: its icon, dimmed with a badge while its computer is offline, its
  * name after the new-app dot, and who shared it. Pressed, the icon sinks a little; held, it
@@ -439,12 +508,15 @@ fun AppTile(
     pressed: Boolean = false,
     lifted: Boolean = false,
     labelShown: Boolean = true,
+    /** Reached from a keyboard: the icon gets a ring. */
+    focused: Boolean = false,
 ) {
     val colors = MaterialTheme.colorScheme
     val scale by animateFloatAsState(if (pressed) 0.92f else if (lifted) 1.12f else 1f, label = "tile scale")
     val elevation by animateDpAsState(if (lifted) 12.dp else 2.dp, label = "tile shadow")
     Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(Modifier.size(iconSize).graphicsLayer { scaleX = scale; scaleY = scale }) {
+        val ring = if (focused) Modifier.border(2.dp, colors.primary, AppIconShape) else Modifier
+        Box(Modifier.size(iconSize).graphicsLayer { scaleX = scale; scaleY = scale }.then(ring)) {
             AppIconView(
                 app, image, iconSize,
                 Modifier.graphicsLayer {
