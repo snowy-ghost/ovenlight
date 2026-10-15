@@ -15,7 +15,7 @@
 #   avds.sh window <avd> <port>  cold boots with a window, keeping the data, for a step by
 #                                hand over Screen Sharing
 #
-# Ports are even, 5554 to 5584, the range adb looks in. Set OVENLIGHT_AVD_FLAGS=-read-only
+# Ports are even, 5554 to 5582, in the range adb looks in; snapshot and window use 5584. Set OVENLIGHT_AVD_FLAGS=-read-only
 # to boot an AVD another session already has open.
 #
 # Ovenlight needs WebView M140 or later, and the API 36 images ship M133. snapshot installs
@@ -27,6 +27,8 @@
 # `adb shell pm path com.google.android.webview` names into webview/.
 
 set -eu
+# An interrupted run still reaches the EXIT trap that stops its emulator.
+trap 'exit 1' INT TERM HUP
 
 : "${ANDROID_HOME:?set ANDROID_HOME (the mini's zshenv does)}"
 : "${ANDROID_AVD_HOME:?set ANDROID_AVD_HOME (the mini's zshenv does)}"
@@ -68,10 +70,10 @@ webview_major() {
 }
 
 # A pid file outlives its emulator after a crash or a reboot, and the pid may since
-# belong to something else, so only an emulator's pid is ever signaled.
-is_emulator() {
-	case $(ps -p "$1" -o comm= 2> /dev/null) in
-	*emulator* | *qemu-system*) return 0 ;;
+# belong to something else, so only the emulator on that port is ever signaled.
+is_emulator() { # pid port
+	case $(ps -p "$1" -o args= 2> /dev/null) in
+	*qemu-system*" -port $2 "* | *qemu-system*" -port $2") return 0 ;;
 	esac
 	return 1
 }
@@ -90,7 +92,7 @@ start() { # avd port extra-flags...
 	mkdir -p "$run"
 	! "$adb" devices | grep -q "^$serial[[:space:]]" || die "$serial is already running"
 	if [ -f "$pidfile" ]; then
-		! is_emulator "$(cat "$pidfile")" || die "$serial's emulator is still running; avds.sh stop $port"
+		! is_emulator "$(cat "$pidfile")" "$port" || die "$serial's emulator is still running; avds.sh stop $port"
 		rm "$pidfile"
 	fi
 	# shellcheck disable=SC2086
@@ -116,11 +118,11 @@ stop() { # port
 	pidfile="$run/$serial.pid"
 	[ -f "$pidfile" ] || die "no recorded pid for $serial"
 	pid=$(cat "$pidfile")
-	if is_emulator "$pid"; then
+	if is_emulator "$pid" "$1"; then
 		"$adb" -s "$serial" emu kill > /dev/null 2>&1 || true
 		i=0
-		while is_emulator "$pid" && [ "$i" -lt 30 ]; do sleep 1; i=$((i + 1)); done
-		! is_emulator "$pid" || kill "$pid"
+		while is_emulator "$pid" "$1" && [ "$i" -lt 30 ]; do sleep 1; i=$((i + 1)); done
+		! is_emulator "$pid" "$1" || kill "$pid"
 	fi
 	rm "$pidfile"
 	i=0
@@ -173,7 +175,10 @@ snapshot() { # avd
 		while [ "$(webview_major)" -lt 140 ] && [ "$i" -lt 20 ]; do sleep 1; i=$((i + 1)); done
 	fi
 	major=$(webview_major)
-	[ "$major" -ge 140 ] || by_hand "$avd has WebView M$major" "sign in to the Play Store and update Android System WebView"
+	if [ "$major" -lt 140 ]; then
+		[ "$sdk" -lt 32 ] || die "$avd has WebView M$major and no APK in $webviews installed; pull one from the API 37 AVD (see the top of this script)"
+		by_hand "$avd has WebView M$major" "sign in to the Play Store and update Android System WebView"
+	fi
 	echo "WebView M$major"
 	if sh_ pm path com.android.vending > /dev/null 2>&1; then
 		sh_ pm disable-user --user 0 com.android.vending > /dev/null
@@ -216,7 +221,7 @@ snapshot() { # avd
 	echo "fingerprint 1 enrolled"
 	sh_ input keyevent 3
 
-	out=$("$adb" -s "$serial" emu avd snapshot save ready 2>&1)
+	out=$("$adb" -s "$serial" emu avd snapshot save ready 2>&1 || true)
 	case $out in *OK*) ;; *) die "saving the snapshot failed: $out" ;; esac
 	echo "saved ready for $avd"
 }
@@ -246,6 +251,7 @@ create)
 boot)
 	[ $# -eq 3 ] || die "usage: avds.sh boot <avd> <port>"
 	known "$2"
+	[ "$3" != "$snapshot_port" ] || die "port $snapshot_port is for snapshot and window; boot on 5554 to 5582"
 	start "$2" "$3" -snapshot ready -no-snapshot-save
 	if ! grep -q "Successfully loaded snapshot 'ready'" "$run/$serial.log"; then
 		stop "$3"
