@@ -15,7 +15,7 @@
 # run, and the debug build trusts it, so this builds the app itself.
 # bash, not zsh: zsh skips its EXIT trap when err_exit fires inside a function, which would
 # leave Headscale, the connector and the emulator running after a failure.
-set -euo pipefail
+set -Eeuo pipefail
 
 SCENARIO=${1:-gates}
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -45,13 +45,14 @@ stop_connector() {
   [[ -n $connector_pid ]] || return 0
   kill $connector_pid 2>/dev/null || true
   for i in $(seq 1 20); do kill -0 $connector_pid 2>/dev/null || break; sleep 1; done
-  kill -9 $connector_pid 2>/dev/null || true
+  ! kill -0 $connector_pid 2>/dev/null || kill -9 $connector_pid
+  wait $connector_pid 2>/dev/null || true
   connector_pid=
 }
 
 cleanup() {
   stop_connector
-  for p in $pids; do kill "$p" 2>/dev/null || true; done
+  for p in $pids; do kill "$p" 2>/dev/null || true; wait "$p" 2>/dev/null || true; done
   cp $D/*.log $OUT/ 2>/dev/null || true
   if [[ -n $emulator_port ]]; then
     a logcat -d > $OUT/logcat.log 2>/dev/null || true
@@ -62,6 +63,8 @@ cleanup() {
   rm -r "${D:?}"
 }
 trap cleanup EXIT
+# A command that fails outside fail() still leaves a FAILED line saying where.
+trap 'printf "FAILED: line %s: %s\n" "$LINENO" "$BASH_COMMAND" | tee -a "$OUT/gates.txt"' ERR
 
 until_ok() {
   local seconds=$1; shift
@@ -166,7 +169,7 @@ ws.onmessage = e => { out.ws = e.data; show(); ws.close(); };
 ws.onerror = () => { out.ws = "error"; show(); };
 fetch("https://ovenlight.app/", { mode: "no-cors" }).then(() => { out.internet = "ok"; show(); }, e => { out.internet = "error"; show(); });
 const port = new URLSearchParams(location.hash.slice(1)).get("port");
-if (port) fetch("http://127.0.0.1:" + port + "/").then(r => r.text().then(t => { out.proxy = r.status + " " + t.length; show(); }), e => { out.proxy = "error " + e.name; show(); });
+if (port) fetch("http://127.0.0.1:" + port + "/", { mode: "no-cors" }).then(() => { out.proxy = "sent"; show(); }, e => { out.proxy = "error " + e.name; show(); });
 </script></body></html>
 EOF
 printf '%s\n' 'body { background: #fbf4ea; }' > $D/pantry/style.css
@@ -194,7 +197,7 @@ for p in $(seq 5554 2 5582); do
   if ! adb devices | grep -q "^emulator-${p}[[:space:]]"; then emulator_port=$p; break; fi
 done
 [[ -n $emulator_port ]] || fail "no free emulator port"
-OVENLIGHT_AVD_FLAGS="-tcpdump $D/emulator.pcap" $ROOT/android/scripts/avds.sh boot $AVD $emulator_port >/dev/null || { emulator_port=; fail "the emulator didn't boot"; }
+OVENLIGHT_AVD_FLAGS="${OVENLIGHT_AVD_FLAGS:-} -tcpdump $D/emulator.pcap" $ROOT/android/scripts/avds.sh boot $AVD $emulator_port >/dev/null || { emulator_port=; fail "the emulator didn't boot"; }
 S=emulator-$emulator_port
 [[ -z $(a shell pm path $PKG 2>/dev/null) ]] || fail "Ovenlight is already on $AVD; this run would replace it"
 a reverse tcp:$HSPORT tcp:$HSPORT >/dev/null
@@ -345,6 +348,10 @@ say "G3: profile A answers the 407 with its own key, for every request of its pa
 load_and_check A "https://recipes.$BASE/#port=$PROXY_PORT" app-A '"ws":"ping"'
 grep -q "^proxy: app-A pantry.$BASE:443: open" $D/core-A.log || fail "Pantry's subresources didn't go through profile A's key"
 grep -q "^proxy: app-A ovenlight.app:443: open" $D/core-A.log || fail "the internet fetch didn't go through profile A's key"
+# The page's fetch of the proxy's own port reaches it as a plain request, which gets a 405
+# and no challenge, and never a tunnel.
+! grep -q "127.0.0.1:$PROXY_PORT: open" $D/core-A.log || fail "the page opened a tunnel to the proxy's own port"
+note "the page's fetch of the proxy's port: $(grep -E "^proxy: GET http://127.0.0.1:$PROXY_PORT/: " $D/core-A.log | head -1 || echo "never reached the proxy")"
 { grep -E '^challenge' $D/lab-A.log || true; } | while read -r l; do note "$l"; done
 shot g3-profile-A
 
@@ -480,9 +487,12 @@ a uninstall $PKG >/dev/null
 a reverse --remove-all >/dev/null
 $ROOT/android/scripts/avds.sh stop $emulator_port
 emulator_port=
-dns=$(tcpdump -nn -r $D/emulator.pcap -A 'udp port 53 or tcp port 53' 2>/dev/null | grep -c -i 'ts\.net' || true)
-lookups=$(tcpdump -nn -r $D/emulator.pcap 'udp port 53' 2>/dev/null | wc -l | tr -d ' ')
-note "DNS packets in the capture: $lookups; naming ts.net: $dns"
+[[ -s $D/emulator.pcap ]] || fail "the emulator wrote no network capture"
+tcpdump -nn -r $D/emulator.pcap -A 'udp port 53 or tcp port 53' > $D/dns.txt 2>/dev/null || fail "tcpdump couldn't read the capture"
+lookups=$(grep -c -E ' (A|AAAA)\? ' $D/dns.txt || true)
+dns=$(grep -c -i 'ts\.net' $D/dns.txt || true)
+note "DNS lookups in the capture: $lookups; naming ts.net: $dns"
+(( lookups > 0 )) || fail "the capture holds no DNS lookups at all, so it proves nothing"
 (( dns == 0 )) || fail "a ts.net name was looked up in DNS"
 
 say "PASSED"

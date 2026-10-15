@@ -27,7 +27,7 @@
 # `adb shell pm path com.google.android.webview` names into webview/.
 
 set -eu
-# An interrupted run still reaches the EXIT trap that stops its emulator.
+# An interrupted run still reaches the EXIT trap that stops the emulator it started.
 trap 'exit 1' INT TERM HUP
 
 : "${ANDROID_HOME:?set ANDROID_HOME (the mini's zshenv does)}"
@@ -275,11 +275,12 @@ boot)
 	known "$2"
 	[ "$3" != "$snapshot_port" ] || die "port $snapshot_port is for snapshot and window; boot on 5554 to 5582"
 	start "$2" "$3" -snapshot ready -no-snapshot-save
-	if ! grep -q "Successfully loaded snapshot 'ready'" "$run/$serial.log"; then
-		stop "$3"
+	# Anything that fails from here stops the emulator it started.
+	trap 'stop "$3"' EXIT
+	grep -q "Successfully loaded snapshot 'ready'" "$run/$serial.log" ||
 		die "$2 has no usable ready snapshot (see $run/$serial.log); run avds.sh snapshot $2"
-	fi
 	unlock
+	trap - EXIT
 	echo "$serial $pid"
 	;;
 window)
@@ -287,6 +288,9 @@ window)
 	known "$2"
 	# Software rendering: the API 29 image crashes its system process under -gpu host.
 	OVENLIGHT_WINDOW="-gpu swiftshader_indirect" start "$2" "$3" -no-snapshot-load -no-snapshot-save
+	trap 'stop "$3"' EXIT
+	unlock
+	trap - EXIT
 	echo "$serial $pid"
 	;;
 stop)
