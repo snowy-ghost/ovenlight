@@ -1,0 +1,167 @@
+package com.snowyghost.ovenlight
+
+import java.net.URI
+import java.util.Locale
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.test.currentTime
+import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class DiscoveryTests {
+    @Test
+    fun testManifestParsing() {
+        val json = """{"name":"Interview Coach","slug":"interview-coach","icon":"/icon-512.png","themeColor":"#0e6b66","version":1}"""
+        val manifest = OvenlightManifest.parse(json.toByteArray())!!
+        assertEquals("Interview Coach", manifest.name)
+        assertEquals("#0e6b66", manifest.themeColor)
+        val app = DiscoveredApp("interview-coach.tailabc123.ts.net", manifest)
+        assertEquals("https://interview-coach.tailabc123.ts.net/", app.startURL.toString())
+        assertEquals("https://interview-coach.tailabc123.ts.net/icon-512.png", app.iconURL?.toString())
+
+        assertNull("needs a name", OvenlightManifest.parse("""{"name":"","version":1}""".toByteArray()))
+        assertNull("and not just spaces and control characters", OvenlightManifest.parse("""{"name":" \u0007\n","version":1}""".toByteArray()))
+        val spoof = OvenlightManifest.parse("""{"name":" Bank${"\u202E"}\u0000 Login \n","version":1}""".toByteArray())!!
+        assertEquals("cleaned like an invite's names", "Bank Login", spoof.name)
+        val long = OvenlightManifest.parse("""{"name":"${"x".repeat(100)}","version":1}""".toByteArray())!!
+        assertEquals(InviteLink.maxLabel, long.name.graphemeCount())
+        assertNull("needs a version", OvenlightManifest.parse("""{"name":"X","version":0}""".toByteArray()))
+        assertNull(OvenlightManifest.parse("<html>".toByteArray()))
+        val offHost = DiscoveredApp("a.tailabc123.ts.net", OvenlightManifest(name = "A", icon = "https://cdn.example.com/i.png", version = 1))
+        assertNull("icons elsewhere can't be fetched through the node", offHost.iconURL)
+    }
+
+    @Test
+    fun testMergeDeDupesByHostAndKeepsUserNames() {
+        val manual = WebApp(name = "My coach", startURL = URI("https://interview-coach.tailabc123.ts.net/"), manifestName = null)
+        val found = listOf(
+            DiscoveredApp("Interview-Coach.tailabc123.ts.net.", OvenlightManifest(name = "Interview Coach", themeColor = "#0e6b66", version = 1)),
+            DiscoveredApp("interview-coach.tailabc123.ts.net", OvenlightManifest(name = "Duplicate", version = 1)),
+            DiscoveredApp("notes.tailabc123.ts.net", OvenlightManifest(name = "Notes", version = 1)),
+            DiscoveredApp("old.tailabc123.ts.net", OvenlightManifest(name = "Old", version = 1)),
+        )
+        val merged = DiscoveryMerge.merge(found, into = listOf(manual), dismissedHosts = setOf("old.tailabc123.ts.net"))
+        assertEquals("one tile per host, user's name kept, dismissed skipped", listOf("My coach", "Notes"), merged.map { it.name })
+        assertEquals(manual.id, merged[0].id)
+        assertEquals("#0e6b66", merged[0].themeColorHex)
+        assertTrue("a tile added by its address is a connector's app once found", merged[0].discovered)
+        assertTrue(merged[1].discovered)
+
+        // A name that came from the manifest follows the manifest.
+        val renamed = DiscoveryMerge.merge(
+            listOf(DiscoveredApp("notes.tailabc123.ts.net", OvenlightManifest(name = "Notes 2", version = 1))),
+            into = merged,
+            dismissedHosts = emptySet(),
+        )
+        assertEquals("Notes 2", renamed[1].name)
+    }
+
+    /** Self is user 42 on tailabc123.ts.net; tagged nodes belong to the tagged-devices user. */
+    private val trustStatus = """
+    {"BackendState":"Running","Self":{"DNSName":"ovenlight-abc123.tailabc123.ts.net.","OS":"iOS","Online":true,"UserID":42},
+     "Peer":{"k1":{"DNSName":"alex-mac.tailabc123.ts.net.","OS":"macOS","Online":true,"UserID":42},
+             "k2":{"DNSName":"coach.tailabc123.ts.net.","OS":"linux","Online":true,"UserID":9000,"Tags":["tag:ovenlight-app-coach"]},
+             "k3":{"DNSName":"coworker.tailabc123.ts.net.","OS":"macOS","Online":true,"UserID":7},
+             "k4":{"DNSName":"ci.tailabc123.ts.net.","OS":"linux","Online":true,"UserID":9000,"Tags":["tag:ci"]},
+             "k5":{"DNSName":"echo.tail99.ts.net.","OS":"linux","Online":true,"UserID":55,"Tags":["tag:ovenlight-app-echo"]},
+             "k6":{"DNSName":"laptop.tail99.ts.net.","OS":"macOS","Online":true,"UserID":42},
+             "k7":{"DNSName":"notes.tailabc123.ts.net.","OS":"macOS","Online":false,"UserID":42}},
+     "CurrentTailnet":{"Name":"alex@example.com","MagicDNSSuffix":"tailabc123.ts.net"}}
+    """
+
+    @Test
+    fun testOnlyTheOwnersOwnMachinesAreTrusted() {
+        val status = TailnetStatus.decode(trustStatus)!!
+        assertEquals(
+            "not another user's computer, another tag, or anything shared in from another tailnet",
+            setOf("alex-mac.tailabc123.ts.net", "coach.tailabc123.ts.net", "notes.tailabc123.ts.net"),
+            Discovery.ownersHosts(status),
+        )
+        assertEquals("online ones only", listOf("alex-mac.tailabc123.ts.net", "coach.tailabc123.ts.net"), Discovery.candidateHosts(status))
+        val noSelf = TailnetStatus.decode(trustStatus.replace(""""UserID":42}""", """"UserID":0}"""))!!
+        assertEquals("no signed-in user, no owner", emptyList<String>(), Discovery.candidateHosts(noSelf))
+        val taggedSelf = TailnetStatus.decode(
+            trustStatus.replace(""""OS":"iOS","Online":true,"UserID":42}""", """"OS":"iOS","Online":true,"UserID":9000,"Tags":["tag:phone"]}"""),
+        )!!
+        assertEquals(
+            "a tagged self shares the tagged-devices user; only app tags count then",
+            setOf("coach.tailabc123.ts.net"),
+            Discovery.ownersHosts(taggedSelf),
+        )
+        assertFalse(OvenlightTag.isApp("tag:ovenlight-app"))
+        assertFalse(OvenlightTag.isApp("tag:ovenlight-apple"))
+    }
+
+    /** A computer that drops the probe (a firewall, or just asleep) mustn't hold up apps on the others. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun testTheFirstAnswerCountsWithoutWaitingForTheSlowest() = runTest {
+        // Serves every host a connector's manifest at once, except `slow`, which fails after `slowDelay`.
+        val slow = "slow.tailabc123.ts.net"
+        val slowDelay = 1_000L
+        val fetch: Fetch = { url ->
+            if (url.host == slow) {
+                delay(slowDelay)
+                null
+            } else {
+                FetchResponse(200, """{"name":"Coach","version":1}""".toByteArray())
+            }
+        }
+        val start = currentTime
+        var answeredAfter: Long? = null
+        val outcome = Discovery.probe(listOf("coach.tailabc123.ts.net", slow), fetch) {
+            assertNull("once", answeredAfter)
+            answeredAfter = currentTime - start
+        }
+        assertTrue(answeredAfter!! < slowDelay / 2)
+        assertTrue("discovery still hears from every host", currentTime - start >= slowDelay)
+        assertEquals(mapOf("coach.tailabc123.ts.net" to true, slow to false), outcome.answered)
+        assertEquals(listOf("Coach"), outcome.apps.map { it.manifest.name })
+
+        var called = false
+        Discovery.probe(listOf(slow), fetch) { called = true }
+        assertFalse("nothing answered", called)
+    }
+
+    /**
+     * Android's twin asserts refusal where iOS asserts `.direct`: Android has no direct route
+     * (plan decision 9), so a host on no known tailnet is refused, never loaded directly.
+     */
+    @Test
+    fun testRoutesOnlyTheOwnersTailnetThroughTheOwnersNode() {
+        val own = "tailabc123.ts.net"
+        assertEquals(Routing.Route.TailnetNode, Routing.route("interview-coach.tailabc123.ts.net", own))
+        assertEquals(Routing.Route.TailnetNode, Routing.route("Interview-Coach.TAILABC123.ts.net.", "TailABC123.ts.net."))
+        assertEquals("another tailnet's Funnel name", Routing.Route.Refused, Routing.route("recorder.tail0000.ts.net", own))
+        assertEquals(Routing.Route.Refused, Routing.route("eviltailabc123.ts.net", own))
+        assertEquals(Routing.Route.Refused, Routing.route("example.com", own))
+        assertEquals(Routing.Route.Refused, Routing.route("tailabc123.ts.net.example.com", own))
+
+        // Until the owner's tailnet is known (never signed in, or not yet reported), every
+        // MagicDNS name goes through the owner's node rather than to public DNS.
+        for (unknown in listOf(null, "")) {
+            assertEquals(Routing.Route.TailnetNode, Routing.route("interview-coach.tailabc123.ts.net", unknown))
+            assertEquals(Routing.Route.TailnetNode, Routing.route("Recorder.Tail0000.TS.NET.", unknown))
+            assertEquals(Routing.Route.Refused, Routing.route("example.com", unknown))
+            assertEquals(Routing.Route.Refused, Routing.route("ts.net.example.com", unknown))
+        }
+    }
+
+    /** Android only: a phone set to Turkish lowercases "I" to a dotless "ı", which no host name has. */
+    @Test
+    fun testHostsLowercaseTheSameInEveryLocale() {
+        val saved = Locale.getDefault()
+        Locale.setDefault(Locale.forLanguageTag("tr-TR"))
+        try {
+            assertEquals("illustrator.tailabc123.ts.net", Discovery.normalizedHost("ILLUSTRATOR.TAILABC123.TS.NET."))
+            assertEquals(Routing.Route.TailnetNode, Routing.route("ILLUSTRATOR.tailabc123.ts.net", "TAILABC123.TS.NET"))
+            assertEquals("tailabc123.ts.net", InviteLink.networkDomain("ILLUSTRATOR.TAILABC123.TS.NET"))
+        } finally {
+            Locale.setDefault(saved)
+        }
+    }
+}
