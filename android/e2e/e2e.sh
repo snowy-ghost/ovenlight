@@ -64,7 +64,8 @@ cleanup() {
 }
 trap cleanup EXIT
 # A command that fails outside fail() still leaves a FAILED line saying where.
-trap 'printf "FAILED: line %s: %s\n" "$LINENO" "$BASH_COMMAND" | tee -a "$OUT/gates.txt"' ERR
+# Only the main shell's: a command substitution's own failures are its caller's to judge.
+trap '[[ $BASH_SUBSHELL == 0 ]] && printf "FAILED: line %s: %s\n" "$LINENO" "$BASH_COMMAND" | tee -a "$OUT/gates.txt" >&2' ERR
 
 until_ok() {
   local seconds=$1; shift
