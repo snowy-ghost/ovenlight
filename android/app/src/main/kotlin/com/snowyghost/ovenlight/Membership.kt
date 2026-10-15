@@ -335,3 +335,30 @@ internal fun JsonObject.requiredString(key: String): String = string(key) ?: thr
 /** A boolean field, or null when it's missing, null or another type. */
 internal fun JsonObject.boolean(key: String): Boolean? =
     (this[key] as? JsonPrimitive)?.takeIf { !it.isString && it !is JsonNull }?.booleanOrNull
+
+/** What to clean up when access ends. Pure, so the rules are tested apart from the web view. */
+object GuestCleanup {
+    /** Memberships with no app left and no invite waiting: their node leaves. */
+    fun orphans(memberships: List<Membership>, apps: List<WebApp>): List<String> =
+        memberships.filter { m -> m.pendingClaims.isEmpty() && apps.none { it.membershipID == m.id } }.map { it.id }
+
+    /**
+     * The apps to take away after a membership's probe: those whose connector answered "not
+     * invited". Hosts still being claimed are left alone; before the claim every guest is "not
+     * invited".
+     */
+    fun revokedApps(membership: Membership, apps: List<WebApp>, notInvited: Set<String>): List<WebApp> {
+        val claiming = membership.pendingClaims.map { Discovery.normalizedHost(it.invite.host) }.toSet()
+        return apps.filter {
+            val host = Discovery.normalizedHost(it.host)
+            it.membershipID == membership.id && host in notInvited && host !in claiming
+        }
+    }
+
+    /**
+     * Whether a guest node that lost its login means the owner removed this phone: only once it
+     * had joined, since a first join passes through NeedsLogin briefly. The caller asks only
+     * after the state held for a moment.
+     */
+    fun isRemoved(membership: Membership): Boolean = membership.joined
+}

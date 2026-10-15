@@ -165,6 +165,23 @@ class InviteLinkTests {
     }
 
     @Test
+    fun testAJoinLeavesOnlyANetworkItJustJoinedAndProvablyWrong() {
+        val link = parse(connectorLink)
+        assertEquals(Claim.Landing.InNetwork, Claim.landing(link, suffix = "taildef456.ts.net", registeredNow = true))
+        assertEquals(Claim.Landing.Elsewhere(leave = true), Claim.landing(link, suffix = "tail0000.ts.net", registeredNow = true))
+        assertEquals(
+            "a node that joined before keeps its login and the owner's other apps",
+            Claim.Landing.Elsewhere(leave = false),
+            Claim.landing(link, suffix = "tail0000.ts.net", registeredNow = false),
+        )
+        for (registered in listOf(true, false)) {
+            assertEquals("a node that couldn't say retries", Claim.Landing.Unknown, Claim.landing(link, suffix = null, registeredNow = registered))
+            assertEquals(Claim.Landing.Unknown, Claim.landing(link, suffix = "", registeredNow = registered))
+        }
+        assertTrue(JoinError.Network.isRetryable)
+    }
+
+    @Test
     fun testParseErrorsHaveNeutralMessages() {
         val errors = listOf(
             InviteLink.ParseError.NotAnInvite, InviteLink.ParseError.UnsupportedVersion, InviteLink.ParseError.InsecureControl,
