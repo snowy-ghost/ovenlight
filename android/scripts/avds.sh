@@ -5,7 +5,7 @@
 #   avds.sh list                 the set, and which of it exists
 #   avds.sh create               creates whatever of the set is missing, never deletes
 #   avds.sh boot <avd> <port>    boots headless from "ready" on that console port, waits for
-#                                it, and prints its serial and pid
+#                                it, unlocks it, and prints its serial and pid
 #   avds.sh stop <port>          stops the emulator this script started on that port
 #   avds.sh webview <port>       prints the running emulator's WebView version
 #   avds.sh snapshot <avd>       boots with fresh data, brings WebView to M140 or later, sets
@@ -119,6 +119,8 @@ stop() { # port
 	[ -f "$pidfile" ] || die "no recorded pid for $serial"
 	pid=$(cat "$pidfile")
 	if is_emulator "$pid" "$1"; then
+		# emu kill doesn't wait for the disk, so flush it first.
+		"$adb" -s "$serial" shell sync > /dev/null 2>&1 || true
 		"$adb" -s "$serial" emu kill > /dev/null 2>&1 || true
 		i=0
 		while is_emulator "$pid" "$1" && [ "$i" -lt 30 ]; do sleep 1; i=$((i + 1)); done
@@ -147,6 +149,24 @@ tap_text() {
 	return 1
 }
 
+keyguard_showing() { sh_ dumpsys window policy | grep -A1 KeyguardStateMonitor | grep -q 'mIsShowing=true'; }
+
+# A phone left on its lock screen keeps every app in the background, where Android cuts
+# their network within seconds, so a booted emulator is unlocked with its PIN.
+unlock() {
+	sh_ input keyevent KEYCODE_WAKEUP
+	i=0
+	while keyguard_showing && [ "$i" -lt 5 ]; do
+		sh_ wm dismiss-keyguard > /dev/null 2>&1 || true
+		sleep 1
+		sh_ input text 1111
+		sh_ input keyevent 66
+		sleep 2
+		i=$((i + 1))
+	done
+	! keyguard_showing || die "couldn't unlock $serial"
+}
+
 enrolled() { sh_ dumpsys fingerprint | grep -q '"count":[1-9]'; }
 
 by_hand() {
@@ -159,6 +179,7 @@ snapshot() { # avd
 	[ -z "${OVENLIGHT_KEEP_DATA:-}" ] || wipe=
 	start "$avd" "$snapshot_port" -no-snapshot-load -no-snapshot-save $wipe
 	trap 'stop "$snapshot_port"' EXIT
+	unlock
 	sdk=$(sh_ getprop ro.build.version.sdk | tr -d '\r')
 
 	if [ "$(webview_major)" -lt 140 ] && [ "$sdk" -ge 32 ]; then
@@ -196,7 +217,8 @@ snapshot() { # avd
 
 	if ! enrolled; then
 		# Settings asks for the PIN, then the introduction scrolls with More until
-		# I Agree shows, then the sensor wants a dozen or so touches.
+		# I Agree shows (API 29 has one Next instead), then the sensor wants a dozen or so
+		# touches.
 		sh_ am start -a android.settings.FINGERPRINT_ENROLL > /dev/null 2>&1 ||
 			sh_ am start -n com.android.settings/.biometrics.fingerprint.FingerprintEnrollIntroduction > /dev/null
 		sleep 3
@@ -204,7 +226,7 @@ snapshot() { # avd
 		sh_ input keyevent 66
 		sleep 3
 		i=0
-		until tap_text 'I agree' || [ "$i" -ge 5 ]; do tap_text 'More' || true; i=$((i + 1)); done
+		until tap_text 'I agree|Next' || [ "$i" -ge 5 ]; do tap_text 'More' || true; i=$((i + 1)); done
 		sleep 3
 		i=0
 		while [ "$i" -lt 15 ]; do
@@ -257,12 +279,14 @@ boot)
 		stop "$3"
 		die "$2 has no usable ready snapshot (see $run/$serial.log); run avds.sh snapshot $2"
 	fi
+	unlock
 	echo "$serial $pid"
 	;;
 window)
 	[ $# -eq 3 ] || die "usage: avds.sh window <avd> <port>"
 	known "$2"
-	OVENLIGHT_WINDOW="-gpu host" start "$2" "$3" -no-snapshot-load -no-snapshot-save
+	# Software rendering: the API 29 image crashes its system process under -gpu host.
+	OVENLIGHT_WINDOW="-gpu swiftshader_indirect" start "$2" "$3" -no-snapshot-load -no-snapshot-save
 	echo "$serial $pid"
 	;;
 stop)
