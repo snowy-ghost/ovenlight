@@ -31,9 +31,10 @@ own).
 ### Read each request body
 
 Read each request's body in full before answering, or close the connection. The
-connector forwards a body as the caller sent it and reuses its connections to the app, so
-a server that leaves a body unread can take it for a request of its own, with any
-identity headers the caller wrote into it.
+connector forwards a body as the caller sent it, and sends `Connection: close` with it so
+the app closes that connection once it answers. A server that ignores that header and
+leaves a body unread can still take it for a request of its own, with any identity
+headers the caller wrote into it.
 
 ### Answer GET / with a page or a redirect
 

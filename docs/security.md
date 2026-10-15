@@ -258,6 +258,9 @@ A guest who leaves in Ovenlight stays in your guest list until you remove them
   identity and forwarding headers itself.
 - **Upgrades.** Only WebSocket upgrades pass; any other gets 400, since a protocol such as
   h2c would carry requests past these checks.
+- **Bodies.** A request with a body goes to the app with `Connection: close`, so an app
+  that answers without reading it can't take it for a request of its own, as long as the
+  app honors that header ([app-contract.md](app-contract.md#read-each-request-body)).
 - `/__ovenlight/` never reaches the app.
 - **Admin API.** Owner only, and requests that change something need
   `X-Ovenlight-Request: 1` ([protocol.md](protocol.md#port-8443-the-admin-api)).

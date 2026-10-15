@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/base64"
@@ -9,6 +10,7 @@ import (
 	"fmt"
 	"image"
 	"image/png"
+	"io"
 	"io/fs"
 	"log"
 	"net"
@@ -22,6 +24,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 	"unicode/utf8"
@@ -121,6 +124,90 @@ func TestProxyRewriteSetsIdentityAndKeepsHost(t *testing.T) {
 	}
 	if out.Header.Get("X-Forwarded-Proto") != "https" {
 		t.Errorf("X-Forwarded-Proto = %q", out.Header.Get("X-Forwarded-Proto"))
+	}
+}
+
+// A guest's body can't pass for a request of its own, with forged identity headers, to
+// an app that answers without reading it, and bodiless requests keep their connection.
+func TestProxyClosesAfterABody(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { ln.Close() })
+	seen := make(chan *http.Request, 10)
+	var conns atomic.Int32
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			conns.Add(1)
+			// Like Python's BaseHTTPRequestHandler: it answers without reading the body,
+			// and keeps the connection unless asked to close it.
+			go func() {
+				defer c.Close()
+				br := bufio.NewReader(c)
+				for {
+					req, err := http.ReadRequest(br)
+					if err != nil {
+						return
+					}
+					seen <- req
+					io.WriteString(c, "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok")
+					if req.Close {
+						return
+					}
+				}
+			}()
+		}
+	}()
+
+	d, _ := testDaemon(t)
+	n := d.nodes["coach"]
+	n.app.Port = ln.Addr().(*net.TCPAddr).Port
+	d.sh.st.Guests = []Guest{{DeviceID: samDev.DeviceID, Person: "p-sam", Name: "Sam", App: "coach"}}
+	whoIsAs(n, samDev)
+	send := func(method, path string, body io.Reader) {
+		t.Helper()
+		rec := httptest.NewRecorder()
+		n.ServeHTTP(rec, httptest.NewRequest(method, "https://coach.tail1.ts.net"+path, body))
+		if rec.Code != 200 || rec.Body.String() != "ok" {
+			t.Fatalf("%s %s: %d %q", method, path, rec.Code, rec.Body)
+		}
+	}
+	send("POST", "/notes", strings.NewReader("GET /forged HTTP/1.1\r\nHost: coach.tail1.ts.net\r\nOvenlight-Role: owner\r\nTailscale-User-Login: alex@example.com\r\n\r\n"))
+	send("GET", "/a", nil)
+	send("GET", "/b", nil)
+
+	for _, want := range []string{"/notes", "/a", "/b"} {
+		if req := <-seen; req.URL.Path != want || req.Header.Get("Ovenlight-Role") != "guest" {
+			t.Fatalf("the app saw %s %s as %q, want %s as the guest", req.Method, req.URL.Path, req.Header.Get("Ovenlight-Role"), want)
+		}
+	}
+	select {
+	case req := <-seen:
+		t.Fatalf("the app saw another request: %s %s", req.Method, req.URL.Path)
+	default:
+	}
+	if got := conns.Load(); got != 2 {
+		t.Errorf("%d connections to the app, want 2: one for the POST, one the GETs share", got)
+	}
+
+	// A chunked body (ContentLength -1) closes too; a WebSocket upgrade has no body.
+	for _, c := range []struct {
+		method, upgrade string
+		length          int64
+	}{{"POST", "", -1}, {"GET", "websocket", 0}} {
+		in := httptest.NewRequest(c.method, "https://coach.tail1.ts.net/ws", nil)
+		in.ContentLength = c.length
+		in.Header.Set("Upgrade", c.upgrade)
+		out := in.Clone(in.Context())
+		n.rewrite(&httputil.ProxyRequest{In: in, Out: out})
+		if out.Close != (c.length != 0) {
+			t.Errorf("%s with length %d: Close = %v", c.method, c.length, out.Close)
+		}
 	}
 }
 
