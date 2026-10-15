@@ -1,5 +1,6 @@
 package com.snowyghost.ovenlight
 
+import android.app.KeyguardManager
 import android.content.Intent
 import android.content.res.Configuration
 import android.os.Build
@@ -70,6 +71,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        lock.screenLockChecked(getSystemService(KeyguardManager::class.java).isDeviceSecure)
         lifecycleScope.launch { lock.didBecomeActive(unlockPrompt) }
         returnedFromTab()
     }

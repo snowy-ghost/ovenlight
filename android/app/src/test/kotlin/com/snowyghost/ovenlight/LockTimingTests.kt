@@ -106,4 +106,19 @@ class LockManagerTests {
         lock.willBecomeActive()
         assertTrue(lock.isLocked.value)
     }
+
+    /** Android only: a screen lock set while away ends Settings' note that there is none. */
+    @Test
+    fun testAScreenLockSetMeanwhileEndsTheNote() = kotlinx.coroutines.test.runTest {
+        val lock = LockManager(MemoryStore(), hasSavedData = { true }, now = { 0L })
+        lock.unlock(object : Authenticator {
+            override suspend fun authenticate() = Authenticator.Result.NoScreenLock
+        })
+        assertTrue(lock.noPasscode.value)
+        assertFalse("nothing to unlock with, so it stays open", lock.isLocked.value)
+        lock.screenLockChecked(secure = false)
+        assertTrue(lock.noPasscode.value)
+        lock.screenLockChecked(secure = true)
+        assertFalse(lock.noPasscode.value)
+    }
 }

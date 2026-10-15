@@ -121,6 +121,14 @@ class LockManager(
     }
 
     /**
+     * Ovenlight came back: a screen lock set meanwhile (from Settings' Set screen lock, say)
+     * ends Settings' note that there is none.
+     */
+    fun screenLockChecked(secure: Boolean) {
+        if (secure) withoutScreenLock.value = false
+    }
+
+    /**
      * Without a screen lock there is nothing to authenticate with, and staying locked would
      * keep everything saved out of reach for good.
      */

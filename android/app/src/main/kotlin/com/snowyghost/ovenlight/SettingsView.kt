@@ -1,5 +1,6 @@
 package com.snowyghost.ovenlight
 
+import android.app.admin.DevicePolicyManager
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
@@ -73,7 +74,6 @@ import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
-import androidx.core.net.toUri
 import java.net.URI
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -152,7 +152,8 @@ fun SettingsView(model: AppModel, onClose: () -> Unit) {
             model.lock.lockAfterSeconds = seconds
             lockAfter = seconds
         },
-        setScreenLock = { context.open(Intent(SystemSettings.ACTION_SECURITY_SETTINGS)) },
+        // Straight to choosing a screen lock, or the security settings where that isn't offered.
+        setScreenLock = { context.open(Intent(DevicePolicyManager.ACTION_SET_NEW_PASSWORD)) || context.open(Intent(SystemSettings.ACTION_SECURITY_SETTINGS)) },
         leave = { id -> model.scope.launch { model.guests.leave(id) } },
         useMyOwnComputers = {
             nodes.enableOwner()
@@ -174,7 +175,7 @@ fun SettingsView(model: AppModel, onClose: () -> Unit) {
 
 /** The privacy policy, in the browser until this branch has CustomTabs.open, which design.md asks for. */
 private fun openPrivacyPolicy(context: Context) {
-    context.open(Intent(Intent.ACTION_VIEW, AppLinks.privacyPolicy.toString().toUri()))
+    CustomTabs.open(context, AppLinks.privacyPolicy)
 }
 
 /** Starts another app's screen; false when no app handles it. */
