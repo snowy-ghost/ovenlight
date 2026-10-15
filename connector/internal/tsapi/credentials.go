@@ -32,7 +32,7 @@ type Credentials struct {
 }
 
 // ErrNoCredentials means `ovenlight auth set` hasn't been run.
-var ErrNoCredentials = errors.New("no Tailscale API credential is set; run `ovenlight auth set` first")
+var ErrNoCredentials = errors.New("no Tailscale API credential is set: create an API access token at https://console.tailscale.com/admin/settings/keys, then run `ovenlight auth set` to store it")
 
 func (c Credentials) String() string {
 	return fmt.Sprintf("tsapi.Credentials{%s %s}", c.Type, c.Fingerprint())

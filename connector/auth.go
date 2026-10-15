@@ -58,11 +58,11 @@ func cmdAuthSet(args []string) error {
 		return errors.New("--api-url is for development against a local API server; set OVENLIGHT_DEV=1 to use it")
 	}
 
-	kind := "API access token"
+	kind, from := "API access token", " (create one at https://console.tailscale.com/admin/settings/keys)"
 	if *clientID != "" {
-		kind = "OAuth client secret"
+		kind, from = "OAuth client secret", ""
 	}
-	secret, err := readSecret(os.Stdin, "Paste the "+kind+" (it won't be shown): ")
+	secret, err := readSecret(os.Stdin, "Paste the "+kind+from+", which won't be shown: ")
 	if err != nil {
 		return err
 	}

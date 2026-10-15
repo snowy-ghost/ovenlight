@@ -27,7 +27,6 @@ import (
 const usage = `ovenlight publishes your local web apps to your tailnet, for the Ovenlight iPhone app.
 
 Usage:
-  ovenlight run                                   run the connector (its background service does this)
   ovenlight new "<App Name>" [--dir <parent>] [--port <n>]   a starter app to build on, and how to publish it
   ovenlight publish --port <n> --name "<App>" [--slug <slug>] [--shareable]
   ovenlight publish --slug <slug> --shareable     make a published app shareable
@@ -40,6 +39,7 @@ Usage:
   ovenlight check <slug> [--json]                 how one app will look and work in Ovenlight
   ovenlight version
   ovenlight guide                                 how to build apps for Ovenlight, for coding agents
+  ovenlight run                                   run the connector (its background service does this)
 
 Sharing (one-time setup: auth set, then publish --slug <slug> --shareable, which records you as the owner):
   ovenlight auth set [--oauth-client-id <id>]     reads the secret from stdin
@@ -1093,7 +1093,7 @@ func printChecks(checks []Check, onlyProblems bool) {
 		fmt.Printf("%s  %s: %s\n", label, scope, c.Message)
 		switch {
 		case c.Fix != "" && c.Actor == actorPerson:
-			fmt.Printf("      fix (the person): %s\n", c.Fix)
+			fmt.Printf("      fix (you, not an agent): %s\n", c.Fix)
 		case c.Fix != "":
 			fmt.Printf("      fix: %s\n", c.Fix)
 		}
