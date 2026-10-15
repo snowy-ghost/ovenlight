@@ -24,9 +24,8 @@ import kotlinx.coroutines.suspendCancellableCoroutine
  * [ProfileDeletions]). Nothing touches the profiles before WebView has started.
  */
 @SuppressLint("RequiresFeature") // WebViewSetup is Ready only once it found MULTI_PROFILE.
-class WebProfiles(private val context: Context) : AppRegistry.WebData {
-    // Phase 4's pool closes the app's views here; until then no app has one.
-    override fun discard(app: UUID) {}
+class WebProfiles(private val context: Context, private val discard: (UUID) -> Unit) : AppRegistry.WebData {
+    override fun discard(app: UUID) = discard.invoke(app)
 
     override suspend fun clear(store: UUID) {
         val name = profileName(store)

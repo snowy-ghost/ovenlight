@@ -9,6 +9,8 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.layout.Box
@@ -86,11 +88,13 @@ class AppModel(context: Context) {
         TailnetCore, preferences, MembershipStore(ovenlight), nodesDirectory, scope, Dispatchers.IO, SystemClock::elapsedRealtime,
         log = { Log.i(TAG, it) }, debugBuild = BuildConfig.DEBUG,
     )
+    val pool = WebViewPool(context, nodes, scope)
     val registry = AppRegistry(
-        ovenlight, session = nodes::fetch, webData = WebProfiles(context),
+        ovenlight, session = nodes::fetch, webData = WebProfiles(context, discard = pool::discard),
         iconPNG = { withContext(Dispatchers.Default) { IconDecoder.png(it) } }, scope = scope,
     )
     val guests = GuestManager(nodes, registry, router, scope, SystemClock::elapsedRealtime, log = { Log.i(TAG, it) })
+        .also { pool.guests = it }
     /** The router's sheet showing in a Custom Tab, kept with the process so a recreated activity returns from it. */
     var openTab: RootSheet? = null
     val lifecycle = AppLifecycle(
@@ -195,6 +199,15 @@ class Router(private val isLocked: () -> Boolean = { false }) {
         }
         openApp.value = null
         afterClear { this.sheet.value = sheet }
+    }
+
+    /**
+     * Shows the sign-in or Machines page from inside an open app, which stays open beneath it:
+     * those pages are a Custom Tab, not a screen over the app.
+     */
+    fun presentTab(sheet: RootSheet) {
+        check(!sheet.isScreen)
+        this.sheet.value = sheet
     }
 
     /** Runs [action] now if nothing is presented, otherwise once it has all closed. */
@@ -324,7 +337,32 @@ fun RootView(model: AppModel) {
     if (active) return DebugLaunch.Content()
     Box(Modifier.fillMaxSize()) {
         LauncherView(model)
+        AppLayer(model)
         ScreenLayer(model)
+    }
+}
+
+/**
+ * The open app over the launcher, growing in and shrinking away. It reports when it has
+ * appeared and once it has finished closing, as the screens do (see [ScreenLayer]).
+ */
+@Composable
+private fun AppLayer(model: AppModel) {
+    val router = model.router
+    val open by router.openApp.collectAsState()
+    var last by remember { mutableStateOf<WebApp?>(null) }
+    if (open != null) last = open
+    // An app closed while the lock kept this layer out of composition never ran its own dismissal.
+    LaunchedEffect(Unit) { if (router.openApp.value == null) router.appDismissed() }
+    AnimatedVisibility(visible = open != null, enter = scaleIn(initialScale = 0.9f) + fadeIn(), exit = scaleOut(targetScale = 0.9f) + fadeOut()) {
+        val shown = open ?: last ?: return@AnimatedVisibility
+        key(shown.id) {
+            DisposableEffect(Unit) {
+                router.appAppeared()
+                onDispose { router.appDismissed() }
+            }
+            AppHostView(model, shown, onClose = { if (router.openApp.value?.id == shown.id) router.openApp.value = null })
+        }
     }
 }
 

@@ -1,18 +1,121 @@
 package com.snowyghost.ovenlight
 
+import android.app.ActivityManager
+import android.content.Context
+import android.content.MutableContextWrapper
 import java.net.URI
 import java.text.BreakIterator
 import java.util.Locale
+import java.util.UUID
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.MutableStateFlow
 
-/** The app views. The pool itself comes in Phase 4; for now, what every view gets. */
-object WebViewPool {
-    /**
-     * The end of every app view's user agent, so a page can tell it runs in Ovenlight.
-     * WebView's own (`... Mobile Safari/537.36`) stays before it, so pages still see a phone's
-     * browser.
-     */
-    fun userAgentName(after: String?, version: String? = BuildConfig.VERSION_NAME): String =
-        listOfNotNull(after, "Ovenlight/${version ?: "?"}").filter { it.isNotEmpty() }.joinToString(" ")
+/**
+ * Keeps a live web view per recently used app, so switching apps doesn't reload them. Each
+ * view lives outside composition on a [MutableContextWrapper], its profile named by its app's
+ * data store, and is attached to the screen only while its app is open. Main thread only.
+ */
+class WebViewPool(private val context: Context, private val nodes: NodeManager, private val scope: CoroutineScope) {
+    private val pages = mutableMapOf<UUID, AppPage>()
+    private val recent = mutableListOf<UUID>()
+
+    /** Goes up when a page is replaced, so its app's screen fetches the new one. */
+    val revision = MutableStateFlow(0)
+
+    /** Set once at launch (the guests need the pool's discards through the registry). */
+    lateinit var guests: GuestManager
+
+    /** The app on screen, unlocked; its page may download, capture and answer dialogs. */
+    var onScreen: UUID? = null
+        set(value) {
+            if (field == value) return
+            field?.let { pages[it]?.offScreen() }
+            field = value
+            value?.let { pages[it]?.onScreen() }
+        }
+
+    private val maxLive = maxLive(context)
+
+    init {
+        nodes.onLoggingOut = { node -> discard { it.node === node } }
+        nodes.onOwnerSuffixChanged = ::discardStaleRoutes
+    }
+
+    /** The app's page, made now unless one through its current route is live. */
+    fun page(app: WebApp): AppPage {
+        pages[app.id]?.let { page ->
+            // The app's route changed since its view was made (the owner's tailnet became
+            // known, or another one): the view starts over through the right node.
+            if (Routing.mayLoad(page.node, nodes.node(app))) {
+                touch(app.id)
+                return page
+            }
+            discard(app.id)
+        }
+        touch(app.id)
+        val page = AppPage(app, nodes.node(app), this, nodes, scope, context)
+        pages[app.id] = page
+        page.start()
+        trim(keeping = maxLive)
+        return page
+    }
+
+    /** Where opening the app got, while it has a page, for Report a Problem. */
+    fun gate(id: UUID): AppLoadGate? = pages[id]?.gate?.value
+
+    /** Drops a page whose route is stale, unless the pool already replaced it. */
+    fun replace(page: AppPage) {
+        if (pages[page.app.id] !== page) return
+        discard(page.app.id)
+        revision.value += 1
+    }
+
+    /** Drops every page whose app's route changed since it was made (see [Routing.mayLoad]). */
+    fun discardStaleRoutes() = discard { !Routing.mayLoad(it.node, nodes.node(it.app)) }
+
+    private fun discard(matches: (AppPage) -> Boolean) {
+        val ids = pages.filterValues(matches).keys.toList()
+        if (ids.isEmpty()) return
+        ids.forEach(::discard)
+        revision.value += 1
+    }
+
+    fun discard(id: UUID) {
+        val page = pages.remove(id) ?: return
+        recent.remove(id)
+        page.destroy()
+    }
+
+    /** Pages off screen go, oldest first, except those downloading, which go at a later trim. */
+    fun trim(keeping: Int) {
+        for (id in recent.drop(keeping)) {
+            val page = pages[id] ?: continue
+            if (id != onScreen && !page.isDownloading) discard(id)
+        }
+    }
+
+    private fun touch(id: UUID) {
+        recent.remove(id)
+        recent.add(0, id)
+    }
+
+    companion object {
+        /**
+         * The end of every app view's user agent, so a page can tell it runs in Ovenlight.
+         * WebView's own (`... Mobile Safari/537.36`) stays before it, so pages still see a phone's
+         * browser.
+         */
+        fun userAgentName(after: String?, version: String? = BuildConfig.VERSION_NAME): String =
+            listOfNotNull(after, "Ovenlight/${version ?: "?"}").filter { it.isNotEmpty() }.joinToString(" ")
+
+        /** Live views: 1 on a low-RAM phone, 2 at 4 GB or less, else 4. */
+        fun maxLive(context: Context): Int {
+            val activity = context.getSystemService(ActivityManager::class.java)
+            if (activity.isLowRamDevice) return 1
+            val memory = ActivityManager.MemoryInfo().also(activity::getMemoryInfo)
+            return if (memory.totalMem <= 4L * 1024 * 1024 * 1024) 2 else 4
+        }
+    }
 }
 
 /**

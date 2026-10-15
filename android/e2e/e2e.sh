@@ -5,7 +5,7 @@
 # connector runs from this run's folder with its own HOME, config and state, logs in only to
 # the local Headscale, and stops by its recorded pid.
 #
-#   android/e2e/e2e.sh [gates | owner | signin [seconds] | screens] [avd]
+#   android/e2e/e2e.sh [gates | owner | signin [seconds] | screens | app] [avd]
 #
 # gates runs Phase 1's checks G2 to G5 through the debug lab. owner signs the owner's node in
 # with a preauth key and waits for the launcher to show both test apps. signin goes through
@@ -13,7 +13,8 @@
 # [seconds] (default 30), and checks that it ends connected. screens signs in as owner does,
 # takes the launcher, Settings and lock screenshots in light and dark, and checks the lock: at
 # Immediately, Home and back through the icon or Recents asks for it, and a canceled prompt
-# doesn't come back by itself. Each writes what it saw to
+# doesn't come back by itself. app opens Recipes from the launcher and waits for its page.
+# Each writes what it saw to
 # android/e2e/out/: gates.txt, logs and screenshots.
 #
 # Needs Headscale v0.29.4 (docs/development.md#local-headscale) and the fixed AVD set
@@ -96,7 +97,7 @@ until_ok() {
 }
 
 [[ -x $HS ]] || fail "no headscale at $HS"
-[[ $SCENARIO =~ ^(gates|owner|signin|screens)$ ]] || fail "unknown scenario $SCENARIO"
+[[ $SCENARIO =~ ^(gates|owner|signin|screens|app)$ ]] || fail "unknown scenario $SCENARIO"
 
 say "the test CA in $CA, made once, and a *.$BASE certificate for this run"
 if [[ ! -f $CA/ca.pem ]]; then
@@ -178,11 +179,11 @@ mkdir -p $D/recipes $D/pantry
 cat > $D/recipes/index.html <<'EOF'
 <!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>loading</title><link rel="stylesheet" href="https://pantry.e2e.ts.net/style.css"></head>
-<body><h1>Recipe Box</h1><img src="https://pantry.e2e.ts.net/dot.svg" width="20"><p id="out"></p>
+<title>loading</title><link rel="stylesheet" href="https://pantry.e2e.ts.net/style.css" onload="out.css = 'ok'; show()" onerror="out.css = 'error'; show()"></head>
+<body><h1>Recipe Box</h1><img src="https://pantry.e2e.ts.net/dot.svg" width="20" onload="out.img = 'ok'; show()" onerror="out.img = 'error'; show()"><p id="out"></p>
 <script>
-const out = {};
-function show() { document.title = JSON.stringify(out); document.getElementById("out").textContent = document.title; }
+var out = {};
+function show() { if (!document.getElementById("out")) return; document.title = JSON.stringify(out); document.getElementById("out").textContent = document.title; }
 const ws = new WebSocket("wss://recipes.e2e.ts.net/ws");
 ws.onopen = () => ws.send("ping");
 ws.onmessage = e => { out.ws = e.data; show(); ws.close(); };
@@ -286,6 +287,29 @@ await_text() {
 
 night() { a shell cmd uimode night $1 >/dev/null; sleep 3; }
 locked() { screen_text | grep -qxE 'Unlock Ovenlight|Ovenlight is locked'; }
+
+if [[ $SCENARIO == app ]]; then
+  say "app: the owner signs in, then opens Recipes"
+  a shell "am start -W -n $PKG/.MainActivity --es controlURL $CTRL --es authKey $KEY" >/dev/null
+  await_text 90 Recipes Pantry || fail "the launcher never showed both apps: $(screen_text | tr '\n' '|')"
+  tap_text Recipes
+  # The page's own heading, read from the web view.
+  await_text 40 "Recipe Box" || { shot app-failed; fail "Recipes never loaded: $(screen_text | tr '\n' '|')"; }
+  sleep 8; shot app-recipes
+  report=$(screen_text | grep -m1 -F '"ws"' || true)
+  note "Recipes opened and its page loaded: $report"
+  # Its WebSocket and the internet work; Pantry's files don't, since the connector refuses a
+  # request another site's page makes (fromThisSite in connector/proxy.go).
+  [[ $report == *'"ws":"ping"'* && $report == *'"internet":"ok"'* ]] || fail "the page's WebSocket or internet fetch failed: $report"
+  [[ $report == *'"css":"error"'* && $report == *'"img":"error"'* ]] || fail "another app's files loaded cross-site: $report"
+  a shell input keyevent KEYCODE_BACK; sleep 2
+  await_text 10 Pantry || fail "Back didn't close the app: $(screen_text | tr '\n' '|')"
+  tap_text Recipes
+  await_text 10 "Recipe Box" || fail "Recipes didn't reopen from the pool"
+  note "Back closed it, and it reopened from the pool"
+  say "PASSED"
+  exit 0
+fi
 
 if [[ $SCENARIO == screens ]]; then
   say "screens: the owner signs in, then the screenshots"

@@ -249,6 +249,8 @@ class MembershipNode(
     private val rememberOwnerSuffix: (String) -> Unit = {},
     /** Ovenlight is away (see AppLifecycle): the node idles until it comes back. */
     private val pollingPaused: () -> Boolean = { false },
+    /** Runs as the node starts to log out, so the web views it carried go first. */
+    private val loggingOut: (MembershipNode) -> Unit = {},
 ) {
     data class Settings(
         val controlURL: String,
@@ -415,6 +417,8 @@ class MembershipNode(
 
     /** Logs the node out of its network, closes it and deletes its state. */
     suspend fun logOutAndForget() = withContext(NonCancellable) {
+        // Its next start must not route them again, into whatever network it signs in to.
+        loggingOut(this@MembershipNode)
         node?.let { node -> withContext(io) { runCatching { node.logout() } } }
         stop()
         withContext(io) { stateDirectory(id).deleteRecursively() }
@@ -626,6 +630,9 @@ class NodeManager(
     /** A different owner tailnet changes routes, so every view made for the old one goes (the pool sets this). */
     var onOwnerSuffixChanged: () -> Unit = {}
 
+    /** A node starts to log out: the web views it carried go (the pool sets this). */
+    var onLoggingOut: (MembershipNode) -> Unit = {}
+
     val owner: MembershipNode = node(Membership.ownerID) {
         MembershipNode.Settings(controlURL = ownerControlURL, authKey = debugAuthKey, hostName = hostName)
     }
@@ -654,7 +661,7 @@ class NodeManager(
 
     private fun node(id: String, settings: () -> MembershipNode.Settings?) = MembershipNode(
         id, settings, clients, ::stateDirectory, preferences, scope, io, now, log, rememberOwnerSuffix = ::rememberOwnerSuffix,
-        pollingPaused = { pollingPaused },
+        pollingPaused = { pollingPaused }, loggingOut = { onLoggingOut(it) },
     )
 
     /** Set while Ovenlight is away, so no node polls (see AppLifecycle). */

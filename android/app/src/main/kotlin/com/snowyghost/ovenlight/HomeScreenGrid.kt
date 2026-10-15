@@ -487,7 +487,7 @@ private val decodedIcons = object : LruCache<IconKey, Bitmap>(16 * 1024 * 1024) 
 
 /** The app's icon, read and decoded off the main thread; the last one stays until a newer one is ready. */
 @Composable
-private fun rememberIcon(app: WebApp, iconRevision: Int, load: (WebApp) -> Bitmap?): Bitmap? {
+internal fun rememberIcon(app: WebApp, iconRevision: Int, load: (WebApp) -> Bitmap?): Bitmap? {
     val key = IconKey(app.id, app.iconFile, iconRevision)
     val image by produceState(decodedIcons[key], key) {
         value = decodedIcons[key] ?: withContext(Dispatchers.IO) { load(app) }?.also { decoded ->
