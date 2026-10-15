@@ -11,10 +11,10 @@ version.
 The computer must stay on and awake while anyone uses your apps, and be one of these:
 
 - **A Mac with macOS 13 or later**, logged in to its desktop; `ovenlight doctor` checks
-  that it won't sleep. The connector is a launchd agent, which runs only in a logged-in
-  session, so a Mac without a display needs automatic login. FileVault turns automatic
-  login off, so after a power cut, or a restart for a macOS update, the connector waits
-  until someone logs in at the Mac.
+  that it won't sleep (a MacBook also sleeps when its lid closes). The connector is a
+  launchd agent, which runs only in a logged-in session, so a Mac without a display needs
+  automatic login. FileVault turns automatic login off, so after a power cut, or a restart
+  for a macOS update, the connector waits until someone logs in at the Mac.
 - **A Linux computer with systemd**, such as Ubuntu. The connector is a systemd user
   service, and with linger on, it runs from startup with nobody logged in. `install.sh`
   turns linger on, or prints the `sudo` command for it when it can't.
@@ -24,7 +24,7 @@ The computer must stay on and awake while anyone uses your apps, and be one of t
   administrator PowerShell, signed in as the account that will own the apps: elevating
   with another account's password installs the connector for that account. Windows puts
   an idle computer to sleep by default: in Settings, under System > Power (Power &
-  battery on a laptop), set sleep to Never.
+  battery on a laptop), set sleep to Never. `ovenlight doctor` checks that too.
 
 You also need a Tailscale account with MagicDNS and HTTPS certificates turned on in the
 admin console, under [DNS](https://console.tailscale.com/admin/dns); `ovenlight doctor`

@@ -263,9 +263,61 @@ func TestSleepCheck(t *testing.T) {
 		pmset("60"): {statusWarn, "sleeps after 1 hour idle"},
 		"Currently in use:\n displaysleep         10\n": {statusWarn, "couldn't find the sleep setting"},
 	} {
-		c := sleepCheck(out)
+		c := sleepCheck(out, "Now drawing from 'AC Power'\n")
 		wantFix := strings.Contains(want.message, "sleeps after")
-		if c.Status != want.status || !strings.Contains(c.Message, want.message) || strings.Contains(c.Fix, "sudo pmset -c sleep 0") != wantFix {
+		if c.Status != want.status || !strings.Contains(c.Message, want.message) || strings.Contains(c.Message, "lid") || strings.Contains(c.Fix, "sudo pmset -c sleep 0") != wantFix {
+			t.Errorf("%q: %+v", out, c)
+		}
+	}
+
+	// A laptop that doesn't sleep on its own still sleeps when its lid closes.
+	const battery = "Now drawing from 'AC Power'\n -InternalBattery-0 (id=4653155)\t100%; charged; 0:00 remaining present: true\n"
+	for out, want := range map[string]struct{ status, message string }{
+		pmset("0"):                           {statusOK, "the Mac doesn't sleep on its own, but closing its lid puts it to sleep"},
+		pmset("0") + " SleepDisabled\t\t1\n": {statusOK, "the Mac doesn't sleep on its own"},
+		pmset("10"):                          {statusWarn, "the Mac sleeps after 10 minutes idle, and your apps are offline while it does"},
+	} {
+		if c := sleepCheck(out, battery); c.Status != want.status || c.Message != want.message {
+			t.Errorf("laptop %q: %+v", out, c)
+		}
+	}
+}
+
+func TestWindowsSleepCheck(t *testing.T) {
+	// powercfg's output on an English Windows 11 (dimpc's, with the values changed), and
+	// the same layout with labels in another language.
+	powercfg := func(ac, dc string) string {
+		return "Power Scheme GUID: 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c  (High performance)\r\n" +
+			"  GUID Alias: SCHEME_MIN\r\n" +
+			"  Subgroup GUID: 238c9fa8-0aad-41ed-83f4-97be242c8f20  (Sleep)\r\n" +
+			"    GUID Alias: SUB_SLEEP\r\n" +
+			"    Power Setting GUID: 29f6c1db-86da-48c5-9fdb-f2b67b1f44da  (Sleep after)\r\n" +
+			"      GUID Alias: STANDBYIDLE\r\n" +
+			"      Minimum Possible Setting: 0x00000000\r\n" +
+			"      Maximum Possible Setting: 0xffffffff\r\n" +
+			"      Possible Settings increment: 0x00000001\r\n" +
+			"      Possible Settings units: Seconds\r\n" +
+			"    Current AC Power Setting Index: " + ac + "\r\n" +
+			"    Current DC Power Setting Index: " + dc + "\r\n\r\n"
+	}
+	const translated = "GUID des Energieschemas: 381b4222-f694-41f0-9685-ff5bb260df2e  (Ausbalanciert)\r\n" +
+		"    GUID der Energieeinstellung: 29f6c1db-86da-48c5-9fdb-f2b67b1f44da  (Standbymodus nach)\r\n" +
+		"      Minimal: 0x00000000\r\n" +
+		"      Maximal: 0xffffffff\r\n" +
+		"      Schritt: 0x00000001\r\n" +
+		"      Einheit: Sekunden\r\n" +
+		"    Netzbetrieb: 0x00000708\r\n" +
+		"    Akkubetrieb: 0x00000384\r\n"
+	for out, want := range map[string]struct{ status, message string }{
+		powercfg("0x00000000", "0x00000384"):             {statusOK, "the computer doesn't sleep on its own while plugged in"},
+		powercfg("0x00002a30", "0x00000000"):             {statusWarn, "the computer sleeps after 3 hours idle, and your apps are offline while it does"},
+		powercfg("0x0000012c", "0x00000000"):             {statusWarn, "the computer sleeps after 5 minutes idle, and your apps are offline while it does"},
+		translated:                                       {statusWarn, "the computer sleeps after 30 minutes idle, and your apps are offline while it does"},
+		"Invalid Parameters -- try \"/?\" for help.\r\n": {statusWarn, "couldn't find the sleep setting in powercfg's output"},
+	} {
+		c := windowsSleepCheck(out)
+		wantFix := strings.Contains(want.message, "sleeps after")
+		if c.Status != want.status || c.Message != want.message || strings.Contains(c.Fix, "powercfg /change standby-timeout-ac 0") != wantFix || (c.Actor == actorPerson) != wantFix {
 			t.Errorf("%q: %+v", out, c)
 		}
 	}

@@ -389,10 +389,16 @@ func hostRejection(status int, body string) (server, fix string) {
 
 // sleepCheck reads `pmset -g` output and warns when the Mac sleeps on its own, which
 // takes every app offline. Something holding sleep off now (caffeinate, a Screen Sharing
-// session) still warns: the Mac sleeps once it lets go.
-func sleepCheck(pmsetOutput string) Check {
+// session) still warns: the Mac sleeps once it lets go. On a laptop, where `pmset -g batt`
+// shows an internal battery, a Mac that doesn't sleep on its own still sleeps when its
+// lid closes, unless sleep is disabled outright.
+func sleepCheck(pmsetOutput, battOutput string) Check {
 	c := Check{ID: "sleep", Status: statusWarn}
-	for _, line := range strings.Split(pmsetOutput, "\n") {
+	lines := strings.Split(pmsetOutput, "\n")
+	lidSleeps := strings.Contains(battOutput, "InternalBattery") && !slices.ContainsFunc(lines, func(line string) bool {
+		return slices.Equal(strings.Fields(line), []string{"SleepDisabled", "1"})
+	})
+	for _, line := range lines {
 		fields := strings.Fields(line)
 		if len(fields) < 2 || fields[0] != "sleep" {
 			continue
@@ -402,6 +408,9 @@ func sleepCheck(pmsetOutput string) Check {
 		switch {
 		case err == nil && minutes == 0:
 			c.Status, c.Message = statusOK, "the Mac doesn't sleep on its own"
+			if lidSleeps {
+				c.Message += ", but closing its lid puts it to sleep"
+			}
 		case err == nil:
 			c.Message = "the Mac sleeps after " + idle + " idle, and your apps are offline while it does"
 			if strings.Contains(line, "sleep prevented by") {
@@ -415,6 +424,36 @@ func sleepCheck(pmsetOutput string) Check {
 		return c
 	}
 	c.Message = "couldn't find the sleep setting in pmset's output"
+	return c
+}
+
+// windowsSleepCheck reads `powercfg /query SCHEME_CURRENT SUB_SLEEP STANDBYIDLE` output and
+// warns when the computer sleeps on its own while plugged in. powercfg's labels are in the
+// system's language, so it reads only the values: the last two hex numbers are the setting
+// on power and on battery, in seconds.
+func windowsSleepCheck(powercfgOutput string) Check {
+	c := Check{ID: "sleep", Status: statusWarn}
+	var values []string
+	for _, field := range strings.Fields(powercfgOutput) {
+		if strings.HasPrefix(field, "0x") {
+			values = append(values, field)
+		}
+	}
+	if len(values) < 2 {
+		c.Message = "couldn't find the sleep setting in powercfg's output"
+		return c
+	}
+	seconds, err := strconv.ParseUint(values[len(values)-2], 0, 32)
+	switch {
+	case err != nil:
+		c.Message = "couldn't read the sleep setting from powercfg: " + values[len(values)-2]
+	case seconds == 0:
+		c.Status, c.Message = statusOK, "the computer doesn't sleep on its own while plugged in"
+	default:
+		c.Message = "the computer sleeps after " + humanDuration(time.Duration(seconds)*time.Second) + " idle, and your apps are offline while it does"
+		c.Fix = "Settings > System > Power (Power & battery on a laptop): set sleep when plugged in to Never; or run `powercfg /change standby-timeout-ac 0`"
+		c.Actor = actorPerson
+	}
 	return c
 }
 
@@ -453,12 +492,21 @@ func runDoctor(cfg *Config, stateDir, configPath string) []Check {
 			checks = append(checks, c)
 		}
 	}
-	if runtime.GOOS == "darwin" {
+	switch runtime.GOOS {
+	case "darwin":
 		out, err := exec.Command("/usr/bin/pmset", "-g").Output()
 		if err != nil {
 			checks = append(checks, Check{ID: "sleep", Status: statusWarn, Message: "couldn't read the sleep setting: " + err.Error()})
 		} else {
-			checks = append(checks, sleepCheck(string(out)))
+			batt, _ := exec.Command("/usr/bin/pmset", "-g", "batt").Output()
+			checks = append(checks, sleepCheck(string(out), string(batt)))
+		}
+	case "windows":
+		out, err := exec.Command("powercfg", "/query", "SCHEME_CURRENT", "SUB_SLEEP", "STANDBYIDLE").Output()
+		if err != nil {
+			checks = append(checks, Check{ID: "sleep", Status: statusWarn, Message: "couldn't read the sleep setting: " + err.Error()})
+		} else {
+			checks = append(checks, windowsSleepCheck(string(out)))
 		}
 	}
 	for _, app := range cfg.Apps {
