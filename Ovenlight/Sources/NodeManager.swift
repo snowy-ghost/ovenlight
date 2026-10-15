@@ -246,6 +246,7 @@ final class MembershipNode: ObservableObject {
     private var lastProbe: Date?
     private var loginLostPolls = 0
     private var absence = PeerAbsence()
+    private var silence = GuestSilence()
     /// Bumped on every start and stop so work from an older node can't touch the new one.
     private var generation = 0
     private let log: Logger
@@ -563,10 +564,14 @@ final class MembershipNode: ObservableObject {
     /// whether its apps still answer and still admit it.
     func rediscover() async {
         guard state == .ready else { return }
+        let current = generation
         let hosts = probeHosts
         let outcome = await probe(hosts)
         record(outcome, probed: hosts)
         if outcome.reachable, isOwner, discovered != outcome.apps { discovered = outcome.apps }
+        guard !isOwner, current == generation, silence.record(probed: hosts, reachable: outcome.reachable) else { return }
+        log.notice("\(self.id, privacy: .public): no app has answered for a while, restarting the node")
+        Task { await restart() }
     }
 
     private func record(_ outcome: Discovery.Outcome, probed hosts: [String]) {
@@ -708,6 +713,33 @@ enum GuestProbe {
         guard status.backendState == "Running" else { return nil }
         let absent = hosts.subtracting(status.peers.map { Discovery.normalizedHost($0.dnsName) })
         return absent.count < hosts.count ? absent : nil
+    }
+}
+
+/// Looks in a row at a guest's apps, about a minute apart, in which none answered though the
+/// network listed some online. A running node never learns that the owner deleted its device
+/// (control's refusals only back it off), but a restarted one finds it needs a login, which
+/// ends the share (`onLoginLost`). So after a few silent looks the node restarts, then waits
+/// twice as long before the next, up to an hour; any answer starts over.
+struct GuestSilence {
+    static let firstRestart = 3
+    static let maxGap = 60
+    private var looks = 0
+    private var gap = firstRestart
+
+    /// Records one look; true when the node should restart.
+    mutating func record(probed hosts: [String], reachable: Bool) -> Bool {
+        guard !reachable else {
+            self = GuestSilence()
+            return false
+        }
+        // Nothing listed online says nothing: the computers are asleep.
+        guard !hosts.isEmpty else { return false }
+        looks += 1
+        guard looks >= gap else { return false }
+        looks = 0
+        gap = min(gap * 2, Self.maxGap)
+        return true
     }
 }
 

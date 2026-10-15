@@ -432,6 +432,32 @@ final class GuestCleanupTests: XCTestCase {
     }
 }
 
+final class GuestSilenceTests: XCTestCase {
+    func testRestartsAfterSilentLooksThenBacksOff() {
+        var silence = GuestSilence()
+        let hosts = ["two-nights.example.ts.net"]
+        func looksUntilRestart() -> Int {
+            var n = 0
+            repeat { n += 1 } while !silence.record(probed: hosts, reachable: false)
+            return n
+        }
+        XCTAssertEqual(looksUntilRestart(), GuestSilence.firstRestart)
+        XCTAssertEqual(looksUntilRestart(), GuestSilence.firstRestart * 2)
+        for _ in 0..<10 { _ = looksUntilRestart() }
+        XCTAssertEqual(looksUntilRestart(), GuestSilence.maxGap)
+    }
+
+    func testAnAnswerOrNothingOnlineNeverRestarts() {
+        var silence = GuestSilence()
+        let hosts = ["two-nights.example.ts.net"]
+        for _ in 1..<GuestSilence.firstRestart { XCTAssertFalse(silence.record(probed: hosts, reachable: false)) }
+        XCTAssertFalse(silence.record(probed: hosts, reachable: true), "an answer starts over")
+        for _ in 1..<GuestSilence.firstRestart { XCTAssertFalse(silence.record(probed: hosts, reachable: false)) }
+        for _ in 0..<10 { XCTAssertFalse(silence.record(probed: [], reachable: false), "asleep computers aren't silence") }
+        XCTAssertTrue(silence.record(probed: hosts, reachable: false))
+    }
+}
+
 final class FeedbackTests: XCTestCase {
     func testBuildsThePayloadTheConnectorExpects() throws {
         let png = Data([0x89, 0x50, 0x4E, 0x47])
