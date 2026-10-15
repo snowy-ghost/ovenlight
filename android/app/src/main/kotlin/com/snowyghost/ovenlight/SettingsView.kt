@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -27,6 +29,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
@@ -60,10 +63,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
@@ -160,10 +166,15 @@ fun SettingsView(model: AppModel, onClose: () -> Unit) {
             onClose()
         },
         contactUs = { context.open(MailDraft.contactUs(version).intent()) },
-        privacyPolicy = { context.open(Intent(Intent.ACTION_VIEW, AppLinks.privacyPolicy.toString().toUri())) },
+        privacyPolicy = { openPrivacyPolicy(context) },
         notices = { withContext(Dispatchers.IO) { Acknowledgements.notices { context.assets.open(it) } } },
     )
     SettingsScreen(state, onClose)
+}
+
+/** The privacy policy, in the browser until this branch has CustomTabs.open, which design.md asks for. */
+private fun openPrivacyPolicy(context: Context) {
+    context.open(Intent(Intent.ACTION_VIEW, AppLinks.privacyPolicy.toString().toUri()))
 }
 
 /** Starts another app's screen; false when no app handles it. */
@@ -178,6 +189,8 @@ private fun Context.open(intent: Intent): Boolean = try {
 @Composable
 fun SettingsScreen(state: SettingsState, onClose: () -> Unit) {
     var acknowledgements by remember { mutableStateOf(false) }
+    // Outlives the slide to Acknowledgements, so coming back keeps the place in the list.
+    val scroll = rememberScrollState()
     BackHandler(enabled = acknowledgements) { acknowledgements = false }
     AnimatedContent(
         acknowledgements,
@@ -193,7 +206,7 @@ fun SettingsScreen(state: SettingsState, onClose: () -> Unit) {
         if (showing) {
             AcknowledgementsScreen(state.notices, onBack = { acknowledgements = false })
         } else {
-            SettingsList(state, onClose, onAcknowledgements = { acknowledgements = true })
+            SettingsList(state, scroll, onClose, onAcknowledgements = { acknowledgements = true })
         }
     }
 }
@@ -208,14 +221,14 @@ private val lockDelays = listOf(
 )
 
 @Composable
-private fun SettingsList(state: SettingsState, onClose: () -> Unit, onAcknowledgements: () -> Unit) {
+private fun SettingsList(state: SettingsState, scroll: ScrollState, onClose: () -> Unit, onAcknowledgements: () -> Unit) {
     var choosingDelay by remember { mutableStateOf(false) }
     var leaving by remember { mutableStateOf<SharedOwner?>(null) }
     var confirmingSignOut by remember { mutableStateOf(false) }
     var noEmailApp by remember { mutableStateOf(false) }
     val error = MaterialTheme.colorScheme.error
     val primary = MaterialTheme.colorScheme.primary
-    GroupedScreen(stringResource(R.string.settings_title), onBack = onClose) {
+    GroupedScreen(stringResource(R.string.settings_title), onBack = onClose, scroll = scroll) {
         Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
             SettingsGroup(
                 footer = {
@@ -248,7 +261,10 @@ private fun SettingsList(state: SettingsState, onClose: () -> Unit, onAcknowledg
                                 shape, owner.ownerName,
                                 supporting = if (owner.appNames.isEmpty()) stringResource(R.string.settings_joining) else ListFormatter.getInstance().format(owner.appNames),
                                 trailing = {
-                                    TextButton(onClick = { leaving = owner }) { Text(stringResource(R.string.settings_leave), color = error) }
+                                    // Each says whose apps, so TalkBack tells one Leave from another.
+                                    TextButton(onClick = { leaving = owner }, modifier = Modifier.semantics { contentDescription = ConnectionCopy.leaveApps(owner.ownerName) }) {
+                                        Text(stringResource(R.string.settings_leave), color = error)
+                                    }
                                 },
                             )
                         }
@@ -281,7 +297,8 @@ private fun SettingsList(state: SettingsState, onClose: () -> Unit, onAcknowledg
             onDismissRequest = { choosingDelay = false },
             title = { Text(stringResource(R.string.settings_require_screen_lock)) },
             text = {
-                Column(Modifier.selectableGroup()) {
+                // Scrolls when large text in landscape leaves too little height.
+                Column(Modifier.verticalScroll(rememberScrollState()).selectableGroup()) {
                     for (delay in lockDelays) {
                         val selected = delay.seconds == state.lockAfterSeconds
                         Row(
@@ -376,7 +393,7 @@ private fun OwnerGroups(owner: OwnerSettings, state: SettingsState, onSignOut: (
 private fun AcknowledgementsScreen(notices: suspend () -> String?, onBack: () -> Unit) {
     // Read off the main thread: the text runs to thousands of lines.
     val paragraphs by produceState(emptyList<String>()) { value = Acknowledgements.paragraphs(notices()) }
-    GroupedScreen(stringResource(R.string.settings_acknowledgements), onBack = onBack, scrolls = false) { padding ->
+    GroupedScreen(stringResource(R.string.settings_acknowledgements), onBack = onBack) { padding ->
         LazyColumn(Modifier.fillMaxSize(), contentPadding = padding, verticalArrangement = Arrangement.spacedBy(12.dp)) {
             items(paragraphs) { paragraph ->
                 SelectionContainer {
@@ -393,13 +410,17 @@ private fun AcknowledgementsScreen(notices: suspend () -> String?, onBack: () ->
 
 /**
  * A full-screen destination on the grouped background, which its top app bar shares, with a
- * back arrow. The content gets the bars' padding, and scrolls unless it scrolls itself.
+ * back arrow. With [scroll] the content scrolls in a centered column; without, it gets the
+ * bars' padding and scrolls itself. Its title names the pane for TalkBack, since it replaces
+ * another screen in the same window.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun GroupedScreen(title: String, onBack: () -> Unit, scrolls: Boolean = true, content: @Composable (PaddingValues) -> Unit) {
+private fun GroupedScreen(title: String, onBack: () -> Unit, scroll: ScrollState? = null, content: @Composable (PaddingValues) -> Unit) {
     val background = LocalOvenColors.current.groupedBackground
+    val direction = LocalLayoutDirection.current
     Scaffold(
+        modifier = Modifier.semantics { paneTitle = title },
         containerColor = background,
         topBar = {
             TopAppBar(
@@ -413,9 +434,14 @@ private fun GroupedScreen(title: String, onBack: () -> Unit, scrolls: Boolean = 
             )
         },
     ) { bars ->
-        if (!scrolls) return@Scaffold content(PaddingValues(top = bars.calculateTopPadding() + 8.dp, bottom = bars.calculateBottomPadding() + 16.dp))
-        Box(Modifier.fillMaxSize().padding(top = bars.calculateTopPadding()), contentAlignment = Alignment.TopCenter) {
-            Column(Modifier.widthIn(max = 640.dp).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
+        // Clear of a navigation bar or cutout at the side, in landscape.
+        val start = bars.calculateStartPadding(direction)
+        val end = bars.calculateEndPadding(direction)
+        if (scroll == null) {
+            return@Scaffold content(PaddingValues(start = start, top = bars.calculateTopPadding() + 8.dp, end = end, bottom = bars.calculateBottomPadding() + 16.dp))
+        }
+        Box(Modifier.fillMaxSize().padding(start = start, top = bars.calculateTopPadding(), end = end), contentAlignment = Alignment.TopCenter) {
+            Column(Modifier.widthIn(max = 640.dp).fillMaxWidth().verticalScroll(scroll).padding(horizontal = 16.dp)) {
                 Spacer(Modifier.height(8.dp))
                 content(PaddingValues())
                 Spacer(Modifier.height(bars.calculateBottomPadding() + 24.dp))

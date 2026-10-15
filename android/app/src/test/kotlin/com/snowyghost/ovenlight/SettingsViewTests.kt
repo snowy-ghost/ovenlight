@@ -151,6 +151,9 @@ class SettingsViewTests {
             row("Recipe Box", substring = true).assertIsDisplayed()
             row("Garden Log", substring = true).assertIsDisplayed()
             assertEquals(2, composeRule.onAllNodesWithText("Leave").fetchSemanticsNodes().size)
+            // TalkBack hears whose apps each Leave is for.
+            composeRule.onNodeWithContentDescription(ConnectionCopy.leaveApps("Riley")).assertExists()
+            composeRule.onNodeWithContentDescription(ConnectionCopy.leaveApps("Sam")).assertExists()
             // Still not set up for their own computers, so nothing names the network.
             assertShows("Use my own computers")
             assertLacks("Advanced")
@@ -164,7 +167,7 @@ class SettingsViewTests {
         show { SettingsState(shared = listOf(SharedOwner("riley", "Riley", listOf("Recipe Box")), SharedOwner("sam", "Sam", listOf("Notes"))), leave = { left += it }) }
         inEveryLook {
             composeRule.onAllNodesWithText("Leave")[0].performScrollTo().performClick()
-            inDialog("Leave Riley's apps?").assertIsDisplayed()
+            inDialog(ConnectionCopy.leaveTitle("Riley")).assertIsDisplayed()
             inDialog(ConnectionCopy.leaveDetail("Riley")).assertIsDisplayed()
             checkAccessibility()
             inDialog("Cancel").performClick()
@@ -172,7 +175,7 @@ class SettingsViewTests {
             composeRule.onNode(isDialog()).assertDoesNotExist()
         }
         composeRule.onAllNodesWithText("Leave")[1].performScrollTo().performClick()
-        inDialog("Leave Sam's apps?").assertIsDisplayed()
+        inDialog(ConnectionCopy.leaveTitle("Sam")).assertIsDisplayed()
         inDialog("Leave").performClick()
         assertEquals(listOf("sam"), left)
         composeRule.onNode(isDialog()).assertDoesNotExist()
@@ -184,7 +187,7 @@ class SettingsViewTests {
         show { SettingsState(owner = OwnerSettings(NodeState.Starting, hasNoAccount = true, deviceName = "pixel-9"), stopUsingMyOwnComputers = { stopped = true }) }
         inEveryLook {
             assertShows("Your computers", "Stop using my own computers", "Advanced", "Status", "This phone", "pixel-9")
-            assertEquals(2, composeRule.onAllNodesWithText("Connecting").fetchSemanticsNodes().size)
+            assertEquals(2, composeRule.onAllNodesWithText(NodeState.Connecting.summary).fetchSemanticsNodes().size)
             assertLacks("Use my own computers", "Sign in to your computers", "Sign out", "Approve this phone", "Tailscale account", "Tailnet")
         }
         row("Stop using my own computers").performClick()
@@ -197,7 +200,7 @@ class SettingsViewTests {
         var signedIn: URI? = null
         show { SettingsState(owner = OwnerSettings(NodeState.NeedsLogin(login), hasNoAccount = true, deviceName = "pixel-9"), signIn = { signedIn = it }) }
         inEveryLook {
-            assertShows("Sign in to your computers", "Stop using my own computers", "Advanced", "Not signed in", "pixel-9")
+            assertShows("Sign in to your computers", "Stop using my own computers", "Advanced", NodeState.NeedsLogin(login).summary, "pixel-9")
             assertLacks("Your computers", "Use my own computers", "Sign out", "Approve this phone", "Tailscale account")
         }
         row("Sign in to your computers").performClick()
@@ -212,7 +215,7 @@ class SettingsViewTests {
         }
         inEveryLook {
             assertShows("Your computers", "Approve this phone", "Sign out", "Tailscale account", "dimitri@example.com")
-            assertEquals(2, composeRule.onAllNodesWithText("Waiting for approval").fetchSemanticsNodes().size)
+            assertEquals(2, composeRule.onAllNodesWithText(NodeState.AwaitingApproval.summary).fetchSemanticsNodes().size)
             assertLacks("Stop using my own computers", "Sign in to your computers")
         }
         row("Approve this phone").performClick()
@@ -230,7 +233,7 @@ class SettingsViewTests {
         inEveryLook {
             assertShows(
                 "Your computers", "Connected as Dimitri", "Sign out",
-                "Advanced", "Status", "Connected", "Tailscale account", "Tailnet", "This phone", "pixel-9",
+                "Advanced", "Status", NodeState.Ready.summary, "Tailscale account", "Tailnet", "This phone", "pixel-9",
             )
             assertEquals(2, composeRule.onAllNodesWithText("dimitri@example.com").fetchSemanticsNodes().size)
             assertLacks("Approve this phone", "Stop using my own computers", "Sign in to your computers", "Use my own computers")
@@ -317,6 +320,17 @@ class SettingsViewTests {
         }
         composeRule.onNodeWithContentDescription("Back").performClick()
         assertTrue(closed)
+    }
+
+    @Test
+    fun testComingBackFromAcknowledgementsKeepsThePlace() {
+        show { SettingsState(owner = OwnerSettings(NodeState.Ready, account = dimitri, tailnet = "dimitri@example.com", deviceName = "pixel-9")) }
+        inEveryLook {
+            row("Acknowledgements").performClick()
+            composeRule.onNodeWithContentDescription("Back").performClick()
+            // Not scrolled to again: still where it was.
+            composeRule.onNodeWithText("Acknowledgements").assertIsDisplayed()
+        }
     }
 
     @Test
