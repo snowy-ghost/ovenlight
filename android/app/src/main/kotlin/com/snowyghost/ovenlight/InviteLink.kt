@@ -310,12 +310,14 @@ internal fun strictUTF8(bytes: ByteArray): String =
         .toString()
 
 /** Trimmed of Unicode white space and newlines, as iOS's `.whitespacesAndNewlines` trims. */
-internal fun String.trimmingWhitespaceAndNewlines(): String = trim {
-    it in '\t'..'\r' || it == '\u0085' || Character.getType(it).let { type ->
+internal fun String.trimmingWhitespaceAndNewlines(): String = trim(Char::isWhitespaceOrNewline)
+
+/** In iOS's `.whitespacesAndNewlines`. */
+internal fun Char.isWhitespaceOrNewline(): Boolean =
+    this in '\t'..'\r' || this == '\u0085' || Character.getType(this).let { type ->
         type == Character.SPACE_SEPARATOR.toInt() || type == Character.LINE_SEPARATOR.toInt() ||
             type == Character.PARAGRAPH_SEPARATOR.toInt()
     }
-}
 
 /** Trimmed of spaces and tabs, as iOS's `.whitespaces` trims. */
 internal fun String.trimmingWhitespace(): String = trim { it == '\t' || Character.getType(it) == Character.SPACE_SEPARATOR.toInt() }

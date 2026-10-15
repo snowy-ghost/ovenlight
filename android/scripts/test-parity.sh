@@ -12,6 +12,9 @@ root="$(cd "$(dirname "$0")/../.." && pwd)"
 # and none is pending after Phase 6.
 excluded() {
   sed 's/#.*//' <<'EOF' | awk 'NF { print $1 }'
+testTheShareSheetClosesOnce              # iOS presentation only: Android has its own Save, Share and Open sheet
+testOnlyAShownSheetTakesItsFiles         # iOS presentation only, as above
+testPagesStillSeeMobileSafari            # pending, Phase 4: needs a WebView (instrumented)
 EOF
 }
 

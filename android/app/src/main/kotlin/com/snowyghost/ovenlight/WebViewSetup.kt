@@ -87,7 +87,7 @@ object WebViewSetup {
             displayZoomControls = false
             useWideViewPort = true
             loadWithOverviewMode = true
-            userAgentString = WebSettings.getDefaultUserAgent(view.context) + " Ovenlight/" + BuildConfig.VERSION_NAME
+            userAgentString = WebViewPool.userAgentName(after = WebSettings.getDefaultUserAgent(view.context))
         }
         if (WebViewFeature.isFeatureSupported(WebViewFeature.ALGORITHMIC_DARKENING)) {
             WebSettingsCompat.setAlgorithmicDarkeningAllowed(view.settings, false)
