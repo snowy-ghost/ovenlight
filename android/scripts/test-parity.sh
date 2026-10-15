@@ -4,9 +4,13 @@
 # in Kotlin as in Swift), and a test added on one side shows up here.
 #
 #   android/scripts/test-parity.sh
+#
+# The tests are read from the iPhone release the port follows, not this branch's own copy:
+# OVENLIGHT_SWIFT_SPEC names it, origin/app-1.0.2 until 1.0.2 is on master.
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/../.." && pwd)"
+spec="${OVENLIGHT_SWIFT_SPEC:-origin/app-1.0.2}"
 
 # Swift tests with no Kotlin twin, each with its reason. Pending ones land with their feature,
 # and none is pending after Phase 6.
@@ -21,7 +25,8 @@ testIconsAreDecodedSmall                 # pending: decoding an icon small is Bi
 EOF
 }
 
-swift="$(grep -h -o -E 'func test[A-Za-z0-9_]+' "$root"/OvenlightTests/*.swift | sed 's/^func //' | sort -u)"
+swift="$(git -C "$root" grep -h -o -E 'func test[A-Za-z0-9_]+' "$spec" -- 'OvenlightTests/*.swift' | sed 's/^func //' | sort -u)"
+[ -n "$swift" ] || { echo "no iPhone tests at $spec" >&2; exit 1; }
 kotlin="$(find "$root/android/app/src" \( -path '*/src/test/*' -o -path '*/src/androidTest/*' \) -name '*.kt' -print0 |
   xargs -0 grep -h -o -E 'fun test[A-Za-z0-9_]+' 2>/dev/null | sed 's/^fun //' | sort -u || true)"
 
@@ -39,5 +44,5 @@ if [ -n "$stale" ]; then
   printf '  %s\n' $stale
   status=1
 fi
-[ "$status" = 0 ] && echo "every iPhone test has an Android twin ($(printf '%s\n' "$swift" | wc -l | tr -d ' ') tests, $(excluded | wc -l | tr -d ' ') excluded)"
+[ "$status" = 0 ] && echo "every iPhone test at $spec has an Android twin ($(printf '%s\n' "$swift" | wc -l | tr -d ' ') tests, $(excluded | wc -l | tr -d ' ') excluded)"
 exit "$status"

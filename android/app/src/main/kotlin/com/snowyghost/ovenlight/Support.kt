@@ -1,5 +1,7 @@
 package com.snowyghost.ovenlight
 
+import java.io.IOException
+import java.io.InputStream
 import java.net.URI
 
 /** Where people reach the team behind Ovenlight. */
@@ -61,4 +63,20 @@ data class MailDraft(val to: String = AppLinks.supportEmail, val subject: String
             }
         }
     }
+}
+
+/** Every license the app ships, which the build writes into assets/licenses. */
+object Acknowledgements {
+    val files = listOf("android-libraries.txt", "go-core.txt", "source-serif-4.txt")
+
+    /** All of them in one text, or null when any is missing; [open] opens an asset by path. */
+    fun notices(open: (String) -> InputStream): String? = try {
+        files.joinToString("\n\n") { name -> open("licenses/$name").use { it.readBytes().decodeToString() } }
+    } catch (_: IOException) {
+        null
+    }
+
+    /** One entry per paragraph, so a lazy list lays out only what shows: the text runs to thousands of lines. */
+    fun paragraphs(notices: String?): List<String> =
+        (notices ?: "The licenses are missing from this build.").split("\n\n").map { it.trim('\n') }.filter { it.isNotEmpty() }
 }
