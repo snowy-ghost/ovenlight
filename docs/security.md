@@ -453,7 +453,8 @@ website open in this computer's browser, can choose.
 - While Ovenlight is locked, no page gets the microphone or camera, and an app that an
   `ovenlight://open` link asks for waits for the unlock. Locking also stops any
   microphone or camera stream already running in an open app, on screen or kept in the
-  background.
+  background. Nor does a page kept in the background get them: closing an app to the
+  launcher stops its streams, and it can't start one until it's on screen again.
 - An app's downloads come only from its own host (or a blob or data URL its pages made),
   none while Ovenlight is locked, and leave Ovenlight only through the share sheet. The
   files wait in Ovenlight's temporary folder until the next launch, shared or cancelled,

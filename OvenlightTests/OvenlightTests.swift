@@ -101,14 +101,16 @@ final class MediaCapturePolicyTests: XCTestCase {
         var shared = app
         shared.membershipID = "m1"
         func decide(_ type: WKMediaCaptureType, in app: WebApp, from origin: String = "https://Coach.tailabc123.ts.net",
-                    locked: Bool = false) -> WKPermissionDecision {
+                    locked: Bool = false, onScreen: Bool = true) -> WKPermissionDecision {
             let url = URL(string: origin)!
             return MediaCapturePolicy.decide(type: type, scheme: url.scheme!, host: url.host!, app: app,
-                                             ownersHosts: ["coach.tailabc123.ts.net"], locked: locked)
+                                             ownersHosts: ["coach.tailabc123.ts.net"], locked: locked, onScreen: onScreen)
         }
         XCTAssertEqual(decide(.microphone, in: app), .grant)
         XCTAssertEqual(decide(.microphone, in: app, locked: true), .deny, "nothing records under the lock screen")
         XCTAssertEqual(decide(.camera, in: app, locked: true), .deny)
+        XCTAssertEqual(decide(.microphone, in: app, onScreen: false), .deny, "nor a page kept in the background")
+        XCTAssertEqual(decide(.camera, in: shared, onScreen: false), .deny)
         XCTAssertEqual(decide(.camera, in: app), .prompt)
         XCTAssertEqual(decide(.cameraAndMicrophone, in: app), .prompt)
         XCTAssertEqual(decide(.microphone, in: shared), .prompt, "someone else's app asks")

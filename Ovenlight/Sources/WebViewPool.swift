@@ -101,10 +101,13 @@ final class WebViewPool: ObservableObject {
 
     /// Ends every microphone and camera stream, on screen or not, so none runs under the lock.
     func stopCapture() {
-        for view in views.values {
-            view.setMicrophoneCaptureState(.none)
-            view.setCameraCaptureState(.none)
-        }
+        views.values.forEach(Self.stopCapture)
+    }
+
+    /// Ends one page's microphone and camera streams, as its app closes to the launcher.
+    static func stopCapture(in view: WKWebView) {
+        view.setMicrophoneCaptureState(.none)
+        view.setCameraCaptureState(.none)
     }
 
     /// Drops a coordinator whose route is stale, unless the pool already replaced it, and
@@ -471,7 +474,7 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
                  decisionHandler: @escaping @MainActor (WKPermissionDecision) -> Void) {
         decisionHandler(MediaCapturePolicy.decide(type: type, scheme: origin.protocol, host: origin.host, app: app,
                                                   ownersHosts: NodeManager.shared.ownersHosts,
-                                                  locked: OverlayPresenter.pageWindow == nil))
+                                                  locked: OverlayPresenter.pageWindow == nil, onScreen: webView.window != nil))
     }
 
     func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,
@@ -746,11 +749,11 @@ final class DialogAnswer<Value: Sendable>: @unchecked Sendable {
 /// owner's own apps (discovered, or on one of `ownersHosts`), on their own origin. The
 /// camera, shared apps, other sites added by address (someone's public Funnel URL among
 /// them) and every other origin get WebKit's prompt. Nothing gets either while Ovenlight
-/// is locked.
+/// is locked, or while the page is kept off screen.
 enum MediaCapturePolicy {
     static func decide(type: WKMediaCaptureType, scheme: String, host: String, app: WebApp,
-                       ownersHosts: Set<String>, locked: Bool) -> WKPermissionDecision {
-        if locked { return .deny }
+                       ownersHosts: Set<String>, locked: Bool, onScreen: Bool) -> WKPermissionDecision {
+        if locked || !onScreen { return .deny }
         guard type == .microphone, !app.isShared,
               app.discovered || ownersHosts.contains(Discovery.normalizedHost(app.host)),
               scheme.lowercased() == "https",
