@@ -162,7 +162,7 @@ CORS preflight the API never grants.
 
 | Route | Does |
 | --- | --- |
-| `GET /v1/apps` | this connector's apps: `slug`, `name`, `url`, `state`, `online`, `shareable`, `guests` |
+| `GET /v1/apps` | this connector's apps: `slug`, `name`, `url`, `state`, `online`, `shareable`, `guests`, and once the app's node serves, `certificate` (`fetching`, `ready` or `failed`, with `certificateError`) |
 | `POST /v1/invites` | `{"to": "Sam", "app": "<slug>"}` for someone new; for someone already shared with, `{"person": "<ID>", "app": "<slug>"}`, or `{"to": "Sam", "existing": true, "app": "<slug>"}` by name |
 | `DELETE /v1/invites/{id}` | cancel an unused invite |
 | `GET /v1/guests` | `guests` (removed ones too, with `removedAt`; `lastOpened`, the day the device last opened the app, as `2026-10-13` on the computer's calendar, from `openedSince` on), `invites`, `unclaimed`, `openedSince`, `taggedDevices` (`apps`, `guests` and every tagged device in the tailnet, `tailnet`, as of `lastSync`), `lastSync`, `syncError`; `ovenlight guests --json` prints the same |

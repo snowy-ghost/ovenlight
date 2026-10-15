@@ -188,7 +188,7 @@ func appsAnswer(t *testing.T, d *daemon) *httptest.ResponseRecorder {
 	coach := d.cfg.Apps[0] // the port is checked from the config
 	coach.Port = up.Addr().(*net.TCPAddr).Port
 	n.mu.Lock()
-	n.serving = true
+	n.serving, n.cert = true, certReady
 	n.mu.Unlock()
 	notes := App{Name: "Notes", Slug: "notes", Port: down.Addr().(*net.TCPAddr).Port}
 	d.cfg.Apps = []App{coach, notes}

@@ -6,7 +6,8 @@
     "state": "serving",
     "online": true,
     "shareable": true,
-    "guests": 1
+    "guests": 1,
+    "certificate": "ready"
   },
   {
     "slug": "notes",

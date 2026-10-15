@@ -68,9 +68,9 @@ func schema(props map[string]any, required ...string) map[string]any {
 
 var mcpTools = []mcpTool{
 	{"guide", "The guide to building an app that works and feels at home in Ovenlight, and to the steps only the person can do. Read it before building or changing an app.", schema(map[string]any{})},
-	{"status", "Published apps, their tailnet nodes and URLs, whether each app answers locally, and sharing (guests, pending invites, feedback count). Guest-written feedback is fenced as in feedback_list.", schema(map[string]any{})},
+	{"status", "Published apps, their tailnet nodes and URLs, each node's HTTPS certificate (certificate is fetching, ready or failed; when it failed, the person turns on MagicDNS and HTTPS Certificates on the Tailscale admin console's DNS page), whether each app answers locally, and sharing (guests, pending invites, feedback count). Guest-written feedback is fenced as in feedback_list.", schema(map[string]any{})},
 	{"doctor", "Checks with machine-readable failures and fixes: app not listening, another copy holding an app's port, bound to 0.0.0.0, node needs login, no HTTPS certificate, shareable apps missing an owner, API token or tag, and a login shell whose environment the apps' commands can't get, or apps still running without it. actor says whether you or the person applies each fix, and url is where the person does it.", schema(map[string]any{})},
-	{"check_app", "How one published app will look and work in Ovenlight: another copy holding its port, whether it listens only on 127.0.0.1, whether / answers with the app's tailnet name as Host (Vite and other dev servers refuse names they don't know), whether it serves its own files (the source, .env and database files in its folder), lets other websites call it (CORS), or shows a framework's debug pages, redirects to other sites or a sign-in page, the viewport, safe-area padding and overscroll-behavior, the icon and theme color, and localhost URLs. ok is false on any failure; each finding has a fix, and actor says whether you or the person applies it.",
+	{"check_app", "How one published app will look and work in Ovenlight: whether its node has its HTTPS certificate, another copy holding its port, whether it listens only on 127.0.0.1, whether / answers with the app's tailnet name as Host (Vite and other dev servers refuse names they don't know), whether it serves its own files (the source, .env and database files in its folder), lets other websites call it (CORS), or shows a framework's debug pages, redirects to other sites or a sign-in page, the viewport, safe-area padding and overscroll-behavior, the icon and theme color, and localhost URLs. ok is false on any failure; each finding has a fix, and actor says whether you or the person applies it.",
 		schema(map[string]any{"slug": map[string]any{"type": "string"}}, "slug")},
 	{"publish", "Publish a local web app (listening on 127.0.0.1:<port>) as its own tailnet node, or update one. Only the owner can open it until they share it. " +
 		"It keeps the command the connector runs for the app, if any, and can't set one: that is a shell command run as the person, " +
@@ -405,6 +405,7 @@ func callTool(name string, raw json.RawMessage, p *paths) (any, error) {
 		if err != nil {
 			return res, err
 		}
+		waitCertificate(p, res, nil)
 		app.Run, app.Dir = res.App.Run, res.App.Dir
 		notes := []string{ownCopy(app)}
 		if app.Run == "" {

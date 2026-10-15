@@ -77,6 +77,8 @@ type appNode struct {
 	serving   bool
 	adminUp   bool
 	lastErr   string
+	cert      string // the HTTPS certificate: "" until the node serves, then certFetching, certReady or certFailed
+	certErr   string // why the last try to get it failed
 	meta      *SiteManifest
 	metaAt    time.Time
 	metaErr   error
@@ -457,6 +459,9 @@ func (n *appNode) serve(port int, handler http.Handler, report func(up bool, err
 		ln, err := n.listen(port)
 		if err == nil {
 			n.refreshStatus() // the owner must be known before the first request
+			if port == 443 {
+				n.warmCertificate() // before it reports serving, so status never shows one without the other
+			}
 			report(true, "")
 			if port == 443 {
 				n.logf("serving https://%s/ -> %s", n.DNSName(), n.upstream())
@@ -660,6 +665,8 @@ type NodeStatus struct {
 	DeviceID  string     `json:"deviceId,omitempty"`
 	KeyExpiry *time.Time `json:"keyExpiry,omitempty"` // nil when the node's key doesn't expire
 	Error     string     `json:"error,omitempty"`
+	Cert      string     `json:"certificate,omitempty"`      // fetching, ready or failed, once the node serves HTTPS
+	CertErr   string     `json:"certificateError,omitempty"` // why the last try to get it failed
 }
 
 func (n *appNode) status() NodeStatus {
@@ -670,7 +677,7 @@ func (n *appNode) status() NodeStatus {
 		owner = n.owner
 	}
 	s := NodeStatus{appInfo: n.app.view(), Backend: n.backend, DNSName: n.dnsName, Owner: owner, NodeUser: n.owner, OwnerName: n.ownerName,
-		Tags: slices.Clone(n.tags), DeviceID: n.selfID, KeyExpiry: n.keyExpiry, Error: n.lastErr}
+		Tags: slices.Clone(n.tags), DeviceID: n.selfID, KeyExpiry: n.keyExpiry, Error: n.lastErr, Cert: n.cert, CertErr: n.certErr}
 	switch {
 	case n.serving:
 		s.State = "serving"
@@ -696,6 +703,77 @@ func (n *appNode) status() NodeStatus {
 		s.AdminURL = fmt.Sprintf("https://%s:%d/", n.dnsName, adminPort)
 	}
 	return s
+}
+
+// Certificate states, as status reports them once the node serves HTTPS.
+const (
+	certFetching = "fetching"
+	certReady    = "ready"
+	certFailed   = "failed"
+)
+
+// certRefresh is how often a node asks for its certificate again once it has one. tsnet
+// answers from its cache, and starts a renewal in the background once one is due, so
+// it happens before anyone opens the app rather than during their visit.
+const certRefresh = 12 * time.Hour
+
+// certTimeout bounds one try. The first certificate can take over half a minute.
+const certTimeout = 5 * time.Minute
+
+// warmCertificate starts keepCertificate, once, as the node starts serving HTTPS.
+func (n *appNode) warmCertificate() {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.cert == "" {
+		n.cert = certFetching
+		go n.keepCertificate()
+	}
+}
+
+// keepCertificate gets the node's certificate now, which tsnet would otherwise do only
+// at the first visit, keeping that visit waiting for it, and again every certRefresh. A
+// failure is tried again after a minute, then less often, up to hourly, so a fix in the
+// admin console shows without a restart.
+func (n *appNode) keepCertificate() {
+	retry := time.Minute
+	for {
+		ctx, cancel := context.WithTimeout(n.ctx, certTimeout)
+		err := n.checkCertificate(ctx)
+		cancel()
+		if n.ctx.Err() != nil {
+			return
+		}
+		n.noteCertificate(err)
+		wait := certRefresh
+		if err != nil {
+			wait, retry = retry, min(retry*2, time.Hour)
+		} else {
+			retry = time.Minute
+		}
+		select {
+		case <-n.ctx.Done():
+			return
+		case <-time.After(wait):
+		}
+	}
+}
+
+// noteCertificate records how the last try to get the certificate went, for status,
+// once the node serves HTTPS.
+func (n *appNode) noteCertificate(err error) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.cert == "" {
+		return
+	}
+	switch {
+	case err == nil && n.cert != certReady:
+		n.logf("HTTPS certificate ready")
+		n.cert, n.certErr = certReady, ""
+	case err != nil && n.certErr != err.Error():
+		n.logf("can't get its HTTPS certificate: %v", err)
+		n.cert, n.certErr = certFailed, err.Error()
+	}
 }
 
 // checkCertificate asks the tailnet for this node's certificate, which is what HTTPS

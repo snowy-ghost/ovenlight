@@ -214,11 +214,13 @@ way:
   to publish it.
 - `ovenlight version`: the connector's version.
 
-Recipe Box becomes its own node, at `https://recipe-box.<your-tailnet>.ts.net/`. When a
-node gets its HTTPS certificate, its full address, including your tailnet's name, is
-listed in public Certificate Transparency logs, so choose names and slugs you don't mind
-people seeing. For each new app, `publish` prints a login link: open it and sign in with
-your Tailscale account. Once you store an API access token of your own (see
+Recipe Box becomes its own node, at `https://recipe-box.<your-tailnet>.ts.net/`.
+`publish` waits for the node's HTTPS certificate, which can take up to a minute the first
+time, and the connector renews it before it runs out. Once a node has its certificate,
+its full address, including your tailnet's name, is listed in public Certificate
+Transparency logs, so choose names and slugs you don't mind people seeing. For each new
+app, `publish` prints a login link: open it and sign in with your Tailscale account. Once
+you store an API access token of your own (see
 [Share an app](#share-an-app)), later apps sign in as you without the browser; the first
 app on a fresh install still needs its link. Without a stored API credential, each app's
 sign-in expires on your tailnet's key expiry schedule (180 days by default), and `doctor`

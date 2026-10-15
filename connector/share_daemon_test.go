@@ -2,12 +2,18 @@ package main
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"log"
+	"math/big"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -1732,6 +1738,77 @@ func TestStatusShowsSyncError(t *testing.T) {
 	}
 	if out, err = collectStatus(&paths{config: d.configPath, state: state}); err != nil || !strings.Contains(out.Sharing.StateError, "damaged") {
 		t.Errorf("status with a damaged sharing.json: %+v, %v", out.Sharing, err)
+	}
+}
+
+// A node gets its certificate as it starts serving, not at the first visit, and check
+// and publish say when it can't, trying again first so a fix shows at once.
+func TestCertificateWarmUp(t *testing.T) {
+	d, _ := testDaemon(t)
+	addApp(d, App{Name: "Notes", Slug: "notes", Port: 4318, Shareable: true})
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmpl := &x509.Certificate{SerialNumber: big.NewInt(1), DNSNames: []string{"*.tail1.ts.net"}, NotAfter: time.Now().Add(time.Hour)}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	coach, notes := d.nodes["coach"], d.nodes["notes"]
+	notes.dnsName = "notes.other.ts.net" // the dev certificate doesn't cover it
+	for _, n := range []*appNode{coach, notes} {
+		n.dev.TLSCert = &tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key}
+		t.Cleanup(n.close)
+		if st := n.status(); st.Cert != "" {
+			t.Errorf("%s reports a certificate before it serves: %+v", st.Slug, st)
+		}
+		n.warmCertificate()
+	}
+	waitFor(t, func() bool { return coach.status().Cert == certReady }, "coach's certificate")
+	waitFor(t, func() bool { return notes.status().Cert == certFailed }, "notes's failure")
+	if st := notes.status(); !strings.Contains(st.CertErr, "notes.other.ts.net") {
+		t.Errorf("notes: %+v", st)
+	}
+
+	state, err := os.MkdirTemp("", "ol") // a socket path has to be short
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(state) })
+	ln, err := listenControl(socketPath(state))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	go d.serveControl(ln)
+	p := &paths{config: d.configPath, state: state}
+	if err := d.cfg.Save(p.config); err != nil {
+		t.Fatal(err)
+	}
+	checks, err := checkPublished(p, "notes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c := findCheck(t, checks, "certificate"); c.Status != statusFail || c.Actor != actorPerson || c.URL != consoleDNS || !strings.Contains(c.Message, "notes.other.ts.net") {
+		t.Errorf("certificate check: %+v", c)
+	}
+
+	// Once it can, check says so right away, and publish waits for a certificate it is
+	// still getting.
+	notes.mu.Lock()
+	notes.dnsName = "notes.tail1.ts.net"
+	notes.mu.Unlock()
+	if checks, _ := checkPublished(p, "notes"); findCheck(t, checks, "certificate").Status != statusOK || notes.status().Cert != certReady {
+		t.Errorf("after the fix: %+v, %+v", findCheck(t, checks, "certificate"), notes.status())
+	}
+	st := notes.status()
+	st.Cert = certFetching
+	res := &publishResult{App: notes.App().view(), State: "serving", node: &st}
+	waited := 0
+	waitCertificate(p, res, func() { waited++ })
+	if waited != 1 || len(res.Problems) != 0 {
+		t.Errorf("waited %d times, problems %+v", waited, res.Problems)
 	}
 }
 

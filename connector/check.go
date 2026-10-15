@@ -73,6 +73,9 @@ func checkPublished(p *paths, slug string) ([]Check, error) {
 		checks = append([]Check{*c}, checks...)
 	}
 	checks = predatesRunChecks(checks, p, app, status)
+	if c := certificateFinding(p, app.Slug, status); c != nil {
+		checks = append(checks, *c)
+	}
 	if problem == nil {
 		return checks, nil
 	}

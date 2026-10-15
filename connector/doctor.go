@@ -667,13 +667,61 @@ func nodeChecks(app App, reply *controlReply, p *paths) []Check {
 		checks = append(checks, keyExpiryCheck(app.Slug, st.DNSName, *st.KeyExpiry))
 	}
 	if certErr, ok := reply.Certs[app.Slug]; ok && (st.State == "serving" || st.State == "running") {
-		cert := Check{ID: "certificate", App: app.Slug, Status: statusOK, Message: "HTTPS certificate for " + st.DNSName + " is available"}
-		if certErr != "" {
-			cert.Status, cert.Message = statusFail, "can't get an HTTPS certificate: "+certErr
-			cert.Fix = "Turn on MagicDNS and HTTPS Certificates in the Tailscale admin console (DNS page)"
-			cert.Actor, cert.URL = actorPerson, consoleDNS
+		state := certReady
+		switch {
+		case certErr != "" && st.Cert == certFetching: // doctor's wait ran out first
+			state = certFetching
+		case certErr != "":
+			state = certFailed
 		}
-		checks = append(checks, cert)
+		checks = append(checks, certificateCheck(app.Slug, st.DNSName, state, certErr))
 	}
 	return checks
+}
+
+// certificateFinding is the finding on the app node's HTTPS certificate from a status
+// reply, nil when the node doesn't serve yet or the connector predates keepCertificate.
+// A failure the node recorded earlier is tried again first, since the person may have
+// just turned HTTPS certificates on.
+func certificateFinding(p *paths, slug string, reply *controlReply) *Check {
+	st := nodeStatus(slug, reply)
+	if st != nil && st.Cert == certFailed {
+		if again, err := callDaemonWith(p.state, controlRequest{Cmd: "certs", Slug: slug}, time.Minute); err == nil {
+			st = cmp.Or(nodeStatus(slug, again), st)
+		}
+	}
+	if st == nil || st.Cert == "" {
+		return nil
+	}
+	c := certificateCheck(slug, st.DNSName, st.Cert, st.CertErr)
+	return &c
+}
+
+// nodeStatus is the app node's status in a status reply, nil when it has none.
+func nodeStatus(slug string, reply *controlReply) *NodeStatus {
+	if reply == nil {
+		return nil
+	}
+	for i := range reply.Apps {
+		if reply.Apps[i].Slug == slug {
+			return &reply.Apps[i]
+		}
+	}
+	return nil
+}
+
+// certificateCheck is the finding on a node's HTTPS certificate, in state (see
+// keepCertificate), which failed for errText.
+func certificateCheck(slug, name, state, errText string) Check {
+	c := Check{ID: "certificate", App: slug, Status: statusOK, Message: "HTTPS certificate for " + name + " is available"}
+	switch state {
+	case certFetching:
+		c.Status, c.Message = statusWarn, "the node is still getting its HTTPS certificate, and the phone can't open the app until it has one"
+		c.Fix, c.Actor = "Wait a minute, then check again", actorAgent
+	case certFailed:
+		c.Status, c.Message = statusFail, "can't get an HTTPS certificate: "+errText
+		c.Fix = "Turn on MagicDNS and HTTPS Certificates in the Tailscale admin console (DNS page)"
+		c.Actor, c.URL = actorPerson, consoleDNS
+	}
+	return c
 }
