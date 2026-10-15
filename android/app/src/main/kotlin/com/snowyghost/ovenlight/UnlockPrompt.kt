@@ -45,7 +45,12 @@ class UnlockPrompt(private val activity: ComponentActivity) : Authenticator {
         val biometrics = activity.getSystemService(BiometricManager::class.java)
         @Suppress("DEPRECATION") // canAuthenticate(Int) is API 30.
         if (biometrics.canAuthenticate() != BiometricManager.BIOMETRIC_SUCCESS) return credential(keyguard)
-        return prompt(withScreenLock = false) ?: credential(keyguard)
+        // Any error but a cancel (a fingerprint locked out after too many tries, a sensor that
+        // isn't available) goes on to the screen lock, as iOS falls back to the passcode.
+        return when (val answer = prompt(withScreenLock = false)) {
+            null, is Authenticator.Result.Failed -> credential(keyguard)
+            else -> answer
+        }
     }
 
     /** The prompt's answer, or null when Android 10's button for the screen lock was tapped. */

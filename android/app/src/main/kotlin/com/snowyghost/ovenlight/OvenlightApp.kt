@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -90,6 +91,8 @@ class AppModel(context: Context) {
         iconPNG = { withContext(Dispatchers.Default) { IconDecoder.png(it) } }, scope = scope,
     )
     val guests = GuestManager(nodes, registry, router, scope, SystemClock::elapsedRealtime, log = { Log.i(TAG, it) })
+    /** The router's sheet showing in a Custom Tab, kept with the process so a recreated activity returns from it. */
+    var openTab: RootSheet? = null
     val lifecycle = AppLifecycle(
         scope, SystemClock::elapsedRealtime, pausePolling = { nodes.pollingPaused = it }, closeNodes = nodes::closeAll,
         cameToFront = ::didBecomeActive,
@@ -110,7 +113,10 @@ class AppModel(context: Context) {
         scope.launch {
             nodes.owner.state.collect { state ->
                 val sheet = router.sheet.value
-                if (state !is NodeState.NeedsLogin && state != NodeState.AwaitingApproval && sheet is RootSheet.Login) router.sheet.value = null
+                // Not for Idle: that is Ovenlight closing its nodes while away, not the sign-in ending.
+                if (state !is NodeState.NeedsLogin && state != NodeState.AwaitingApproval && state != NodeState.Idle && sheet is RootSheet.Login) {
+                    router.sheet.value = null
+                }
                 // Android only: the Machines page is a Custom Tab over Ovenlight, so once the phone
                 // is approved Ovenlight comes back rather than waiting for the tab to close.
                 if (state == NodeState.Ready && sheet == RootSheet.Approve) router.sheet.value = null
@@ -329,6 +335,9 @@ private fun ScreenLayer(model: AppModel) {
     val screen = sheet?.takeUnless { it is RootSheet.Login || it == RootSheet.Approve }
     var last by remember { mutableStateOf<RootSheet?>(null) }
     if (screen != null) last = screen
+    // A screen closed while the lock kept this layer out of composition never ran its own
+    // dismissal, which the router would wait on for good.
+    LaunchedEffect(Unit) { if (router.sheet.value == null) router.sheetDismissed() }
     AnimatedVisibility(
         visible = screen != null,
         enter = slideInHorizontally { it } + fadeIn(),

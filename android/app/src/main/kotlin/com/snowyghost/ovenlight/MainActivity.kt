@@ -33,8 +33,7 @@ class MainActivity : ComponentActivity() {
     private val model get() = OvenlightApp.model
     private val lock get() = model.lock
 
-    /** The router's sheet showing in a Custom Tab, and the return from it under way. */
-    private var tab: RootSheet? = null
+    /** The return from a Custom Tab under way. */
     private var returning: Job? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -46,7 +45,9 @@ class MainActivity : ComponentActivity() {
         // A tab waits for the unlock, as iOS's sheets wait under the lock window.
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.CREATED) {
-                combine(model.router.sheet, lock.isLocked) { sheet, locked -> sheet to locked }.collect { (sheet, locked) -> sheetChanged(sheet, locked) }
+                combine(model.router.sheet, lock.isLocked, lifecycle.currentStateFlow) { sheet, locked, state ->
+                    Triple(sheet, locked, state.isAtLeast(Lifecycle.State.STARTED))
+                }.collect { (sheet, locked, started) -> sheetChanged(sheet, locked, started) }
             }
         }
         clearNavigationBarScrim()
@@ -90,11 +91,11 @@ class MainActivity : ComponentActivity() {
      * router closes the sheet (the phone connected) while the tab is in front, Ovenlight comes
      * back over it.
      */
-    private fun sheetChanged(sheet: RootSheet?, locked: Boolean) {
-        val open = tab
+    private fun sheetChanged(sheet: RootSheet?, locked: Boolean, started: Boolean) {
+        val open = model.openTab
         if (open != null && open.id != sheet?.id) {
-            tab = null
-            if (!lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+            model.openTab = null
+            if (!started) {
                 startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
             }
             model.router.sheetDismissed()
@@ -104,13 +105,15 @@ class MainActivity : ComponentActivity() {
             RootSheet.Approve -> machinesPage
             else -> return
         }
-        if (tab != null || locked) return
-        tab = sheet
+        // A tab opens only from Ovenlight in front and unlocked; one already open (in front of a
+        // recreated activity, say) is returned from rather than opened again.
+        if (model.openTab != null || locked || !started) return
+        model.openTab = sheet
         model.router.sheetAppeared()
         if (CustomTabs.open(this, url)) {
             model.lifecycle.beginExcursion()
         } else {
-            tab = null
+            model.openTab = null
             model.router.sheet.value = null
             model.router.sheetDismissed()
         }
@@ -123,13 +126,13 @@ class MainActivity : ComponentActivity() {
      * unless something else has been opened since.
      */
     private fun returnedFromTab() {
-        val open = tab ?: return
+        val open = model.openTab ?: return
         model.router.sheet.value = null
         if (open !is RootSheet.Login) return
         val owner = model.nodes.owner
         returning?.cancel()
         returning = lifecycleScope.launch {
-            val state = withTimeoutOrNull(10_000) { owner.state.first { it !is NodeState.NeedsLogin && !it.isBusy } } ?: owner.state.value
+            val state = withTimeoutOrNull(10_000) { owner.state.first { it !is NodeState.NeedsLogin && it != NodeState.Idle && !it.isBusy } } ?: owner.state.value
             val router = model.router
             if (state == NodeState.AwaitingApproval && router.sheet.value == null && router.openApp.value == null) router.present(RootSheet.Approve)
         }

@@ -42,10 +42,12 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
-import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.paneTitle
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -85,6 +87,7 @@ fun LockScreen(isLocked: Boolean, isAuthenticating: Boolean, lastError: String?,
     }
     LockLayout(
         level = level,
+        paneTitle = stringResource(R.string.lock_locked_description),
         message = {
             val lockedDescription = stringResource(R.string.lock_locked_description)
             AnimatedContent(lastError, transitionSpec = { fadeIn() togetherWith fadeOut() }, label = "lock message") { error ->
@@ -138,9 +141,11 @@ fun PrivacyCover() {
  * launcher's.
  */
 @Composable
-private fun LockLayout(level: Float, message: @Composable () -> Unit, controls: @Composable () -> Unit) {
+private fun LockLayout(level: Float, paneTitle: String? = null, message: @Composable () -> Unit, controls: @Composable () -> Unit) {
     val largeText = LocalDensity.current.fontScale >= 1.5f
-    Box(Modifier.fillMaxSize().background(LocalOvenColors.current.ovenInterior)) {
+    // As a pane, TalkBack announces the lock as it appears, which its message's live region can't.
+    val pane = paneTitle?.let { title -> Modifier.semantics { this.paneTitle = title } } ?: Modifier
+    Box(Modifier.fillMaxSize().background(LocalOvenColors.current.ovenInterior).then(pane)) {
         LampLight(level)
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val top = maxHeight * (if (largeText) 0.06f else 0.16f)
