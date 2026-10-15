@@ -192,7 +192,9 @@ pattern that fits (ask when unclear):
   through Ovenlight. Still guard the port (below). To keep some screens owner-only after
   sharing (settings, delete everything), check `Ovenlight-Role` is `owner` on the server.
 - **Shared family data** (a shopping list, a chore chart). Everyone sees the same data.
-  Store `Ovenlight-User` beside each change to show who added it.
+  Store `Ovenlight-User` beside each change to show who added it. Ovenlight keeps pages
+  alive across app switches, so refresh on `visibilitychange`, or stream changes with
+  server-sent events or WebSockets, which pass through the connector.
 - **Each person's own data** (a journal, a workout log). Key every row by
   `Ovenlight-User-Id`. Never take a user ID from the page, a cookie or a query string.
 
