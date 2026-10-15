@@ -40,8 +40,4 @@
     <string name="launcher_remove_message">This removes the app from Ovenlight and deletes everything it stored on this phone.</string>
     <string name="launcher_leave">Leave</string>
 
-    <string name="launcher_no_email_title">No email app</string>
-    <string name="launcher_no_email_message">Write to %1$s.</string>
-    <string name="launcher_copy_address">Copy address</string>
-    <string name="launcher_ok">OK</string>
 </resources>

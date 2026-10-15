@@ -1,14 +1,18 @@
 package com.snowyghost.ovenlight
 
+import android.content.ActivityNotFoundException
 import android.content.ClipData
+import android.content.Context
 import android.content.Intent
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.core.net.toUri
 import java.io.IOException
@@ -21,6 +25,9 @@ object AppLinks {
     const val supportEmail = "team@snowyghost.com"
     val privacyPolicy = URI("https://ovenlight.app/privacy")
     val tailscalePricing = URI("https://tailscale.com/pricing")
+
+    /** How to publish apps from your own computers. */
+    const val ownComputersHelp = "https://ovenlight.app/support#own-computer"
 }
 
 /** A message to the team, opened in the person's mail app for them to finish and send. */
@@ -86,10 +93,19 @@ fun MailDraft.intent(): Intent = Intent(Intent.ACTION_SENDTO, (mailtoURL?.toStri
     .putExtra(Intent.EXTRA_SUBJECT, subject)
     .putExtra(Intent.EXTRA_TEXT, body)
 
+/** Opens the draft in the person's mail app; false when the phone has none. */
+fun MailDraft.send(context: Context): Boolean = try {
+    context.startActivity(intent())
+    true
+} catch (_: ActivityNotFoundException) {
+    false
+}
+
 /** For a phone with no email app: where to write instead, with the address to copy. */
 @Composable
 fun NoEmailAppDialog(onDismiss: () -> Unit) {
     val clipboard = LocalClipboard.current
+    val haptics = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -101,6 +117,7 @@ fun NoEmailAppDialog(onDismiss: () -> Unit) {
                 // Closes once copied: closing first would cancel the copy with the dialog's scope.
                 scope.launch {
                     clipboard.setClipEntry(ClipEntry(ClipData.newPlainText(AppLinks.supportEmail, AppLinks.supportEmail)))
+                    haptics.performHapticFeedback(HapticFeedbackType.Confirm)
                     onDismiss()
                 }
             }) { Text(stringResource(R.string.mail_copy_address)) }

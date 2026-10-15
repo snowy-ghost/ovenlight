@@ -166,7 +166,7 @@ fun SettingsView(model: AppModel, onClose: () -> Unit) {
             model.scope.launch { nodes.disableOwner() }
             onClose()
         },
-        contactUs = { context.open(MailDraft.contactUs(version).intent()) },
+        contactUs = { MailDraft.contactUs(version).send(context) },
         privacyPolicy = { openPrivacyPolicy(context) },
         notices = { withContext(Dispatchers.IO) { Acknowledgements.notices { context.assets.open(it) } } },
     )

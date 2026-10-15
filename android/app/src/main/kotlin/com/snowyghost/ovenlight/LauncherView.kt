@@ -1,10 +1,6 @@
 package com.snowyghost.ovenlight
 
-import android.content.ActivityNotFoundException
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
-import android.content.Intent
 import android.graphics.Bitmap
 import android.os.Build
 import androidx.compose.foundation.background
@@ -79,7 +75,6 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
-import androidx.core.net.toUri
 import androidx.webkit.WebViewCompat
 import java.net.URI
 import java.util.UUID
@@ -174,7 +169,7 @@ fun LauncherView(model: AppModel) {
             remove = { scope.launch { registry.remove(it) } },
             leave = { scope.launch { model.guests.leave(it) } },
             problemReport = { app -> problemReport(context, nodes, app) },
-            openLink = { openInBrowser(context, it) },
+            openLink = { CustomTabs.open(context, URI(it)) },
         ),
     )
 }
@@ -192,32 +187,6 @@ private fun problemReport(context: Context, nodes: NodeManager, app: WebApp): Ma
     webView = WebViewCompat.getCurrentWebViewPackage(context)?.versionName ?: "unknown",
     model = "${Build.MANUFACTURER} ${Build.MODEL}",
 )
-
-/** The page in the person's browser. Custom Tabs aren't a dependency yet, so a plain view intent. */
-private fun openInBrowser(context: Context, url: String) {
-    try {
-        context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
-    } catch (_: ActivityNotFoundException) {
-    }
-}
-
-/**
- * The draft in the person's mail app, with the fields in the link and in the extras, since mail
- * apps read one or the other. False when no app takes it.
- */
-private fun sendMail(context: Context, draft: MailDraft): Boolean {
-    val url = draft.mailtoURL ?: return false
-    val intent = Intent(Intent.ACTION_SENDTO, url.toString().toUri())
-        .putExtra(Intent.EXTRA_EMAIL, arrayOf(draft.to))
-        .putExtra(Intent.EXTRA_SUBJECT, draft.subject)
-        .putExtra(Intent.EXTRA_TEXT, draft.body)
-    return try {
-        context.startActivity(intent)
-        true
-    } catch (_: ActivityNotFoundException) {
-        false
-    }
-}
 
 /**
  * The home screen of apps: the oven's interior with its light on, the lock and the menu on top,
@@ -262,7 +231,7 @@ fun LauncherView(state: LauncherState) {
                             app, close,
                             rename = { renaming = app },
                             refreshIcon = { state.refreshIcon(app.id) },
-                            reportProblem = { state.problemReport(app)?.let { if (!sendMail(context, it)) noMailApp = true } },
+                            reportProblem = { state.problemReport(app)?.let { if (!it.send(context)) noMailApp = true } },
                             leave = { leaving = state.memberships.firstOrNull { it.id == app.membershipID } },
                             clearData = { clearing = app },
                             remove = { removing = app },
@@ -296,21 +265,7 @@ fun LauncherView(state: LauncherState) {
             confirm = stringResource(R.string.launcher_leave), onDismiss = { leaving = null },
         ) { state.leave(membership.id) }
     }
-    if (noMailApp) {
-        AlertDialog(
-            onDismissRequest = { noMailApp = false },
-            title = { Text(stringResource(R.string.launcher_no_email_title)) },
-            text = { Text(stringResource(R.string.launcher_no_email_message, AppLinks.supportEmail)) },
-            confirmButton = { TextButton(onClick = { noMailApp = false }) { Text(stringResource(R.string.launcher_ok)) } },
-            dismissButton = {
-                TextButton(onClick = {
-                    context.getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText(AppLinks.supportEmail, AppLinks.supportEmail))
-                    haptics.performHapticFeedback(HapticFeedbackType.Confirm)
-                    noMailApp = false
-                }) { Text(stringResource(R.string.launcher_copy_address)) }
-            },
-        )
-    }
+    if (noMailApp) NoEmailAppDialog(onDismiss = { noMailApp = false })
 }
 
 /** The text in the top row and the pill stops growing at 1.3 times, so the row keeps its height. */

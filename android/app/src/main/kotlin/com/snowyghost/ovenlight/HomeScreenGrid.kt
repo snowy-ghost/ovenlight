@@ -203,7 +203,6 @@ object HomeReorder {
 }
 
 /** Where the owner's empty grid sends them to learn about the connector. */
-const val CONNECTOR_SUPPORT_URL = "https://ovenlight.app/support#own-computer"
 
 /**
  * An icon being moved: where the finger is, where on the tile it took hold (from the tile's
@@ -633,7 +632,7 @@ private fun EmptyGridFooter(openLink: (String) -> Unit, modifier: Modifier = Mod
             val start = text.indexOf(link)
             if (start >= 0) {
                 addLink(
-                    LinkAnnotation.Url(CONNECTOR_SUPPORT_URL, TextLinkStyles(SpanStyle(color = primary))) { openLink(CONNECTOR_SUPPORT_URL) },
+                    LinkAnnotation.Url(AppLinks.ownComputersHelp, TextLinkStyles(SpanStyle(color = primary))) { openLink(AppLinks.ownComputersHelp) },
                     start, start + link.length,
                 )
             }

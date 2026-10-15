@@ -158,7 +158,7 @@ class LauncherViewTests {
         composeRule.onNodeWithText("Add app").performClick()
         assertEquals(listOf<RootSheet>(RootSheet.AddApp), presented)
         composeRule.onNodeWithText("Apps you publish with the Ovenlight connector on your computers show up here.").assertIsDisplayed().performFirstLinkClick()
-        assertEquals(listOf(CONNECTOR_SUPPORT_URL), links)
+        assertEquals(listOf(AppLinks.ownComputersHelp), links)
     }
 
     @Test
