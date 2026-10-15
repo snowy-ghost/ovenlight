@@ -8,7 +8,8 @@ version.
 
 ## What the computer needs
 
-The computer must stay on and awake while anyone uses your apps, and be one of these:
+The computer must stay on and awake while anyone uses your apps, so a laptop must stay
+open: closing its lid puts it to sleep. It must be one of these:
 
 - **A Mac with macOS 13 or later**, logged in to its desktop; `ovenlight doctor` checks
   that it won't sleep. The connector is a launchd agent, which runs only in a logged-in
@@ -154,10 +155,11 @@ replacing the one before. What bypasses the log, such as a crash, goes to
 `ovenlight.stderr.log` beside the log on macOS and Windows, and to the user journal on
 Linux (`journalctl --user -u ovenlight`).
 
-On macOS and Linux, when `~/.local/bin` is on your `PATH`, `install.sh` links `ovenlight`
-there; otherwise it prints the full path to use and the `export PATH` line to add. It
-never replaces a file it didn't make. On Windows, `install.ps1` adds the bin folder to
-your `PATH`, for PowerShell windows opened after it.
+On macOS and Linux, `install.sh` links `ovenlight` in `~/.local/bin`, but never replaces a
+file it didn't make. When `~/.local/bin` isn't on your `PATH`, it prints the
+`export PATH` line to add to your shell profile, and `ovenlight` works in terminal
+windows opened after you add it. On Windows, `install.ps1` adds the bin folder to your
+`PATH`, for PowerShell windows opened after it.
 
 ### Start and stop
 
