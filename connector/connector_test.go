@@ -878,6 +878,50 @@ func TestNodeCloseClosesItsLog(t *testing.T) {
 	}
 }
 
+// Replacing an app's node (making it shareable, or unpublishing a shareable app) keeps
+// tsnet's certs folder, so the next node with the name serves its certificate rather
+// than asking Let's Encrypt for another; a node without one leaves nothing behind.
+func TestClearNodeStateKeepsCertificates(t *testing.T) {
+	state := t.TempDir()
+	dir := nodeDir(state, "coach")
+	for name, data := range map[string]string{
+		"tailscaled.state": "{}", "backend.log": "x",
+		"certs/coach.tail1.ts.net.crt": "cert", "certs/coach.tail1.ts.net.key": "key", "certs/acme-account.key.pem": "account",
+	} {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, name)), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(data), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := clearNodeState(dir); err != nil {
+		t.Fatal(err)
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) != 1 || entries[0].Name() != "certs" {
+		t.Errorf("left %v, want only certs", entries)
+	}
+	if certs, _ := os.ReadDir(filepath.Join(dir, "certs")); len(certs) != 3 {
+		t.Errorf("certs left: %v", certs)
+	}
+	if nodeLoggedIn(state, "coach") {
+		t.Error("the node still looks logged in")
+	}
+
+	if err := os.RemoveAll(filepath.Join(dir, "certs")); err != nil {
+		t.Fatal(err)
+	}
+	if err := clearNodeState(dir); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(dir); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("a node without certificates left its folder: %v", err)
+	}
+	if err := clearNodeState(dir); err != nil {
+		t.Errorf("clearing it again: %v", err)
+	}
+}
+
 func TestNodeLoggedIn(t *testing.T) {
 	state := t.TempDir()
 	write := func(slug string, keys map[string][]byte) {

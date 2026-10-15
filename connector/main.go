@@ -832,7 +832,7 @@ func forgetAppNode(p *paths, slug string) string {
 		return fmt.Sprintf("Its node stays in your tailnet, offline, as Ovenlight couldn't delete it (%v): delete it in the Tailscale admin console (Machines), "+
 			"since no other app can be made shareable while it's there.", err)
 	}
-	if err := os.RemoveAll(nodeDir(p.state, slug)); err != nil {
+	if err := clearNodeState(nodeDir(p.state, slug)); err != nil {
 		return fmt.Sprintf("Its node is deleted from your tailnet, but not its state here (%v): delete %s before publishing it again.", err, nodeDir(p.state, slug))
 	}
 	return "Its node is deleted from your tailnet; publishing it again logs in a new one."

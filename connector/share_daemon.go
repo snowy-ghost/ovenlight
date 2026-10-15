@@ -9,7 +9,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"os"
 	"slices"
 	"strings"
 	"time"
@@ -707,7 +706,7 @@ func (d *daemon) makeShareable(slug string) (string, error) {
 	d.mu.Unlock()
 	n.close()
 	n.dropUnusedKey() // an untagged first-login key it never used
-	if err := os.RemoveAll(n.dir); err != nil {
+	if err := clearNodeState(n.dir); err != nil {
 		return "", err
 	}
 	nn := newAppNode(app, d.stateDir, d.dev, d)

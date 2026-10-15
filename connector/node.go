@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log"
 	"net"
 	"net/http"
@@ -98,6 +99,28 @@ type appNode struct {
 
 // nodeDir is where an app's node keeps its tailnet state.
 func nodeDir(stateDir, slug string) string { return filepath.Join(stateDir, "nodes", slug) }
+
+// clearNodeState deletes a node's state but keeps its certs folder, where tsnet keeps the
+// certificate for the app's name and the ACME account key that renews it. The node that
+// logs in next under the same name serves that certificate rather than asking for one:
+// Let's Encrypt issues only 5 a week for one name.
+func clearNodeState(dir string) error {
+	if _, err := os.Stat(filepath.Join(dir, "certs")); errors.Is(err, fs.ErrNotExist) {
+		return os.RemoveAll(dir)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if e.Name() != "certs" {
+			if err := os.RemoveAll(filepath.Join(dir, e.Name())); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
 
 // nodeLoggedIn reports whether the app's node has logged in: its state holds a login
 // profile, which tsnet saves once the node has one, not before.

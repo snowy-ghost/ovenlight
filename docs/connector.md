@@ -367,8 +367,8 @@ off, a screenshot of the page. `ovenlight feedback` lists what arrives, and so d
 & Sharing in Ovenlight; [security.md](security.md#feedback) has the limits.
 
 Unpublishing a shareable app removes its guests, cancels its open invites, deletes its
-node from the tailnet (so publishing it again logs in a new one) and offers to take its
-tags and guest rule out of your policy. When any of that fails or has to wait, `unpublish`
+node from the tailnet (so publishing it again logs in a new one, which keeps its HTTPS
+certificate) and offers to take its tags and guest rule out of your policy. When any of that fails or has to wait, `unpublish`
 says what's left and what to run, and [security.md](security.md#later-changes) has the
 details.
 
