@@ -1,0 +1,158 @@
+package com.snowyghost.ovenlight
+
+import java.io.File
+import java.net.URI
+import java.nio.file.Files
+import java.util.UUID
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+/** A registry with no network, no web views and no icons, as the iOS tests make one. */
+internal fun offlineRegistry(dir: File) = AppRegistry(
+    directory = dir,
+    session = { null },
+    webData = object : AppRegistry.WebData {
+        override fun discard(app: UUID) {}
+        override suspend fun clear(store: UUID) {}
+        override fun delete(store: UUID) = true
+        override suspend fun stores() = emptyList<UUID>()
+    },
+    iconPNG = { null },
+    scope = CoroutineScope(Dispatchers.Unconfined),
+)
+
+/** Runs [test] in a new temporary directory, deleted after. */
+internal fun <T> inTemporaryDirectory(test: (File) -> T): T {
+    val dir = Files.createTempDirectory("ovenlight").toFile()
+    try {
+        return test(dir)
+    } finally {
+        dir.deleteRecursively()
+    }
+}
+
+class AppRegistryTests {
+    private fun makeRegistry(dir: File) = offlineRegistry(dir)
+
+    @Test
+    fun testStartsEmptyAndPersistsChanges() = inTemporaryDirectory { dir ->
+        val first = makeRegistry(dir)
+        assertEquals(emptyList<WebApp>(), first.apps)
+        val app = first.add(URI("https://notes.example.com/"))
+        first.rename(app.id, "Notes")
+
+        val second = makeRegistry(dir)
+        assertEquals(listOf("Notes"), second.apps.map { it.name })
+        assertEquals(app.dataStoreID, second.apps[0].dataStoreID)
+    }
+
+    @Test
+    fun testDiscoveredAppsPersistAndRemovedOnesStayRemoved() = inTemporaryDirectory { dir ->
+        runTest {
+            val coach = DiscoveredApp(
+                "interview-coach.tailabc123.ts.net",
+                OvenlightManifest(name = "Interview Coach", icon = "/icon-512.png", version = 1),
+            )
+
+            val registry = makeRegistry(dir)
+            registry.mergeDiscovered(listOf(coach))
+            assertEquals(listOf("Interview Coach"), registry.apps.map { it.name })
+            assertTrue(registry.apps[0].discovered)
+            registry.remove(registry.apps[0].id)
+            registry.mergeDiscovered(listOf(coach))
+            assertEquals(emptyList<WebApp>(), registry.apps)
+
+            val reopened = makeRegistry(dir)
+            reopened.mergeDiscovered(listOf(coach))
+            assertEquals("a removed app must not come back after relaunch", emptyList<WebApp>(), reopened.apps)
+            reopened.add(URI("https://interview-coach.tailabc123.ts.net/"))
+            assertEquals("adding it by hand brings it back", 1, reopened.apps.size)
+        }
+    }
+
+    @Test
+    fun testRemovedHostsAreSavedEvenWhenTheAppsCantBe() = inTemporaryDirectory { dir ->
+        runTest {
+            val registry = makeRegistry(dir)
+            val app = registry.add(URI("https://notes.tailabc123.ts.net/"))
+            val file = File(dir, "apps.json")
+            assertTrue(file.delete())
+            assertTrue(file.mkdir()) // nothing can be written there
+
+            registry.remove(app.id)
+            val dismissed = ovenlightJSON.decodeFromString<List<String>>(File(dir, "dismissed-hosts.json").readText())
+            assertEquals(listOf("notes.tailabc123.ts.net"), dismissed)
+        }
+    }
+
+    @Test
+    fun testAMissingFileIsEmptyAndSaves() = inTemporaryDirectory { dir ->
+        val registry = makeRegistry(dir)
+        assertFalse(registry.loadFailed)
+        registry.add(URI("https://notes.example.com/"))
+        assertTrue(File(dir, "apps.json").exists())
+        val unknown = UUID.randomUUID()
+        assertEquals(listOf(unknown), registry.unusedDataStores(listOf(registry.apps[0].dataStoreID, unknown)))
+    }
+
+    @Test
+    fun testAnUnreadableFileIsNeverSavedOverOrSwept() = inTemporaryDirectory { dir ->
+        val file = File(dir, "apps.json")
+        val corrupt = "{\"truncated".toByteArray()
+        file.writeBytes(corrupt)
+
+        val registry = makeRegistry(dir)
+        assertTrue(registry.loadFailed)
+        assertEquals("every store would look unused", emptyList<UUID>(), registry.unusedDataStores(listOf(UUID.randomUUID())))
+        registry.add(URI("https://notes.example.com/"))
+        assertArrayEquals("nothing is saved over the file", corrupt, file.readBytes())
+
+        // Once the file reads, the reload replaces the guesswork.
+        inTemporaryDirectory { other ->
+            val saved = makeRegistry(other)
+            saved.add(URI("https://coach.example.com/"))
+            file.writeText(ovenlightJSON.encodeToString(ListSerializer(WebApp.serializer()), saved.apps))
+            registry.reloadIfFailed()
+            assertFalse(registry.loadFailed)
+            assertEquals(saved.apps, registry.apps)
+        }
+    }
+
+    @Test
+    fun testDecodesEachAppOnItsOwnAndFillsInWhatsMissing() = inTemporaryDirectory { dir ->
+        val json = """
+        [{"id": "${UUID.randomUUID()}", "startURL": "https://coach.tailabc123.ts.net/", "dataStoreID": "${UUID.randomUUID()}",
+          "name": "Coach", "themeColorHex": 7, "futureField": {"a": 1}},
+         {"name": "No ID", "startURL": "https://broken.example.com/"},
+         "not an app"]
+        """
+        File(dir, "apps.json").writeText(json)
+        val registry = makeRegistry(dir)
+        assertFalse(registry.loadFailed)
+        assertEquals(listOf("Coach"), registry.apps.map { it.name })
+        assertEquals(null, registry.apps[0].themeColorHex)
+        assertFalse(registry.apps[0].discovered || registry.apps[0].isNew)
+
+        // What it couldn't read may be another build's app, with a data store of its own.
+        assertFalse(registry.readInFull)
+        assertEquals("no store is swept", emptyList<UUID>(), registry.unusedDataStores(listOf(UUID.randomUUID())))
+        registry.add(URI("https://notes.example.com/"))
+        val saved = ovenlightJSON.parseToJsonElement(File(dir, "apps.json").readText()) as JsonArray
+        assertEquals("the two it read, then the two it didn't, as they were", 4, saved.size)
+        assertEquals("No ID", ((saved[2] as? JsonObject)?.get("name") as? JsonPrimitive)?.content)
+        assertEquals(JsonPrimitive("not an app"), saved[3])
+        val reopened = makeRegistry(dir)
+        assertEquals(listOf("Coach", "notes.example.com"), reopened.apps.map { it.name })
+        assertFalse(reopened.readInFull)
+    }
+}

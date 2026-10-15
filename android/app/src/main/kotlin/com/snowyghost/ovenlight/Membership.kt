@@ -258,10 +258,18 @@ object SavedJSON {
     }
 
     /** Replaces the file in one step, so a reader sees the old list or the new one, never part of one. */
-    fun write(text: String, file: File) {
+    fun write(text: String, file: File) = write(text.toByteArray(), file)
+
+    /** [write], for bytes. */
+    fun write(bytes: ByteArray, file: File) {
         val temporary = File(file.parentFile, ".${file.name}.tmp")
-        temporary.writeText(text)
-        Files.move(temporary.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+        temporary.writeBytes(bytes)
+        try {
+            Files.move(temporary.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+        } catch (e: Exception) {
+            temporary.delete()
+            throw e
+        }
     }
 }
 

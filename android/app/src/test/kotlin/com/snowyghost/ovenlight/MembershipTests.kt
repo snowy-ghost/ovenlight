@@ -3,6 +3,7 @@ package com.snowyghost.ovenlight
 import java.net.URI
 import java.nio.file.Files
 import java.time.Instant
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -66,5 +67,44 @@ class MembershipTests {
         val again = ovenlightJSON.decodeFromString(WebApp.serializer(), ovenlightJSON.encodeToString(WebApp.serializer(), shared))
         assertEquals("Riley", again.sharedBy)
         assertTrue(again.isShared && again.hasConnector)
+    }
+
+    @Test
+    fun testSharedAppsAreAddedOnceAndNeverMergedWithOwnApps() = inTemporaryDirectory { dir ->
+        runTest {
+            val registry = offlineRegistry(dir)
+            val first = registry.addShared(
+                name = "Echo Board", host = "Echo-Board.taildef456.ts.net.", slug = "echo-board", membershipID = "m1", sharedBy = "Riley",
+            )
+            val again = registry.addShared(
+                name = "Echo Board", host = "echo-board.taildef456.ts.net", slug = "echo-board", membershipID = "m1", sharedBy = "Riley",
+            )
+            assertEquals(first.id, again.id)
+            assertEquals("https://echo-board.taildef456.ts.net/", first.startURL.toString())
+            val found = DiscoveredApp("echo-board.taildef456.ts.net", OvenlightManifest(name = "Mine", version = 1))
+            registry.mergeDiscovered(listOf(found))
+            assertEquals("discovery never adopts a shared app's tile", 2, registry.apps.size)
+            assertEquals("Echo Board", registry.apps.firstOrNull { it.isShared }?.name)
+
+            registry.remove(first.id)
+            registry.mergeDiscovered(emptyList())
+            assertEquals(
+                "removing a shared app doesn't dismiss its host",
+                "Echo Board",
+                registry.addShared(
+                    name = "Echo Board", host = "echo-board.taildef456.ts.net", slug = "echo-board", membershipID = "m1", sharedBy = "Riley",
+                ).name,
+            )
+        }
+    }
+
+    @Test
+    fun testEachClaimGivesTheOwnersAppsTheirCurrentName() = inTemporaryDirectory { dir ->
+        val registry = offlineRegistry(dir)
+        registry.addShared(name = "Echo Board", host = "echo-board.taildef456.ts.net", slug = "echo-board", membershipID = "m1", sharedBy = "Riley")
+        registry.addShared(name = "Notes", host = "notes.tail0000.ts.net", slug = "notes", membershipID = "m2", sharedBy = "Kim")
+        registry.addShared(name = "Notes", host = "notes.taildef456.ts.net", slug = "notes", membershipID = "m1", sharedBy = "Riley Q")
+        assertEquals("every app of that owner, no one else's", listOf("Riley Q", "Kim", "Riley Q"), registry.apps.map { it.sharedBy })
+        assertEquals(listOf("Riley Q", "Kim", "Riley Q"), offlineRegistry(dir).apps.map { it.sharedBy })
     }
 }

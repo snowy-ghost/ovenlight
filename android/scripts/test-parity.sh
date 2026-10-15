@@ -17,6 +17,7 @@ testOnlyAShownSheetTakesItsFiles         # iOS presentation only, as above
 testPagesStillSeeMobileSafari            # pending, Phase 4: needs a WebView (instrumented)
 testShrinksLargeScreenshotsUnderTheLimit # pending, Phase 4: Android's Bitmap, with the snapshot
 testScreenshotsAreDecodedSmall           # pending, Phase 6: Android's Bitmap, with the feedback inbox
+testIconsAreDecodedSmall                 # pending: decoding an icon small is BitmapFactory's, in an Android harness
 EOF
 }
 
