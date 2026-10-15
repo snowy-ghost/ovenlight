@@ -297,13 +297,13 @@ clear.
 
 **Ovenlight's chrome.** The only thing Ovenlight draws over the app is a small pill at the
 top center, just below the status bar, with the way home and the app's menu (Reload and
-Send Feedback among them). It shows while the app opens, then tucks up under the status
-bar, leaving a small handle just below it. Scrolling up, pulling down at the top, or
-tapping the handle brings it back. So:
+Send Feedback among them). Apps open with it tucked up under the status bar, leaving a
+small handle just below it, so the page has the whole screen. The first time, the pill shows
+with a one-time tip about the handle until the tip is closed. Scrolling up, pulling down at the
+top, or tapping the handle brings it back. So:
 
 - Put no controls in the strip at the top center just below the status bar, where the
-  handle lives (120 by 20 points), and none needed the moment the app opens anywhere
-  under the pill, which sits there until it tucks away.
+  handle lives (120 by 20 points).
 - Let the page itself scroll, not a full-height inner container
   (`height: 100vh; overflow: auto`): Ovenlight watches the page's scrolling, so inside
   such a container scrolling up and pulling down don't bring the menu back, and only the

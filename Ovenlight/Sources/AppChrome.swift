@@ -21,10 +21,11 @@ struct AppChromeActions {
 }
 
 /// The open app's only native chrome: a small glass capsule at the top with the way home
-/// and the app's menu. It shows while the app opens, then tucks up under the status bar,
-/// leaving a small handle just below it. Tapping the handle, scrolling up, or pulling
-/// down at the top of the page brings it back; scrolling down or touching the page hides it
-/// again. With VoiceOver on it stays put.
+/// and the app's menu. An app opens with it tucked up under the status bar, leaving a small
+/// handle just below it, so the page has the whole screen. While its one-time tip about
+/// the handle is due, it shows with the tip until the tip is closed. Tapping the handle,
+/// scrolling up, or pulling down at the top of the page brings it back; scrolling down or
+/// touching the page hides it again. With VoiceOver on it stays put.
 struct AppChrome: View {
     let app: WebApp
     let icon: UIImage?
@@ -34,7 +35,8 @@ struct AppChrome: View {
 
     @Environment(\.accessibilityVoiceOverEnabled) private var voiceOver
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var isShown = true
+    /// Tucked away from the start. Only its tip brings it out on its own (see the tip's task).
+    @State private var isShown = false
     /// Hide on its own after the app loads, until the user takes charge of the chrome.
     @State private var autoHides = true
     @State private var tipShowing = false
@@ -74,7 +76,13 @@ struct AppChrome: View {
         }
         .task {
             for await status in tip.statusUpdates {
-                if case .available = status { tipShowing = true } else { tipShowing = false }
+                if case .available = status {
+                    tipShowing = true
+                    // While the tip is due, the chrome shows, so the tip can point at it.
+                    if !isShown { withAnimation(.spring(duration: 0.35, bounce: 0.2)) { isShown = true } }
+                } else {
+                    tipShowing = false
+                }
             }
         }
     }

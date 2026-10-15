@@ -253,7 +253,9 @@ Sign Ovenlight in to the first with `-authKey`, and open the second owner's invi
   running (a 502 with the code `unavailable`), the first page is tried a few more times,
   then Ovenlight says the app isn't responding rather than showing the connector's text.
 - **The open app** has one piece of native chrome: a small capsule at the top with the
-  way home and the app's menu, which tucks up under the status bar. Tapping its handle,
+  way home and the app's menu. It starts tucked up under the status bar (the first time, it
+  shows with a one-time tip about the handle until the tip is closed). Before the app has
+  loaded, its sign-in, approval and error screens each have Back to Apps. Tapping its handle,
   scrolling up or pulling down at the top of the page brings it back. Tapping the status
   bar scrolls the page to the top, as iOS does, and leaves the chrome alone.
 - **Lock.** What locking holds back is in [security.md](security.md#on-the-iphone);

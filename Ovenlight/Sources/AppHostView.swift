@@ -79,6 +79,8 @@ private struct AppPage: View {
                         }
                     } retry: {
                         Task { await appNode.restart() }
+                    } close: {
+                        onClose()
                     }
                     .zIndex(1)
                 } else if coordinator.gate == .unreachable {
@@ -230,6 +232,8 @@ struct NodeActionOverlay: View {
     let action: Action
     let connect: () -> Void
     let retry: () -> Void
+    /// The way home while the app hasn't loaded and its bar is tucked away.
+    let close: () -> Void
 
     static func action(for state: NodeState, app: WebApp, ownerEnabled: Bool) -> Action? {
         if app.isShared {
@@ -265,6 +269,7 @@ struct NodeActionOverlay: View {
                     .multilineTextAlignment(.center)
                 Button("Try Again", action: retry).buttonStyle(.borderedProminent)
             }
+            Button("Back to Apps", action: close)
         }
         .padding(28)
         .ovenlightGlass(in: RoundedRectangle(cornerRadius: 24, style: .continuous))
