@@ -5,9 +5,12 @@
 # connector runs from this run's folder with its own HOME, config and state, logs in only to
 # the local Headscale, and stops by its recorded pid.
 #
-#   android/e2e/e2e.sh [gates]
+#   android/e2e/e2e.sh [gates | owner | signin [seconds]] [avd]
 #
-# gates runs Phase 1's checks G2 to G5 through the debug lab and writes what it saw to
+# gates runs Phase 1's checks G2 to G5 through the debug lab. owner signs the owner's node in
+# with a preauth key and waits for the launcher to show both test apps. signin goes through
+# the launcher's Connect card and the sign-in page in a Custom Tab, approves the phone after
+# [seconds] (default 30), and checks that it ends connected. Each writes what it saw to
 # android/e2e/out/: gates.txt, logs and screenshots.
 #
 # Needs Headscale v0.29.4 (docs/development.md#local-headscale) and the fixed AVD set
@@ -18,11 +21,14 @@
 set -Eeuo pipefail
 
 SCENARIO=${1:-gates}
+SIGNIN_WAIT=30
+[[ $SCENARIO == signin && ${2:-} =~ ^[0-9]+$ ]] && { SIGNIN_WAIT=$2; shift; }
+AVD_ARG=${2:-}
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
 OUT=$HERE/out
 HS=$(go env GOPATH)/bin/headscale
-AVD=Ovenlight_API36
+AVD=${AVD_ARG:-Ovenlight_API36}
 PKG=com.snowyghost.ovenlight
 BASE=e2e.ts.net
 CA=${ANDROID_HOME:?set ANDROID_HOME}/../test-ca
@@ -87,7 +93,7 @@ until_ok() {
 }
 
 [[ -x $HS ]] || fail "no headscale at $HS"
-[[ $SCENARIO == gates ]] || fail "unknown scenario $SCENARIO"
+[[ $SCENARIO =~ ^(gates|owner|signin)$ ]] || fail "unknown scenario $SCENARIO"
 
 say "the test CA in $CA, made once, and a *.$BASE certificate for this run"
 if [[ ! -f $CA/ca.pem ]]; then
@@ -243,6 +249,82 @@ evaljs() {
   lab "eval --es labJs 'window.labResult || document.title'"
   await 10 '^eval ' | sed -e 's/^eval [^:]*: //' -e 's/\\"/"/g' || true
 }
+
+# The screen's text and content descriptions, one per line.
+screen_text() { a exec-out uiautomator dump /dev/tty 2>/dev/null | tr '>' '\n' | LC_ALL=C sed -n -E 's/.*(text|content-desc)="([^"]+)".*/\2/p'; }
+# Taps the first element whose text or description is exactly $1.
+tap_text() {
+  local spot
+  spot=$(a exec-out uiautomator dump /dev/tty 2>/dev/null | tr '>' '\n' | python3 -c '
+import re, sys
+want = sys.argv[1]
+for line in sys.stdin:
+    if re.search(r"(text|content-desc)=\"%s\"" % re.escape(want), line):
+        m = re.search(r"bounds=\"\[(\d+),(\d+)\]\[(\d+),(\d+)\]\"", line)
+        if m:
+            x1, y1, x2, y2 = map(int, m.groups()); print((x1 + x2) // 2, (y1 + y2) // 2); break
+' "$1")
+  [[ -n $spot ]] || return 1
+  a shell input tap $spot
+}
+# Waits up to $1 seconds until every one of the other arguments is on screen.
+await_text() {
+  local seconds=$1; shift
+  for i in $(seq 1 $seconds); do
+    local seen=$(screen_text) missing=0
+    # Back after the lock's delay: answer its prompt with fingerprint 1.
+    if grep -qxE 'Unlock Ovenlight|Ovenlight is locked' <<<"$seen"; then a emu finger touch 1 >/dev/null; sleep 1; continue; fi
+    for want in "$@"; do grep -qxF -- "$want" <<<"$seen" || missing=1; done
+    (( missing == 0 )) && return 0
+    sleep 1
+  done
+  return 1
+}
+
+if [[ $SCENARIO == owner ]]; then
+  say "owner: the owner's node signs in with a preauth key"
+  a shell "am start -W -n $PKG/.MainActivity --es controlURL $CTRL --es authKey $KEY" >/dev/null
+  await_text 90 Recipes Pantry || { shot owner-failed; fail "the launcher never showed both apps: $(screen_text | tr '\n' '|')"; }
+  shot owner-launcher
+  note "the launcher shows Recipes and Pantry"
+  say "PASSED"
+  exit 0
+fi
+
+if [[ $SCENARIO == signin ]]; then
+  say "signin: Use my own computers, then Connect, then the sign-in page in a Custom Tab"
+  a shell "am start -W -n $PKG/.MainActivity --es controlURL $CTRL" >/dev/null
+  await_text 30 "Use my own computers" || fail "no welcome: $(screen_text | tr '\n' '|')"
+  tap_text "Use my own computers"
+  await_text 60 Connect || fail "no Connect card: $(screen_text | tr '\n' '|')"
+  shot signin-card
+  tap_text Connect
+  # Headscale's registration page, in the Custom Tab: its address names the registration.
+  reg=
+  for i in $(seq 1 30); do
+    reg=$(a shell dumpsys activity activities | LC_ALL=C grep -o -E "127\.0\.0\.1:$HSPORT/register/[A-Za-z0-9_-]+" | head -1 | sed 's|.*/register/||' || true)
+    [[ -n $reg ]] && break
+    sleep 1
+  done
+  [[ -n $reg ]] || { shot signin-failed; fail "no sign-in page opened"; }
+  shot signin-tab
+  note "the sign-in page opened in a Custom Tab; approving in $SIGNIN_WAIT s"
+  sleep $SIGNIN_WAIT
+  $HS -c $D/headscale.yaml nodes register --user owner --key "$reg" >/dev/null || fail "headscale couldn't register the phone"
+  # Ovenlight comes back over the tab once the node connects, if Android lets it learn that
+  # while away; otherwise closing the tab brings it back to check.
+  if await_text 20 Recipes Pantry; then
+    note "Ovenlight came back over the tab by itself"
+  else
+    note "still behind the tab after 20 s; closing it"
+    a shell input keyevent KEYCODE_BACK
+    await_text 40 Recipes Pantry || { shot signin-failed; fail "not connected after closing the tab: $(screen_text | tr '\n' '|')"; }
+    note "connected after the tab closed"
+  fi
+  shot signin-connected
+  say "PASSED"
+  exit 0
+fi
 
 # ---- G2, the node -------------------------------------------------------------------------
 say "G2: a node joins the local Headscale with a preauth key"
