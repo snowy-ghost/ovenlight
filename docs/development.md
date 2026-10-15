@@ -245,7 +245,8 @@ Sign Ovenlight in to the first with `-authKey`, and open the second owner's invi
 - **Opening an app** shows its icon and "Connecting…" at once, but the page loads only
   after the node is ready and the app's host answers a probe through the current proxy
   (`AppLoadGate`). After about 10 seconds the app shows "Can't Reach \<App>" with Try
-  Again. When the network lists the app's computer as offline, it shows that at once,
+  Again. When the network lists the app's computer as offline (believed by a guest's node
+  only once its network has listed a peer online), it shows that at once,
   keeps trying quietly while it's on screen, and opens as soon as the computer answers.
   Launcher tiles dim with a badge while their machine isn't answering, or is listed
   offline, which is never probed. When the connector answers but the app itself isn't

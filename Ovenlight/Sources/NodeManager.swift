@@ -438,6 +438,7 @@ final class MembershipNode: ObservableObject {
         }
         await stop()
         try? FileManager.default.removeItem(at: NodeManager.stateDirectory(for: id))
+        UserDefaults.standard.removeObject(forKey: onlineReportedKey)
         answers = nil
         discovered = []
     }
@@ -460,6 +461,7 @@ final class MembershipNode: ObservableObject {
                 } else {
                     watchLogin(status.backendState)
                     watchPeers(status)
+                    if !onlineReported, GuestProbe.reportsOnline(status) { UserDefaults.standard.set(true, forKey: onlineReportedKey) }
                 }
                 if state == .connecting || { if case .retrying = state { return true } else { return false } }() {
                     await checkReachability(generation: current)
@@ -509,14 +511,20 @@ final class MembershipNode: ObservableObject {
     }
 
     private var probeHosts: [String] {
-        isOwner ? Discovery.candidateHosts(in: status) : GuestProbe.hostsToProbe(guestHosts(), in: status)
+        isOwner ? Discovery.candidateHosts(in: status) : GuestProbe.hostsToProbe(guestHosts(), in: status, onlineReported: onlineReported)
     }
 
     /// The network lists this app's computer as offline. It may still answer (a peer can be
     /// listed offline for a moment while it works), so this never stops a probe.
     func isListedOffline(_ host: String) -> Bool {
-        !Discovery.offlineHosts([host], in: status).isEmpty
+        onlineReported && !Discovery.offlineHosts([host], in: status).isEmpty
     }
+
+    /// Whether a peer's Online in the status can be believed: always for the owner, whose
+    /// discovery has always read it, and for a guest once its network has listed a peer
+    /// online (see `GuestProbe.reportsOnline`), remembered across launches.
+    private var onlineReported: Bool { isOwner || UserDefaults.standard.bool(forKey: onlineReportedKey) }
+    private var onlineReportedKey: String { "onlineReported.\(id)" }
 
     private func probe(_ hosts: [String], firstAnswer: @MainActor () -> Void = {}) async -> Discovery.Outcome {
         lastProbe = .now
@@ -658,11 +666,20 @@ enum GuestProbe {
     }
 
     /// The app hosts worth probing: not those whose computer the network lists as offline,
-    /// which can't answer. Like the owner's offline machines, they are missing from the
-    /// answers, so their tiles show Offline at once.
-    static func hostsToProbe(_ hosts: [String], in status: TailnetStatus?) -> [String] {
+    /// which can't answer, once the network is known to report Online (`onlineReported`).
+    /// Like the owner's offline machines, they are then missing from the answers, so their
+    /// tiles show Offline at once.
+    static func hostsToProbe(_ hosts: [String], in status: TailnetStatus?, onlineReported: Bool) -> [String] {
         let hosts = Set(hosts.map(Discovery.normalizedHost))
+        guard onlineReported else { return hosts.sorted() }
         return hosts.subtracting(Discovery.offlineHosts(hosts, in: status)).sorted()
+    }
+
+    /// Whether the network tells this node its peers' Online state. A control server leaves
+    /// it out for a node it doesn't tell, and the status then says offline for every peer,
+    /// so a guest believes it only once it has listed a peer online.
+    static func reportsOnline(_ status: TailnetStatus) -> Bool {
+        status.peers.contains(where: \.online)
     }
 
     static func whoami(host: String, session: URLSession) async -> Reach {

@@ -395,11 +395,19 @@ final class GuestCleanupTests: XCTestCase {
     /// than after every probe times out.
     func testAppsOnAComputerListedOfflineArentProbed() throws {
         let hosts = [echo, "Notes.taildef456.ts.net.", echo]
-        XCTAssertEqual(GuestProbe.hostsToProbe(hosts, in: try status(peers: [echo: true, notes: false])), [echo])
-        XCTAssertEqual(GuestProbe.hostsToProbe(hosts, in: try status(peers: [echo: true])), [echo, notes],
-                       "one not listed yet is probed")
-        XCTAssertEqual(GuestProbe.hostsToProbe(hosts, in: nil), [echo, notes])
-        XCTAssertEqual(GuestProbe.hostsToProbe(hosts, in: try status(peers: [echo: false, notes: false])), [])
+        func probed(_ peers: [String: Bool], onlineReported: Bool = true) throws -> [String] {
+            GuestProbe.hostsToProbe(hosts, in: try status(peers: peers), onlineReported: onlineReported)
+        }
+        XCTAssertEqual(try probed([echo: true, notes: false]), [echo])
+        XCTAssertEqual(try probed([echo: true]), [echo, notes], "one not listed yet is probed")
+        XCTAssertEqual(GuestProbe.hostsToProbe(hosts, in: nil, onlineReported: true), [echo, notes])
+        XCTAssertEqual(try probed([echo: false, notes: false]), [])
+
+        // A network that never said a peer is online may just not tell this node: every app
+        // is probed, as in 1.0.1, so ended access is still noticed.
+        XCTAssertFalse(GuestProbe.reportsOnline(try status(peers: [echo: false, notes: false])))
+        XCTAssertEqual(try probed([echo: false, notes: false], onlineReported: false), [echo, notes])
+        XCTAssertTrue(GuestProbe.reportsOnline(try status(peers: [echo: true, notes: false])))
         XCTAssertEqual(Discovery.offlineHosts(["Echo-Board.taildef456.ts.net"], in: try status(peers: [echo: false])),
                        ["Echo-Board.taildef456.ts.net"])
 
