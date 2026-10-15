@@ -136,6 +136,9 @@ release to the R2 bucket behind `https://downloads.ovenlight.app`, through `wran
   reads it to tell people about updates, and fails while they run a version older than
   `secure`, so raise `secure` with any release that fixes a security problem.
 
+It stops unless it can read the published `latest.json`, which only the bucket's first
+release lacks: that one takes `--first` before the versions.
+
 If a release goes wrong, roll forward with a fixed one, raising `secure` if it fixes a
 security problem. `publish-connector.sh` won't move `latest` back, so restoring an older
 release is done by hand: upload `connector/<good version>/`'s files to `connector/latest/`
