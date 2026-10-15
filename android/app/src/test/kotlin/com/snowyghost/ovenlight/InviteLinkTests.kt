@@ -58,6 +58,19 @@ class InviteLinkTests {
         assertTrue(InviteLink.isInvite(sent) && InviteLink.isInvite(link.url))
     }
 
+    /** Android only: the join page hands an invite to an unverified App Link this way. */
+    @Test
+    fun testReadsTheAppSchemeWithTheFieldsInTheFragment() {
+        val link = parse(connectorLink)
+        val fragment = connectorLink.replace("ovenlight://join?", "ovenlight://join#")
+        assertEquals(link, parse(fragment))
+        assertTrue(InviteLink.isInvite(URI(fragment)))
+        assertEquals("the query wins when both are there", link, parse(connectorLink + "#v=2"))
+        assertEquals(InviteLink.ParseError.UnsupportedVersion, error("ovenlight://join"))
+        assertEquals("found in a message too", "3f9a1c2b7e", InviteLink.parse(text = "Open this: $fragment", allowLocalHTTP = false).invite)
+        assertEquals("an empty address is none, as iOS's URL(string:) says", null, uri(""))
+    }
+
     @Test
     fun testRefusesUniversalLinksFromElsewhere() {
         val fields = universalLink.split("#", limit = 2)[1]

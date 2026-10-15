@@ -142,7 +142,9 @@ object TailnetCore : Platform, TailnetClients {
         return { request -> client.fetch(request) }
     }
 
-    private val http = OkHttpClient.Builder().cache(null).followRedirects(false).build()
+    // Redirects are followed, as iOS's sessions follow them (an app's start page that sends
+    // `/` to `/login` still names the app), but never from https to http.
+    private val http = OkHttpClient.Builder().cache(null).followSslRedirects(false).build()
     private const val MAX_BODY = 4L shl 20
 
     private suspend fun OkHttpClient.fetch(request: Request): FetchResponse? = suspendCancellableCoroutine { done ->

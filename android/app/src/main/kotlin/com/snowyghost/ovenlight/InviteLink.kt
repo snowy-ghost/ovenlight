@@ -108,7 +108,7 @@ data class InviteLink(
 
         // Up to white space as iOS's ICU regex reads \s, the same on the JVM and Android.
         private val linkInText = Regex(
-            """(ovenlight://join\?|https://ovenlight\.app/join(\.html|/)?#)[^\t\n\f\r\p{Z}<>"']+""",
+            """(ovenlight://join[?#]|https://ovenlight\.app/join(\.html|/)?#)[^\t\n\f\r\p{Z}<>"']+""",
             RegexOption.IGNORE_CASE,
         )
 
@@ -132,12 +132,17 @@ data class InviteLink(
         /** Whether a link is an invite, in any form Ovenlight accepts, before checking its fields. */
         fun isInvite(url: URI): Boolean = encodedFields(url) != null
 
-        /** The form-encoded fields of an invite link: the query of `ovenlight://join`, or the fragment of the App Link. */
+        /**
+         * The form-encoded fields of an invite link: the query of `ovenlight://join`, or the
+         * fragment of the App Link. Android also takes `ovenlight://join` with the fields in its
+         * fragment, which is how the join page hands an invite over when Ovenlight's App Link
+         * isn't verified.
+         */
         private fun encodedFields(url: URI): String? {
             val scheme = url.scheme?.lowercase() ?: ""
             if (scheme == this.scheme) {
                 if (url.host?.lowercase() != "join") return null
-                return url.rawQuery ?: ""
+                return url.rawQuery?.takeIf { it.isNotEmpty() } ?: url.rawFragment ?: ""
             }
             if (scheme != "https" || url.host?.lowercase() != joinPage.host || url.port != -1) return null
             // As iOS reads a path, without its trailing slash.
@@ -253,7 +258,7 @@ object URISerializer : KSerializer<URI> {
 
 /** The address, or null when it isn't one, as iOS's `URL(string:)` answers. */
 internal fun uri(text: String): URI? = try {
-    URI(text)
+    if (text.isEmpty()) null else URI(text)
 } catch (_: Exception) {
     null
 }

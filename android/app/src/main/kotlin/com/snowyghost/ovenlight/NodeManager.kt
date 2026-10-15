@@ -8,6 +8,7 @@ import kotlin.math.pow
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -314,19 +315,23 @@ class MembershipNode(
         start()
     }
 
-    /** Starts the node unless it is running, after any start or stop under way. */
-    suspend fun start() {
+    /**
+     * Starts the node unless it is running, after any start or stop under way. Starts and stops
+     * finish even when their caller is canceled (a screen leaving, say), as iOS runs each in a
+     * task of its own: one cut short would leave a node open in the core that nothing holds.
+     */
+    suspend fun start() = withContext(NonCancellable) {
         lifecycle.withLock {
-            if (node != null) return
-            val settings = settings() ?: return
+            if (node != null) return@withLock
+            val settings = settings() ?: return@withLock
             generation += 1
             send(NodeEvent.Start)
             launch(settings, generation)
         }
     }
 
-    /** Closes the node, keeping its state on disk. */
-    suspend fun stop() {
+    /** Closes the node, keeping its state on disk. Finishes even when its caller is canceled (see [start]). */
+    suspend fun stop() = withContext(NonCancellable) {
         generation += 1
         mutableStatus.value = null // so a wait on this node reads the next one's status, not this one's last
         lifecycle.withLock {
@@ -334,34 +339,42 @@ class MembershipNode(
             pollJob = null
             cachedFetch = null
             send(NodeEvent.Stop)
-            val node = node ?: return
+            val node = node ?: return@withLock
             withContext(io) { runCatching { node.close() }.onFailure { log("$id: close failed: ${it.message}") } }
-            this.node = null
+            this@MembershipNode.node = null
         }
     }
 
     private suspend fun launch(settings: Settings, current: Int) {
-        try {
-            val directory = stateDirectory(id).apply { mkdirs() }
-            val node = withContext(io) {
-                clients.newNode(id, directory, settings.hostName, settings.controlURL, settings.authKey.orEmpty()).also { it.start() }
+        val directory = stateDirectory(id).apply { mkdirs() }
+        val node = try {
+            withContext(io) {
+                // The core holds a node from newNode on, so one whose start fails is closed, or
+                // the membership could never start another.
+                val made = clients.newNode(id, directory, settings.hostName, settings.controlURL, settings.authKey.orEmpty())
+                try {
+                    made.start()
+                } catch (e: Exception) {
+                    runCatching { made.close() }
+                    throw e
+                }
+                made
             }
-            if (current != generation) {
-                withContext(io) { runCatching { node.close() } }
-                return
-            }
-            this.node = node
-            cachedFetch = null
-            loginLostPolls = 0
-            absence = PeerAbsence()
-            log("$id: node started")
-            pollJob = scope.launch { poll(current) }
-        } catch (e: CancellationException) {
-            throw e
         } catch (e: Exception) {
             log("$id: node start failed: ${e.message}")
             send(NodeEvent.Error(ConnectionCopy.couldNotStart))
+            return
         }
+        if (current != generation) {
+            withContext(io) { runCatching { node.close() } }
+            return
+        }
+        this.node = node
+        cachedFetch = null
+        loginLostPolls = 0
+        absence = PeerAbsence()
+        log("$id: node started")
+        pollJob = scope.launch { poll(current) }
     }
 
     /**

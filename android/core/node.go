@@ -213,7 +213,8 @@ func (n *Node) Logout() error {
 	if err != nil {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	// As long as iOS waits for its logout, so leaving while offline doesn't hang.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	return lc.Logout(ctx)
 }

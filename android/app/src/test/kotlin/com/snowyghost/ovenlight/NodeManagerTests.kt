@@ -3,7 +3,10 @@ package com.snowyghost.ovenlight
 import java.io.File
 import java.net.URI
 import java.nio.file.Files
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
@@ -24,6 +27,8 @@ class FakeNode(val id: String, private val clients: FakeClients) : TailnetNode {
     var loggedOut = false
     override fun start() {
         check(!closed) { "node closed" }
+        clients.onStart()
+        clients.startError?.let { throw Exception(it) }
         started = true
     }
     override fun waitUp(timeoutMillis: Long) {
@@ -57,6 +62,10 @@ class FakeClients : TailnetClients {
     val fetched = mutableListOf<Pair<String, String>>()
     val requests = mutableListOf<Request>()
     var upError: String? = null
+    var startError: String? = null
+
+    /** Runs inside each node's start, as the core's blocking call would. */
+    var onStart: () -> Unit = {}
     var loginRequests = 0
 
     override fun newNode(id: String, directory: File, hostName: String, controlURL: String, authKey: String): TailnetNode {
@@ -137,6 +146,45 @@ class NodeManagerTests {
         nodes.closeAll()
         assertTrue(clients.nodes[1].closed)
         assertFalse(nodes.owner.isRunning)
+    }
+
+    @Test
+    fun testANodeThatFailsToStartIsClosedSoTheNextStartWorks() = runTest {
+        val clients = FakeClients()
+        val nodes = manager(clients)
+        clients.status[Membership.ownerID] = status("NeedsLogin")
+        clients.startError = "tsnet: listen failed"
+        nodes.owner.start()
+        assertTrue("the core lets go of it", clients.nodes.single().closed)
+        assertFalse(nodes.owner.isRunning)
+        assertTrue(nodes.owner.state.value is NodeState.Failed)
+
+        clients.startError = null
+        nodes.restart()
+        assertEquals(2, clients.nodes.size)
+        assertTrue(nodes.owner.isRunning)
+    }
+
+    @Test
+    fun testACanceledCallerStillFinishesTheStart() = runTest {
+        val clients = FakeClients()
+        val nodes = manager(clients)
+        clients.status[Membership.ownerID] = status("NeedsLogin")
+        lateinit var caller: Job
+        // The screen that asked goes away while the core is starting the node.
+        clients.onStart = { caller.cancel() }
+        caller = launch { nodes.owner.start() }
+        caller.join()
+        assertTrue(caller.isCancelled)
+        assertTrue("the started node is kept, not left open in the core", nodes.owner.isRunning)
+
+        clients.onStart = {}
+        // Under way (waiting on the core to close the node) when its caller goes.
+        caller = launch(start = CoroutineStart.UNDISPATCHED) { nodes.owner.stop() }
+        caller.cancel()
+        caller.join()
+        nodes.owner.start()
+        assertEquals("a stop that was asked for still closes, and the next start makes a node", 2, clients.nodes.size)
     }
 
     @Test

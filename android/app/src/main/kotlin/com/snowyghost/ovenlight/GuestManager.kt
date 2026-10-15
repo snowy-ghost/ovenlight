@@ -4,10 +4,12 @@ import java.util.UUID
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Guest memberships from invites: joining, claiming, resuming an interrupted join, and taking
@@ -142,8 +144,9 @@ class GuestManager(
         }
     }
 
-    private suspend fun run(inviteID: String, membershipID: String) {
-        if (!inFlight.add(inviteID)) return
+    /** Runs to the end even when its caller is canceled, as iOS's join does in a task of its own. */
+    private suspend fun run(inviteID: String, membershipID: String) = withContext(NonCancellable) {
+        if (!inFlight.add(inviteID)) return@withContext
         try {
             // One invite at a time per membership: a node that hasn't joined registers with one
             // key, and the next invite needs the node started over with its own.
