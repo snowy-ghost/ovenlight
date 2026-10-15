@@ -561,7 +561,9 @@ final class AdminAPITests: XCTestCase {
 
     func testOneUnreadableRecordDoesntCostTheRest() throws {
         let apps = #"[{"slug":"coach","name":"Coach"},{"name":"No slug"},{"slug":"notes","name":"Notes","guests":"many","newField":{}}]"#
-        let decoded = try AdminAPI.decoder.decode(EachDecoded<AdminApp>.self, from: Data(apps.utf8)).elements
+        let each = try AdminAPI.decoder.decode(EachDecoded<AdminApp>.self, from: Data(apps.utf8))
+        XCTAssertEqual(each.skipped, [1])
+        let decoded = each.elements
         XCTAssertEqual(decoded.map(\.slug), ["coach", "notes"])
         XCTAssertEqual(decoded.map(\.guests), [0, 0], "what isn't essential falls back")
 

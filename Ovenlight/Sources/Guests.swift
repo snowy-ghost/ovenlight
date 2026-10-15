@@ -491,8 +491,8 @@ final class GuestManager: ObservableObject {
 
     /// Memberships left with no app and no invite waiting log out and delete their state.
     func collectOrphans() async {
-        // With either list unread, everything would look orphaned.
-        guard let registry, !registry.loadFailed, !store.loadFailed else { return }
+        // With either list unread, or an entry of one, what it names would look orphaned.
+        guard let registry, registry.readInFull, store.readInFull else { return }
         // A shared app whose membership is gone can't be reached or checked any more.
         for app in registry.apps where app.isShared && app.membershipID.flatMap({ store[$0] }) == nil {
             await registry.remove(app.id)

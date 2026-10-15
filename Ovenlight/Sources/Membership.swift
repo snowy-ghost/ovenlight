@@ -85,6 +85,11 @@ final class MembershipStore: ObservableObject {
     /// The file is there but couldn't be read or decoded. Nothing is saved over it, and
     /// nothing may clean up after the empty list, until a reload reads it.
     private(set) var loadFailed = false
+    /// Memberships another build saved that this one can't read (see `SavedJSON.List`).
+    private var unread: [Any] = []
+    /// Every saved membership was read, so cleaning up after the list deletes only what
+    /// it means to.
+    var readInFull: Bool { !loadFailed && unread.isEmpty }
     private let fileURL: URL
     private var reloadOnUnlock: AnyCancellable?
 
@@ -104,7 +109,9 @@ final class MembershipStore: ObservableObject {
 
     private func load() {
         do {
-            memberships = try SavedJSON.read([Membership].self, from: fileURL) ?? []
+            let list = try SavedJSON.read([Membership].self, from: fileURL) ?? .init()
+            memberships = list.elements
+            unread = list.unread
             loadFailed = false
         } catch {
             loadFailed = true
@@ -136,7 +143,7 @@ final class MembershipStore: ObservableObject {
     }
 
     private func save() {
-        guard !loadFailed, let data = try? JSONEncoder().encode(memberships) else { return }
+        guard !loadFailed, let data = try? SavedJSON.encode(memberships, keeping: unread) else { return }
         try? data.write(to: fileURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
         // An atomic write replaces the file, and with it the flag.
         var url = fileURL
@@ -148,9 +155,33 @@ final class MembershipStore: ObservableObject {
 /// be read (before the first unlock after a restart, say) or decoded throws, and must never
 /// be taken for an empty one: the next save would write that over it.
 enum SavedJSON {
-    static func read<Element: Decodable>(_: [Element].Type, from url: URL) throws -> [Element]? {
+    /// A saved list as read.
+    struct List<Element> {
+        var elements: [Element] = []
+        /// Entries this version can't read (another build wrote them), as they were. A save
+        /// writes them back, and while there are any, nothing that deletes what the list
+        /// doesn't name may run: it would delete what they name.
+        var unread: [Any] = []
+    }
+
+    static func read<Element: Decodable>(_: [Element].Type, from url: URL) throws -> List<Element>? {
         guard let data = try read(url) else { return nil }
-        return try JSONDecoder().decode(EachDecoded<Element>.self, from: data).elements
+        let decoded = try JSONDecoder().decode(EachDecoded<Element>.self, from: data)
+        guard !decoded.skipped.isEmpty else { return List(elements: decoded.elements) }
+        let raw = try JSONSerialization.jsonObject(with: data) as? [Any] ?? []
+        return List(elements: decoded.elements, unread: decoded.skipped.filter(raw.indices.contains).map { raw[$0] })
+    }
+
+    /// `elements`, then the `unread` entries as they were read.
+    static func encode<Element: Encodable>(_ elements: [Element], keeping unread: [Any]) throws -> Data {
+        let data = try JSONEncoder().encode(elements)
+        guard !unread.isEmpty else { return data }
+        var list = data.dropLast() // "]"
+        for entry in unread {
+            if list.count > 1 { list.append(contentsOf: ",".utf8) }
+            list.append(try JSONSerialization.data(withJSONObject: entry, options: .fragmentsAllowed))
+        }
+        return list + "]".utf8
     }
 
     static func read(_ url: URL) throws -> Data? {
@@ -173,14 +204,18 @@ enum SavedJSON {
 /// skipped rather than costing the rest. Anything but an array still fails.
 struct EachDecoded<Element: Decodable>: Decodable {
     var elements: [Element] = []
+    /// The positions of the entries skipped.
+    var skipped: [Int] = []
 
     init(from decoder: Decoder) throws {
         var container = try decoder.unkeyedContainer()
         while !container.isAtEnd {
+            let index = container.currentIndex
             if let element = try? container.decode(Element.self) {
                 elements.append(element)
             } else {
                 _ = try container.decode(Skipped.self)
+                skipped.append(index)
             }
         }
     }

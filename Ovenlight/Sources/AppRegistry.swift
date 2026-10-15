@@ -13,6 +13,10 @@ final class AppRegistry: ObservableObject {
     /// or decoded. Nothing is saved over it and no data store is swept, until a reload
     /// reads it.
     private(set) var loadFailed = false
+    /// Apps another build saved that this one can't read (see `SavedJSON.List`).
+    private var unread: [Any] = []
+    /// Every saved app was read, so cleaning up after the list deletes only what it means to.
+    var readInFull: Bool { !loadFailed && unread.isEmpty }
     private var reloadOnUnlock: AnyCancellable?
 
     private let directory: URL
@@ -40,9 +44,10 @@ final class AppRegistry: ObservableObject {
 
     private func load() {
         do {
-            let loaded = try SavedJSON.read([WebApp].self, from: fileURL) ?? []
-            dismissedHosts = Set(try SavedJSON.read([String].self, from: dismissedURL) ?? [])
-            apps = loaded
+            let loaded = try SavedJSON.read([WebApp].self, from: fileURL) ?? .init()
+            dismissedHosts = Set(try SavedJSON.read([String].self, from: dismissedURL)?.elements ?? [])
+            apps = loaded.elements
+            unread = loaded.unread
             loadFailed = false
         } catch {
             loadFailed = true
@@ -51,7 +56,7 @@ final class AppRegistry: ObservableObject {
 
     private func save() {
         guard !loadFailed else { return }
-        if let data = try? JSONEncoder().encode(apps) {
+        if let data = try? SavedJSON.encode(apps, keeping: unread) {
             try? data.write(to: fileURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
         }
         if let data = try? JSONEncoder().encode(dismissedHosts) {
@@ -187,9 +192,9 @@ final class AppRegistry: ObservableObject {
         }
     }
 
-    /// None while the apps couldn't be read: every store would look unused.
+    /// None while any app couldn't be read: its store would look unused.
     func unusedDataStores(among all: [UUID]) -> [UUID] {
-        guard !loadFailed else { return [] }
+        guard readInFull else { return [] }
         let used = Set(apps.map(\.dataStoreID))
         return all.filter { !used.contains($0) }
     }

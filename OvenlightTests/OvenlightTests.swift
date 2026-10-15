@@ -382,6 +382,18 @@ final class AppRegistryTests: XCTestCase {
         XCTAssertEqual(registry.apps.map(\.name), ["Coach"])
         XCTAssertNil(registry.apps[0].themeColorHex)
         XCTAssertFalse(registry.apps[0].discovered || registry.apps[0].isNew)
+
+        // What it couldn't read may be another build's app, with a data store of its own.
+        XCTAssertFalse(registry.readInFull)
+        XCTAssertEqual(registry.unusedDataStores(among: [UUID()]), [], "no store is swept")
+        registry.add(url: URL(string: "https://notes.example.com/")!)
+        let saved = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: dir.appendingPathComponent("apps.json"))) as? [Any])
+        XCTAssertEqual(saved.count, 4, "the two it read, then the two it didn't, as they were")
+        XCTAssertEqual((saved[2] as? [String: String])?["name"], "No ID")
+        XCTAssertEqual(saved[3] as? String, "not an app")
+        let reopened = makeRegistry(dir)
+        XCTAssertEqual(reopened.apps.map(\.name), ["Coach", "notes.example.com"])
+        XCTAssertFalse(reopened.readInFull)
     }
 
     func testIconsAreDecodedSmall() throws {
@@ -433,6 +445,28 @@ final class MembershipStoreLoadTests: XCTestCase {
         let fresh = MembershipStore(directory: dir)
         XCTAssertFalse(fresh.loadFailed, "no file is simply no memberships")
         fresh.upsert(Membership(invite: invite))
+        XCTAssertEqual(MembershipStore(directory: dir).memberships.count, 1)
+        XCTAssertTrue(fresh.readInFull)
+    }
+
+    func testAMembershipItCantReadIsKeptAndHoldsBackCleanup() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let file = dir.appendingPathComponent("memberships.json")
+        try Data(#"[{"id":"future","controlURL":"https://c.example","networkDomain":"tail1.ts.net","joined":"yes","hostName":"ovenlight-x"}]"#.utf8)
+            .write(to: file)
+
+        let store = MembershipStore(directory: dir)
+        XCTAssertFalse(store.loadFailed)
+        XCTAssertEqual(store.memberships, [])
+        XCTAssertFalse(store.readInFull, "its apps would look orphaned")
+        let invite = InviteLink(control: URL(string: "https://controlplane.tailscale.com")!, key: "tskey-1", owner: "Riley",
+                                app: "echo-board", invite: "inv1", host: "echo-board.taildef456.ts.net", name: "Echo Board", to: "Sam")
+        store.upsert(Membership(invite: invite))
+        let saved = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [[String: Any]])
+        XCTAssertEqual(saved.map { $0["id"] as? String }.last, "future", "written back as it was")
+        XCTAssertEqual(saved.first?["joined"] as? Bool, false)
         XCTAssertEqual(MembershipStore(directory: dir).memberships.count, 1)
     }
 }
