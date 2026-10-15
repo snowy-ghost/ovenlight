@@ -9,4 +9,6 @@
     <string name="lock_locked">Locked</string>
     <string name="lock_locked_description">Ovenlight is locked</string>
     <string name="lock_unlock">Unlock</string>
+    <string name="unlock_prompt_title">Unlock Ovenlight</string>
+    <string name="unlock_use_screen_lock">Use screen lock</string>
 </resources>

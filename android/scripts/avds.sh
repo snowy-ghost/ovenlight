@@ -275,8 +275,9 @@ boot)
 	known "$2"
 	[ "$3" != "$snapshot_port" ] || die "port $snapshot_port is for snapshot and window; boot on 5554 to 5582"
 	start "$2" "$3" -snapshot ready -no-snapshot-save
-	# Anything that fails from here stops the emulator it started.
-	trap 'stop "$3"' EXIT
+	# Anything that fails from here stops the emulator it started. The port is expanded now:
+	# inside die, bash's sh would read $3 as die's own.
+	trap "stop $3" EXIT
 	grep -q "Successfully loaded snapshot 'ready'" "$run/$serial.log" ||
 		die "$2 has no usable ready snapshot (see $run/$serial.log); run avds.sh snapshot $2"
 	unlock
@@ -288,7 +289,7 @@ window)
 	known "$2"
 	# Software rendering: the API 29 image crashes its system process under -gpu host.
 	OVENLIGHT_WINDOW="-gpu swiftshader_indirect" start "$2" "$3" -no-snapshot-load -no-snapshot-save
-	trap 'stop "$3"' EXIT
+	trap "stop $3" EXIT
 	unlock
 	trap - EXIT
 	echo "$serial $pid"

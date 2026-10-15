@@ -38,6 +38,16 @@ note() { printf '   %s\n' "$*"; printf '   %s\n' "$*" >> "$OUT/gates.txt"; }
 port() { python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])'; }
 S=
 a() { adb -s "$S" "$@"; }
+# Once Ovenlight keeps something it opens locked: answer its prompt with fingerprint 1.
+unlock() {
+  for i in 1 2 3; do
+    sleep 2
+    a emu finger touch 1 >/dev/null
+    # The prompt ("Unlock Ovenlight") or the lock screen behind it.
+    a exec-out uiautomator dump /dev/tty 2>/dev/null | grep -q -E 'Unlock Ovenlight|Ovenlight is locked' || return 0
+  done
+  fail "Ovenlight didn't unlock"
+}
 shot() { [[ -n $emulator_port ]] && a exec-out screencap -p > "$OUT/$1.png" 2>/dev/null || true; }
 fail() { printf 'FAILED: %s\n' "$*"; printf 'FAILED: %s\n' "$*" >> "$OUT/gates.txt"; shot failed; exit 1; }
 
@@ -45,7 +55,7 @@ stop_connector() {
   [[ -n $connector_pid ]] || return 0
   kill $connector_pid 2>/dev/null || true
   for i in $(seq 1 20); do kill -0 $connector_pid 2>/dev/null || break; sleep 1; done
-  ! kill -0 $connector_pid 2>/dev/null || kill -9 $connector_pid
+  ! kill -0 $connector_pid 2>/dev/null || kill -9 $connector_pid 2>/dev/null || true
   wait $connector_pid 2>/dev/null || true
   connector_pid=
 }
@@ -65,7 +75,7 @@ cleanup() {
 trap cleanup EXIT
 # A command that fails outside fail() still leaves a FAILED line saying where.
 # Only the main shell's: a command substitution's own failures are its caller's to judge.
-trap '[[ $BASH_SUBSHELL == 0 ]] && printf "FAILED: line %s: %s\n" "$LINENO" "$BASH_COMMAND" | tee -a "$OUT/gates.txt" >&2' ERR
+trap '[[ $BASH_SUBSHELL == 0 ]] && printf "FAILED: line %s: %s\n" "${BASH_LINENO[0]:-$LINENO}" "$BASH_COMMAND" | tee -a "$OUT/gates.txt" >&2' ERR
 
 until_ok() {
   local seconds=$1; shift
@@ -349,9 +359,12 @@ say "G3: profile A answers the 407 with its own key, for every request of its pa
 load_and_check A "https://recipes.$BASE/#port=$PROXY_PORT" app-A '"ws":"ping"'
 grep -q "^proxy: app-A pantry.$BASE:443: open" $D/core-A.log || fail "Pantry's subresources didn't go through profile A's key"
 grep -q "^proxy: app-A ovenlight.app:443: open" $D/core-A.log || fail "the internet fetch didn't go through profile A's key"
-# The page's fetch of the proxy's own port reaches it as a plain request, which gets a 405
-# and no challenge, and never a tunnel.
+# The page's fetch of the proxy's own port: Chromium blocks it before it leaves, and were it
+# sent, it would come through the proxy as a plain request (405, no challenge). It must never
+# open a tunnel, nor reach the port directly, which would show as an origin-form request:
+# that is what a lost removeImplicitRules would look like.
 ! grep -q "127.0.0.1:$PROXY_PORT: open" $D/core-A.log || fail "the page opened a tunnel to the proxy's own port"
+! grep -q '^proxy: GET origin form' $D/core-A.log || fail "the page reached the proxy's port directly, past the proxy"
 note "the page's fetch of the proxy's port: $(grep -E "^proxy: GET http://127.0.0.1:$PROXY_PORT/: " $D/core-A.log | head -1 || echo "never reached the proxy")"
 { grep -E '^challenge' $D/lab-A.log || true; } | while read -r l; do note "$l"; done
 shot g3-profile-A
@@ -406,7 +419,7 @@ say "G4: deleteProfile at the next launch"
 lab "profiles"; note "$(await 10 '^profiles' || echo none)"
 a shell am force-stop $PKG
 a shell "am start -W -n $PKG/.MainActivity --ez writeProxySecret true" >/dev/null
-sleep 3
+unlock
 lab "profiles"
 line=$(await 15 '^profiles') || fail "no profile list after the relaunch"
 note "after the relaunch: $line"

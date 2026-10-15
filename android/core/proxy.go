@@ -201,6 +201,9 @@ func (p *proxy) track(key string, t *tunnel) bool {
 	if strings.HasPrefix(key, appKeyPrefix) && p.routes[key] != t.membership {
 		return false
 	}
+	if id, found := strings.CutPrefix(key, nodeKeyPrefix); found && !p.known[id] {
+		return false
+	}
 	if p.tunnels[key] == nil {
 		p.tunnels[key] = map[*tunnel]struct{}{}
 	}

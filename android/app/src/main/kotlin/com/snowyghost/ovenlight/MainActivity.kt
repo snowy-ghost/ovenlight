@@ -7,14 +7,30 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
+    private lateinit var unlockPrompt: UnlockPrompt
+    private val lock get() = OvenlightApp.lock
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        unlockPrompt = UnlockPrompt(this)
+        lifecycleScope.launch { repeatOnLifecycle(Lifecycle.State.CREATED) { lock.isLocked.collect(::guardWhileLocked) } }
         clearNavigationBarScrim()
         if (Build.VERSION.SDK_INT >= 33) setRecentsScreenshotEnabled(false)
         // A launch intent is handled once: not again after a restore from process death,
@@ -22,7 +38,39 @@ class MainActivity : ComponentActivity() {
         // replays.
         val handled = savedInstanceState?.getBoolean(HANDLED_LAUNCH) ?: false
         if (!handled && intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY == 0) receive(intent)
-        setContent { Root() }
+        setContent { Root(lock, onUnlock = { lifecycleScope.launch { lock.unlock(unlockPrompt) } }) }
+    }
+
+    /**
+     * Whether to lock is decided here, before anything draws, so a return after the delay
+     * shows the lock screen in its first frame.
+     */
+    override fun onStart() {
+        super.onStart()
+        lock.willBecomeActive()
+        TailnetCore.reportNetwork()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        lifecycleScope.launch { lock.didBecomeActive(unlockPrompt) }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        // Android 10's screen lock screen, asked for while locked, stops Ovenlight without
+        // the person leaving it.
+        if (!unlockPrompt.showingCredentialScreen && !isChangingConfigurations) lock.didEnterBackground()
+    }
+
+    /**
+     * While locked, the lock screen can't be tapjacked: obscured touches are dropped and other
+     * apps' overlays are hidden. Not while unlocked, where it would drop a page's touches under
+     * a screen-dimming app.
+     */
+    private fun guardWhileLocked(locked: Boolean) {
+        window.decorView.filterTouchesWhenObscured = locked
+        if (Build.VERSION.SDK_INT >= 31) window.setHideOverlayWindows(locked)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -47,11 +95,6 @@ class MainActivity : ComponentActivity() {
         outState.putBoolean(HANDLED_LAUNCH, true)
     }
 
-    override fun onStart() {
-        super.onStart()
-        TailnetCore.reportNetwork()
-    }
-
     private fun receive(intent: Intent) {
         DebugLaunch.receive(this, intent)
     }
@@ -62,13 +105,26 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun Root() {
+private fun Root(lock: LockManager, onUnlock: () -> Unit) {
     OvenlightTheme {
+        val locked by lock.isLocked.collectAsState()
+        val authenticating by lock.isAuthenticating.collectAsState()
+        val error by lock.lastError.collectAsState()
         val state by WebViewSetup.state.collectAsState()
-        when (val s = state) {
-            is WebViewSetup.State.NeedsUpdate -> WebViewUpdateScreen(s.webViewPackage)
-            WebViewSetup.State.Ready -> DebugLaunch.Content()
-            WebViewSetup.State.Starting -> Unit
+        Box(Modifier.fillMaxSize()) {
+            // While locked, nothing but the lock screen is in the window, so neither TalkBack
+            // nor a keyboard nor a page's popup can reach what's behind it.
+            if (!locked) {
+                when (val s = state) {
+                    is WebViewSetup.State.NeedsUpdate -> WebViewUpdateScreen(s.webViewPackage)
+                    WebViewSetup.State.Ready -> DebugLaunch.Content()
+                    WebViewSetup.State.Starting -> Unit
+                }
+            }
+            // After an unlock the lock screen stays lit and fades out.
+            AnimatedVisibility(locked, enter = EnterTransition.None, exit = fadeOut(tween(300))) {
+                LockScreen(isLocked = locked, isAuthenticating = authenticating, lastError = error, onUnlock = onUnlock)
+            }
         }
     }
 }

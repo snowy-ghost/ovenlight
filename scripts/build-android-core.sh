@@ -13,7 +13,7 @@ set -euo pipefail
 # tailscale.com and Go move only together with iOS (scripts/build-tailscalekit.sh):
 # android/core/go.mod pins tailscale.com, and this the toolchain.
 GO_TOOLCHAIN=go1.27.2
-# -trimpath keeps the build machine's file paths out of the library.
+# -trimpath keeps the build machine's file paths out of the library (passed to gomobile below).
 GO_FLAGS=-trimpath
 # As iOS: no debug LocalAPI handlers, and no saved netmap, so a removed guest isn't
 # hidden by an old one.
@@ -84,6 +84,8 @@ rm -f "$work/ovenlight-core.aar" "$work/ovenlight-core-sources.jar"
 # gomobile's R8 rule keeps everything under -javapkg, which would keep the whole app. Only
 # the bound package and its glue are reached through JNI.
 printf '%s\n' '-keep class go.** { *; }' '-keep class com.snowyghost.ovenlight.core.** { *; }' > "$work/proguard.txt"
+# Dated like gomobile's own entries, so the library stays the same from build to build.
+touch -t 198001010000 "$work/proguard.txt"
 (cd "$work" && zip -q ovenlight-core.aar proguard.txt)
 
 # Every LOAD segment of every library aligned to at least 16 KB, as Play requires.
