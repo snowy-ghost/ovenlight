@@ -6,9 +6,6 @@ import WebKit
 struct AppChromeActions {
     var home: () -> Void
     var reload: () -> Void
-    /// Nil for apps reached through Ovenlight's own tailnet node: Safari can't reach those, and
-    /// opening one there would also skip Ovenlight's lock.
-    var openInSafari: (() -> Void)?
     /// The owner's own shareable apps only: invite someone to this app.
     var share: (() -> Void)?
     /// Apps served by an Ovenlight connector: a note and a screenshot to whoever runs it.
@@ -111,9 +108,6 @@ struct AppChrome: View {
                 Button(action: actions.home) { Label("All Apps", systemImage: "square.grid.2x2") }
                 Section {
                     Button(action: actions.reload) { Label("Reload", systemImage: "arrow.clockwise") }
-                    if let openInSafari = actions.openInSafari {
-                        Button(action: openInSafari) { Label("Open in Safari", systemImage: "safari") }
-                    }
                 }
                 Section {
                     if let share = actions.share {

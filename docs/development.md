@@ -186,7 +186,8 @@ Debug builds take these as launch arguments:
 - `-sharingFixture YES` fills in sample sharing data for screenshots.
 
 Debug builds also accept an `http` control server on loopback in invites; release builds
-only `https`.
+only `https`. And debug builds alone load an app at `localhost` directly, so a seeded
+launcher can open a local demo app for screenshots (loopback IP literals stay blocked).
 
 ## Local Headscale
 
@@ -276,10 +277,11 @@ Sign Ovenlight in to the first with `-authKey`, and open the second owner's invi
   Add App also takes an address, but only one on the owner's own tailnet (`AppAddress`,
   with `Routing.isOnOwnersTailnet`). Before the owner has signed in it says to sign in
   first, and any other address gets a refusal that points to publishing the app or asking
-  its owner for an invite. An app saved by another address before this rule keeps its
-  tile and loads directly. One tile per host either way, and a removed app stays
-  removed. Discovery only adds: an app unpublished on its computer keeps its tile until
-  the owner removes it.
+  its owner for an invite. An app with any other address, such as one from a tailnet the
+  owner was signed in to before, keeps its tile but is refused (`Routing.route`): it
+  shows Can't Reach and nothing goes out. One tile per host either way, and a removed
+  app stays removed. Discovery only adds: an app unpublished on its computer keeps its
+  tile until the owner removes it.
 - **Copy.** Everything a guest can see (connection states, joining, errors,
   "No Longer Shared with You", feedback) is in `ConnectionCopy` and never says Tailscale
   or tailnet; a unit test checks. Only the owner's sign-in card, status pill and Settings

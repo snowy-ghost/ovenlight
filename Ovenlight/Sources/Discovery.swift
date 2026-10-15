@@ -130,22 +130,29 @@ enum Discovery {
 /// Which network path an app's traffic takes.
 enum Routing {
     enum Route: Equatable {
-        case direct
         /// Through Ovenlight's embedded node (its loopback SOCKS5 proxy).
         case tailnetNode
+        /// On no tailnet Ovenlight knows: nothing loads, not even a probe.
+        case refused
+        /// Debug builds only: an app at `localhost`, for screenshots of a local demo. Loopback
+        /// IP literals stay blocked (`LocalAddressRules`).
+        case direct
     }
 
     /// Through the owner's node for names on the owner's own tailnet (its MagicDNS
-    /// suffix); any other host, another tailnet's public Funnel name among them, loads
-    /// directly. Until that tailnet is known, every MagicDNS name goes through the owner's
-    /// node, where it waits for a sign-in rather than going to public DNS. Apps someone
-    /// shared always go through their membership's node instead.
+    /// suffix); any other host, an old tailnet's name or another tailnet's public Funnel
+    /// name among them, is refused, never looked up in public DNS. Until that tailnet is
+    /// known, every MagicDNS name goes through the owner's node, where it waits for a
+    /// sign-in. Apps someone shared always go through their membership's node instead.
     static func route(host: String, ownerSuffix: String?) -> Route {
         let host = Discovery.normalizedHost(host)
+        #if DEBUG
+        if host == "localhost" { return .direct }
+        #endif
         guard let suffix = ownerSuffix, !suffix.isEmpty else {
-            return host.hasSuffix(".ts.net") ? .tailnetNode : .direct
+            return host.hasSuffix(".ts.net") ? .tailnetNode : .refused
         }
-        return isOnOwnersTailnet(host: host, ownerSuffix: suffix) ? .tailnetNode : .direct
+        return isOnOwnersTailnet(host: host, ownerSuffix: suffix) ? .tailnetNode : .refused
     }
 
     /// Whether `host` is a name on the owner's tailnet. Only then may the owner's node
@@ -163,7 +170,7 @@ enum Routing {
         return route(host: app.startURL.host ?? "", ownerSuffix: ownerSuffix) == .tailnetNode ? owner : nil
     }
 
-    /// Whether a web view whose data store was attached to `built` (nil: direct) may load
+    /// Whether a web view whose data store was attached to `built` (nil: no node) may load
     /// now that the app's route names `current`. A route is fixed when the view is made, and
     /// it can change under it: signing in shows that a `*.ts.net` name routed to the
     /// owner's node isn't on the owner's tailnet. Such a view is stale and never loads; it

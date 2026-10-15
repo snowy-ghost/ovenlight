@@ -130,7 +130,6 @@ private struct AppPage: View {
                 actions: AppChromeActions(
                     home: onClose,
                     reload: { coordinator.reload() },
-                    openInSafari: coordinator.usesNode ? nil : { coordinator.openExternally(webView.url ?? app.startURL) },
                     share: shareAction,
                     sendFeedback: app.hasConnector && coordinator.hasLoadedOnce ? { Task { await captureFeedback() } } : nil,
                     reportProblem: { mail = .problemReport(for: app) },

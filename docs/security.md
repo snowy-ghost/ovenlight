@@ -436,20 +436,20 @@ website open in this computer's browser, can choose.
 - Add App takes only an address on the owner's own tailnet, and none before the owner
   has signed in, so a new app comes from the owner's own computers or from an invite.
   An app of your own goes through the owner's node only when its host is on the owner's
-  own tailnet (its MagicDNS suffix, remembered from the node's status); any other
-  address, which only an app saved before that rule can have, loads directly, outside
-  the tailnet. The owner's node only ever carries names
-  on that known tailnet. Until the tailnet is known, a `*.ts.net` app is routed to the
-  owner's node and waits behind Sign In, loading nothing, rather than looking the name up
-  in public DNS; after sign-in, a name outside the owner's tailnet loads directly. The
-  route is checked before every probe and load, and a view whose route changed is made
-  again through the right node. The remembered tailnet survives Sign Out and is forgotten
-  by Stop Using My Own Computers. A change of it closes every view whose route it
-  changed, and Sign Out and Stop Using My Own Computers close every view that went
+  own tailnet (its MagicDNS suffix, remembered from the node's status). Any other
+  address, such as an app from a tailnet the owner was signed in to before, is refused:
+  it shows Can't Reach and sends nothing, not even a probe, and Ovenlight never looks
+  its name up in public DNS or loads it outside the tailnet. The owner's node only ever
+  carries names on that known tailnet. Until the tailnet is known, a `*.ts.net` app is
+  routed to the owner's node and waits behind Sign In, loading nothing. The route is
+  checked before every probe and load, and a view whose route changed is made again
+  through the right node, or refused. The remembered tailnet survives Sign Out and is
+  forgotten by Stop Using My Own Computers. A change of it closes every view whose route
+  it changed, and Sign Out and Stop Using My Own Computers close every view that went
   through the owner's node, kept in the background or not. A closed view's data store is
-  set to a proxy that refuses every connection, and the app loads again through its
-  route, at once if it's on screen. A shared app always goes through its owner's guest
-  node.
+  set to a proxy that refuses every connection, as is a refused app's, and the app loads
+  again through its route, at once if it's on screen. A shared app always goes through
+  its owner's guest node.
 - While Ovenlight is locked, no page gets the microphone or camera, and an app that an
   `ovenlight://open` link asks for waits for the unlock. Locking also stops any
   microphone or camera stream already running in an open app, on screen or kept in the

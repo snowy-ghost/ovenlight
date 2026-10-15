@@ -962,7 +962,7 @@ final class NodeManager: ObservableObject {
     // MARK: Routing
 
     /// The node an app goes through: its guest membership's, the owner's for hosts on the
-    /// owner's own tailnet, or none (loaded directly).
+    /// owner's own tailnet, or none (refused, or localhost in a debug build).
     func node(for app: WebApp) -> MembershipNode? {
         Routing.node(for: app, owner: owner, ownerSuffix: owner.magicDNSSuffixSeen, guest: guestNode)
     }
@@ -972,18 +972,22 @@ final class NodeManager: ObservableObject {
     }
 
     /// A session for fetching the app's pages: through its node (nil until the node is
-    /// up), otherwise the shared session.
+    /// up), the shared session for localhost in a debug build, and nil for a refused app.
     func session(for app: WebApp) -> URLSession? {
         if app.isShared { return node(for: app)?.session() }
-        return route(for: app.startURL) == .tailnetNode ? owner.session() : URLSession.shared
+        switch route(for: app.startURL) {
+        case .tailnetNode: return owner.session()
+        case .direct: return URLSession.shared
+        case .refused: return nil
+        }
     }
 
     /// A session for posting to an app (feedback), with its own timeouts, through the
-    /// app's node, or directly for an app of your own; nil for a shared app whose node is
-    /// gone. The caller invalidates it.
+    /// app's node, or directly for localhost in a debug build; nil for a shared app whose
+    /// node is gone and for a refused app. The caller invalidates it.
     func uploadSession(for app: WebApp, timeout: TimeInterval) -> URLSession? {
         if let node = node(for: app) { return node.makeSession(timeout: timeout) }
-        if app.isShared { return nil }
+        guard !app.isShared, route(for: app.startURL) == .direct else { return nil }
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = timeout
         return URLSession(configuration: config)

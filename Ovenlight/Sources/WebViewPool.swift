@@ -49,7 +49,7 @@ final class WebViewPool: ObservableObject {
         let config = WKWebViewConfiguration()
         config.websiteDataStore = WKWebsiteDataStore(forIdentifier: app.dataStoreID)
         // The owner's tailnet apps go through the owner's node, shared apps through their
-        // owner's guest node, everything else loads directly.
+        // owner's guest node, and nothing else loads (see `Routing.route`).
         let node = NodeManager.shared.node(for: app)
         Self.configure(config)
 
@@ -59,7 +59,8 @@ final class WebViewPool: ObservableObject {
         if let node {
             node.attach(store, for: app.id)
         } else {
-            store.proxyConfigurations = app.isShared ? [MembershipNode.closedProxy] : []
+            let direct = !app.isShared && NodeManager.shared.route(for: app.startURL) == .direct
+            store.proxyConfigurations = direct ? [] : [MembershipNode.closedProxy]
         }
         view.allowsBackForwardNavigationGestures = true
         // Short pages still rubber-band, so pulling down at the top can bring the chrome back.
@@ -298,6 +299,13 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
         if let webView, !(await LocalAddressRules.install(in: webView)) { return giveUp() }
         // A shared app always goes through its owner's node; without one it has no way in.
         if app.isShared && node == nil { return await GuestManager.shared.collectOrphans() }
+        // An app of your own on no tailnet Ovenlight knows, such as one from a tailnet the
+        // owner was signed in to before: Can't Reach at once, and nothing goes out, not
+        // even a probe.
+        if node == nil && NodeManager.shared.route(for: app.startURL) == .refused {
+            Self.log.notice("\(self.app.host, privacy: .public): on no known tailnet, refused")
+            return giveUp()
+        }
         let opened = Date.now
         var probingSince: Date?
         while !Task.isCancelled, gate == .waiting || gate == .probing {
@@ -313,7 +321,7 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
                 probingSince = nil
                 continue
             }
-            // Apps loaded directly (on the public internet) have no node to wait for.
+            // An app at localhost in a debug build has no node to wait for.
             if node == nil || (node?.state == .ready && nodeMayCarry) {
                 advance(.nodeReady)
                 // Its computer is listed offline, asleep most likely: Can't Reach shows at

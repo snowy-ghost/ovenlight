@@ -877,18 +877,21 @@ final class DiscoveryTests: XCTestCase {
         let own = "tailabc123.ts.net"
         XCTAssertEqual(Routing.route(host: "interview-coach.tailabc123.ts.net", ownerSuffix: own), .tailnetNode)
         XCTAssertEqual(Routing.route(host: "Interview-Coach.TAILABC123.ts.net.", ownerSuffix: "TailABC123.ts.net."), .tailnetNode)
-        XCTAssertEqual(Routing.route(host: "recorder.tail0000.ts.net", ownerSuffix: own), .direct, "another tailnet's Funnel name")
-        XCTAssertEqual(Routing.route(host: "eviltailabc123.ts.net", ownerSuffix: own), .direct)
-        XCTAssertEqual(Routing.route(host: "example.com", ownerSuffix: own), .direct)
-        XCTAssertEqual(Routing.route(host: "tailabc123.ts.net.example.com", ownerSuffix: own), .direct)
+        XCTAssertEqual(Routing.route(host: "recorder.tail0000.ts.net", ownerSuffix: own), .refused, "another tailnet's Funnel name")
+        XCTAssertEqual(Routing.route(host: "eviltailabc123.ts.net", ownerSuffix: own), .refused)
+        XCTAssertEqual(Routing.route(host: "example.com", ownerSuffix: own), .refused)
+        XCTAssertEqual(Routing.route(host: "tailabc123.ts.net.example.com", ownerSuffix: own), .refused)
+        XCTAssertEqual(Routing.route(host: "localhost", ownerSuffix: own), .direct, "in a debug build only")
+        XCTAssertEqual(Routing.route(host: "127.0.0.1", ownerSuffix: own), .refused, "loopback literals stay blocked")
 
         // Until the owner's tailnet is known (never signed in, or not yet reported), every
         // MagicDNS name goes through the owner's node rather than to public DNS.
         for unknown in [nil, ""] as [String?] {
             XCTAssertEqual(Routing.route(host: "interview-coach.tailabc123.ts.net", ownerSuffix: unknown), .tailnetNode)
             XCTAssertEqual(Routing.route(host: "Recorder.Tail0000.TS.NET.", ownerSuffix: unknown), .tailnetNode)
-            XCTAssertEqual(Routing.route(host: "example.com", ownerSuffix: unknown), .direct)
-            XCTAssertEqual(Routing.route(host: "ts.net.example.com", ownerSuffix: unknown), .direct)
+            XCTAssertEqual(Routing.route(host: "example.com", ownerSuffix: unknown), .refused)
+            XCTAssertEqual(Routing.route(host: "ts.net.example.com", ownerSuffix: unknown), .refused)
+            XCTAssertEqual(Routing.route(host: "localhost", ownerSuffix: unknown), .direct)
         }
     }
 }
@@ -920,7 +923,7 @@ private final class SlowHostProtocol: URLProtocol {
 
 /// A public Funnel name added before the owner ever signed in routes to the owner's node;
 /// signing in shows it isn't on the owner's tailnet. The view made for the owner's node
-/// must never load, through the owner's node or at all.
+/// must never load, through the owner's node or at all, and its new one is refused.
 @MainActor
 final class StaleRouteTests: XCTestCase {
     private let funnel = WebApp(name: "Cool", startURL: URL(string: "https://cool.attacker.ts.net/")!)
@@ -944,7 +947,7 @@ final class StaleRouteTests: XCTestCase {
         XCTAssertTrue(Routing.mayLoad(built: built, current: node(for: funnel, ownerSuffix: nil)))
 
         let signedIn = node(for: funnel, ownerSuffix: "tailabc123.ts.net")
-        XCTAssertNil(signedIn, "another tailnet's name loads directly")
+        XCTAssertNil(signedIn, "another tailnet's name has no node")
         XCTAssertFalse(Routing.mayLoad(built: built, current: signedIn), "the owner's node is no longer its route")
         XCTAssertFalse(Routing.mayLoad(built: nil, current: owner), "nor the other way round")
         XCTAssertTrue(Routing.mayLoad(built: nil, current: nil))
@@ -982,7 +985,7 @@ final class StaleRouteTests: XCTestCase {
         let (fresh, current) = pool.webView(for: funnel)
         XCTAssertFalse(fresh === view)
         XCTAssertFalse(current === stale)
-        XCTAssertNil(current.node, "made again to load directly")
+        XCTAssertNil(current.node, "made again, refused")
     }
 
     /// Remembers `suffix` as the owner's tailnet for one test.
@@ -1001,10 +1004,10 @@ final class StaleRouteTests: XCTestCase {
         let pool = WebViewPool.shared
         let owner = NodeManager.shared.owner
         let own = WebApp(name: "Foo", startURL: URL(string: "https://foo.taila.ts.net/")!)
-        let direct = WebApp(name: "Site", startURL: URL(string: "https://site.example.invalid/")!)
-        defer { pool.discard(own.id); pool.discard(direct.id) }
+        let refused = WebApp(name: "Site", startURL: URL(string: "https://site.example.invalid/")!)
+        defer { pool.discard(own.id); pool.discard(refused.id) }
         let (ownView, _) = pool.webView(for: own)
-        let (directView, _) = pool.webView(for: direct)
+        let (refusedView, _) = pool.webView(for: refused)
         XCTAssertNotNil(owner.stores[own.id])
 
         var changed = false
@@ -1015,10 +1018,10 @@ final class StaleRouteTests: XCTestCase {
         XCTAssertTrue(changed, "an app on screen fetches a new view")
         XCTAssertNil(owner.stores[own.id], "the node's next start routes nothing of the old tailnet")
         XCTAssertFalse(pool.webView(for: own).0 === ownView)
-        XCTAssertTrue(pool.webView(for: direct).0 === directView, "views on other routes stay")
+        XCTAssertTrue(pool.webView(for: refused).0 === refusedView, "views on other routes stay")
     }
 
-    func testANewOwnerTailnetDropsViewsOfTheOldOne() {
+    func testANewOwnerTailnetRefusesTheOldOnesApps() async throws {
         rememberOwnerSuffix("taila.ts.net")
         let pool = WebViewPool.shared
         let owner = NodeManager.shared.owner
@@ -1032,7 +1035,12 @@ final class StaleRouteTests: XCTestCase {
         XCTAssertNil(owner.stores[own.id], "dropped at once, not at the next probe or open")
         let (fresh, coordinator) = pool.webView(for: own)
         XCTAssertFalse(fresh === view)
-        XCTAssertNil(coordinator.node, "another tailnet's name loads directly")
+        XCTAssertNil(coordinator.node, "the old tailnet's name has no node")
+        XCTAssertEqual(fresh.configuration.websiteDataStore.proxyConfigurations.map(\.debugDescription),
+                       [MembershipNode.closedProxy.debugDescription], "its store refuses every connection")
+        for _ in 0..<100 where coordinator.gate != .unreachable { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(coordinator.gate, .unreachable, "Can't Reach, with no probe")
+        XCTAssertNil(fresh.url, "nothing loaded")
     }
 }
 
@@ -1145,7 +1153,7 @@ final class ConnectionStateTests: XCTestCase {
         XCTAssertEqual(tile(answers: ["other.tailabc123.ts.net": true]), .offline, "not probed: its machine is offline")
         XCTAssertNil(tile(answers: nil), "nothing before the first probe")
         XCTAssertNil(tile(node: .connecting, answers: [coach: false]), "the launcher shows the connection itself")
-        XCTAssertNil(tile("example.com", route: .direct, answers: [:]))
+        XCTAssertNil(tile("example.com", route: .refused, answers: [:]))
     }
 
     func testSharedCopyNeverNamesTailscale() {
