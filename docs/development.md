@@ -155,13 +155,13 @@ needed only after editing `project.yml`: then run `xcodegen generate`.
 `scripts/build-tailscalekit.sh` builds `Frameworks/TailscaleKit.xcframework` from
 `tailscale/libtailscale` at a pinned commit. Run it once before building in Xcode. The
 output is gitignored and cached; `--force` rebuilds. It needs Go, and fetches the
-`go1.26.9` toolchain itself. On top of upstream it:
+`go1.27.2` toolchain itself. On top of upstream it:
 
 - builds with the `ts_omit_debug` tag, which drops the node's debug LocalAPI, pprof and
   debug HTTP handlers;
 - turns off log upload to `log.tailscale.com` from a Go `init`, for every node the app
   runs, guests' included;
-- raises a few `golang.org/x` modules for security fixes;
+- raises `golang.org/x` modules past libtailscale's own when they have security fixes;
 - adds a privacy manifest to the framework, which Apple requires of a framework that
   calls a required-reason API.
 

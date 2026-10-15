@@ -4,18 +4,18 @@
 # same pin does nothing. Pass --force to rebuild.
 set -euo pipefail
 
-# Pinned upstream commit (libtailscale main, 2026-09). Bump deliberately: rerun, then
-# test the embedded node end to end before shipping.
+# Pinned upstream commit (libtailscale 0.2.0, with tailscale.com v1.104.1). Bump
+# deliberately: rerun, then test the embedded node end to end before shipping.
 LIBTAILSCALE_REPO=https://github.com/tailscale/libtailscale.git
-LIBTAILSCALE_COMMIT=59d4bb82744915815178e0f0776d60026a397ee7
-# libtailscale's tailscale.com dependency doesn't build with Go 1.27 yet. Keep the
-# latest 1.26 patch release: it carries the standard library's security fixes.
-GO_TOOLCHAIN=go1.26.9
+LIBTAILSCALE_COMMIT=d1dc45d039edb7759ecbee6ba2aea0c4bca884b8
+# libtailscale's go.mod asks for Go 1.27.1 or later. Keep the latest 1.27 patch
+# release: it carries the standard library's security fixes.
+GO_TOOLCHAIN=go1.27.2
 # -trimpath keeps the build machine's file paths, such as /Users/<name>/go, out of the binary.
 GO_FLAGS=-trimpath
 # Modules raised past libtailscale's go.mod for security fixes (govulncheck). Drop an
 # entry once the pinned go.mod reaches it: go get would otherwise move it back down.
-GO_UPGRADES="golang.org/x/net@v0.60.0 golang.org/x/text@v0.42.0"
+GO_UPGRADES="golang.org/x/net@v0.60.0"
 # ts_omit_debug drops the node's debug LocalAPI, pprof and debug HTTP handlers, which
 # Ovenlight never calls. libtailscale's Makefile has no knob for tags, so it is edited.
 BUILD_TAGS=ios,ts_omit_debug
