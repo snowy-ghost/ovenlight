@@ -216,6 +216,26 @@ func TestClaimReviewInvite(t *testing.T) {
 	}
 }
 
+// A device that claimed may claim again after its invite was canceled or expired (a
+// retry after a lost answer); no other device may.
+func TestClaimAgainAfterTheInviteEnded(t *testing.T) {
+	for _, state := range []string{inviteCanceled, inviteExpired} {
+		review := sentInvite("r1", "App Review", "coach", "key-review")
+		review.Review = true
+		st := sharingState{Invites: []Invite{review}}
+		if _, _, fresh, err := st.claimInvite(hashKey("key-review"), "coach", samDev, t0); err != nil || !fresh {
+			t.Fatalf("claim: %v %v", fresh, err)
+		}
+		st.Invites[0].State = state
+		if _, g, fresh, err := st.claimInvite(hashKey("key-review"), "coach", samDev, t0.Add(reviewInviteTTL+claimGrace+time.Hour)); err != nil || fresh || g.DeviceID != "nSam" {
+			t.Errorf("%s: claiming again: %+v %v %v", state, g, fresh, err)
+		}
+		if _, _, _, err := st.claimInvite(hashKey("key-review"), "coach", kimDev, t0); !errors.Is(err, errNotInvited) {
+			t.Errorf("%s: another device: %v", state, err)
+		}
+	}
+}
+
 func TestRevokeKeepsDevicesThatHoldAnotherApp(t *testing.T) {
 	st := sharingState{Guests: []Guest{
 		{DeviceID: "nSam", Person: "nSam", Name: "Sam", App: "coach"},

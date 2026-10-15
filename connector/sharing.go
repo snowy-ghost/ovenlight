@@ -263,6 +263,11 @@ func (st *sharingState) claimInvite(keyHash, app string, caller Identity, now ti
 	if inv == nil || inv.App != app {
 		return nil, nil, false, errNotInvited
 	}
+	// A device that claimed this invite and still holds the app may claim again, however
+	// the invite ended since: a retry after an answer that never arrived.
+	if g := st.activeGuest(caller.DeviceID, app); g != nil && g.InviteID == inv.ID {
+		return inv, g, false, nil
+	}
 	switch inv.State {
 	case inviteClaimed:
 		if !slices.Contains(st.claimants(inv.ID), caller.DeviceID) {
