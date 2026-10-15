@@ -210,7 +210,7 @@ object HomeReorder {
  * because scrolling stops meanwhile. Once dropped, it holds the new order until the list changes
  * from [droppedOn], the list at the drop.
  */
-private data class IconDrag(val id: UUID, val location: Offset, val grab: Offset, val target: Int, val droppedOn: List<WebApp>? = null) {
+private data class IconDrag(val id: UUID, val grab: Offset, val target: Int, val droppedOn: List<WebApp>? = null) {
     val dropped: Boolean get() = droppedOn != null
 }
 
@@ -226,7 +226,7 @@ fun HomeScreenGrid(
     /** Set up for the owner's own computers: the empty grid invites their apps. A guest's stays blank while the first invite joins. */
     ownerEnabled: Boolean,
     icon: (WebApp) -> Bitmap?,
-    iconRevision: Int,
+    iconRevisions: Map<UUID, Int>,
     reachability: Map<UUID, AppReachability>,
     open: (WebApp) -> Unit,
     /** Moves an app to an index in the list, and saves the order. */
@@ -269,6 +269,9 @@ fun HomeScreenGrid(
             val rows = ceil(slots / layout.columns.toDouble()).toInt()
             // Where each icon is drawn, for the moved one to follow the finger.
             val positions = remember { mutableMapOf<UUID, Animatable<Offset, AnimationVector2D>>() }
+            // Where the finger is during a drag, kept out of snapshot state: the grid recomposes only
+            // when the moved icon's target slot changes, not on every move.
+            val finger = remember { FingerPosition() }
             val current by rememberUpdatedState(order)
             val currentApps by rememberUpdatedState(apps)
             val currentOpen by rememberUpdatedState(open)
@@ -278,7 +281,7 @@ fun HomeScreenGrid(
             var pendingSlot by remember { mutableStateOf<Int?>(null) }
 
             fun slotUnder(d: IconDrag): Int {
-                val point = HomeGridLayout.Point(((d.location.x - d.grab.x) / px).toDouble(), ((d.location.y - d.grab.y) / px).toDouble())
+                val point = HomeGridLayout.Point(((finger.at.x - d.grab.x) / px).toDouble(), ((finger.at.y - d.grab.y) / px).toDouble())
                 return min(layout.slot(point), currentApps.size - 1).coerceAtLeast(0)
             }
 
@@ -373,13 +376,14 @@ fun HomeScreenGrid(
                                         if (!moving && (change.position - down.position).getDistance() > slop) {
                                             moving = true
                                             menuFor = null
-                                            drag = IconDrag(app.id, grid(change.position), grab = start - center(index), target = index)
+                                            drag = IconDrag(app.id, grab = start - center(index), target = index)
                                         }
                                         if (!moving) continue
-                                        val d = drag?.copy(location = grid(change.position)) ?: break
-                                        drag = d
+                                        val d = drag ?: break
+                                        finger.at = grid(change.position)
                                         val moved = positions[app.id]
-                                        scope.launch { moved?.snapTo(d.location - d.grab - half) }
+                                        val to = finger.at - d.grab - half
+                                        scope.launch { moved?.snapTo(to) }
                                         retargetSoon()
                                     }
                                 } finally {
@@ -410,7 +414,7 @@ fun HomeScreenGrid(
                             LaunchedEffect(slot, moving) {
                                 if (!moving) position.animateTo(slot, spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessMediumLow))
                             }
-                            val image = rememberIcon(app, iconRevision, icon)
+                            val image = rememberIcon(app, iconRevisions[app.id] ?: 0, icon)
                             val status = reachability[app.id]
                             val before = order.getOrNull(index - 1)
                             val after = order.getOrNull(index + 1)
@@ -477,18 +481,29 @@ private const val PRESS_DELAY_MS = 100L
  * Decoded icons, by app, file and icon revision, so the launcher coming back after the lock
  * draws them in its first frame. About 50 at the largest size.
  */
-private val decodedIcons = object : LruCache<String, Bitmap>(16 * 1024 * 1024) {
-    override fun sizeOf(key: String, value: Bitmap) = value.allocationByteCount
+private val decodedIcons = object : LruCache<IconKey, Bitmap>(16 * 1024 * 1024) {
+    override fun sizeOf(key: IconKey, value: Bitmap) = value.allocationByteCount
 }
 
 /** The app's icon, read and decoded off the main thread; the last one stays until a newer one is ready. */
 @Composable
 private fun rememberIcon(app: WebApp, iconRevision: Int, load: (WebApp) -> Bitmap?): Bitmap? {
-    val key = "${app.id} ${app.iconFile} $iconRevision"
+    val key = IconKey(app.id, app.iconFile, iconRevision)
     val image by produceState(decodedIcons[key], key) {
-        value = decodedIcons[key] ?: withContext(Dispatchers.IO) { load(app) }?.also { decodedIcons.put(key, it) }
+        value = decodedIcons[key] ?: withContext(Dispatchers.IO) { load(app) }?.also { decoded ->
+            // The app's older icons can never be asked for again.
+            decodedIcons.snapshot().keys.filter { it.app == app.id && it != key }.forEach(decodedIcons::remove)
+            decodedIcons.put(key, decoded)
+        }
     }
     return image
+}
+
+private data class IconKey(val app: UUID, val file: String?, val revision: Int)
+
+/** The finger during a drag (see HomeScreenGrid). */
+private class FingerPosition {
+    var at = Offset.Zero
 }
 
 /**

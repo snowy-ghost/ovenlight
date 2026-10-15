@@ -59,10 +59,10 @@ class AppRegistry(
             state.value = value
         }
 
-    private val icons = MutableStateFlow(0)
+    private val icons = MutableStateFlow<Map<UUID, Int>>(emptyMap())
 
-    /** Goes up with each icon saved, so a refreshed icon redraws under its unchanged file name. */
-    val iconRevision: StateFlow<Int> = icons
+    /** Each app's count of icons saved, so a refreshed icon redraws under its unchanged file name, and only that one. */
+    val iconRevisions: StateFlow<Map<UUID, Int>> = icons
 
     /** Hosts of apps the user removed; discovery won't add them back. */
     private var dismissedHosts: Set<String> = emptySet()
@@ -308,7 +308,7 @@ class AppRegistry(
         }
         update(id) { it.copy(iconFile = name) }
         save()
-        icons.value += 1
+        icons.value += id to ((icons.value[id] ?: 0) + 1)
     }
 
     suspend fun refreshAllMissingIcons() {

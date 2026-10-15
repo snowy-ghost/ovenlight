@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -56,6 +57,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
@@ -97,7 +99,9 @@ data class LauncherState(
     /** The apps whose computers aren't answering. */
     val reachability: Map<UUID, AppReachability> = emptyMap(),
     /** Goes up with each icon saved, so a refreshed icon redraws. */
-    val iconRevision: Int = 0,
+    val iconRevisions: Map<UUID, Int> = emptyMap(),
+    /** A screen covers the launcher: nothing in it takes keyboard focus. */
+    val covered: Boolean = false,
     val icon: (WebApp) -> Bitmap? = { null },
     val lock: () -> Unit = {},
     val present: (RootSheet) -> Unit = {},
@@ -140,7 +144,8 @@ fun LauncherView(model: AppModel) {
     val guestStates = guestNodes.values.map { node -> key(node.id) { node.state.collectAsState().value to node.answers.collectAsState().value } }
     val memberships by nodes.memberships.membershipsFlow.collectAsState()
     val phases by model.guests.phases.collectAsState()
-    val iconRevision by registry.iconRevision.collectAsState()
+    val iconRevisions by registry.iconRevisions.collectAsState()
+    val sheet by model.router.sheet.collectAsState()
     val reachability = remember(apps, ownerState, ownerStatus, ownerAnswers, guestStates) {
         apps.mapNotNull { app -> nodes.reachability(app)?.let { app.id to it } }.toMap()
     }
@@ -155,7 +160,8 @@ fun LauncherView(model: AppModel) {
             memberships = memberships,
             phases = phases,
             reachability = reachability,
-            iconRevision = iconRevision,
+            iconRevisions = iconRevisions,
+            covered = sheet != null,
             icon = { IconDecoder.load(registry.iconFile(it)) },
             lock = model.lock::lock,
             present = model.router::present,
@@ -203,7 +209,10 @@ fun LauncherView(state: LauncherState) {
     var removing by remember { mutableStateOf<WebApp?>(null) }
     var leaving by remember { mutableStateOf<Membership?>(null) }
     var noMailApp by remember { mutableStateOf(false) }
-    Box(Modifier.fillMaxSize().background(LocalOvenColors.current.ovenInterior)) {
+    // Covered by a screen, the launcher stays composed beneath it; touch and TalkBack don't reach
+    // it, and this keeps a keyboard's Tab from wrapping onto its hidden buttons and tiles.
+    val focus = if (state.covered) Modifier.focusProperties { onEnter = { cancelFocusChange() } }.focusGroup() else Modifier
+    Box(Modifier.fillMaxSize().background(LocalOvenColors.current.ovenInterior).then(focus)) {
         LampLight(level = 0.6f)
         CompositionLocalProvider(LocalContentColor provides colors.onSurface) {
             Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
@@ -215,7 +224,7 @@ fun LauncherView(state: LauncherState) {
                     )
                 } else {
                     HomeScreenGrid(
-                        apps = state.apps, ownerEnabled = state.ownerEnabled, icon = state.icon, iconRevision = state.iconRevision,
+                        apps = state.apps, ownerEnabled = state.ownerEnabled, icon = state.icon, iconRevisions = state.iconRevisions,
                         reachability = state.reachability, open = state.open, move = state.move,
                         addApp = { state.present(RootSheet.AddApp) }, openLink = state.openLink,
                         modifier = Modifier.weight(1f),
@@ -459,11 +468,12 @@ private fun RenameDialog(app: WebApp, onDismiss: () -> Unit, save: (String) -> U
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), onKeyboardAction = { done() },
                 modifier = Modifier.focusRequester(focus),
             )
+            // Here, in the dialog's own window, so the field is there to take focus.
+            LaunchedEffect(Unit) { focus.requestFocus() }
         },
         confirmButton = { TextButton(onClick = done, enabled = name.text.isNotEmpty()) { Text(stringResource(R.string.launcher_save)) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.launcher_cancel)) } },
     )
-    LaunchedEffect(Unit) { focus.requestFocus() }
 }
 
 /** A confirmation whose button is in the error color, as iOS marks destructive ones red. */

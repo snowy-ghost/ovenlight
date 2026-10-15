@@ -7,9 +7,12 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.FocusManager
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -17,6 +20,7 @@ import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.isFocused
 import androidx.compose.ui.test.junit4.accessibility.enableAccessibilityChecks
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.longClick
@@ -39,6 +43,7 @@ import java.net.URI
 import java.time.Instant
 import java.util.UUID
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -48,8 +53,11 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
-/** The launcher from hand-made states: every card, banner, grid size and menu, with accessibility checks on. */
-// Native graphics, so the checks can draw the icons and measure contrast.
+/**
+ * The launcher from hand-made states: every card, banner, grid size and menu. Labels are checked
+ * here (see checkAccessibility); contrast and touch targets on a device, in ScreenAccessibilityTests.
+ */
+// Native graphics, which vector icons need to draw.
 @RunWith(AndroidJUnit4::class)
 @Config(qualifiers = "w412dp-h915dp")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -85,7 +93,7 @@ class LauncherViewTests {
                 CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale)) { LauncherView(state) }
             }
         }
-        composeRule.onRoot().tryPerformAccessibilityChecks()
+        composeRule.checkAccessibility()
     }
 
     private fun columns(): Int? = composeRule.onNode(SemanticsMatcher.keyIsDefined(SemanticsProperties.CollectionInfo))
@@ -133,11 +141,33 @@ class LauncherViewTests {
         composeRule.onNodeWithContentDescription("Lock Ovenlight").performClick()
         assertTrue(locked)
         composeRule.onNodeWithContentDescription("More").performClick()
-        composeRule.onNodeWithText("Add app").assertIsDisplayed()
-        composeRule.onNodeWithText(ConnectionCopy.joinWithInvite).assertIsDisplayed()
         composeRule.onNodeWithText("People & sharing").assertDoesNotExist()
+        composeRule.onNodeWithText("Add app").performClick()
+        composeRule.onNodeWithContentDescription("More").performClick()
+        composeRule.onNodeWithText(ConnectionCopy.joinWithInvite).performClick()
+        composeRule.onNodeWithContentDescription("More").performClick()
         composeRule.onNodeWithText("Settings").performClick()
-        assertEquals(listOf<RootSheet>(RootSheet.Settings), presented)
+        assertEquals(RootSheet.AddApp, presented[0])
+        assertNull("Join with invite opens the join sheet without an invite", (presented[1] as RootSheet.Join).request.invite)
+        assertEquals(RootSheet.Settings, presented[2])
+    }
+
+    @Test
+    fun testACoveredLauncherTakesNoKeyboardFocus() {
+        var covered by mutableStateOf(false)
+        lateinit var focus: FocusManager
+        composeRule.setContent {
+            focus = LocalFocusManager.current
+            OvenlightTheme { LauncherView(LauncherState(apps = apps, covered = covered)) }
+        }
+        composeRule.runOnIdle { focus.moveFocus(FocusDirection.Next) }
+        assertTrue("uncovered, a keyboard reaches it", composeRule.onAllNodes(isFocused()).fetchSemanticsNodes().isNotEmpty())
+        composeRule.runOnIdle {
+            focus.clearFocus()
+            covered = true
+        }
+        composeRule.runOnIdle { repeat(10) { focus.moveFocus(FocusDirection.Next) } }
+        assertTrue("under a screen, nothing in it takes focus", composeRule.onAllNodes(isFocused()).fetchSemanticsNodes().isEmpty())
     }
 
     @Test

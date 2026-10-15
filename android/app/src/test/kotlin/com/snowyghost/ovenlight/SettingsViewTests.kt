@@ -54,19 +54,7 @@ class SettingsViewTests {
         composeRule.enableAccessibilityChecks()
     }
 
-    /**
-     * The accessibility checks on everything showing. Under Robolectric they evaluate no
-     * Compose content ("Composable content is not evaluated in this environment"), so their
-     * label rule is checked on the semantics tree as well: everything tappable says what it is.
-     */
-    private fun checkAccessibility() {
-        composeRule.onAllNodes(isRoot()).tryPerformAccessibilityChecks()
-        for (node in composeRule.onAllNodes(hasClickAction()).fetchSemanticsNodes()) {
-            val label = node.config.getOrNull(SemanticsProperties.Text).orEmpty().map { it.text } +
-                node.config.getOrNull(SemanticsProperties.ContentDescription).orEmpty()
-            assertTrue("no label: $node", label.any { it.isNotBlank() })
-        }
-    }
+    private fun checkAccessibility() = composeRule.checkAccessibility()
 
     private enum class Look(val dark: Boolean, val fontScale: Float) { Light(false, 1f), Dark(true, 1f), LargeText(false, 2f) }
 

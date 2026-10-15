@@ -1,6 +1,8 @@
 package com.snowyghost.ovenlight
 
 import android.content.res.Configuration
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -8,15 +10,19 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.size
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.isRoot
-import androidx.compose.ui.test.onRoot
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.junit4.accessibility.enableAccessibilityChecks
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.tryPerformAccessibilityChecks
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.net.URI
 import java.time.Instant
@@ -43,8 +49,11 @@ class ScreenAccessibilityTests {
         composeRule.enableAccessibilityChecks()
     }
 
-    /** Shows [content] in each look and checks every root, dialogs and menus included. */
-    private fun check(content: @Composable () -> Unit) {
+    /**
+     * Shows [content] in each look and checks every root, dialogs and menus included. [open]
+     * opens a menu or dialog once, before the first look; it stays open through the others.
+     */
+    private fun check(open: () -> Unit = {}, content: @Composable () -> Unit) {
         var look by mutableStateOf(Look.Light)
         composeRule.setContent {
             val base = LocalConfiguration.current
@@ -57,6 +66,8 @@ class ScreenAccessibilityTests {
                 OvenlightTheme(content)
             }
         }
+        composeRule.waitForIdle()
+        open()
         for (each in Look.entries) {
             look = each
             composeRule.waitForIdle()
@@ -119,6 +130,48 @@ class ScreenAccessibilityTests {
     @Test
     fun testTheStatusPillFailing() = check {
         LauncherView(LauncherState(apps = listOf(recipes), ownerEnabled = true, ownerState = NodeState.Failed(ConnectionCopy.couldNotStart)))
+    }
+
+    private val grid = LauncherState(apps = listOf(recipes, guide, garden), ownerEnabled = true, ownerState = NodeState.Ready)
+
+    private fun holdTile(description: String) =
+        composeRule.onNodeWithContentDescription(description).performSemanticsAction(SemanticsActions.OnLongClick)
+
+    @Test
+    fun testTheMoreMenu() = check(open = { composeRule.onNodeWithContentDescription("More").performClick() }) { LauncherView(grid) }
+
+    @Test
+    fun testAnOwnAppsMenu() = check(open = { holdTile("Recipe Box") }) { LauncherView(grid) }
+
+    @Test
+    fun testASharedAppsMenu() = check(open = { holdTile("House Guide, ${ConnectionCopy.sharedBy("Riley")}") }) { LauncherView(grid) }
+
+    @Test
+    fun testTheRenameDialog() = check(open = {
+        holdTile("Recipe Box")
+        composeRule.onNodeWithText("Rename").performClick()
+    }) { LauncherView(grid) }
+
+    @Test
+    fun testTheRemoveConfirmation() = check(open = {
+        holdTile("Recipe Box")
+        composeRule.onNodeWithText("Remove app").performClick()
+    }) { LauncherView(grid) }
+
+    @Test
+    fun testTheNoEmailAppDialog() = check { NoEmailAppDialog {} }
+
+    @Test
+    fun testTheLockDelayDialog() = check(open = { composeRule.onNodeWithText("Require screen lock").performClick() }) {
+        SettingsScreen(SettingsState(version = "1.0.0 (12)"), onClose = {})
+    }
+
+    @Test
+    fun testTheSignOutConfirmation() = check(open = { composeRule.onNodeWithText("Sign out").performScrollTo().performClick() }) {
+        SettingsScreen(
+            SettingsState(owner = OwnerSettings(NodeState.Ready, TailnetStatus.User("dimitri@example.com", "Dimitri"), "example.com")),
+            onClose = {},
+        )
     }
 
     @Test
