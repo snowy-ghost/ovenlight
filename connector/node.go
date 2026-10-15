@@ -56,6 +56,7 @@ type appNode struct {
 	untaggedKey bool
 
 	srv    *tsnet.Server
+	logs   *restartingFile // backend.log, which close() closes so the node's directory can go
 	lc     *local.Client
 	whoIs  func(ctx context.Context, remoteAddr string) (*apitype.WhoIsResponse, error) // lc.WhoIs; tests stub it
 	proxy  *httputil.ReverseProxy
@@ -185,13 +186,15 @@ func (n *appNode) start() error {
 	if n.App().Shareable && n.authKey == "" && !n.hasState() {
 		tags = []string{policy.AppTag(n.App().Slug)}
 	}
+	var logf func(string, ...any)
+	n.logs, logf = backendLogger(filepath.Join(n.dir, "backend.log"))
 	n.srv = &tsnet.Server{
 		Dir:           n.dir,
 		Hostname:      n.App().Slug,
 		ControlURL:    n.dev.ControlURL,
 		AuthKey:       authKey,
 		AdvertiseTags: tags,
-		Logf:          backendLogger(filepath.Join(n.dir, "backend.log")),
+		Logf:          logf,
 		UserLogf: func(format string, args ...any) {
 			// tsnet's own login hint talks about TS_AUTHKEY; watch() prints a clearer one.
 			if msg := fmt.Sprintf(format, args...); !strings.Contains(msg, "go to: ") {
@@ -200,11 +203,12 @@ func (n *appNode) start() error {
 		},
 	}
 	if err := n.srv.Start(); err != nil {
+		n.logs.Close()
 		return err
 	}
 	lc, err := n.srv.LocalClient()
 	if err != nil {
-		n.srv.Close()
+		n.close()
 		return err
 	}
 	n.lc, n.whoIs = lc, lc.WhoIs
@@ -223,6 +227,9 @@ func (n *appNode) close() {
 	n.cancel()
 	if n.srv != nil {
 		n.srv.Close()
+	}
+	if n.logs != nil {
+		n.logs.Close() // Windows can't delete the directory while it's open
 	}
 }
 
@@ -710,24 +717,26 @@ func (n *appNode) checkCertificate(ctx context.Context) error {
 }
 
 // backendLogger writes tsnet's verbose backend log to a file in the node's directory,
-// moving it to backend.log.1 whenever it grows past 10 MB.
-func backendLogger(path string) func(string, ...any) {
+// moving it to backend.log.1 whenever it grows past 10 MB. Lines after the file is
+// closed, or when it can't be opened, are dropped.
+func backendLogger(path string) (*restartingFile, func(string, ...any)) {
 	f := &restartingFile{path: path, max: 10 << 20}
 	if err := f.open(0); err != nil {
-		return func(string, ...any) {}
+		f.closed = true
 	}
-	return log.New(f, "", log.LstdFlags|log.Lmicroseconds).Printf
+	return f, log.New(f, "", log.LstdFlags|log.Lmicroseconds).Printf
 }
 
 // restartingFile is a log file that starts over once it would grow past max bytes,
 // keeping the full one as path.1 (replacing an older one there). Several loggers may
-// share one.
+// share one. Once closed, it takes no more writes and never opens the file again.
 type restartingFile struct {
-	path string
-	max  int64
-	mu   sync.Mutex
-	f    *os.File
-	size int64
+	path   string
+	max    int64
+	mu     sync.Mutex
+	f      *os.File
+	size   int64
+	closed bool
 }
 
 func (r *restartingFile) open(flag int) error {
@@ -747,6 +756,9 @@ func (r *restartingFile) open(flag int) error {
 func (r *restartingFile) Write(p []byte) (int, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.closed {
+		return 0, os.ErrClosed
+	}
 	if r.size+int64(len(p)) > r.max {
 		r.f.Close()
 		os.Rename(r.path, r.path+".1") // Windows refuses while another process has it open; O_TRUNC then starts it over in place
@@ -762,5 +774,9 @@ func (r *restartingFile) Write(p []byte) (int, error) {
 func (r *restartingFile) Close() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.closed {
+		return nil
+	}
+	r.closed = true
 	return r.f.Close()
 }

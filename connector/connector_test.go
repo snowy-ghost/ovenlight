@@ -858,6 +858,26 @@ func TestStrayArgumentsAreRefused(t *testing.T) {
 
 // A node has logged in once its state holds a login profile; a node that only started
 // has a machine key and nothing more.
+// Closing a node closes its backend.log, so making the app shareable or unpublishing it
+// can delete the node's directory (Windows refuses while the file is open), and a line
+// tsnet logs afterwards is dropped rather than opening it again.
+func TestNodeCloseClosesItsLog(t *testing.T) {
+	n := newAppNode(App{Name: "Coach", Slug: "coach", Port: 4317}, t.TempDir(), devOptions{ControlURL: "http://127.0.0.1:9"}, nil)
+	if err := n.start(); err != nil {
+		t.Fatal(err)
+	}
+	n.close()
+	if err := os.RemoveAll(n.dir); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := n.logs.Write([]byte("late line\n")); !errors.Is(err, os.ErrClosed) {
+		t.Errorf("write after close: %v", err)
+	}
+	if _, err := os.Stat(n.dir); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("the node's directory is back: %v", err)
+	}
+}
+
 func TestNodeLoggedIn(t *testing.T) {
 	state := t.TempDir()
 	write := func(slug string, keys map[string][]byte) {
