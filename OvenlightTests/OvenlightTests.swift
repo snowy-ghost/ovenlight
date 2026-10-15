@@ -883,6 +883,13 @@ final class AppLoadGateTests: XCTestCase {
         XCTAssertEqual(run([.nodeReady, .reached], from: gaveUp), gaveUp, "only Retry leaves it")
         XCTAssertEqual(run([.retry], from: gaveUp), .waiting)
     }
+
+    func testAComputerListedOfflineOpensTheAppWhenItAnswers() {
+        let gaveUp = run([.nodeReady, .gaveUp])
+        XCTAssertEqual(run([.woke], from: gaveUp), .ready, "a quiet retry answered")
+        XCTAssertEqual(run([.woke]), .waiting, "only after giving up")
+        XCTAssertEqual(run([.nodeReady, .woke]), .probing)
+    }
 }
 
 final class ConnectionStateTests: XCTestCase {

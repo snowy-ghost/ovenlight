@@ -466,10 +466,10 @@ final class MembershipNode: ObservableObject {
                     continue
                 }
                 if state == .ready {
-                    // Look again when a machine comes online or goes away (the owner's new apps
+                    // Look again when a machine comes online or goes away (the owner's new apps,
                     // and tiles), and once a minute regardless: a host that missed one look, as a
                     // newly published app's first answer can, would otherwise wait for the next change.
-                    let hostsChanged = isOwner && Discovery.candidateHosts(in: status) != probedHosts
+                    let hostsChanged = probeHosts != probedHosts
                     if hostsChanged || lastProbe.map({ Date.now.timeIntervalSince($0) > 60 }) == true { await rediscover() }
                 }
             }
@@ -509,7 +509,13 @@ final class MembershipNode: ObservableObject {
     }
 
     private var probeHosts: [String] {
-        isOwner ? Discovery.candidateHosts(in: status) : Array(Set(guestHosts().map(Discovery.normalizedHost))).sorted()
+        isOwner ? Discovery.candidateHosts(in: status) : GuestProbe.hostsToProbe(guestHosts(), in: status)
+    }
+
+    /// The network lists this app's computer as offline. It may still answer (a peer can be
+    /// listed offline for a moment while it works), so this never stops a probe.
+    func isListedOffline(_ host: String) -> Bool {
+        !Discovery.offlineHosts([host], in: status).isEmpty
     }
 
     private func probe(_ hosts: [String]) async -> Discovery.Outcome {
@@ -646,6 +652,14 @@ enum GuestProbe {
             }
             return outcome
         }
+    }
+
+    /// The app hosts worth probing: not those whose computer the network lists as offline,
+    /// which can't answer. Like the owner's offline machines, they are missing from the
+    /// answers, so their tiles show Offline at once.
+    static func hostsToProbe(_ hosts: [String], in status: TailnetStatus?) -> [String] {
+        let hosts = Set(hosts.map(Discovery.normalizedHost))
+        return hosts.subtracting(Discovery.offlineHosts(hosts, in: status)).sorted()
     }
 
     static func whoami(host: String, session: URLSession) async -> Reach {

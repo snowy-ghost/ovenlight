@@ -23,12 +23,16 @@ enum AppLoadGate: Equatable {
         case retry
         /// The first navigation failed at the connection level; check the path again.
         case loadFailed
+        /// The app's computer, listed offline when the gate gave up, answered a quiet retry.
+        case woke
     }
 
     /// How long the app's host may take to answer once the node is ready.
     static let reachTimeout: TimeInterval = 10
     /// How long to wait for the node itself before giving up on this app.
     static let nodeTimeout: TimeInterval = 30
+    /// Between quiet retries of an app whose computer is listed offline.
+    static let quietRetryInterval: TimeInterval = 3
 
     func next(_ event: Event) -> AppLoadGate {
         switch (self, event) {
@@ -36,6 +40,8 @@ enum AppLoadGate: Equatable {
             return .waiting
         case (.ready, .loadFailed):
             return .waiting
+        case (.unreachable, .woke):
+            return .ready
         case (.ready, _), (.unreachable, _):
             // A loaded page stays put through node restarts; a gate that gave up waits for Retry.
             return self

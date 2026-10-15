@@ -380,6 +380,25 @@ final class GuestCleanupTests: XCTestCase {
         XCTAssertEqual(absence.record([notes]), [], "back in the list starts over")
     }
 
+    /// A sleeping computer's apps aren't probed, so their tiles say Offline at once rather
+    /// than after every probe times out.
+    func testAppsOnAComputerListedOfflineArentProbed() throws {
+        let hosts = [echo, "Notes.taildef456.ts.net.", echo]
+        XCTAssertEqual(GuestProbe.hostsToProbe(hosts, in: try status(peers: [echo: true, notes: false])), [echo])
+        XCTAssertEqual(GuestProbe.hostsToProbe(hosts, in: try status(peers: [echo: true])), [echo, notes],
+                       "one not listed yet is probed")
+        XCTAssertEqual(GuestProbe.hostsToProbe(hosts, in: nil), [echo, notes])
+        XCTAssertEqual(GuestProbe.hostsToProbe(hosts, in: try status(peers: [echo: false, notes: false])), [])
+        XCTAssertEqual(Discovery.offlineHosts(["Echo-Board.taildef456.ts.net"], in: try status(peers: [echo: false])),
+                       ["Echo-Board.taildef456.ts.net"])
+
+        var answers: [String: Bool] = [:] // what a node records when nothing was left to probe
+        let tile = AppReachability.forTile(host: echo, route: .tailnetNode, nodeState: .ready, answers: answers)
+        XCTAssertEqual(tile, .offline)
+        answers[echo] = true
+        XCTAssertNil(AppReachability.forTile(host: echo, route: .tailnetNode, nodeState: .ready, answers: answers))
+    }
+
     func testGuestsNeverGetSignInOrOwnerApprovalCopy() {
         var shared = app(echo, in: "a")
         shared.sharedBy = "Riley"

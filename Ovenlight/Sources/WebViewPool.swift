@@ -250,6 +250,12 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
             // Apps loaded directly (on the public internet) have no node to wait for.
             if node == nil || (node?.state == .ready && nodeMayCarry) {
                 gate = gate.next(.nodeReady)
+                // Its computer is listed offline, asleep most likely: Can't Reach shows at
+                // once, and the app opens as soon as the computer answers.
+                if !hasLoadedOnce, let node, node.isListedOffline(app.host) {
+                    giveUp()
+                    return await retryQuietly(through: node)
+                }
                 let since = probingSince ?? .now
                 probingSince = since
                 let reach = if let node { await node.canReach(app) } else { await Self.canReachDirectly(app.startURL) ? Reach.reached : .unreachable }
@@ -275,6 +281,28 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
                 if node?.state.isBusy == true, Date.now.timeIntervalSince(opened) >= AppLoadGate.nodeTimeout { return giveUp() }
                 try? await Task.sleep(for: .milliseconds(250))
             }
+        }
+    }
+
+    /// Probes the app behind its Can't Reach screen, from at once (a computer can be listed
+    /// offline for a moment while it answers) until it answers, Try Again starts over, or
+    /// the app closes to the launcher, after which opening it again tries again.
+    private func retryQuietly(through node: MembershipNode) async {
+        while !Task.isCancelled, gate == .unreachable, routeIsCurrent() {
+            if node.state == .ready, nodeMayCarry {
+                switch await node.canReach(app) {
+                case .reached:
+                    guard !Task.isCancelled, gate == .unreachable else { return }
+                    gate = gate.next(.woke)
+                    return load()
+                case .notInvited:
+                    return GuestManager.shared.accessEnded(for: [app])
+                case .unreachable:
+                    break
+                }
+            }
+            try? await Task.sleep(for: .seconds(AppLoadGate.quietRetryInterval))
+            guard webView?.window != nil else { return }
         }
     }
 

@@ -73,6 +73,14 @@ enum Discovery {
         return Array(Set(hosts)).sorted()
     }
 
+    /// The hosts among `hosts` whose node the network lists as offline: its computer is
+    /// asleep or off, most likely. A host it doesn't list isn't among them, since the node
+    /// may not have it among its peers yet.
+    static func offlineHosts(_ hosts: Set<String>, in status: TailnetStatus?) -> Set<String> {
+        let offline = Set((status?.peers ?? []).filter { !$0.online }.map { normalizedHost($0.dnsName) })
+        return hosts.filter { offline.contains(normalizedHost($0)) }
+    }
+
     static func normalizedHost(_ host: String) -> String {
         var host = host.lowercased().trimmingCharacters(in: .whitespaces)
         while host.hasSuffix(".") { host.removeLast() }
