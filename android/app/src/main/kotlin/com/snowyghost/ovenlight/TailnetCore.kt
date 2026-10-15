@@ -9,6 +9,7 @@ import com.snowyghost.ovenlight.core.Core
 import com.snowyghost.ovenlight.core.Platform
 import java.net.Inet4Address
 import java.net.NetworkInterface
+import java.util.concurrent.Executors
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -34,16 +35,23 @@ object TailnetCore : Platform {
         proxyRealm = Core.proxyRealm()
         connectivity = context.getSystemService(ConnectivityManager::class.java)
         connectivity.registerDefaultNetworkCallback(object : ConnectivityManager.NetworkCallback() {
-            override fun onLinkPropertiesChanged(network: Network, properties: LinkProperties) = report(properties)
-            override fun onLost(network: Network) = Core.networkChanged("", "")
+            override fun onLinkPropertiesChanged(network: Network, properties: LinkProperties) = reports.execute { report(properties) }
+            override fun onLost(network: Network) = reports.execute { Core.networkChanged("", "") }
         })
     }
 
-    /** Reports the current default network, as Ovenlight comes to the foreground. */
+    /**
+     * Reports the current default network, as Ovenlight comes to the foreground, on the same
+     * thread as the network callback's own reports, so they arrive in order.
+     */
     fun reportNetwork() {
-        val properties = connectivity.activeNetwork?.let(connectivity::getLinkProperties)
-        if (properties == null) Core.networkChanged("", "") else report(properties)
+        reports.execute {
+            val properties = connectivity.activeNetwork?.let(connectivity::getLinkProperties)
+            if (properties == null) Core.networkChanged("", "") else report(properties)
+        }
     }
+
+    private val reports = Executors.newSingleThreadExecutor()
 
     private fun report(properties: LinkProperties) {
         val defaults = properties.routes.filter { it.isDefaultRoute && it.gateway != null }
@@ -51,25 +59,39 @@ object TailnetCore : Platform {
         Core.networkChanged(properties.interfaceName.orEmpty(), gateway?.hostAddress.orEmpty())
     }
 
+    /**
+     * Never throws: Go calls it on its own threads, where gobind leaves an exception pending
+     * rather than raising it. An interface that goes away while it's read, as during a Wi-Fi
+     * drop, is skipped.
+     */
     override fun interfacesJSON(): String {
         val list = JSONArray()
-        for (ni in NetworkInterface.getNetworkInterfaces()?.toList().orEmpty()) {
-            val addrs = JSONArray()
-            for (a in ni.interfaceAddresses) {
-                val ip = a.address?.hostAddress ?: continue
-                addrs.put(JSONObject().put("ip", ip).put("prefixLen", a.networkPrefixLength.toInt()))
+        val interfaces = try {
+            NetworkInterface.getNetworkInterfaces()?.toList().orEmpty()
+        } catch (_: Exception) {
+            return "[]"
+        }
+        for (ni in interfaces) {
+            try {
+                val addrs = JSONArray()
+                for (a in ni.interfaceAddresses) {
+                    val ip = a.address?.hostAddress ?: continue
+                    addrs.put(JSONObject().put("ip", ip).put("prefixLen", a.networkPrefixLength.toInt()))
+                }
+                list.put(
+                    JSONObject()
+                        .put("name", ni.name)
+                        .put("index", ni.index)
+                        .put("mtu", ni.mtu)
+                        .put("up", ni.isUp)
+                        .put("loopback", ni.isLoopback)
+                        .put("pointToPoint", ni.isPointToPoint)
+                        .put("multicast", ni.supportsMulticast())
+                        .put("addrs", addrs),
+                )
+            } catch (_: Exception) {
+                continue
             }
-            list.put(
-                JSONObject()
-                    .put("name", ni.name)
-                    .put("index", ni.index)
-                    .put("mtu", ni.mtu)
-                    .put("up", ni.isUp)
-                    .put("loopback", ni.isLoopback)
-                    .put("pointToPoint", ni.isPointToPoint)
-                    .put("multicast", ni.supportsMulticast())
-                    .put("addrs", addrs),
-            )
         }
         return list.toString()
     }

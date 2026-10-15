@@ -56,7 +56,7 @@ ndk="$ANDROID_HOME/ndk/$ndk_version"
 inputs() {
   echo "$GO_TOOLCHAIN $GO_FLAGS $BUILD_TAGS $LDFLAGS $JAVA_PACKAGE $ndk_version $min_sdk $1"
   (cd "$core" && find . -type f \( -name '*.go' -o -name go.mod -o -name go.sum \) | LC_ALL=C sort | xargs shasum -a 256)
-  shasum -a 256 < "$root/scripts/third-party-notices.sh"
+  cat "$root/scripts/third-party-notices.sh" "$0" | shasum -a 256
 }
 want="$(inputs "$targets" | shasum -a 256 | cut -d' ' -f1)"
 release="$(inputs "$RELEASE_TARGETS" | shasum -a 256 | cut -d' ' -f1)"
@@ -69,7 +69,7 @@ if [ -z "$force" ] && [ -f "$out" ] && [ -f "$notices" ] && [ -f "$stamp" ]; the
   fi
 fi
 
-export GOTOOLCHAIN="$GO_TOOLCHAIN" GOFLAGS="$GO_FLAGS" ANDROID_NDK_HOME="$ndk"
+export GOTOOLCHAIN="$GO_TOOLCHAIN" ANDROID_NDK_HOME="$ndk"
 mkdir -p "$work/bin" "$libs"
 # gomobile and gobind at the versions core/go.mod's tool lines pin. gomobile finds gobind
 # on PATH.
@@ -80,6 +80,11 @@ echo "building ovenlight-core.aar for $targets with $GO_TOOLCHAIN and NDK $ndk_v
 rm -f "$work/ovenlight-core.aar" "$work/ovenlight-core-sources.jar"
 (cd "$core" && gomobile bind -target "$targets" -androidapi "$min_sdk" -javapkg "$JAVA_PACKAGE" \
   -tags "$BUILD_TAGS" -trimpath -ldflags "$LDFLAGS" -o "$work/ovenlight-core.aar" .)
+
+# gomobile's R8 rule keeps everything under -javapkg, which would keep the whole app. Only
+# the bound package and its glue are reached through JNI.
+printf '%s\n' '-keep class go.** { *; }' '-keep class com.snowyghost.ovenlight.core.** { *; }' > "$work/proguard.txt"
+(cd "$work" && zip -q ovenlight-core.aar proguard.txt)
 
 # Every LOAD segment of every library aligned to at least 16 KB, as Play requires.
 readelf="$(find "$ndk/toolchains/llvm/prebuilt" -name llvm-readelf -type f -o -name llvm-readelf -type l | head -1)"
@@ -109,6 +114,7 @@ for t in ${targets//,/ }; do
   fi
 done
 
+rm -f "$stamp"
 mv "$work/ovenlight-core.aar" "$out"
 cp "$work/notices-$first.txt" "$notices"
 echo "$want" > "$stamp"

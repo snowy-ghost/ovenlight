@@ -37,7 +37,11 @@ fun WebViewUpdateScreen(webViewPackage: String) {
                 try {
                     context.startActivity(market)
                 } catch (_: ActivityNotFoundException) {
-                    context.startActivity(Intent(Intent.ACTION_VIEW, "https://play.google.com/store/apps/details?id=$webViewPackage".toUri()))
+                    try {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, "https://play.google.com/store/apps/details?id=$webViewPackage".toUri()))
+                    } catch (_: ActivityNotFoundException) {
+                        // No store and no browser: nothing to open.
+                    }
                 }
             }) { Text(stringResource(R.string.webview_update_button)) }
         }

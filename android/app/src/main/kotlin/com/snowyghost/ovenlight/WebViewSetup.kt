@@ -61,13 +61,13 @@ object WebViewSetup {
 
     private fun afterStartUp(context: Context) {
         val webView = WebViewCompat.getCurrentWebViewPackage(context)
-        if (!meetsRequirement(webView?.versionName) || !requiredFeatures.all(WebViewFeature::isFeatureSupported)) {
+        if (pretendingOld || !meetsRequirement(webView?.versionName) || !requiredFeatures.all(WebViewFeature::isFeatureSupported)) {
             mutableState.value = State.NeedsUpdate(webView?.packageName ?: DEFAULT_WEBVIEW_PACKAGE)
             return
         }
         ProfileDeletions.run(context)
         WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
-        overrideProxy(context, "http://${TailnetCore.proxyAddress}") { mutableState.value = State.Ready }
+        overrideProxy(context, "http://${TailnetCore.proxyAddress}") { if (!pretendingOld) mutableState.value = State.Ready }
     }
 
     /** An app view's settings, set once, after its profile. */
@@ -109,8 +109,14 @@ object WebViewSetup {
         ProxyController.getInstance().setProxyOverride(config, ContextCompat.getMainExecutor(context), done)
     }
 
-    /** Debug builds show the update screen on request. */
+    private var pretendingOld = false
+
+    /**
+     * Debug builds show the update screen on request, before or after start-up has run, and
+     * then make no web view.
+     */
     fun pretendNeedsUpdate() {
+        pretendingOld = true
         mutableState.value = State.NeedsUpdate(DEFAULT_WEBVIEW_PACKAGE)
     }
 

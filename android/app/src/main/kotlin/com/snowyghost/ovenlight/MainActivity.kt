@@ -1,6 +1,7 @@
 package com.snowyghost.ovenlight
 
 import android.content.Intent
+import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -14,7 +15,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        window.isNavigationBarContrastEnforced = false
+        clearNavigationBarScrim()
         if (Build.VERSION.SDK_INT >= 33) setRecentsScreenshotEnabled(false)
         // A launch intent is handled once: not again after a restore from process death,
         // and not when Recents replays it (as after a reboot), so an old invite never
@@ -28,6 +29,17 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         receive(intent)
+    }
+
+    // enableEdgeToEdge sets its scrim again on every configuration change, and the activity
+    // handles rotation and dark mode itself, so it comes off again after each.
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        window.decorView.post { clearNavigationBarScrim() }
+    }
+
+    private fun clearNavigationBarScrim() {
+        window.isNavigationBarContrastEnforced = false
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
