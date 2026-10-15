@@ -62,10 +62,14 @@ final class AppRegistry: ObservableObject {
         do {
             try SavedJSON.encode(apps, keeping: unread)
                 .write(to: fileURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        } catch {
+            SavedJSON.log.error("apps: couldn't save: \(String(describing: error), privacy: .public)")
+        }
+        do {
             try JSONEncoder().encode(dismissedHosts)
                 .write(to: dismissedURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
         } catch {
-            SavedJSON.log.error("apps: couldn't save: \(String(describing: error), privacy: .public)")
+            SavedJSON.log.error("dismissed hosts: couldn't save: \(String(describing: error), privacy: .public)")
         }
     }
 

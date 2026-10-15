@@ -332,6 +332,20 @@ final class AppRegistryTests: XCTestCase {
         XCTAssertEqual(reopened.apps.count, 1, "adding it by hand brings it back")
     }
 
+    func testRemovedHostsAreSavedEvenWhenTheAppsCantBe() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let registry = makeRegistry(dir)
+        let app = registry.add(url: URL(string: "https://notes.tailabc123.ts.net/")!)
+        let file = dir.appendingPathComponent("apps.json")
+        try FileManager.default.removeItem(at: file)
+        try FileManager.default.createDirectory(at: file, withIntermediateDirectories: false) // nothing can be written there
+
+        await registry.remove(app.id)
+        let dismissed = try JSONDecoder().decode([String].self, from: Data(contentsOf: dir.appendingPathComponent("dismissed-hosts.json")))
+        XCTAssertEqual(dismissed, ["notes.tailabc123.ts.net"])
+    }
+
     func testAMissingFileIsEmptyAndSaves() throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: dir) }
