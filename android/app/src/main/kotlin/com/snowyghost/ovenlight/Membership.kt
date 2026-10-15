@@ -11,6 +11,8 @@ import java.time.temporal.ChronoUnit
 import java.util.UUID
 import java.util.logging.Logger
 import kotlin.math.roundToLong
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.serialization.DeserializationStrategy
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerializationException
@@ -143,9 +145,14 @@ data class PendingClaim(val invite: InviteLink, @Serializable(with = SavedDate::
  * does every file.
  */
 class MembershipStore(directory: File) {
-    var memberships: List<Membership> = emptyList()
+    private val state = MutableStateFlow<List<Membership>>(emptyList())
+
+    /** The memberships, for screens to observe. */
+    val membershipsFlow: StateFlow<List<Membership>> = state
+    var memberships: List<Membership>
+        get() = state.value
         private set(value) {
-            field = value
+            state.value = value
             onChange()
         }
 

@@ -6,6 +6,8 @@ import java.util.UUID
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
@@ -45,8 +47,20 @@ class AppRegistry(
         suspend fun stores(): List<UUID>
     }
 
-    var apps: List<WebApp> = emptyList()
-        private set
+    private val state = MutableStateFlow<List<WebApp>>(emptyList())
+
+    /** The apps, for screens to observe. */
+    val appsFlow: StateFlow<List<WebApp>> = state
+    var apps: List<WebApp>
+        get() = state.value
+        private set(value) {
+            state.value = value
+        }
+
+    private val icons = MutableStateFlow(0)
+
+    /** Goes up with each icon saved, so a refreshed icon redraws under its unchanged file name. */
+    val iconRevision: StateFlow<Int> = icons
 
     /** Hosts of apps the user removed; discovery won't add them back. */
     private var dismissedHosts: Set<String> = emptySet()
@@ -292,6 +306,7 @@ class AppRegistry(
         }
         update(id) { it.copy(iconFile = name) }
         save()
+        icons.value += 1
     }
 
     suspend fun refreshAllMissingIcons() {

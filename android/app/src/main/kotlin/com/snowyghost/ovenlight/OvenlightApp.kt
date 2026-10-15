@@ -1,10 +1,22 @@
 package com.snowyghost.ovenlight
 
 import android.app.Application
+import android.content.Context
 import android.os.SystemClock
+import android.util.Log
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.ProcessLifecycleOwner
 import java.io.File
 import java.net.URI
+import kotlin.time.Duration.Companion.seconds
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class OvenlightApp : Application() {
     override fun onCreate() {
@@ -12,22 +24,19 @@ class OvenlightApp : Application() {
         // The core's proxy listens before any WebView exists.
         TailnetCore.start(this)
         WebViewSetup.start(this)
-        // The lock lives with the process, never in saved instance state, so a configuration
-        // change or a restore after process death starts locked.
-        lock = LockManager(
-            PreferencesStore(this),
-            hasSavedData = { hasSavedData(File(filesDir, "Ovenlight"), File(noBackupFilesDir, "tailscale")) },
-            now = SystemClock::elapsedRealtime,
+        model = AppModel(this)
+        ProcessLifecycleOwner.get().lifecycle.addObserver(
+            LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_START) model.didBecomeActive() },
         )
-        router = Router(isLocked = { lock.holdsLinks })
     }
 
     companion object {
-        lateinit var lock: LockManager
+        /** Made once per process, so a configuration change or a restore after process death starts locked. */
+        lateinit var model: AppModel
             private set
 
-        lateinit var router: Router
-            private set
+        val lock: LockManager get() = model.lock
+        val router: Router get() = model.router
 
         /**
          * Whether this phone has kept anything: apps, invites or a node. Apps and invites live
@@ -44,6 +53,75 @@ class OvenlightApp : Application() {
             // a listing that fails still counts it.
             return nodes.exists() && nodes.list()?.isEmpty() != true
         }
+    }
+}
+
+/**
+ * What the screens share, made once per process: the lock, the router, the nodes, the apps and
+ * the guests, and what each does when another changes (iOS's RootView). Main thread only.
+ */
+class AppModel(context: Context) {
+    val scope = MainScope()
+    private val preferences = PreferencesStore(context)
+    private val ovenlight = File(context.filesDir, "Ovenlight")
+    private val nodesDirectory = File(context.noBackupFilesDir, "tailscale")
+
+    /** Lives with the process, never in saved instance state. */
+    val lock = LockManager(preferences, hasSavedData = { OvenlightApp.hasSavedData(ovenlight, nodesDirectory) }, now = SystemClock::elapsedRealtime)
+    val router = Router(isLocked = { lock.holdsLinks })
+    val nodes = NodeManager(
+        TailnetCore, preferences, MembershipStore(ovenlight), nodesDirectory, scope, Dispatchers.IO, SystemClock::elapsedRealtime,
+        log = { Log.i(TAG, it) }, debugBuild = BuildConfig.DEBUG,
+    )
+    val registry = AppRegistry(
+        ovenlight, session = nodes::fetch, webData = WebProfiles(context),
+        iconPNG = { withContext(Dispatchers.Default) { IconDecoder.png(it) } }, scope = scope,
+    )
+    val guests = GuestManager(nodes, registry, router, scope, SystemClock::elapsedRealtime, log = { Log.i(TAG, it) })
+
+    init {
+        scope.launch {
+            registry.appsFlow.drop(1).collect { apps ->
+                router.appsChanged(apps)
+                guests.collectOrphans()
+            }
+        }
+        scope.launch { nodes.owner.discovered.collect { registry.mergeDiscovered(it) } }
+        // Opening an app, from anywhere, clears its new dot.
+        scope.launch { router.openApp.collect { app -> app?.let { registry.markOpened(it.id) } } }
+        // Signed in, but the tailnet approves each new device: the sign-in page stays, so the
+        // owner can carry on in Tailscale's pages, and closes once the phone is approved.
+        scope.launch {
+            nodes.owner.state.collect { state ->
+                if (state !is NodeState.NeedsLogin && state != NodeState.AwaitingApproval && router.sheet.value is RootSheet.Login) router.sheet.value = null
+            }
+        }
+        // An app a link asked for while locked opens once Ovenlight unlocks.
+        scope.launch { lock.isLocked.drop(1).collect { locked -> if (!locked) router.appsChanged(registry.apps) } }
+        scope.launch {
+            // Leftovers from apps removed while their web view was still closing.
+            delay(5.seconds)
+            registry.sweepUnusedDataStores()
+        }
+    }
+
+    /** Ovenlight came to the front. */
+    fun didBecomeActive() {
+        // A launch before the first unlock after a reboot couldn't read the saved lists.
+        registry.reloadIfFailed()
+        nodes.memberships.reloadIfFailed()
+        scope.launch {
+            nodes.didBecomeActive()
+            guests.resumePending()
+            // The launcher has no pull to refresh; Ovenlight looks for new apps each time it
+            // comes to the front instead.
+            nodes.rediscover()
+            registry.refreshAllMissingIcons()
+        }
+    }
+
+    private companion object {
+        const val TAG = "Ovenlight"
     }
 }
 
