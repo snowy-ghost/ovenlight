@@ -6,9 +6,11 @@
   "use strict";
 
   // A display label, as Ovenlight shows it: no control or format characters (Swift's
-  // controlCharacters, so no bidi overrides), trimmed, at most 64 characters.
+  // controlCharacters, so no bidi overrides) except the joiners emoji and scripts such as
+  // Persian need (U+200C, U+200D) and the tags in flags like England's (U+E0020 to
+  // U+E007F), trimmed, at most 64 characters.
   function label(text) {
-    var clean = (text || "").replace(/[\p{Cc}\p{Cf}]/gu, "").trim();
+    var clean = (text || "").replace(/(?![\u200C\u200D\u{E0020}-\u{E007F}])[\p{Cc}\p{Cf}]/gu, "").trim();
     var chars = typeof Intl.Segmenter === "function"
       ? Array.from(new Intl.Segmenter().segment(clean), function (part) { return part.segment; })
       : Array.from(clean);
