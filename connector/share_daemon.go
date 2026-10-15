@@ -519,7 +519,7 @@ type revokeResult struct {
 	Removed  []Guest  `json:"removed"`
 	Deleted  []string `json:"deletedDevices"`
 	Retagged []string `json:"retaggedDevices,omitempty"` // kept for another app, minus this app's tag
-	Canceled []Invite `json:"canceledInvites,omitempty"` // the person's open invites, when removed by person; keyId stays while the key couldn't be deleted
+	Canceled []Invite `json:"canceledInvites,omitempty"` // the person's open invites when removed by person, or the invite named by its ID; keyId stays while the key couldn't be deleted
 	Errors   []string `json:"errors,omitempty"`
 }
 
