@@ -45,7 +45,7 @@ class AppPage(
 
     /** Off screen it holds the application's context; on screen, the activity's (see [attach]). */
     val context = MutableContextWrapper(context.applicationContext)
-    val view: WebView = WebView(this.context)
+    val view = PageWebView(this.context)
 
     private val mutableGate = MutableStateFlow(AppLoadGate.Waiting)
     val gate: StateFlow<AppLoadGate> = mutableGate

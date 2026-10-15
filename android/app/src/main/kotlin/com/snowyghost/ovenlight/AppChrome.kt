@@ -1,6 +1,5 @@
 package com.snowyghost.ovenlight
 
-import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
@@ -10,6 +9,7 @@ import android.graphics.Rect
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.PixelCopy
 import android.view.View
@@ -196,10 +196,11 @@ class ChromeController(private val store: KeyValueStore) {
 /**
  * Turns the page's scrolling and touches into the chrome following them, without taking any
  * (iOS's WebViewObserver): scrolling down 12 dp or tapping the page hides it, scrolling up 60 dp
- * or pulling down 40 dp at the top of the page brings it back. Only the person's own scrolling
+ * or pulling down 40 dp past the top of the page brings it back. Only the person's own scrolling
  * counts: while a finger is down, and during the fling a drag ends with. Distances are in
- * pixels, times in milliseconds. WebView has no rubber band, so a pull past the top is a
- * downward drag while the page can't scroll up.
+ * pixels, times in milliseconds. WebView has no rubber band: a pull past the top is a downward
+ * drag that WebView reports as overscrolling the top, which it does only for movement the page
+ * left to it, so a map, a canvas or an inner scroller keeps its own drags, as on iOS.
  */
 class ChromeGestures(density: Float, private val touchSlop: Float, private val onScroll: (up: Boolean) -> Unit, private val onTap: () -> Unit) {
     private val downThreshold = 12 * density
@@ -208,28 +209,29 @@ class ChromeGestures(density: Float, private val touchSlop: Float, private val o
     private var travel = 0f
     private var touching = false
     private var dragged = false
+    private var downX = 0f
     private var downY = 0f
+    private var lastY = 0f
     private var pullFrom: Float? = null
     private var pulled = false
     private var releasedAt: Long? = null
 
-    fun touched(action: Int, y: Float, atTop: Boolean, time: Long) {
+    fun touched(action: Int, x: Float, y: Float, time: Long) {
         when (action) {
             MotionEvent.ACTION_DOWN -> {
                 touching = true
                 dragged = false
                 pulled = false
+                downX = x
                 downY = y
-                pullFrom = if (atTop) y else null
+                lastY = y
+                pullFrom = null
                 travel = 0f
             }
             MotionEvent.ACTION_MOVE -> {
-                if (abs(y - downY) > touchSlop) dragged = true
-                if (!atTop) {
-                    pullFrom = null
-                    return
-                }
-                val from = pullFrom ?: y.also { pullFrom = it }
+                lastY = y
+                if (abs(x - downX) > touchSlop || abs(y - downY) > touchSlop) dragged = true
+                val from = pullFrom ?: return
                 if (!pulled && y - from > pullThreshold) {
                     pulled = true
                     travel = 0f
@@ -238,13 +240,21 @@ class ChromeGestures(density: Float, private val touchSlop: Float, private val o
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 touching = false
+                pullFrom = null
                 releasedAt = time
                 if (action == MotionEvent.ACTION_UP && !dragged) onTap()
             }
         }
     }
 
+    /** WebView overscrolled the top of the page: the pull counts from where the finger is now. */
+    fun overscrolledTop() {
+        if (touching && pullFrom == null) pullFrom = lastY
+    }
+
     fun scrolled(old: Int, new: Int, time: Long) {
+        // Off the top again, a pull starts over.
+        if (new > 0) pullFrom = null
         val flinging = dragged && releasedAt?.let { time - it < FLING_MILLIS } == true
         if (!touching && !flinging) {
             travel = 0f
@@ -266,6 +276,19 @@ class ChromeGestures(density: Float, private val touchSlop: Float, private val o
     private companion object {
         /** About as long as a fling scrolls on after the finger lifts. */
         const val FLING_MILLIS = 1_500L
+    }
+}
+
+/**
+ * An app's web view, which also says when it overscrolls the top of its page (see
+ * [ChromeGestures]): WebView reports that only through this override.
+ */
+class PageWebView @JvmOverloads constructor(context: Context, attributes: AttributeSet? = null) : WebView(context, attributes) {
+    var onOverscrollTop: (() -> Unit)? = null
+
+    override fun onOverScrolled(scrollX: Int, scrollY: Int, clampedX: Boolean, clampedY: Boolean) {
+        super.onOverScrolled(scrollX, scrollY, clampedX, clampedY)
+        if (clampedY && scrollY <= 0) onOverscrollTop?.invoke()
     }
 }
 
@@ -390,8 +413,8 @@ private fun rememberTouchExploration(): Boolean {
 /**
  * The open app's only native chrome: a small floating toolbar at the top with the way home and
  * the app's menu, tucked up under the status bar while the person uses the app, leaving a small
- * handle just below it. With TalkBack on it stays put and the handle never shows. With Remove
- * animations on it only fades (and at no duration, appears at once).
+ * handle just below it. With TalkBack on it stays put and the handle never shows. Remove
+ * animations zeroes Compose's durations, so then it comes and goes at once.
  */
 @Composable
 fun AppChrome(
@@ -409,24 +432,21 @@ fun AppChrome(
         delay(ChromeController.AUTO_HIDE_MILLIS)
         controller.hide()
     }
-    val motion = remember { ValueAnimator.areAnimatorsEnabled() }
-    val visible = !controller.hiddenForSnapshot
+    // Gone at once for the frame a snapshot takes, mid-animation or not. Back, it shows as it
+    // was without animating in: AnimatedVisibility doesn't animate what is visible from the start.
+    if (controller.hiddenForSnapshot) return
     Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))) {
         AnimatedVisibility(
-            visible = visible && (controller.isShown || touchExploration),
+            visible = controller.isShown || touchExploration,
             modifier = Modifier.align(Alignment.TopCenter).padding(top = 4.dp, start = 16.dp, end = 16.dp),
-            enter = if (motion) {
-                slideInVertically(spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow)) { -it } + fadeIn() +
-                    scaleIn(initialScale = 0.6f, transformOrigin = TransformOrigin(0.5f, 0f))
-            } else {
-                fadeIn()
-            },
-            exit = if (motion) slideOutVertically { -it } + fadeOut() + scaleOut(targetScale = 0.6f, transformOrigin = TransformOrigin(0.5f, 0f)) else fadeOut(),
+            enter = slideInVertically(spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow)) { -it } + fadeIn() +
+                scaleIn(initialScale = 0.6f, transformOrigin = TransformOrigin(0.5f, 0f)),
+            exit = slideOutVertically { -it } + fadeOut() + scaleOut(targetScale = 0.6f, transformOrigin = TransformOrigin(0.5f, 0f)),
         ) {
             ChromePill(app, icon, actions, controller)
         }
         AnimatedVisibility(
-            visible = visible && !controller.isShown && !touchExploration,
+            visible = !controller.isShown && !touchExploration,
             modifier = Modifier.align(Alignment.TopCenter),
             enter = fadeIn(),
             exit = fadeOut(),
@@ -453,6 +473,8 @@ private fun ChromePill(app: WebApp, icon: Bitmap?, actions: AppChromeActions, co
         },
         state = tip,
         onDismissRequest = controller::closeTip,
+        // Holds focus, as iOS's popover does: TalkBack and a keyboard reach the tip, and Back closes it.
+        focusable = true,
         enableUserInput = false,
         hasAction = true,
     ) {
@@ -564,7 +586,7 @@ private fun ChromeHandle(reveal: () -> Unit) {
  */
 @SuppressLint("ClickableViewAccessibility") // The listener only watches and returns false, so the page's own clicks run as before.
 @Composable
-private fun WatchPage(view: WebView, controller: ChromeController) {
+private fun WatchPage(view: PageWebView, controller: ChromeController) {
     val density = LocalDensity.current.density
     DisposableEffect(view, controller) {
         val gestures = ChromeGestures(
@@ -573,13 +595,15 @@ private fun WatchPage(view: WebView, controller: ChromeController) {
             onTap = controller::hide,
         )
         view.setOnScrollChangeListener { _, _, y, _, oldY -> gestures.scrolled(oldY, y, SystemClock.uptimeMillis()) }
-        view.setOnTouchListener { v, event ->
-            gestures.touched(event.actionMasked, event.y, atTop = !v.canScrollVertically(-1), event.eventTime)
+        view.setOnTouchListener { _, event ->
+            gestures.touched(event.actionMasked, event.x, event.y, event.eventTime)
             false
         }
+        view.onOverscrollTop = gestures::overscrolledTop
         onDispose {
             view.setOnScrollChangeListener(null)
             view.setOnTouchListener(null)
+            view.onOverscrollTop = null
         }
     }
 }
@@ -592,10 +616,15 @@ private suspend fun snapshot(view: View): Bitmap? {
         val bitmap = createBitmap(view.width, view.height)
         val at = IntArray(2).also(view::getLocationInWindow)
         val copied = suspendCancellableCoroutine { done ->
-            PixelCopy.request(
-                window, Rect(at[0], at[1], at[0] + view.width, at[1] + view.height), bitmap,
-                { result -> if (done.isActive) done.resume(result == PixelCopy.SUCCESS) }, Handler(Looper.getMainLooper()),
-            )
+            try {
+                PixelCopy.request(
+                    window, Rect(at[0], at[1], at[0] + view.width, at[1] + view.height), bitmap,
+                    { result -> if (done.isActive) done.resume(result == PixelCopy.SUCCESS) }, Handler(Looper.getMainLooper()),
+                )
+            } catch (_: IllegalArgumentException) {
+                // A window with no surface yet.
+                done.resume(false)
+            }
         }
         if (copied) return bitmap
         bitmap.recycle()
@@ -652,9 +681,12 @@ fun AppChromeHost(model: AppModel, page: AppPage, icon: Bitmap?, onClose: () -> 
                     scope.launch {
                         // The pill and handle leave for the frame the snapshot takes.
                         controller.hiddenForSnapshot = true
-                        repeat(2) { withFrameNanos {} }
-                        val image = snapshot(page.view)
-                        controller.hiddenForSnapshot = false
+                        val image = try {
+                            repeat(2) { withFrameNanos {} }
+                            snapshot(page.view)
+                        } finally {
+                            controller.hiddenForSnapshot = false
+                        }
                         feedback = FeedbackCapture(image, page.view.url?.let { runCatching { URI(it) }.getOrNull() })
                     }
                 }

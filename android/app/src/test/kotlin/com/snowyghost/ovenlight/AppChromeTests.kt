@@ -6,6 +6,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertIsDisplayed
@@ -176,16 +177,21 @@ class AppChromeTests {
     @Test
     fun testTheSnapshotFrameShowsNoChrome() {
         val controller = controller()
-        show(recipes, controller)
-        controller.hiddenForSnapshot = true
-        composeRule.waitForIdle()
-        node("Show app menu").assertDoesNotExist()
         controller.reveal()
-        composeRule.waitForIdle()
-        node("All apps").assertDoesNotExist()
-        controller.hiddenForSnapshot = false
-        composeRule.waitForIdle()
+        show(recipes, controller)
         assertShown(recipes)
+        // On the very next frame, with no time for an exit animation, it's gone.
+        composeRule.mainClock.autoAdvance = false
+        controller.hiddenForSnapshot = true
+        Snapshot.sendApplyNotifications()
+        composeRule.mainClock.advanceTimeByFrame()
+        node("All apps").assertDoesNotExist()
+        node("Show app menu").assertDoesNotExist()
+        controller.hiddenForSnapshot = false
+        Snapshot.sendApplyNotifications()
+        composeRule.mainClock.advanceTimeByFrame()
+        assertShown(recipes)
+        composeRule.mainClock.autoAdvance = true
     }
 
     private fun openMenu(app: WebApp) {

@@ -14,9 +14,9 @@ class ChromeRulesTests {
     /** At 2 pixels a dp, with an 8 px touch slop. */
     private val gestures = ChromeGestures(density = 2f, touchSlop = 8f, onScroll = { events += if (it) "up" else "down" }, onTap = { events += "tap" })
 
-    private fun down(y: Float, atTop: Boolean = false, at: Long = 0) = gestures.touched(MotionEvent.ACTION_DOWN, y, atTop, at)
-    private fun move(y: Float, atTop: Boolean = false, at: Long = 0) = gestures.touched(MotionEvent.ACTION_MOVE, y, atTop, at)
-    private fun up(y: Float, atTop: Boolean = false, at: Long = 0) = gestures.touched(MotionEvent.ACTION_UP, y, atTop, at)
+    private fun down(y: Float, x: Float = 200f, at: Long = 0) = gestures.touched(MotionEvent.ACTION_DOWN, x, y, at)
+    private fun move(y: Float, x: Float = 200f, at: Long = 0) = gestures.touched(MotionEvent.ACTION_MOVE, x, y, at)
+    private fun up(y: Float, x: Float = 200f, at: Long = 0) = gestures.touched(MotionEvent.ACTION_UP, x, y, at)
 
     @Test
     fun testScrollingDownHidesAndScrollingUpBringsItBack() {
@@ -59,38 +59,51 @@ class ChromeRulesTests {
     }
 
     @Test
-    fun testPullingDownAtTheTopBringsItBackOnce() {
-        down(100f, atTop = true)
-        // 40 dp is 80 px.
-        move(170f, atTop = true)
+    fun testPullingPastTheTopBringsItBackOnce() {
+        down(100f)
+        move(110f)
+        // WebView overscrolls the top: 40 dp, 80 px, from here.
+        gestures.overscrolledTop()
+        move(180f)
         assertEquals(emptyList<String>(), events)
-        move(190f, atTop = true)
-        move(400f, atTop = true)
+        gestures.overscrolledTop()
+        move(191f)
+        move(400f)
         assertEquals(listOf("up"), events)
-        up(400f, atTop = true)
+        up(400f)
         assertEquals("a pull is no tap", listOf("up"), events)
     }
 
     @Test
-    fun testAPullCountsFromWhereThePageReachedItsTop() {
+    fun testADragThePageKeepsIsNoPull() {
+        // A map or an inner scroller takes the drag, so WebView never overscrolls.
         down(100f)
-        move(300f)
-        // Scrolled back to the top here: the pull starts now.
-        move(350f, atTop = true)
-        move(420f, atTop = true)
+        move(400f)
+        up(400f)
         assertEquals(emptyList<String>(), events)
-        move(431f, atTop = true)
-        assertEquals(listOf("up"), events)
+        // And an overscroll with no finger down, or one the page scrolled away from, starts nothing.
+        gestures.overscrolledTop()
+        down(100f)
+        move(110f)
+        gestures.overscrolledTop()
+        gestures.scrolled(0, 10, 0)
+        move(400f)
+        assertEquals(emptyList<String>(), events)
     }
 
     @Test
     fun testATapOnThePageHidesIt() {
         down(500f)
-        move(505f)
-        up(505f)
+        move(505f, x = 205f)
+        up(505f, x = 205f)
         assertEquals(listOf("tap"), events)
-        gestures.touched(MotionEvent.ACTION_DOWN, 500f, false, 0)
-        gestures.touched(MotionEvent.ACTION_CANCEL, 500f, false, 0)
+        // A sideways swipe, a carousel's, is no tap.
+        down(500f)
+        move(500f, x = 400f)
+        up(500f, x = 400f)
+        assertEquals(listOf("tap"), events)
+        gestures.touched(MotionEvent.ACTION_DOWN, 200f, 500f, 0)
+        gestures.touched(MotionEvent.ACTION_CANCEL, 200f, 500f, 0)
         assertEquals("a cancelled touch is no tap", listOf("tap"), events)
     }
 

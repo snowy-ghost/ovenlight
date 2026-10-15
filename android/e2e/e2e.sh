@@ -266,21 +266,6 @@ for m in re.finditer(r"(?<![\w-])(?:text|content-desc)=(?:\"([^\"]*)\"|\x27([^\x
     if value: print(value)
 '
 }
-# Taps the first element whose text or description is exactly $1.
-tap_text() {
-  local spot
-  spot=$(a exec-out uiautomator dump /dev/tty 2>/dev/null | tr '>' '\n' | python3 -c '
-import re, sys
-want = sys.argv[1]
-for line in sys.stdin:
-    if re.search(r"(text|content-desc)=\"%s\"" % re.escape(want), line):
-        m = re.search(r"bounds=\"\[(\d+),(\d+)\]\[(\d+),(\d+)\]\"", line)
-        if m:
-            x1, y1, x2, y2 = map(int, m.groups()); print((x1 + x2) // 2, (y1 + y2) // 2); break
-' "$1")
-  [[ -n $spot ]] || return 1
-  a shell input tap $spot
-}
 # The bounds, "x1 y1 x2 y2", of the first element whose text or description is exactly $2, or
 # with class=text whose class is $2 (android.widget.EditText, say).
 bounds() {
@@ -294,13 +279,15 @@ for line in sys.stdin:
         print(*m.groups()); break
 ' "$1" "$2"
 }
-# Taps the first element of class $1.
-tap_class() {
+# Taps the middle of the first element found by bounds, by text (tap_text) or class (tap_class).
+tap_bounds() {
   local box
-  box=($(bounds class "$1"))
+  box=($(bounds "$1" "$2"))
   [[ ${#box[@]} == 4 ]] || return 1
   a shell input tap $(((box[0] + box[2]) / 2)) $(((box[1] + box[3]) / 2))
 }
+tap_text() { tap_bounds text "$1"; }
+tap_class() { tap_bounds class "$1"; }
 # The first app Ovenlight opens shows its pill with a one-time tip, in a popup of its own: closed here.
 close_tip() { if await_text ${1:-10} "Got it"; then tap_text "Got it"; sleep 1; fi; }
 # Waits up to $1 seconds until every one of the other arguments is on screen.
