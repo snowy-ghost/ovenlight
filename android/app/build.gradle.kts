@@ -1,3 +1,8 @@
+import org.gradle.api.artifacts.component.ModuleComponentIdentifier
+import org.gradle.api.artifacts.result.ResolvedArtifactResult
+import org.gradle.maven.MavenModule
+import org.gradle.maven.MavenPomArtifact
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -54,9 +59,94 @@ val debugCa = tasks.register<DebugCa>("debugCa") {
     providers.environmentVariable("ANDROID_HOME").orNull?.let { source.from(File(it).resolveSibling("test-ca/ca.pem")) }
     resources = layout.buildDirectory.dir("generated/debugCa")
 }
+// Acknowledgements (decision 17): every license the app ships, written at build time. The
+// Android libraries come from their POMs, grouped by license, and one the build doesn't
+// recognize fails it; the Go core's notices come from scripts/build-android-core.sh.
+abstract class Acknowledgements : DefaultTask() {
+    @get:Input
+    abstract val modules: MapProperty<String, String>
+
+    @get:InputFiles
+    abstract val poms: ConfigurableFileCollection
+
+    @get:InputFile
+    abstract val apacheLicense: RegularFileProperty
+
+    @get:InputFile
+    abstract val coreNotices: RegularFileProperty
+
+    @get:OutputDirectory
+    abstract val assets: DirectoryProperty
+
+    private fun licenseOf(pom: File): String? {
+        val text = pom.readText()
+        val names = Regex("<license>.*?<name>(.*?)</name>", RegexOption.DOT_MATCHES_ALL).findAll(text).map { it.groupValues[1].trim() }.toList()
+        val urls = Regex("<license>.*?<url>(.*?)</url>", RegexOption.DOT_MATCHES_ALL).findAll(text).map { it.groupValues[1].trim() }.toList()
+        val all = (names + urls).joinToString(" ").lowercase()
+        return when {
+            all.isEmpty() -> null
+            "apache" in all -> "Apache License 2.0"
+            "mit" in all.split(Regex("[^a-z]")) -> "MIT License"
+            "bsd" in all -> "BSD License"
+            else -> null
+        }
+    }
+
+    // Modules whose POM leaves the license to a parent POM, each checked by hand.
+    private val inherited = mapOf(
+        "com.google.guava:listenablefuture" to "Apache License 2.0", // guava-parent
+    )
+
+    @TaskAction
+    fun write() {
+        val byPom = poms.files.associateBy { it.name }
+        val byLicense = sortedMapOf<String, MutableList<String>>()
+        val unknown = mutableListOf<String>()
+        for ((module, pomName) in modules.get().toSortedMap()) {
+            val license = byPom[pomName]?.let(::licenseOf) ?: inherited[module.substringBeforeLast(':')]
+            if (license == null) unknown += module else byLicense.getOrPut(license) { mutableListOf() } += module
+        }
+        if (unknown.isNotEmpty()) throw GradleException("No license Acknowledgements recognizes for: ${unknown.joinToString()}")
+        val folder = assets.get().dir("licenses").asFile.apply { mkdirs() }
+        folder.resolve("android-libraries.txt").writeText(buildString {
+            append("Android libraries\n=================\n\n")
+            for ((license, list) in byLicense) {
+                append("$license:\n")
+                list.forEach { append("  $it\n") }
+                append("\n")
+            }
+            append("Material Icons (lock_open, error), Apache License 2.0\n\n")
+            append("Apache License 2.0\n------------------\n\n")
+            append(apacheLicense.get().asFile.readText())
+        })
+        coreNotices.get().asFile.copyTo(folder.resolve("go-core.txt"), overwrite = true)
+    }
+}
+val acknowledgements = tasks.register<Acknowledgements>("acknowledgements") {
+    dependsOn(buildCore)
+    val runtime = configurations.named("releaseRuntimeClasspath")
+    val ids = runtime.map { configuration ->
+        configuration.incoming.resolutionResult.allComponents.mapNotNull { it.id as? ModuleComponentIdentifier }
+    }
+    modules = ids.map { list -> list.associate { "${it.group}:${it.module}:${it.version}" to "${it.module}-${it.version}.pom" } }
+    poms.from(ids.map { list ->
+        dependencies.createArtifactResolutionQuery().forComponents(list)
+            .withArtifacts(MavenModule::class.java, MavenPomArtifact::class.java).execute()
+            .resolvedComponents.flatMap { component ->
+                component.getArtifacts(MavenPomArtifact::class.java).mapNotNull { (it as? ResolvedArtifactResult)?.file }
+            }
+    })
+    apacheLicense = rootProject.layout.projectDirectory.file("../LICENSE")
+    coreNotices = layout.projectDirectory.file("libs/THIRD_PARTY_NOTICES.txt")
+    assets = layout.buildDirectory.dir("generated/acknowledgements")
+}
+
 androidComponents {
     onVariants(selector().withBuildType("debug")) { variant ->
         variant.sources.res?.addGeneratedSourceDirectory(debugCa, DebugCa::resources)
+    }
+    onVariants { variant ->
+        variant.sources.assets?.addGeneratedSourceDirectory(acknowledgements, Acknowledgements::assets)
     }
 }
 
