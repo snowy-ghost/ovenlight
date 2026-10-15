@@ -116,7 +116,7 @@ func cmdNew(args []string) error {
 		npm = "npm.cmd" // Windows PowerShell's npm is npm.ps1, which its default policy refuses to run
 	}
 	fmt.Printf("Try it on this computer (a person in a terminal; a coding agent publishes it below instead):\n  cd %s\n  %s start\nthen open http://127.0.0.1:%d/ (Ctrl-C stops it).\n\n", shellQuote(dir), npm, app.Port)
-	fmt.Printf("Put it on your phone (stop the copy above first, with Ctrl-C or by its process ID: the connector runs its own on the same port and keeps it running):\n  %s --dir %s\n  %s check%s %s\n\n",
+	fmt.Printf("Put it on your phone. If you started it above, stop it first (Ctrl-C), since the connector runs its own copy on the same port and keeps it running:\n  %s --dir %s\n  %s check%s %s\n\n",
 		publishCommand(ovenlightCommand(), app, pathFlags(p)), shellQuote(dir), ovenlightCommand(), pathFlags(p), app.Slug)
 	starter := App{Name: app.Name, Slug: app.Slug, Run: "npm start", Dir: dir}
 	for _, c := range []*Check{protectedFolderCheck(starter), temporaryFolderCheck(starter)} {

@@ -635,7 +635,7 @@ func cmdPublish(args []string) error {
 			verb = "Updated"
 		}
 		fmt.Printf("%s %s as %q -> 127.0.0.1:%d\n", verb, res.App.Name, res.App.Slug, res.App.Port)
-		if res.App.Run != "" && findID(res.Problems, "connector-version") == nil {
+		if res.App.Run != "" {
 			fmt.Printf("The connector runs `%s` in %s and starts it again when it stops; its output: ovenlight logs %s\n", res.App.Run, res.App.Dir, res.App.Slug)
 		}
 		printChecks(res.Problems, true)
@@ -971,7 +971,7 @@ func cmdStatus(args []string) error {
 		if c, ok := envWarning(out.LoginEnvError, processes, runSlugs(out.Apps)); ok {
 			who := ""
 			if c.Actor == actorPerson {
-				who = " (the person)"
+				who = " (you, not an agent)"
 			}
 			fmt.Printf("  %s%s\n  Fix%s: %s\n", strings.ToUpper(c.Message[:1]), c.Message[1:], who, c.Fix)
 		}
@@ -1014,7 +1014,7 @@ func cmdStatus(args []string) error {
 			case a.State == "needs-login" && a.Shareable:
 				fmt.Printf("\nLOGIN NEEDED for %s: run `%s`\n", a.Name, reshareCommand(a.Slug))
 			case a.Restart:
-				fmt.Printf("\nLOGIN NEEDED for %s: its node lost its login.\n  Fix (the person): %s.\n", a.Name, restartLoginFix(p))
+				fmt.Printf("\nLOGIN NEEDED for %s: its node lost its login.\n  Fix (you, not an agent): %s.\n", a.Name, restartLoginFix(p))
 			case a.LoginErr != "":
 				fmt.Printf("\nLOGIN FAILED for %s: %s\n", a.Name, a.LoginErr)
 			case a.LoginURL != "":
@@ -1023,7 +1023,7 @@ func cmdStatus(args []string) error {
 				fmt.Printf("\nAPPROVAL NEEDED for %s: approve its node, %s, in the Tailscale admin console: %s\n", a.Name, a.Slug, consoleMachines)
 			case a.Cert == certFailed:
 				c := certificateCheck(a.Slug, a.DNSName, a.Cert, a.CertErr)
-				fmt.Printf("\nNO HTTPS CERTIFICATE for %s, so the phone can't open it: %s\n  Fix (the person): %s: %s\n", a.Name, a.CertErr, c.Fix, c.URL)
+				fmt.Printf("\nNO HTTPS CERTIFICATE for %s, so the phone can't open it: %s\n  Fix (you, not an agent): %s: %s\n", a.Name, a.CertErr, c.Fix, c.URL)
 			}
 			if a.Error != "" && a.State != "needs-login" {
 				fmt.Printf("\n%s: %s\n", a.Name, a.Error)

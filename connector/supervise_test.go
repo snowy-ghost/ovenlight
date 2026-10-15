@@ -1615,7 +1615,7 @@ func TestLoginEnvFailureIsReported(t *testing.T) {
 	if out, err := collectStatus(p); err != nil || out.LoginEnvError != why {
 		t.Errorf("status: %+v, %v", out, err)
 	}
-	if text := status(); !strings.Contains(text, "the login shell's can't be read: "+why+"\n  Fix (the person): "+fix) {
+	if text := status(); !strings.Contains(text, "the login shell's can't be read: "+why+"\n  Fix (you, not an agent): "+fix) {
 		t.Errorf("status text:\n%s", text)
 	}
 	if c := findCheck(t, runDoctor(cfg, p.state, p.config), "login-environment"); c.Status != statusWarn || c.Actor != actorPerson || !strings.HasSuffix(c.Message, why) || c.Fix != fix {

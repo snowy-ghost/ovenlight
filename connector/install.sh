@@ -150,7 +150,7 @@ else
   echo "left $link alone (it isn't this install's link); run this one as $cmd"
 fi
 echo "next:"
-echo "  turn on HTTPS certificates for your tailnet, if they aren't on: https://console.tailscale.com/admin/dns"
+echo "  turn on MagicDNS and HTTPS certificates for your tailnet, if they aren't on: https://console.tailscale.com/admin/dns"
 echo "  $cmd new \"My App\""
 echo "  $cmd publish --port <n> --name \"<App Name>\""
 echo "  $cmd status"
