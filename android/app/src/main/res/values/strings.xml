@@ -5,4 +5,8 @@
     <string name="webview_update_title">Update Android System WebView</string>
     <string name="webview_update_body">Ovenlight opens apps with Android System WebView, and the version on this phone is too old. Update it in Google Play, then come back.</string>
     <string name="webview_update_button">Open Google Play</string>
+
+    <string name="lock_locked">Locked</string>
+    <string name="lock_locked_description">Ovenlight is locked</string>
+    <string name="lock_unlock">Unlock</string>
 </resources>
