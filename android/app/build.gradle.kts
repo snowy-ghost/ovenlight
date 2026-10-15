@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 fun intProperty(name: String) = providers.gradleProperty(name).get().toInt()
@@ -120,6 +121,17 @@ dependencies {
     implementation(libs.androidx.lifecycle.process)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.okhttp)
+    implementation(libs.kotlinx.serialization.json)
 
     testImplementation(libs.junit)
+    testImplementation(libs.kotlin.test.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
+}
+
+// The connector's wire fixtures, which the wire test decodes, so a connector change that
+// breaks Android fails the same push.
+tasks.withType<Test>().configureEach {
+    val wire = rootProject.layout.projectDirectory.dir("../connector/testdata/wire")
+    inputs.dir(wire).withPathSensitivity(PathSensitivity.RELATIVE)
+    systemProperty("ovenlight.wireDir", wire.asFile.absolutePath)
 }
