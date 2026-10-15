@@ -1032,6 +1032,8 @@ final class StaleRouteTests: XCTestCase {
 
         MembershipNode.rememberOwnerSuffix("tailb.ts.net")
 
+        XCTAssertNil(NodeManager.shared.session(for: own), "no page or icon fetch goes to public DNS")
+        XCTAssertNil(NodeManager.shared.uploadSession(for: own, timeout: 1), "nor feedback")
         XCTAssertNil(owner.stores[own.id], "dropped at once, not at the next probe or open")
         let (fresh, coordinator) = pool.webView(for: own)
         XCTAssertFalse(fresh === view)
