@@ -125,8 +125,7 @@ func ClearRoute(key string) {
 // none) and wakes every running node's link monitor, which on Android otherwise
 // looks only every 10 minutes.
 func NetworkChanged(ifName, gatewayIP string) {
-	netmon.UpdateLastKnownDefaultRouteInterface(ifName)
-	updateDefaultGateway(gatewayIP)
+	updateDefaultRoute(ifName, gatewayIP)
 	for _, n := range openNodes() {
 		n.injectLinkChange()
 	}

@@ -2,5 +2,5 @@
 
 package core
 
-// Only Android's netmon reads a gateway from the app; the host tests build this.
-func updateDefaultGateway(string) {}
+// Only Android's netmon reads the default route from the app; host builds, for tests, skip it.
+func updateDefaultRoute(string, string) {}

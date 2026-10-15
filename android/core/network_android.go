@@ -2,4 +2,9 @@ package core
 
 import "tailscale.com/net/netmon"
 
-func updateDefaultGateway(ip string) { netmon.UpdateLastKnownDefaultGateway(ip) }
+// updateDefaultRoute tells netmon which interface and gateway the phone's default network
+// uses, which Android's netmon can't learn for itself.
+func updateDefaultRoute(ifName, gatewayIP string) {
+	netmon.UpdateLastKnownDefaultRouteInterface(ifName)
+	netmon.UpdateLastKnownDefaultGateway(gatewayIP)
+}
