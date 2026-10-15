@@ -1,8 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.Ovenlight" parent="android:Theme.DeviceDefault.DayNight">
-        <item name="android:windowActionBar">false</item>
-        <item name="android:windowNoTitle">true</item>
+    <style name="Theme.Ovenlight" parent="Base.Theme.Ovenlight">
         <item name="android:windowLayoutInDisplayCutoutMode">always</item>
     </style>
 </resources>

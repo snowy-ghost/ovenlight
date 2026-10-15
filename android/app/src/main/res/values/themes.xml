@@ -1,9 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.Ovenlight" parent="android:Theme.DeviceDefault.DayNight">
+    <!-- The window is the oven's color, so the first frame and Recents' cover match it. -->
+    <style name="Base.Theme.Ovenlight" parent="android:Theme.DeviceDefault.DayNight">
         <item name="android:windowActionBar">false</item>
         <item name="android:windowNoTitle">true</item>
-        <!-- Android 10 offers shortEdges at most; values-v30 asks for always. -->
+        <item name="android:windowBackground">@color/oven_interior</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+
+    <!-- Android 10 offers shortEdges at most; values-v30 asks for always. -->
+    <style name="Theme.Ovenlight" parent="Base.Theme.Ovenlight">
         <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
     </style>
 </resources>

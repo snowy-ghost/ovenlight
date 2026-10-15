@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ovenInterior: the launcher's, the lock's and the splash's color. -->
+    <color name="oven_interior">#FBF7F3</color>
+</resources>

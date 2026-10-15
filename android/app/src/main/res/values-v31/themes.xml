@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android 12 always shows a splash: a blank one on the oven's color, so the first frame
+         follows with no flash and the light warms up over it, as iOS's plain launch screen. -->
+    <style name="Theme.Ovenlight" parent="Base.Theme.Ovenlight">
+        <item name="android:windowLayoutInDisplayCutoutMode">always</item>
+        <item name="android:windowSplashScreenBackground">@color/oven_interior</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@android:color/transparent</item>
+    </style>
+</resources>
