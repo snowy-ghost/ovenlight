@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"log"
 	"net"
 	"net/http"
@@ -782,23 +781,6 @@ func lockNodes(t *testing.T, d *daemon) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.Chmod(dir, 0o700) })
-}
-
-// A reload drops the command of an app the config no longer has, as a connector from
-// before --run leaves it after an unpublish.
-func TestReloadDropsTheCommandsOfUnpublishedApps(t *testing.T) {
-	d, _ := testDaemon(t)
-	if err := d.cfg.Save(d.configPath); err != nil {
-		t.Fatal(err)
-	}
-	commands := commandsPath(d.configPath)
-	os.WriteFile(commands, []byte(`{"notes": {"run": "make serve", "dir": "/srv"}}`), 0o600)
-	if err := d.reload(); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(commands); !errors.Is(err, fs.ErrNotExist) {
-		t.Errorf("the unpublished app's command stays: %v", err)
-	}
 }
 
 // A new node that fails to start doesn't keep its minted key.

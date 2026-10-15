@@ -72,7 +72,6 @@ func checkPublished(p *paths, slug string) ([]Check, error) {
 	if c := heldByOther(app, status, problem != nil && problem.ID == "daemon"); c != nil {
 		checks = append([]Check{*c}, checks...)
 	}
-	checks = predatesRunChecks(checks, p, app, status)
 	if problem == nil {
 		return checks, nil
 	}

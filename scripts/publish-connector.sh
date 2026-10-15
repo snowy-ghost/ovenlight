@@ -6,17 +6,23 @@
 #   connector/latest.json        {"latest": "<version>", "secure": "<secure>"}, which
 #                                ovenlight doctor reads
 #
-#   scripts/publish-connector.sh <version> <secure>     e.g. 1.0.1 1.0.0
+#   scripts/publish-connector.sh [--first] <version> <secure>     e.g. 1.0.1 1.0.0
 #
 # <secure> is the oldest version without a known security problem: doctor fails on any
-# older one, so raise it with a release that fixes one. Uploads go through wrangler, signed
+# older one, so raise it with a release that fixes one. --first is for the bucket's first
+# release, when there is no latest.json yet. Uploads go through wrangler, signed
 # in with `npx wrangler@4.147.0 login` or CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID.
 set -euo pipefail
 
 BUCKET=ovenlight-downloads
 SITE=https://downloads.ovenlight.app
 
-usage="usage: publish-connector.sh <version> <secure>, e.g. 1.0.1 1.0.0"
+usage="usage: publish-connector.sh [--first] <version> <secure>, e.g. 1.0.1 1.0.0"
+first=false
+if [ "${1:-}" = --first ]; then
+  first=true
+  shift
+fi
 version="${1:?$usage}"
 secure="${2:?$usage}"
 for v in "$version" "$secure"; do
@@ -44,15 +50,35 @@ FILES+=(SHA256SUMS SHA256SUMS.sig)
   { echo "build/release holds another version than $version" >&2; exit 1; }
 shasum -a 256 -c --quiet SHA256SUMS
 ssh-keygen -Y verify -f "$signers" -I team@snowyghost.com -n file -s SHA256SUMS.sig < SHA256SUMS
+fetched="$(mktemp -d)"
+trap 'rm -r "$fetched"' EXIT
+# fetch <url> <file>: saves the body to file, or fails when the url doesn't exist (404).
+# Any other answer, or none, stops the publish, since it would skip a guard below.
+fetch() {
+  local code
+  code="$(curl -sS -o "$2" -w '%{http_code}' "$1")" || { echo "couldn't fetch $1" >&2; exit 1; }
+  case "$code" in
+    200) ;;
+    404) return 1 ;;
+    *) echo "$1 answered HTTP $code" >&2; exit 1 ;;
+  esac
+}
 # Neither latest nor secure goes back.
-if current="$(curl -fs "$SITE/connector/latest.json")"; then
-  field() { sed -n "s/.*\"$1\": *\"\([^\"]*\)\".*/\1/p" <<< "$current"; }
-  atleast "$(field latest)" "$version" || { echo "$(field latest) is already out" >&2; exit 1; }
-  atleast "$(field secure)" "$secure" || { echo "secure is already $(field secure)" >&2; exit 1; }
+if fetch "$SITE/connector/latest.json" "$fetched/latest.json"; then
+  $first && { echo "--first, but $SITE/connector/latest.json exists" >&2; exit 1; }
+  field() { sed -n "s/.*\"$1\": *\"\([^\"]*\)\".*/\1/p" "$fetched/latest.json"; }
+  latest="$(field latest)"
+  current_secure="$(field secure)"
+  [ -n "$latest" ] && [ -n "$current_secure" ] || { echo "couldn't read latest and secure from $SITE/connector/latest.json" >&2; exit 1; }
+  atleast "$latest" "$version" || { echo "$latest is already out" >&2; exit 1; }
+  atleast "$current_secure" "$secure" || { echo "secure is already $current_secure" >&2; exit 1; }
+elif ! $first; then
+  echo "$SITE/connector/latest.json doesn't exist: if this is the first release there, run again with --first" >&2
+  exit 1
 fi
 # A version's files are cached as immutable, so they're never replaced by other ones. The
 # same files again finish a publish that failed partway.
-if published="$(curl -fs "$SITE/connector/$version/SHA256SUMS")" && [ "$published" != "$(cat SHA256SUMS)" ]; then
+if fetch "$SITE/connector/$version/SHA256SUMS" "$fetched/SHA256SUMS" && ! cmp -s "$fetched/SHA256SUMS" SHA256SUMS; then
   echo "another build of $version is already published" >&2
   exit 1
 fi

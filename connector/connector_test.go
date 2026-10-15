@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"image"
 	"image/png"
-	"io/fs"
 	"log"
 	"net"
 	"net/http"
@@ -19,7 +18,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -263,9 +261,61 @@ func TestSleepCheck(t *testing.T) {
 		pmset("60"): {statusWarn, "sleeps after 1 hour idle"},
 		"Currently in use:\n displaysleep         10\n": {statusWarn, "couldn't find the sleep setting"},
 	} {
-		c := sleepCheck(out)
+		c := sleepCheck(out, "Now drawing from 'AC Power'\n")
 		wantFix := strings.Contains(want.message, "sleeps after")
-		if c.Status != want.status || !strings.Contains(c.Message, want.message) || strings.Contains(c.Fix, "sudo pmset -c sleep 0") != wantFix {
+		if c.Status != want.status || !strings.Contains(c.Message, want.message) || strings.Contains(c.Message, "lid") || strings.Contains(c.Fix, "sudo pmset -c sleep 0") != wantFix {
+			t.Errorf("%q: %+v", out, c)
+		}
+	}
+
+	// A laptop that doesn't sleep on its own still sleeps when its lid closes.
+	const battery = "Now drawing from 'AC Power'\n -InternalBattery-0 (id=4653155)\t100%; charged; 0:00 remaining present: true\n"
+	for out, want := range map[string]struct{ status, message string }{
+		pmset("0"):                           {statusOK, "the Mac doesn't sleep on its own, but closing its lid puts it to sleep"},
+		pmset("0") + " SleepDisabled\t\t1\n": {statusOK, "the Mac doesn't sleep on its own"},
+		pmset("10"):                          {statusWarn, "the Mac sleeps after 10 minutes idle, and your apps are offline while it does"},
+	} {
+		if c := sleepCheck(out, battery); c.Status != want.status || c.Message != want.message {
+			t.Errorf("laptop %q: %+v", out, c)
+		}
+	}
+}
+
+func TestWindowsSleepCheck(t *testing.T) {
+	// powercfg's output on an English Windows 11 (dimpc's, with the values changed), and
+	// the same layout with labels in another language.
+	powercfg := func(ac, dc string) string {
+		return "Power Scheme GUID: 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c  (High performance)\r\n" +
+			"  GUID Alias: SCHEME_MIN\r\n" +
+			"  Subgroup GUID: 238c9fa8-0aad-41ed-83f4-97be242c8f20  (Sleep)\r\n" +
+			"    GUID Alias: SUB_SLEEP\r\n" +
+			"    Power Setting GUID: 29f6c1db-86da-48c5-9fdb-f2b67b1f44da  (Sleep after)\r\n" +
+			"      GUID Alias: STANDBYIDLE\r\n" +
+			"      Minimum Possible Setting: 0x00000000\r\n" +
+			"      Maximum Possible Setting: 0xffffffff\r\n" +
+			"      Possible Settings increment: 0x00000001\r\n" +
+			"      Possible Settings units: Seconds\r\n" +
+			"    Current AC Power Setting Index: " + ac + "\r\n" +
+			"    Current DC Power Setting Index: " + dc + "\r\n\r\n"
+	}
+	const translated = "GUID des Energieschemas: 381b4222-f694-41f0-9685-ff5bb260df2e  (Ausbalanciert)\r\n" +
+		"    GUID der Energieeinstellung: 29f6c1db-86da-48c5-9fdb-f2b67b1f44da  (Standbymodus nach)\r\n" +
+		"      Minimal: 0x00000000\r\n" +
+		"      Maximal: 0xffffffff\r\n" +
+		"      Schritt: 0x00000001\r\n" +
+		"      Einheit: Sekunden\r\n" +
+		"    Netzbetrieb: 0x00000708\r\n" +
+		"    Akkubetrieb: 0x00000384\r\n"
+	for out, want := range map[string]struct{ status, message string }{
+		powercfg("0x00000000", "0x00000384"):             {statusOK, "the computer doesn't sleep on its own while plugged in"},
+		powercfg("0x00002a30", "0x00000000"):             {statusWarn, "the computer sleeps after 3 hours idle, and your apps are offline while it does"},
+		powercfg("0x0000012c", "0x00000000"):             {statusWarn, "the computer sleeps after 5 minutes idle, and your apps are offline while it does"},
+		translated:                                       {statusWarn, "the computer sleeps after 30 minutes idle, and your apps are offline while it does"},
+		"Invalid Parameters -- try \"/?\" for help.\r\n": {statusWarn, "couldn't find the sleep setting in powercfg's output"},
+	} {
+		c := windowsSleepCheck(out)
+		wantFix := strings.Contains(want.message, "sleeps after")
+		if c.Status != want.status || c.Message != want.message || strings.Contains(c.Fix, "powercfg /change standby-timeout-ac 0") != wantFix || (c.Actor == actorPerson) != wantFix {
 			t.Errorf("%q: %+v", out, c)
 		}
 	}
@@ -298,10 +348,7 @@ func TestConfigRoundTrip(t *testing.T) {
 	}
 }
 
-// The apps' commands live beside the config, where a connector from before --run, which
-// rewrites the config without them, doesn't reach. A command whose app the config no
-// longer has is dropped on the next load, so publishing the slug again doesn't bring it
-// back.
+// The apps' commands live beside the config, readable only by the owner.
 func TestCommandsLiveBesideTheConfig(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
@@ -317,42 +364,8 @@ func TestCommandsLiveBesideTheConfig(t *testing.T) {
 	if err := jsonfile.CheckPrivate(commandsFile); err != nil {
 		t.Fatalf("commands.json: %v", err)
 	}
-	// What a connector from before --run saves, with a field it doesn't know left in.
-	os.WriteFile(path, []byte(`{"apps": [{"name": "Coach", "slug": "coach", "port": 4317}, {"name": "Notes", "slug": "notes", "port": 4400, "run": "make serve", "dir": "/srv"}]}`), 0o600)
 	if cfg, err := LoadConfig(path); err != nil || !reflect.DeepEqual(cfg.Apps, []App{coach, notes}) {
-		t.Errorf("after an older connector's save: %+v, %v", cfg, err)
-	}
-	// An older connector unpublishes coach, then publishes it again: the load between
-	// drops its command, and leaves the config as it was.
-	unpublished := `{"apps": [{"name": "Notes", "slug": "notes", "port": 4400}]}`
-	os.WriteFile(path, []byte(unpublished), 0o600)
-	if cfg, err := LoadConfig(path); err != nil || !reflect.DeepEqual(cfg.Apps, []App{notes}) {
-		t.Errorf("after the unpublish: %+v, %v", cfg, err)
-	}
-	if data, _ := os.ReadFile(path); string(data) != unpublished {
-		t.Errorf("the load rewrote the config:\n%s", data)
-	}
-	if _, err := os.Stat(commandsFile); !errors.Is(err, fs.ErrNotExist) {
-		t.Errorf("commands.json with no app's command: %v", err)
-	}
-	os.WriteFile(path, []byte(`{"apps": [{"name": "Coach", "slug": "coach", "port": 4317}, {"name": "Notes", "slug": "notes", "port": 4400}]}`), 0o600)
-	if cfg, err := LoadConfig(path); err != nil || cfg.Apps[0].Run != "" {
-		t.Errorf("published again: %+v, %v", cfg, err)
-	}
-	// In a folder it can't write, the load still reads, leaving the cleanup for later.
-	// Windows ignores directory modes.
-	if runtime.GOOS != "windows" {
-		os.WriteFile(commandsFile, []byte(`{"gone": {"run": "make serve", "dir": "/srv"}}`), 0o600)
-		if err := os.Chmod(dir, 0o500); err != nil {
-			t.Fatal(err)
-		}
-		defer os.Chmod(dir, 0o700)
-		if cfg, err := LoadConfig(path); err != nil || len(cfg.Apps) != 2 || cfg.Apps[0].Run != "" {
-			t.Errorf("in a read-only folder: %+v, %v", cfg, err)
-		}
-		if _, err := os.Stat(commandsFile); err != nil {
-			t.Errorf("the read-only folder's commands.json: %v", err)
-		}
+		t.Errorf("loaded: %+v, %v", cfg, err)
 	}
 	// Another config gets its own.
 	if got := commandsPath(filepath.Join("x", "test.json")); got != filepath.Join("x", "test.commands.json") {

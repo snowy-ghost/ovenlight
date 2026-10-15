@@ -1117,7 +1117,7 @@ func TestPublishChecksTheCopyItStarted(t *testing.T) {
 			t.Errorf("restart %q: %+v", tc.run, c)
 		}
 	}
-	// A connector from before --run reports no command; status shows the config's.
+	// This connector reports no command; status shows the config's.
 	if out, err := collectStatus(p); err != nil || out.Apps[0].Run != "sleep 0.05; exit 1" || out.Apps[0].Dir != dir {
 		t.Errorf("status: %+v, %v", out, err)
 	}
@@ -1628,94 +1628,6 @@ func TestLoginEnvFailureIsReported(t *testing.T) {
 	}
 	if c := findCheck(t, runDoctor(cfg, p.state, p.config), "login-environment"); c.Actor != actorAgent || c.Fix != "ovenlight restart coach" {
 		t.Errorf("doctor, healed: %+v", c)
-	}
-}
-
-// A connector from before --run, still running after the command was upgraded, reports
-// no processes and doesn't know restart: check, doctor, status, publish and restart say it
-// doesn't run commands, and how to restart it, without pointing at the app's output or
-// at install.sh for a connector on other paths than the installed one's.
-func TestConnectorFromBeforeRun(t *testing.T) {
-	t.Setenv("SHELL", "/bin/sh")
-	t.Setenv("HOME", t.TempDir())
-	state, err := os.MkdirTemp("", "ol")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { os.RemoveAll(state) })
-	dir := t.TempDir()
-	p := &paths{config: filepath.Join(dir, "config.json"), state: state}
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	port := ln.Addr().(*net.TCPAddr).Port
-	ln.Close()
-	app := App{Name: "Coach", Slug: "coach", Port: port, Run: "exec sleep 30", Dir: dir}
-	cfg := &Config{Apps: []App{app}}
-	if err := cfg.Save(p.config); err != nil {
-		t.Fatal(err)
-	}
-	control, err := listenControl(socketPath(state))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer control.Close()
-	go func() {
-		for {
-			conn, err := control.Accept()
-			if err != nil {
-				return
-			}
-			var req controlRequest
-			json.NewDecoder(conn).Decode(&req)
-			reply := map[string]any{"ok": true, "pid": 1, "version": "devel", "apps": []map[string]string{{"slug": "coach", "state": "serving"}}}
-			if req.Cmd == "restart" {
-				reply = map[string]any{"error": `unknown command "restart"`}
-			}
-			json.NewEncoder(conn).Encode(reply)
-			conn.Close()
-		}
-	}()
-	const old = "the running connector predates --run and doesn't run commands"
-	fix := restartFix(p)
-	if strings.Contains(fix, "install.sh again") || !strings.Contains(restartFix(&paths{config: defaultConfigPath(), state: defaultStateDir()}), "install.sh again") {
-		t.Errorf("restartFix for other paths: %s", fix)
-	}
-	predates := func(name string, checks []Check) {
-		t.Helper()
-		if c := findCheck(t, checks, "connector-version"); c.Status != statusFail || c.Actor != actorPerson || !strings.HasPrefix(c.Message, old) || c.Fix != fix {
-			t.Errorf("%s: %+v", name, c)
-		}
-		if c := findID(checks, "port-listening"); c != nil && strings.Contains(c.Fix, "ovenlight logs") {
-			t.Errorf("%s: port-listening %+v", name, c)
-		}
-	}
-	checks, err := checkPublished(p, "coach")
-	if err != nil {
-		t.Fatal(err)
-	}
-	predates("check", checks)
-	predates("doctor", runDoctor(cfg, p.state, p.config))
-	if out, err := collectStatus(p); err != nil || !out.PredatesRun {
-		t.Errorf("status: %+v, %v", out, err)
-	}
-	stdout := os.Stdout
-	f, _ := os.Create(filepath.Join(dir, "out"))
-	os.Stdout = f
-	err = cmdStatus([]string{"--config", p.config, "--state", p.state})
-	os.Stdout = stdout
-	f.Close()
-	if text, _ := os.ReadFile(f.Name()); err != nil || !strings.Contains(string(text), "The running connector predates --run and doesn't run commands; restart it.\n  Fix (the person): "+fix) {
-		t.Errorf("status text: %v\n%s", err, text)
-	}
-	res, err := publishApp(p, app, nil, nil, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	predates("publish", res.Problems)
-	if _, err := restartProcess(p, "coach"); err == nil || err.Error() != old+"; restart it. "+fix {
-		t.Errorf("restart: %v", err)
 	}
 }
 

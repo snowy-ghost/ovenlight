@@ -25,7 +25,7 @@ open: closing its lid puts it to sleep. It must be one of these:
   administrator PowerShell, signed in as the account that will own the apps: elevating
   with another account's password installs the connector for that account. Windows puts
   an idle computer to sleep by default: in Settings, under System > Power (Power &
-  battery on a laptop), set sleep to Never.
+  battery on a laptop), set sleep to Never. `ovenlight doctor` checks that too.
 
 You also need a Tailscale account with MagicDNS and HTTPS certificates turned on in the
 admin console, under [DNS](https://console.tailscale.com/admin/dns); `ovenlight doctor`

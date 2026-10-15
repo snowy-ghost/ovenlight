@@ -27,7 +27,6 @@ import (
 const usage = `ovenlight publishes your local web apps to your tailnet, for the Ovenlight iPhone app.
 
 Usage:
-  ovenlight run                                   run the connector (its background service does this)
   ovenlight new "<App Name>" [--dir <parent>] [--port <n>]   a starter app to build on, and how to publish it
   ovenlight publish --port <n> --name "<App>" [--slug <slug>] [--shareable]
   ovenlight publish --slug <slug> --shareable     make a published app shareable
@@ -40,6 +39,7 @@ Usage:
   ovenlight check <slug> [--json]                 how one app will look and work in Ovenlight
   ovenlight version
   ovenlight guide                                 how to build apps for Ovenlight, for coding agents
+  ovenlight run                                   run the connector (its background service does this)
 
 Sharing (one-time setup: auth set, then publish --slug <slug> --shareable, which records you as the owner):
   ovenlight auth set [--oauth-client-id <id>]     reads the secret from stdin
@@ -428,10 +428,6 @@ func publishApp(p *paths, app App, run, dir *string, shareable bool) (*publishRe
 	res.Daemon = true
 	switch {
 	case app.Run != "": // the reload has just started it
-		if status, err := callDaemon(p.state, "status", 10*time.Second); err == nil && predatesRun(status) {
-			res.Problems = append(res.Problems, predatesRunCheck(p, app))
-			break
-		}
 		waitListening(p, app, before, began)
 		status, err := callDaemon(p.state, "status", 10*time.Second)
 		if err != nil {
@@ -480,45 +476,6 @@ func publishApp(p *paths, app App, run, dir *string, shareable bool) (*publishRe
 		time.Sleep(500 * time.Millisecond)
 	}
 	return res, nil
-}
-
-// predatesRun reports whether the connector that sent a status reply is from before
-// --run, and so runs no app's command: one that runs them reports its processes, if none.
-func predatesRun(status *controlReply) bool { return status != nil && status.Processes == nil }
-
-const predatesRunMessage = "the running connector predates --run and doesn't run commands"
-
-// predatesRunCheck is the finding that the running connector doesn't start app, when it
-// predates --run.
-func predatesRunCheck(p *paths, app App) Check {
-	return Check{ID: "connector-version", App: app.Slug, Status: statusFail, Actor: actorPerson,
-		Message: predatesRunMessage + ", so nothing starts " + app.Name + "; restart it", Fix: restartFix(p)}
-}
-
-// predatesRunChecks adds predatesRunCheck to an app's checks, for check and doctor, when
-// it has a command and the connector that sent status predates --run, and has a failing
-// port-listening say why rather than point at the app's output.
-func predatesRunChecks(checks []Check, p *paths, app App, status *controlReply) []Check {
-	if app.Run == "" || !predatesRun(status) {
-		return checks
-	}
-	for i, c := range checks {
-		if c.ID == "port-listening" && c.Status != statusOK {
-			checks[i].Fix = fmt.Sprintf("%s isn't running because the running connector doesn't run commands (see the connector-version finding).", app.Name)
-			checks[i].Actor = actorPerson
-		}
-	}
-	return append([]Check{predatesRunCheck(p, app)}, checks...)
-}
-
-// restartFix says how to restart the connector with this version, a fix for the person.
-// install.sh restarts the installed one, which uses the default paths, not one for others.
-func restartFix(p *paths) string {
-	if !p.installed() {
-		return fmt.Sprintf("The connector running for --config %s and --state %s isn't the installed one, so install.sh doesn't restart it: "+
-			"whoever started it stops it and starts it again with this version of ovenlight; an agent must not start one itself.", p.config, p.state)
-	}
-	return "Run install.sh again (from the release folder, or connector/install.sh in the repository), which restarts the connector with this version."
 }
 
 // restartLoginFix restarts the connector so a node that lost its login asks for a new
@@ -861,7 +818,6 @@ type statusOut struct {
 	Version       string         `json:"version"` // this binary's
 	Daemon        bool           `json:"daemonRunning"`
 	DaemonVersion string         `json:"daemonVersion,omitempty"`
-	PredatesRun   bool           `json:"daemonPredatesRun,omitempty"` // the running connector doesn't run apps' commands
 	PID           int            `json:"pid,omitempty"`
 	Dev           bool           `json:"dev,omitempty"`
 	LoginEnvError string         `json:"loginEnvError,omitempty"` // see controlReply.EnvError
@@ -884,7 +840,6 @@ func collectStatus(p *paths) (*statusOut, error) {
 	if reply != nil {
 		processes = reply.Processes
 		out.PID, out.Dev, out.DaemonVersion, out.LoginEnvError = reply.PID, reply.Dev, reply.Version, reply.EnvError
-		out.PredatesRun = predatesRun(reply)
 		out.Sharing.SyncError = reply.SyncError
 		for _, st := range reply.Apps {
 			live[st.Slug] = st
@@ -895,7 +850,7 @@ func collectStatus(p *paths) (*statusOut, error) {
 		if !ok {
 			st = NodeStatus{appInfo: app.view(), State: "not running"}
 		}
-		st.Run, st.Dir = app.Run, app.Dir // a connector from before --run doesn't report them
+		st.Run, st.Dir = app.Run, app.Dir // the config's: the connector reports the ones it last loaded
 		up := upstreamCheck(withOwner(app, cfg, reply), st.DNSName)
 		a := appStatus{NodeStatus: st, Upstream: upstreamStatus{OK: up.Status == statusOK, Message: up.Message}}
 		if pr, ok := processes[app.Slug]; ok {
@@ -970,9 +925,6 @@ func cmdStatus(args []string) error {
 			mode = " (DEV control server)"
 		}
 		fmt.Printf("Connector: running, pid %d, version %s%s\n", out.PID, orDash(out.DaemonVersion), mode)
-		if out.PredatesRun && len(runSlugs(out.Apps)) > 0 {
-			fmt.Printf("  The running connector predates --run and doesn't run commands; restart it.\n  Fix (the person): %s\n", restartFix(p))
-		}
 		processes := map[string]ProcessStatus{}
 		for _, a := range out.Apps {
 			if a.Process != nil {
@@ -1093,7 +1045,7 @@ func printChecks(checks []Check, onlyProblems bool) {
 		fmt.Printf("%s  %s: %s\n", label, scope, c.Message)
 		switch {
 		case c.Fix != "" && c.Actor == actorPerson:
-			fmt.Printf("      fix (the person): %s\n", c.Fix)
+			fmt.Printf("      fix (you, not an agent): %s\n", c.Fix)
 		case c.Fix != "":
 			fmt.Printf("      fix: %s\n", c.Fix)
 		}
