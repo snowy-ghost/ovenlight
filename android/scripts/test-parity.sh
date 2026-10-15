@@ -24,6 +24,10 @@ testScreenshotsAreDecodedSmall           # pending, Phase 6: Android's Bitmap, w
 testIconsAreDecodedSmall                 # pending: decoding an icon small is BitmapFactory's, in an Android harness
 testAppReplacedByAppStaysOnScreen        # SwiftUI only: a replaced cover's onDismiss
 testSheetsReplaceEachOther               # SwiftUI only: a replaced sheet's onDismiss
+testAStaleViewNeverLoadsAndIsMadeAgain   # pending, Phase 4: the WebViewPool's views
+testLoggingOutDropsTheViewsTheOwnersNodeCarried# pending, Phase 4: the WebViewPool's views
+testANewOwnerTailnetDropsViewsOfTheOldOne# pending, Phase 4: the WebViewPool's views
+testAnAppNoLongerListedGetsNoWebView     # pending, Phase 4: the WebViewPool's views
 EOF
 }
 

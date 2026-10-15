@@ -54,23 +54,12 @@ sealed class FeedbackResult {
         fun interpret(status: Int, body: ByteArray): FeedbackResult = when (status) {
             200 -> Sent
             429 -> Failed(ConnectionCopy.feedbackTooMany)
-            else -> Failed(errorMessage(body)?.let(::sentence) ?: ConnectionCopy.feedbackNetwork)
+            else -> Failed(AdminAPI.errorMessage(body)?.let(::sentence) ?: ConnectionCopy.feedbackNetwork)
         }
 
         /** The connector's words as a sentence: the first character capitalized, and a period. */
         private fun sentence(words: String): String {
             val first = words.graphemePrefix(1)
             return first.uppercase() + words.substring(first.length) + "."
-        }
-
-        /** The connector's `{"error": "..."}`, as iOS's AdminAPI.errorMessage reads it. */
-        private fun errorMessage(body: ByteArray): String? = try {
-            ovenlightJSON.decodeFromString(FeedbackError.serializer(), strictUTF8(body)).error
-        } catch (_: Exception) {
-            null
-        }
-    }
+        }    }
 }
-
-@Serializable
-private class FeedbackError(val error: String? = null)

@@ -3,11 +3,9 @@ package com.snowyghost.ovenlight
 import org.junit.Test
 
 class GuestCopyTests {
-    // MailDraft's problem report and JoinError's titles and messages join this list with
-    // Support.kt and Guests.kt.
     @Test
     fun testEverythingAGuestCanSeeIsNeutral() {
-        val copy = listOf(
+        val copy = mutableListOf(
             ConnectionCopy.sharedBy("Riley"), ConnectionCopy.joinTitle(owner = "Riley", app = "Echo"),
             ConnectionCopy.joinDetail(owner = "Riley", app = "Echo", to = "Sam"), ConnectionCopy.joinDetail(owner = "Riley", app = "Echo", to = ""),
             ConnectionCopy.joining(owner = "Riley", app = "Echo"), ConnectionCopy.joiningDetail, ConnectionCopy.joined("Echo"),
@@ -20,6 +18,12 @@ class GuestCopyTests {
             ConnectionCopy.leaveDetail("Riley"), ConnectionCopy.removeSharedDetail("Riley"),
             AppAddress.signInFirst, AppAddress.notYourComputer,
         )
+        val report = MailDraft.problemReport(
+            appName = "Echo", host = "echo.example.com", sharedBy = "Riley", connection = NodeState.Ready.summary,
+            version = "1.0 (3)", android = "16", webView = "145.0.7632.218", model = "Google Pixel 9",
+        )
+        copy += listOf(report.subject, report.body)
+        copy += JoinError.entries.flatMap { listOf(it.title(owner = "Riley", app = "Echo"), it.message(owner = "Riley", app = "Echo")) }
         for (text in copy) CopyRules.assertNeutral(text)
     }
 }

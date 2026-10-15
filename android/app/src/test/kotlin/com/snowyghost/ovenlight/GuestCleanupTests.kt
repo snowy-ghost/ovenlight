@@ -104,7 +104,7 @@ class GuestCleanupTests {
             }
         }
         assertEquals(ConnectorError.OwnerOnly, ConnectorError(null, refusal("owner_only")))
-        // iOS also checks AdminAPI.errorMessage here; that assertion comes with AdminAPI's port.
+        assertEquals("for the owner only", AdminAPI.errorMessage(refusal("owner_only", "for the owner only")))
 
         val request = Claim.request(
             InviteLink(control = URI("https://c.example"), key = "tskey-1", owner = "R", app = "a", invite = "i", host = echo, name = "E", to = ""),
