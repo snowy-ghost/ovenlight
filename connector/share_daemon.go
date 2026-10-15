@@ -273,9 +273,10 @@ func (st *sharingState) resolvePerson(ref guestRef) (person, name string, err er
 }
 
 // createInvite mints an invite a person asked for, in a terminal or in Ovenlight. A
-// review invite, for an app store's review, has the same single-use key for the app's guest
-// tag, but valid for reviewInviteTTL, because the reviewer may test weeks later. Only
-// `share --review` in a terminal asks for one.
+// review invite, for an app store's review, has a key for the same guest tag, but
+// reusable, for up to reviewInviteDevices devices of the reviewer, and valid for
+// reviewInviteTTL, because the review may come weeks later. Only `share --review` in a
+// terminal asks for one.
 func (d *daemon) createInvite(ref guestRef, slug, by string, review bool) (shareResult, error) {
 	if _, _, _, err := d.shareableApp(slug); err != nil {
 		return shareResult{}, err
@@ -289,8 +290,8 @@ func (d *daemon) createInvite(ref guestRef, slug, by string, review bool) (share
 	return d.mintInvite(Invite{ID: newID(), To: to, Person: person, App: slug, RequestedBy: by, Created: time.Now(), Review: review})
 }
 
-// mintInvite creates the invite's single-use guest key and records the invite. The key
-// is preauthorized whatever the tailnet's device approval setting; docs/security.md
+// mintInvite creates the invite's guest key and records the invite. The key is
+// preauthorized whatever the tailnet's device approval setting; docs/security.md
 // (Invites) says why.
 func (d *daemon) mintInvite(inv Invite) (shareResult, error) {
 	app, cfg, n, err := d.shareableApp(inv.App)
@@ -307,8 +308,8 @@ func (d *daemon) mintInvite(inv Invite) (shareResult, error) {
 	if inv.Review {
 		ttl, desc = reviewInviteTTL, "ovenlight review invite "+inv.ID
 	}
-	key, err := api.CreateAuthKey(ctx, tsapi.KeyRequest{Tags: []string{policy.GuestTag(app.Slug)}, Preauthorized: true, Expiry: ttl,
-		Description: desc})
+	key, err := api.CreateAuthKey(ctx, tsapi.KeyRequest{Tags: []string{policy.GuestTag(app.Slug)}, Reusable: inv.Review, Preauthorized: true,
+		Expiry: ttl, Description: desc})
 	if err != nil {
 		return shareResult{}, fmt.Errorf("couldn't create the invite key: %w", withAuthHint(err))
 	}
@@ -357,7 +358,8 @@ func (d *daemon) mintInvite(inv Invite) (shareResult, error) {
 
 var errNoInvite = errors.New("no unused invite")
 
-// cancelInvite withdraws an unused invite and deletes its key. The invite it returns
+// cancelInvite withdraws an open invite and deletes its key. Devices that claimed a
+// review invite before keep the app until they are revoked. The invite it returns
 // keeps its KeyID while the key couldn't be deleted: until the sync manages it, the key
 // can still join the tailnet, though the connector refuses its claim.
 func (d *daemon) cancelInvite(id string) (Invite, error) {
@@ -459,7 +461,8 @@ func (d *daemon) handleClaim(w http.ResponseWriter, r *http.Request, caller Iden
 	if fresh {
 		log.Printf("[%s] %s (%s, %s) claimed invite %s", app.Slug, guestCopy.Name, caller.DeviceName, caller.DeviceID, invCopy.ID)
 		// The key is spent if this device joined with it. If it joined with another
-		// one, deleting this key keeps it from adding a second device.
+		// one, deleting this key keeps it from adding a second device. A review
+		// invite's reusable key stays until its last device claims.
 		go func() {
 			api, err := d.api()
 			if err != nil {
@@ -467,7 +470,7 @@ func (d *daemon) handleClaim(w http.ResponseWriter, r *http.Request, caller Iden
 			}
 			ctx, cancel := apiContext()
 			defer cancel()
-			if invCopy.KeyID != "" {
+			if invCopy.KeyID != "" && invCopy.State == inviteClaimed {
 				d.deleteInviteKey(ctx, api, invCopy)
 			}
 			if retagNeeded {

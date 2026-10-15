@@ -153,8 +153,9 @@ func TestShareClaimRevoke(t *testing.T) {
 	}
 }
 
-// A review invite is for App Review, which may test weeks later: same single-use guest
-// key, but valid for reviewInviteTTL, and marked so the owner sees it.
+// A review invite is for an app store's review, which may come weeks later and on
+// several devices: a reusable guest key, valid for reviewInviteTTL, that admits up to
+// reviewInviteDevices devices of the reviewer, and marked so the owner sees it.
 func TestReviewInvite(t *testing.T) {
 	d, f := testDaemon(t)
 
@@ -167,7 +168,7 @@ func TestReviewInvite(t *testing.T) {
 		t.Errorf("invite = %+v", inv)
 	}
 	k := f.Keys[0]
-	if k.Reusable || !k.Preauthorized || len(k.Tags) != 1 || k.Tags[0] != guestTag || k.Expires.Sub(k.Created) != reviewInviteTTL {
+	if !k.Reusable || !k.Preauthorized || len(k.Tags) != 1 || k.Tags[0] != guestTag || k.Expires.Sub(k.Created) != reviewInviteTTL {
 		t.Errorf("minted key = %+v", k)
 	}
 	if !inv.Expires.Equal(k.Expires) {
@@ -189,16 +190,41 @@ func TestReviewInvite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if code, out := claim(t, d, samDev, link.Key); code != 200 || out["name"] != "App Review" {
-		t.Fatalf("claim: %d %v", code, out)
+	var devices []Identity
+	for i := range reviewInviteDevices + 1 {
+		devices = append(devices, Identity{Tagged: true, Tags: []string{guestTag}, DeviceID: fmt.Sprint("nReview", i), DeviceName: fmt.Sprint("review-", i)})
 	}
-	if code, _ := claim(t, d, kimDev, link.Key); code != http.StatusForbidden {
-		t.Errorf("a second device claimed the review invite: %d", code)
+	// Each device claims in turn, and the key stays for the next until the last.
+	for i, dev := range devices[:reviewInviteDevices] {
+		if code, out := claim(t, d, dev, link.Key); code != 200 || out["name"] != "App Review" || out["userId"] != "guest:"+inv.Person {
+			t.Fatalf("claim %d: %d %v", i, code, out)
+		}
+		d.sh.mu.Lock()
+		state := d.sh.st.invite(inv.ID).State
+		d.sh.mu.Unlock()
+		want := inviteSent
+		if i == reviewInviteDevices-1 {
+			want = inviteClaimed
+		}
+		if state != want {
+			t.Fatalf("after claim %d the invite is %s", i, state)
+		}
+	}
+	waitFor(t, func() bool { return keyDeleted(d, inv.ID) }, "the used-up key to be deleted")
+	if n := f.RequestCount("DELETE /api/v2/tailnet/-/keys/" + k.ID); n != 1 {
+		t.Errorf("the key was deleted %d times", n)
+	}
+	// One more device is refused as for a used invite, and a device that claimed may
+	// claim again.
+	if code, out := claim(t, d, devices[reviewInviteDevices], link.Key); code != http.StatusForbidden || out["code"] != codeUsedElsewhere {
+		t.Errorf("device %d: %d %v", reviewInviteDevices+1, code, out)
+	}
+	if code, _ := claim(t, d, devices[0], link.Key); code != 200 {
+		t.Errorf("first device claiming again: %d", code)
 	}
 
 	// Revoking works as for anyone.
-	f.Devices = []tsapi.Device{{ID: "9", NodeID: "nSam", Tags: []string{guestTag}, Authorized: true}}
-	if rr, err := d.revoke("App Review", "", false); err != nil || len(rr.Removed) != 1 || len(rr.Deleted) != 1 {
+	if rr, err := d.revoke("App Review", "", false); err != nil || len(rr.Removed) != reviewInviteDevices || len(rr.Deleted) != reviewInviteDevices {
 		t.Fatalf("revoke: %+v %v", rr, err)
 	}
 
@@ -223,16 +249,30 @@ func TestReviewInviteExpiry(t *testing.T) {
 	if r := d.sh.st.reconcile(nil, []string{"coach"}, res.Invite.Expires.Add(claimGrace+time.Minute)); len(r.Expired) != 1 {
 		t.Fatalf("not expired after its lifetime: %+v", r)
 	}
-	// Canceling an unused review invite deletes its key, as for any invite.
+	// Canceling a review invite deletes its key, as for any invite. A device that
+	// claimed it keeps the app; no other one gets it.
 	res, err = d.createInvite(guestRef{To: "App Review"}, "coach", "terminal", true)
 	if err != nil {
 		t.Fatal(err)
+	}
+	link, err := parseInviteLink(res.Link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code, _ := claim(t, d, samDev, link.Key); code != 200 {
+		t.Fatalf("claim: %d", code)
 	}
 	if _, err := d.cancelInvite(res.Invite.ID); err != nil {
 		t.Fatal(err)
 	}
 	if !f.Keys[1].Deleted {
 		t.Error("canceling left the review key usable")
+	}
+	if d.sh.guestFor("nSam", "coach") == nil {
+		t.Error("canceling removed a device that had claimed")
+	}
+	if code, out := claim(t, d, kimDev, link.Key); code != http.StatusForbidden || out["code"] != codeNotInvited {
+		t.Errorf("claim after cancel: %d %v", code, out)
 	}
 }
 
@@ -243,7 +283,7 @@ func TestPlainInviteIsNotReview(t *testing.T) {
 		t.Fatal(err)
 	}
 	data, _ := json.Marshal(res.Invite)
-	if res.Invite.Review || strings.Contains(string(data), "review") || f.Keys[0].Expires.Sub(f.Keys[0].Created) != inviteTTL {
+	if res.Invite.Review || strings.Contains(string(data), "review") || f.Keys[0].Reusable || f.Keys[0].Expires.Sub(f.Keys[0].Created) != inviteTTL {
 		t.Errorf("plain invite = %s, key %+v", data, f.Keys[0])
 	}
 	if !strings.HasSuffix(res.Message, "within 7 days to join: "+res.Link) {

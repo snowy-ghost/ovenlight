@@ -178,6 +178,44 @@ func TestClaimInvite(t *testing.T) {
 	}
 }
 
+// A review invite admits up to reviewInviteDevices devices, each counted once, and a
+// device taken off the app keeps its place: removing it frees none for another.
+func TestClaimReviewInvite(t *testing.T) {
+	review := sentInvite("r1", "App Review", "coach", "key-review")
+	review.Review = true
+	st := sharingState{Invites: []Invite{review}}
+	dev := func(i int) Identity {
+		return Identity{Tagged: true, Tags: []string{guestTag}, DeviceID: fmt.Sprint("n", i), DeviceName: fmt.Sprint("review-", i)}
+	}
+	for i := range reviewInviteDevices - 1 {
+		if _, _, fresh, err := st.claimInvite(hashKey("key-review"), "coach", dev(i), t0); err != nil || !fresh {
+			t.Fatalf("claim %d: %v %v", i, fresh, err)
+		}
+		if _, _, fresh, err := st.claimInvite(hashKey("key-review"), "coach", dev(i), t0); err != nil || fresh {
+			t.Fatalf("claim %d again: %v %v", i, fresh, err)
+		}
+	}
+	if st.Invites[0].State != inviteSent || st.Invites[0].ClaimedBy != "" || len(st.spentKeys()) != 0 {
+		t.Fatalf("one place left, the invite is %+v", st.Invites[0])
+	}
+	// The first device is taken off coach: it can't claim again, and its place stays taken.
+	st.removeGuests(match(t, &st, "n0", "coach"), "owner", t0)
+	if _, _, _, err := st.claimInvite(hashKey("key-review"), "coach", dev(0), t0); !errors.Is(err, errNotInvited) {
+		t.Errorf("a removed device claimed again: %v", err)
+	}
+	last := reviewInviteDevices - 1
+	inv, _, fresh, err := st.claimInvite(hashKey("key-review"), "coach", dev(last), t0)
+	if err != nil || !fresh || inv.State != inviteClaimed || inv.ClaimedBy != dev(last).DeviceID || len(st.spentKeys()) != 1 {
+		t.Fatalf("last claim: %+v %v %v", inv, fresh, err)
+	}
+	if _, _, _, err := st.claimInvite(hashKey("key-review"), "coach", dev(last+1), t0); !errors.Is(err, errInviteUsed) {
+		t.Errorf("one device too many: %v", err)
+	}
+	if _, g, fresh, err := st.claimInvite(hashKey("key-review"), "coach", dev(1), t0); err != nil || fresh || g.DeviceID != "n1" {
+		t.Errorf("a device that claimed, once the invite is used up: %+v %v %v", g, fresh, err)
+	}
+}
+
 func TestRevokeKeepsDevicesThatHoldAnotherApp(t *testing.T) {
 	st := sharingState{Guests: []Guest{
 		{DeviceID: "nSam", Person: "nSam", Name: "Sam", App: "coach"},

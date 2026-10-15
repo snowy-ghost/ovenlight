@@ -193,9 +193,15 @@ a node's key expires within 30 days.
 ## Invites
 
 - `share` mints a single-use key tagged `tag:ovenlight-guest-<slug>` that expires in 7
-  days, or 90 days for an App Review invite (`share --review`, terminal only;
-  [development.md](development.md#app-review-invites)). The key is preauthorized, whatever
-  the tailnet's device approval setting, so a guest's phone never waits for you.
+  days. The key is preauthorized, whatever the tailnet's device approval setting, so a
+  guest's phone never waits for you.
+- A review invite, for an app store's review (`share --review`, terminal only;
+  [development.md](development.md#app-review-invites)), has a reusable key instead, valid
+  for 90 days, and up to 10 devices can claim it. Its key is deleted once the tenth has,
+  so a leaked review link admits up to 10 devices to that app until it expires or you
+  cancel it. While the key works, any number of devices can join your tailnet with it,
+  but the connector refuses one that hasn't claimed, and `guests` lists it for you to
+  remove.
 - The connector records the invite with the key's SHA-256, never the key.
 - The link carries the key in its fragment, so it never reaches the website that hosts
   the join page ([protocol.md](protocol.md#invite-links)).

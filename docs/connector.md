@@ -353,6 +353,9 @@ It prints a link, a QR code and a message to send. The other sharing commands:
 - `ovenlight revoke Sam`: removes Sam from every app; add `--app <slug>` to remove just
   one.
 - `ovenlight share --cancel <id>`: withdraws an invite that hasn't been used.
+- `ovenlight share recipe-box --to "App Review" --review`: an invite for an app store's
+  review, which lasts 90 days and works on up to 10 devices
+  ([development.md](development.md#app-review-invites)).
 
 An invite link works once and expires after 7 days. Your friend's iPhone joins without
 waiting for your approval, even if your tailnet has device approval on

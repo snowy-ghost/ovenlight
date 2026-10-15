@@ -101,7 +101,7 @@ func cmdShare(args []string) error {
 	existing := fs.Bool("existing", false, "the invite is for someone you already share with, named by --to")
 	person := fs.String("person", "", "the invite is for someone you already share with, by person ID (see `ovenlight guests`)")
 	cancelID := fs.String("cancel", "", "withdraw an unused invite, by its ID")
-	review := fs.Bool("review", false, "an invite for an app store's review: valid 90 days")
+	review := fs.Bool("review", false, "an invite for an app store's review: valid 90 days, on up to 10 devices")
 	pos, err := parseArgs(fs, args, 1)
 	if err != nil {
 		return err
@@ -144,13 +144,13 @@ func printReviewInvite(res *shareResult) {
 		return
 	}
 	inv := res.Invite
-	fmt.Printf("Review invite %s: %s can open %s. Single use, expires %s.\n",
-		inv.ID, inv.To, res.AppName, inv.Expires.Local().Format("Mon 2 Jan 15:04"))
-	fmt.Printf("Revoke it once the review is done: ovenlight revoke %q (or ovenlight share --cancel %s if it was never used).\n", inv.To, inv.ID)
+	fmt.Printf("Review invite %s: %s can open %s on up to %d devices. Expires %s.\n",
+		inv.ID, inv.To, res.AppName, reviewInviteDevices, inv.Expires.Local().Format("Mon 2 Jan 15:04"))
+	fmt.Printf("Revoke it once the review is done: ovenlight revoke %q (ovenlight share --cancel %s only stops more devices from joining).\n", inv.To, inv.ID)
 	for _, e := range res.TagErrors {
 		fmt.Printf("Warning: %s\n", e)
 	}
-	fmt.Printf("\nLink (it's a credential until it's used):\n  %s\n", res.Link)
+	fmt.Printf("\nLink (it's a credential until it expires):\n  %s\n", res.Link)
 	fmt.Println(joinPageHint)
 	fmt.Printf("\nInstructions for the reviewers, to paste into the submission:\n\n%s\n", reviewNotes(res))
 }
@@ -166,10 +166,10 @@ To open a shared app:
 %s
 3. Tap Join. When it says "%s Is Ready", tap Open %s.
 
-The invite works once, on one device, until %s. If it has run out, let us know and we'll send a new one.
+The invite works on up to %d devices until %s. If it has run out, let us know and we'll send a new one.
 
 To report a problem with a shared app or stop seeing it: open the app, tap its name at the top of the screen (tap the small handle there if the bar is hidden), then Report a Problem, or Leave %s's Apps.`,
-		res.Link, app, app, res.Invite.Expires.UTC().Format("Mon 2 Jan 2006 15:04 MST"), cmp.Or(res.Owner, "the owner"))
+		res.Link, app, app, reviewInviteDevices, res.Invite.Expires.UTC().Format("Mon 2 Jan 2006 15:04 MST"), cmp.Or(res.Owner, "the owner"))
 }
 
 // printInvite shows a minted invite: link, QR code and a message to send.
