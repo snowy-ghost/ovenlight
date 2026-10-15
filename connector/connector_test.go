@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"image"
 	"image/png"
-	"io/fs"
 	"log"
 	"net"
 	"net/http"
@@ -19,7 +18,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -350,10 +348,7 @@ func TestConfigRoundTrip(t *testing.T) {
 	}
 }
 
-// The apps' commands live beside the config, where a connector from before --run, which
-// rewrites the config without them, doesn't reach. A command whose app the config no
-// longer has is dropped on the next load, so publishing the slug again doesn't bring it
-// back.
+// The apps' commands live beside the config, readable only by the owner.
 func TestCommandsLiveBesideTheConfig(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
@@ -369,42 +364,8 @@ func TestCommandsLiveBesideTheConfig(t *testing.T) {
 	if err := jsonfile.CheckPrivate(commandsFile); err != nil {
 		t.Fatalf("commands.json: %v", err)
 	}
-	// What a connector from before --run saves, with a field it doesn't know left in.
-	os.WriteFile(path, []byte(`{"apps": [{"name": "Coach", "slug": "coach", "port": 4317}, {"name": "Notes", "slug": "notes", "port": 4400, "run": "make serve", "dir": "/srv"}]}`), 0o600)
 	if cfg, err := LoadConfig(path); err != nil || !reflect.DeepEqual(cfg.Apps, []App{coach, notes}) {
-		t.Errorf("after an older connector's save: %+v, %v", cfg, err)
-	}
-	// An older connector unpublishes coach, then publishes it again: the load between
-	// drops its command, and leaves the config as it was.
-	unpublished := `{"apps": [{"name": "Notes", "slug": "notes", "port": 4400}]}`
-	os.WriteFile(path, []byte(unpublished), 0o600)
-	if cfg, err := LoadConfig(path); err != nil || !reflect.DeepEqual(cfg.Apps, []App{notes}) {
-		t.Errorf("after the unpublish: %+v, %v", cfg, err)
-	}
-	if data, _ := os.ReadFile(path); string(data) != unpublished {
-		t.Errorf("the load rewrote the config:\n%s", data)
-	}
-	if _, err := os.Stat(commandsFile); !errors.Is(err, fs.ErrNotExist) {
-		t.Errorf("commands.json with no app's command: %v", err)
-	}
-	os.WriteFile(path, []byte(`{"apps": [{"name": "Coach", "slug": "coach", "port": 4317}, {"name": "Notes", "slug": "notes", "port": 4400}]}`), 0o600)
-	if cfg, err := LoadConfig(path); err != nil || cfg.Apps[0].Run != "" {
-		t.Errorf("published again: %+v, %v", cfg, err)
-	}
-	// In a folder it can't write, the load still reads, leaving the cleanup for later.
-	// Windows ignores directory modes.
-	if runtime.GOOS != "windows" {
-		os.WriteFile(commandsFile, []byte(`{"gone": {"run": "make serve", "dir": "/srv"}}`), 0o600)
-		if err := os.Chmod(dir, 0o500); err != nil {
-			t.Fatal(err)
-		}
-		defer os.Chmod(dir, 0o700)
-		if cfg, err := LoadConfig(path); err != nil || len(cfg.Apps) != 2 || cfg.Apps[0].Run != "" {
-			t.Errorf("in a read-only folder: %+v, %v", cfg, err)
-		}
-		if _, err := os.Stat(commandsFile); err != nil {
-			t.Errorf("the read-only folder's commands.json: %v", err)
-		}
+		t.Errorf("loaded: %+v, %v", cfg, err)
 	}
 	// Another config gets its own.
 	if got := commandsPath(filepath.Join("x", "test.json")); got != filepath.Join("x", "test.commands.json") {

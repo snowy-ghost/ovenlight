@@ -361,8 +361,7 @@ type controlReply struct {
 	Message string                `json:"message,omitempty"`
 	// SyncError is why the last guest sync with the tailnet failed, "" once one works.
 	SyncError string `json:"syncError,omitempty"`
-	// Processes are the supervised apps' processes, by slug, in every status reply: a
-	// connector from before --run sends none (see predatesRun).
+	// Processes are the supervised apps' processes, by slug, in every status reply.
 	Processes map[string]ProcessStatus `json:"processes"`
 	// EnvError is why the login shell's environment can't be read for the apps' commands,
 	// while it never has been, so they run with the connector's own.

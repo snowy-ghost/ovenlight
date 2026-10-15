@@ -517,7 +517,6 @@ func runDoctor(cfg *Config, stateDir, configPath string) []Check {
 		if c := heldByOther(app, status, down); c != nil {
 			found = append([]Check{*c}, found...)
 		}
-		found = predatesRunChecks(found, p, app, status)
 		checks = append(checks, withPortChoice(found, app)...)
 		if reply == nil {
 			continue
@@ -530,9 +529,8 @@ func runDoctor(cfg *Config, stateDir, configPath string) []Check {
 
 // heldByOther is portHeldCheck for check and doctor, for an app the connector runs: with
 // status, its status reply, while it runs, or with none while it is down, as publish asks.
-// A connector from before --run runs no copy for anything to hold the port from.
 func heldByOther(app App, status *controlReply, down bool) *Check {
-	if app.Run == "" || (status == nil && !down) || predatesRun(status) {
+	if app.Run == "" || (status == nil && !down) {
 		return nil
 	}
 	return portHeldCheck(app, status)

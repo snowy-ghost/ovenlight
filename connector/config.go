@@ -69,10 +69,7 @@ func credentialsPath(configPath string) string {
 }
 
 // commandsPath keeps the apps' commands beside the config: commands.json beside
-// config.json, <name>.commands.json beside any other <name>.json. A connector from before
-// --run rewrites the config without the fields it doesn't know, so a command kept in the
-// config would go whenever one still running, such as an MCP server started before an
-// upgrade, saved it.
+// config.json, <name>.commands.json beside any other <name>.json.
 func commandsPath(configPath string) string {
 	name := strings.TrimSuffix(filepath.Base(configPath), ".json")
 	if name == "config" {
@@ -124,58 +121,36 @@ func LoadConfig(path string) (*Config, error) {
 	return c, err
 }
 
-// loadConfigFile is LoadConfig, also reporting whether the file exists. It drops the
-// commands of apps that aren't in the config: a connector from before --run unpublishes
-// without touching the commands file, and a command left there would start again, in its
-// old folder, whenever any connector published the slug again. It writes only the commands
-// file: a read never rewrites the config. The cleanup is best effort, since what it read
-// leaves those commands out already: a read works where it can't write, such as a folder
-// that isn't writable.
-func loadConfigFile(path string) (*Config, bool, error) {
-	c, found, stale, err := readConfig(path)
-	if err == nil && stale {
-		_ = lockConfig(path, func() error {
-			c, _, stale, err := readConfig(path)
-			if err == nil && stale {
-				err = c.saveCommands(path)
-			}
-			return err
-		})
-	}
-	return c, found, err
-}
-
-// readConfig reads the config and its apps' commands, also reporting whether the config
-// exists and whether the commands file holds a command for an app the config doesn't.
-func readConfig(path string) (c *Config, found, stale bool, err error) {
+// loadConfigFile is LoadConfig, also reporting whether the file exists. It reads the
+// config and its apps' commands.
+func loadConfigFile(path string) (c *Config, found bool, err error) {
 	data, err := jsonfile.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
-		return &Config{}, false, false, nil
+		return &Config{}, false, nil
 	}
 	if err != nil {
-		return nil, false, false, err
+		return nil, false, err
 	}
 	c = &Config{}
 	if err := json.Unmarshal(data, c); err != nil {
-		return nil, true, false, fmt.Errorf("%s: %w", path, err)
+		return nil, true, fmt.Errorf("%s: %w", path, err)
 	}
 	commands := map[string]appCommand{}
 	if data, err := jsonfile.ReadFile(commandsPath(path)); err == nil {
 		if err := json.Unmarshal(data, &commands); err != nil {
-			return nil, true, false, fmt.Errorf("%s: %w", commandsPath(path), err)
+			return nil, true, fmt.Errorf("%s: %w", commandsPath(path), err)
 		}
 	} else if !errors.Is(err, fs.ErrNotExist) {
-		return nil, true, false, err
+		return nil, true, err
 	}
 	for i := range c.Apps {
 		cmd := commands[c.Apps[i].Slug]
-		delete(commands, c.Apps[i].Slug)
 		c.Apps[i].Run, c.Apps[i].Dir = cmd.Run, cmd.Dir
 		if err := c.Apps[i].Validate(); err != nil {
-			return nil, true, false, fmt.Errorf("%s: %w", path, err)
+			return nil, true, fmt.Errorf("%s: %w", path, err)
 		}
 	}
-	return c, true, len(commands) > 0, nil
+	return c, true, nil
 }
 
 // Save writes the config and the commands file atomically, readable only by the owner.
@@ -212,7 +187,7 @@ func (c *Config) saveCommands(path string) error {
 // at once (a terminal and an agent, say) can't save over each other's change.
 func UpdateConfig(path string, change func(*Config) error) error {
 	return lockConfig(path, func() error {
-		c, _, _, err := readConfig(path)
+		c, _, err := loadConfigFile(path)
 		if err != nil {
 			return err
 		}

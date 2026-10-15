@@ -26,11 +26,9 @@ in `connector/go.mod`.
 - **One node per app.** Each published app gets its own tsnet node named after its slug,
   with state in `nodes/<slug>/` in the state directory (connector.md's
   [table](connector.md#what-it-installs) has it for each system). The commands the
-  connector runs for apps are in `commands.json` beside the app list, where a connector
-  from before `--run`, which saves the config without them, can't drop them. Loading the
-  config drops the command of an app it no longer lists, as such a connector's
-  `unpublish` leaves it. `publish` edits both and reloads the running connector over its
-  control socket, as does `kill -HUP` on macOS and Linux.
+  connector runs for apps are in `commands.json` beside the app list. `publish` edits both
+  and reloads the running connector over its control socket, as does `kill -HUP` on macOS
+  and Linux.
 - **Per-system code** sits in files named for it: `lock_*.go` (flock, or LockFileEx on
   Windows), `listen_*.go` (what listens on an app's port, for `doctor`),
   `internal/jsonfile/private_*.go` (files only you can read: mode 0600, or on Windows an

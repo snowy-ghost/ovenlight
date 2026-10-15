@@ -457,11 +457,8 @@ func restartProcess(p *paths, slug string) (*restartResult, error) {
 	before, _ := listeners(app.Port) // what listens before the copy starts
 	// Stopping waits up to twice the grace for the old process to end.
 	if _, err := callDaemonWith(p.state, controlRequest{Cmd: "restart", Slug: slug}, time.Minute); err != nil {
-		switch {
-		case errors.Is(err, errDaemonDown):
+		if errors.Is(err, errDaemonDown) {
 			return nil, fmt.Errorf("the Ovenlight connector isn't running, so it runs no apps. %s", startFix(p))
-		case err.Error() == `unknown command "restart"`:
-			return nil, fmt.Errorf("%s; restart it. %s", predatesRunMessage, restartFix(p))
 		}
 		return nil, err
 	}
