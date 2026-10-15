@@ -3,6 +3,7 @@ package core
 import (
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"tailscale.com/logpolicy"
@@ -11,6 +12,7 @@ import (
 func TestNodesGiveLogpolicyADirectory(t *testing.T) {
 	t.Setenv("TS_LOGS_DIR", "")
 	os.Unsetenv("TS_LOGS_DIR")
+	logsDirOnce = sync.Once{}
 	parent := t.TempDir()
 	n, err := NewNode("logs", filepath.Join(parent, "logs"), "test", "", "")
 	if err != nil {

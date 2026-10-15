@@ -114,6 +114,7 @@ func DebugAnswerWithin(millis int64) {
 }
 
 // ClearRoute removes a key's route, closes its tunnels and refuses its held CONNECTs.
+// node-<membership ID> is cleared when that membership is removed.
 func ClearRoute(key string) {
 	if theProxy != nil {
 		theProxy.clearRoute(key)
@@ -183,8 +184,9 @@ func interfaces() ([]netmon.Interface, error) {
 
 // Sign-in links and keys never reach a log, as iOS 1.0.2 keeps the sign-in link
 // out of its public log.
-// Tailscale's links are .../a/<id>, Headscale's .../register/<id>.
-var secretInLine = regexp.MustCompile(`https?://\S*/(a|register)/\S+|tskey-[A-Za-z0-9-]+`)
+// Tailscale's links are .../a/<id>, Headscale's .../register/<id> (older ones
+// .../register?key=<id>); keys are tskey-... and Headscale's hskey-....
+var secretInLine = regexp.MustCompile(`https?://\S*/(a/|register[/?])\S+|(tskey|hskey)-[A-Za-z0-9-]+`)
 
 func redact(line string) string {
 	return secretInLine.ReplaceAllString(line, "[removed]")

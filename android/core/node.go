@@ -32,9 +32,10 @@ type Node struct {
 	closing   chan struct{} // closed by Close, which ends a WaitUp
 	closeOnce sync.Once
 
-	peersMu sync.Mutex
-	peers   *ipnstate.Status // a recent status with peers, for the proxy's lookups
-	peersAt time.Time
+	peersMu    sync.Mutex
+	peers      *ipnstate.Status // a recent status with peers, for the proxy's lookups
+	peersAt    time.Time
+	lastSuffix atomic.Pointer[string] // the MagicDNS suffix last seen, while status can't be read
 }
 
 var registry = struct {
@@ -82,9 +83,11 @@ func NewNode(id, dir, hostname, controlURL, authKey string) (*Node, error) {
 	// no HOME, no writable temp directory, and a working directory of /. Nothing is written
 	// there (socket stats need Tailscale's own Go toolchain), so the nodes' shared parent
 	// directory, which outlives any one membership, answers it.
-	if os.Getenv("TS_LOGS_DIR") == "" {
-		os.Setenv("TS_LOGS_DIR", filepath.Dir(dir))
-	}
+	logsDirOnce.Do(func() {
+		if os.Getenv("TS_LOGS_DIR") == "" {
+			os.Setenv("TS_LOGS_DIR", filepath.Dir(dir))
+		}
+	})
 	n := &Node{id: id, closing: make(chan struct{})}
 	logf := func(format string, args ...any) { logLine(n.id + ": " + fmt.Sprintf(format, args...)) }
 	n.srv = &tsnet.Server{
@@ -96,13 +99,19 @@ func NewNode(id, dir, hostname, controlURL, authKey string) (*Node, error) {
 		UserLogf:   logf,
 	}
 	registry.Lock()
-	defer registry.Unlock()
 	if registry.nodes[id] != nil {
+		registry.Unlock()
 		return nil, fmt.Errorf("core: membership %s already has an open node", id)
 	}
 	registry.nodes[id] = n
+	registry.Unlock()
+	if theProxy != nil {
+		theProxy.know(id)
+	}
 	return n, nil
 }
+
+var logsDirOnce sync.Once
 
 // Start starts the node and returns once its backend runs. Signing in, or
 // joining with the auth key, carries on after it returns.
@@ -144,11 +153,14 @@ func (n *Node) WaitUp(timeoutMillis int64) error {
 		}
 	}()
 	_, err := n.srv.Up(ctx)
+	select {
+	case <-n.closing:
+		return errNodeClosed
+	default:
+	}
 	switch {
 	case err == nil:
 		return nil
-	case n.closed.Load():
-		return errNodeClosed
 	case errors.Is(ctx.Err(), context.DeadlineExceeded):
 		return errors.New("timed out waiting for the node")
 	}
@@ -280,18 +292,26 @@ const (
 	peersRecheck = 250 * time.Millisecond
 )
 
+// suffix is the node's MagicDNS suffix, or the last one seen when status can't be
+// read, so a name on a network that isn't *.ts.net never goes to the system resolver
+// for want of it.
 func (n *Node) suffix(ctx context.Context) string {
-	st := n.status(ctx, peersFresh)
-	if st == nil {
-		return ""
-	}
-	if st.CurrentTailnet != nil && st.CurrentTailnet.MagicDNSSuffix != "" {
-		return lowerASCII(strings.TrimSuffix(st.CurrentTailnet.MagicDNSSuffix, "."))
-	}
-	if st.Self != nil {
-		if _, s, ok := strings.Cut(strings.TrimSuffix(st.Self.DNSName, "."), "."); ok {
-			return lowerASCII(s)
+	s := ""
+	if st := n.status(ctx, peersFresh); st != nil {
+		if st.CurrentTailnet != nil && st.CurrentTailnet.MagicDNSSuffix != "" {
+			s = lowerASCII(strings.TrimSuffix(st.CurrentTailnet.MagicDNSSuffix, "."))
+		} else if st.Self != nil {
+			if _, rest, ok := strings.Cut(strings.TrimSuffix(st.Self.DNSName, "."), "."); ok {
+				s = lowerASCII(rest)
+			}
 		}
+	}
+	if s != "" {
+		n.lastSuffix.Store(&s)
+		return s
+	}
+	if last := n.lastSuffix.Load(); last != nil {
+		return *last
 	}
 	return ""
 }

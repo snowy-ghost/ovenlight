@@ -118,6 +118,8 @@ func newHarness(t *testing.T) (*harness, *fakeNode, *fakeNode) {
 		return nil, errors.New("no such host")
 	}
 	h.p = p
+	p.know("own")
+	p.know("guest")
 	if err := p.setRoute("app-recipes", "own"); err != nil {
 		t.Fatal(err)
 	}
@@ -272,8 +274,8 @@ func TestTailnetNamesResolveOnlyFromPeers(t *testing.T) {
 	if n := h.lookups.Load(); n != 0 {
 		t.Errorf("%d tailnet names went to the system resolver", n)
 	}
-	if code := h.status(t, "app-recipes", "Recipe-Box.TailABC123.ts.net.:443"); code != 200 {
-		t.Errorf("letter case and a final dot: %d", code)
+	if code := h.status(t, "app-recipes", "Recipe-Box.TailABC123.ts.net..:443"); code != 200 {
+		t.Errorf("letter case and final dots: %d", code)
 	}
 	if code := h.status(t, "app-recipes", "v6-only.tailabc123.ts.net:443"); code != 200 {
 		t.Errorf("an IPv6 peer: %d", code)
@@ -290,6 +292,7 @@ func TestRefusesThePhoneItsNetworkAndOtherTailnets(t *testing.T) {
 		"[64:ff9b::7f00:1]:443", "[64:ff9b::c0a8:101]:443", "[64:ff9b::6463:101]:443",
 		"198.18.0.1:443", "192.0.2.1:443", "240.0.0.1:443", "255.255.255.255:443", "224.0.0.1:443",
 		"[2002:c0a8:101::1]:443", "[2001:db8::1]:443", "[ff02::1]:443",
+		"[::7f00:1]:443", "[::c0a8:101]:443", "[::ffff:0:7f00:1]:443", "[100:0:0:1::1]:443",
 		"rebind.example.com:443", "mapped-rebind.example.com:443", "nowhere.example.com:443",
 		"cdn.example.com:0", "cdn.example.com:65536",
 	} {
@@ -422,6 +425,19 @@ func TestHoldsAConnectWhileTheNodeIsReplaced(t *testing.T) {
 	}
 }
 
+func TestANodeKeyIsHeldWhileItsNodeIsReplaced(t *testing.T) {
+	h, own, _ := newHarness(t)
+	h.setNode("own", nil)
+	time.AfterFunc(400*time.Millisecond, func() { h.setNode("own", own) })
+	if code := h.status(t, "node-own", "recipe-box.tailabc123.ts.net:443"); code != 200 {
+		t.Fatalf("got %d", code)
+	}
+	h.p.clearRoute("node-own")
+	if code := h.status(t, "node-own", "recipe-box.tailabc123.ts.net:443"); code != 502 {
+		t.Errorf("after its membership was cleared: %d", code)
+	}
+}
+
 func TestClearingARouteRefusesItsHeldConnects(t *testing.T) {
 	h, own, _ := newHarness(t)
 	own.up.Store(false)
@@ -468,6 +484,8 @@ func TestLogsCarryNoSignInLinksOrKeys(t *testing.T) {
 		"To authenticate, visit: https://login.tailscale.com/a/1a2b3c4d5e6f": "To authenticate, visit: [removed]",
 		"AuthURL is http://127.0.0.1:41641/register/abc-DEF_123 now":         "AuthURL is [removed] now",
 		"using key tskey-auth-k1234CNTRL-abcdefghijk":                        "using key [removed]",
+		"key hskey-auth-abc123-DEF":                                          "key [removed]",
+		"visit http://127.0.0.1:8080/register?key=nodekey:abcd":              "visit [removed]",
 		"control: https://controlplane.tailscale.com/key?v=130":              "control: https://controlplane.tailscale.com/key?v=130",
 	} {
 		if got := redact(in); got != want {

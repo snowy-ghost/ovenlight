@@ -64,6 +64,7 @@ type proxy struct {
 
 	mu      sync.Mutex
 	routes  map[string]string // app- route key to membership ID
+	known   map[string]bool   // memberships that had a node in this process: node- keys route to them
 	tunnels map[string]map[*tunnel]struct{}
 	changed chan struct{} // closed and replaced whenever routes change
 }
@@ -99,12 +100,14 @@ func startProxy(node func(string) upstream, logf func(string, ...any), fatal fun
 		},
 		logf:    logf,
 		routes:  map[string]string{},
+		known:   map[string]bool{},
 		tunnels: map[string]map[*tunnel]struct{}{},
 		changed: make(chan struct{}),
 	}
 	p.srv = &http.Server{
 		Handler:           p,
 		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       30 * time.Second,
 		MaxHeaderBytes:    16 << 10,
 		ErrorLog:          discardLogger,
 	}
@@ -140,12 +143,26 @@ func (p *proxy) setRoute(key, membershipID string) error {
 	return nil
 }
 
-// clearRoute removes an app- key's route, closes its open tunnels and refuses
-// its held CONNECTs.
+// know makes a membership's node- key a route, held while its node starts or
+// restarts, until clearRoute removes it.
+func (p *proxy) know(membershipID string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if !p.known[membershipID] {
+		p.known[membershipID] = true
+		p.notifyLocked()
+	}
+}
+
+// clearRoute removes a key's route, closes its open tunnels and refuses its held
+// CONNECTs. For a node- key, that is when its membership is gone.
 func (p *proxy) clearRoute(key string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	delete(p.routes, key)
+	if id, found := strings.CutPrefix(key, nodeKeyPrefix); found {
+		delete(p.known, id)
+	}
 	p.closeTunnelsLocked(key)
 	p.notifyLocked()
 }
@@ -165,12 +182,13 @@ func (p *proxy) notifyLocked() {
 }
 
 // route names the membership a key routes to. A node- key routes to its own
-// membership while that membership has an open node.
+// membership once that membership has had a node in this process, so a CONNECT
+// waits for a node that is closed and starting again, as for an app- key.
 func (p *proxy) route(key string) (membership string, changed <-chan struct{}, ok bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if id, found := strings.CutPrefix(key, nodeKeyPrefix); found {
-		return id, p.changed, id != "" && p.node(id) != nil
+		return id, p.changed, p.known[id]
 	}
 	membership, ok = p.routes[key]
 	return membership, p.changed, ok
@@ -220,8 +238,10 @@ func (p *proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// arrives in absolute form, since no request bypasses the proxy; another
 		// app connecting to the port directly sends an origin-form request.
 		if r.URL.IsAbs() {
+			p.debugf("proxy: %s %s: 405", r.Method, r.URL.Redacted())
 			http.Error(w, "CONNECT only", http.StatusMethodNotAllowed)
 		} else {
+			p.debugf("proxy: %s origin form: 400", r.Method)
 			http.Error(w, "not a proxy request", http.StatusBadRequest)
 		}
 		return
@@ -327,7 +347,7 @@ func (p *proxy) resolve(ctx context.Context, n upstream, target string) (netip.A
 	if err != nil || port == 0 {
 		return netip.AddrPort{}, fmt.Errorf("bad port %q", portText)
 	}
-	host = strings.TrimSuffix(lowerASCII(host), ".")
+	host = strings.TrimRight(lowerASCII(host), ".")
 	if ip, err := netip.ParseAddr(host); err == nil {
 		return allowed(ctx, n, ip, uint16(port))
 	}
@@ -394,7 +414,7 @@ var notInternet = func() []netip.Prefix {
 	for _, s := range []string{
 		"0.0.0.0/8", "100.64.0.0/10", "192.0.0.0/24", "192.0.2.0/24", "192.88.99.0/24",
 		"198.18.0.0/15", "198.51.100.0/24", "203.0.113.0/24", "240.0.0.0/4",
-		"64:ff9b:1::/48", "100::/64", "2001::/23", "2001:db8::/32", "2002::/16",
+		"::/96", "::ffff:0:0:0/96", "64:ff9b:1::/48", "100::/64", "100:0:0:1::/64", "2001::/23", "2001:db8::/32", "2002::/16",
 		"3fff::/20", "5f00::/16", "fec0::/10", "fd7a:115c:a1e0::/48",
 	} {
 		ps = append(ps, netip.MustParsePrefix(s))
