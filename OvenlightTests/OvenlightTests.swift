@@ -481,7 +481,7 @@ final class MembershipStoreLoadTests: XCTestCase {
         let saved = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [[String: Any]])
         XCTAssertEqual(saved.map { $0["id"] as? String }.last, "future", "written back as it was")
         XCTAssertEqual(saved.first?["joined"] as? Bool, false)
-        XCTAssertEqual(MembershipStore(directory: dir).memberships.count, 1)
+        XCTAssertEqual(MembershipStore(directory: dir).memberships, store.memberships, "what it read reads back the same")
     }
 }
 

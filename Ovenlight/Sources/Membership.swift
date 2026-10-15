@@ -186,12 +186,7 @@ enum SavedJSON {
     static func encode<Element: Encodable>(_ elements: [Element], keeping unread: [Any]) throws -> Data {
         let data = try JSONEncoder().encode(elements)
         guard !unread.isEmpty else { return data }
-        var list = data.dropLast() // "]"
-        for entry in unread {
-            if list.count > 1 { list.append(contentsOf: ",".utf8) }
-            list.append(try JSONSerialization.data(withJSONObject: entry, options: .fragmentsAllowed))
-        }
-        return list + "]".utf8
+        return try JSONSerialization.data(withJSONObject: (JSONSerialization.jsonObject(with: data) as? [Any] ?? []) + unread)
     }
 
     static func read(_ url: URL) throws -> Data? {
