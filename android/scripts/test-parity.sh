@@ -22,6 +22,8 @@ testPagesStillSeeMobileSafari            # pending, Phase 4: needs a WebView (in
 testShrinksLargeScreenshotsUnderTheLimit # pending, Phase 4: Android's Bitmap, with the snapshot
 testScreenshotsAreDecodedSmall           # pending, Phase 6: Android's Bitmap, with the feedback inbox
 testIconsAreDecodedSmall                 # pending: decoding an icon small is BitmapFactory's, in an Android harness
+testAppReplacedByAppStaysOnScreen        # SwiftUI only: a replaced cover's onDismiss
+testSheetsReplaceEachOther               # SwiftUI only: a replaced sheet's onDismiss
 EOF
 }
 
