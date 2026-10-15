@@ -5,7 +5,7 @@
 # connector runs from this run's folder with its own HOME, config and state, logs in only to
 # the local Headscale, and stops by its recorded pid.
 #
-#   android/e2e/e2e.sh [gates | owner | signin [seconds] | screens | app | chrome | edges] [avd]
+#   android/e2e/e2e.sh [gates | owner | signin [seconds] | screens | app | chrome | edges | downloads] [avd]
 #
 # gates runs Phase 1's checks G2 to G5 through the debug lab. owner signs the owner's node in
 # with a preauth key and waits for the launcher to show both test apps. signin goes through
@@ -20,6 +20,9 @@
 # edges gives Recipes a page of links and checks where each goes: an outside link opens in a
 # Custom Tab, mailto: asks first and Cancel opens nothing, an intent: for Ovenlight does
 # nothing, and a POST to Pantry goes back and opens Pantry outside.
+# downloads opens a Recipes page that downloads a cookie-gated file over http and a blob, and
+# checks each arrives in Ovenlight's sheet with the bytes the page meant; then, if the
+# emulator's camera answers, that locking stops the page's camera without discarding the page.
 # Each writes what it saw to
 # android/e2e/out/: gates.txt, logs and screenshots.
 #
@@ -103,7 +106,7 @@ until_ok() {
 }
 
 [[ -x $HS ]] || fail "no headscale at $HS"
-[[ $SCENARIO =~ ^(gates|owner|signin|screens|app|chrome|edges)$ ]] || fail "unknown scenario $SCENARIO"
+[[ $SCENARIO =~ ^(gates|owner|signin|screens|app|chrome|edges|downloads)$ ]] || fail "unknown scenario $SCENARIO"
 
 say "the test CA in $CA, made once, and a *.$BASE certificate for this run"
 if [[ ! -f $CA/ca.pem ]]; then
@@ -495,6 +498,86 @@ EOF
   back_to_edges "the POST"
   shot edges-after-post
   note "and Recipes is back on its own page"
+  say "PASSED"
+  exit 0
+fi
+
+if [[ $SCENARIO == downloads ]]; then
+  say "downloads: Recipes offers an http file behind a cookie, a blob and the camera"
+  # app.py serves the folder as it is at each request, so the page changes here.
+  cat > $D/recipes/index.html <<'EOF'
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Files</title>
+<style>a, button { display: block; margin: 24px; padding: 16px; font-size: 20px; }</style></head>
+<body><h1 id="state">Files</h1>
+<a download="Recipes export.csv" href="/private.csv">Download file</a>
+<button onclick="blobDownload()">Download blob</button>
+<button onclick="startCamera()">Start camera</button>
+<script>
+const state = text => document.getElementById("state").textContent = text;
+fetch("/session").then(r => state(r.ok ? "Signed in" : "No session"), () => state("No session"));
+function blobDownload() {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob(["blob from the page\n"], { type: "text/plain" }));
+  a.download = "note.txt";
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+let track;
+function startCamera() {
+  navigator.mediaDevices.getUserMedia({ video: true }).then(stream => {
+    track = stream.getVideoTracks()[0];
+    setInterval(() => state("Camera " + track.readyState), 500);
+  }, e => state("Camera error " + e.name));
+}
+</script></body></html>
+EOF
+  a shell "am start -W -n $PKG/.MainActivity --es controlURL $CTRL --es authKey $KEY" >/dev/null
+  await_text 90 Recipes Pantry || fail "the launcher never showed both apps: $(screen_text | tr '\n' '|')"
+  tap_text Recipes
+  # The page's HttpOnly session cookie, which only the profile's cookie jar can carry.
+  await_text 40 "Signed in" "Download file" || { shot downloads-failed; fail "the page never signed in: $(screen_text | tr '\n' '|')"; }
+  downloaded() { a shell run-as $PKG sh -c "'cat cache/Downloads/*/\"$1\"'" 2>/dev/null | tr -d '\r'; }
+
+  tap_text "Download file"
+  await_text 30 "Recipes export.csv" Save Share || { shot downloads-failed; fail "no sheet for the http download: $(screen_text | tr '\n' '|')"; }
+  shot downloads-file-sheet
+  got=$(downloaded "Recipes export.csv")
+  [[ $got == $'name,amount\nflour,500' ]] || fail "the http download's bytes: $got"
+  note "the http file arrived under the page's own name, fetched again with the session cookie"
+  a shell input keyevent KEYCODE_BACK; sleep 2
+  await_text 5 "Download file" || fail "Back didn't just close the sheet: $(screen_text | tr '\n' '|')"
+
+  tap_text "Download blob"
+  await_text 30 "note.txt" Save Share || { shot downloads-failed; fail "no sheet for the blob download: $(screen_text | tr '\n' '|')"; }
+  shot downloads-blob-sheet
+  if screen_text | grep -qxF Open; then note "the blob's sheet offers Open, for plain text"; fi
+  got=$(downloaded note.txt)
+  [[ $got == "blob from the page" ]] || fail "the blob download's bytes: $got"
+  note "the blob arrived, though the page revoked its URL right after the click"
+  a shell input keyevent KEYCODE_BACK; sleep 2
+
+  say "capture: the camera stops on lock, and the page stays"
+  tap_text "Start camera"
+  # Android's own permission first, then Ovenlight's question.
+  if await_text 10 "While using the app"; then tap_text "While using the app"; fi
+  await_text 15 "Allow Recipes to use the camera?" || fail "no capture prompt: $(screen_text | tr '\n' '|')"
+  shot downloads-capture-prompt
+  tap_text Allow
+  if await_text 15 "Camera live"; then
+    note "the page has the camera after Ovenlight's prompt"
+    a shell "am start -n $PKG/.MainActivity --ez lockNow true" >/dev/null
+    KEEP_LOCK=1 await_text 10 "Ovenlight is locked" || fail "lockNow didn't lock"
+    sleep 3
+    clients=$(a shell dumpsys media.camera | tr -d '\r' | sed -n '/Active Camera Clients/,/^$/p' | grep -c 'Client package: ' || true)
+    (( clients == 0 )) || fail "the camera is still open under the lock: $(a shell dumpsys media.camera | grep -A3 'Active Camera Clients')"
+    ! a logcat -d -s Ovenlight | grep -q 'still capturing after the stop' || fail "the page script didn't stop the camera, so the view went"
+    tap_text Unlock; sleep 2; a emu finger touch 1 >/dev/null
+    await_text 20 "Camera ended" || fail "after the unlock the page isn't the one that captured: $(screen_text | tr '\n' '|')"
+    note "the lock stopped the page's track, the camera closed, and the same page came back"
+  else
+    note "the emulator's camera didn't answer ($(screen_text | grep -m1 'Camera error' || echo 'no answer')); capture on lock not checked"
+  fi
   say "PASSED"
   exit 0
 fi

@@ -129,11 +129,7 @@ object TailnetCore : Platform, TailnetClients {
      * capped, since every fetch here is a small page, manifest or API answer.
      */
     override fun session(routeKey: String, timeoutMillis: Long, totalMillis: Long): Send {
-        val client = http.newBuilder()
-            .proxy(Proxy(Proxy.Type.HTTP, InetSocketAddress("127.0.0.1", proxyAddress.substringAfterLast(':').toInt())))
-            .proxyAuthenticator { _, response ->
-                response.request.newBuilder().header("Proxy-Authorization", Credentials.basic(routeKey, proxySecret)).build()
-            }
+        val client = client(routeKey)
             .connectTimeout(timeoutMillis, TimeUnit.MILLISECONDS)
             .readTimeout(timeoutMillis, TimeUnit.MILLISECONDS)
             .writeTimeout(timeoutMillis, TimeUnit.MILLISECONDS)
@@ -141,6 +137,13 @@ object TailnetCore : Platform, TailnetClients {
             .build()
         return { request -> client.fetch(request) }
     }
+
+    /** A client through the proxy with [routeKey], which answers its challenge up front. */
+    fun client(routeKey: String): OkHttpClient.Builder = http.newBuilder()
+        .proxy(Proxy(Proxy.Type.HTTP, InetSocketAddress("127.0.0.1", proxyAddress.substringAfterLast(':').toInt())))
+        .proxyAuthenticator { _, response ->
+            response.request.newBuilder().header("Proxy-Authorization", Credentials.basic(routeKey, proxySecret)).build()
+        }
 
     // Redirects are followed, as iOS's sessions follow them (an app's start page that sends
     // `/` to `/login` still names the app), but never from https to http.

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- A page asks for the microphone or camera: the app's own page, or a frame on another host inside it. -->
+    <string name="capture_allow_camera">Allow %1$s to use the camera?</string>
+    <string name="capture_allow_microphone">Allow %1$s to use the microphone?</string>
+    <string name="capture_allow_both">Allow %1$s to use the camera and microphone?</string>
+    <string name="capture_frame_camera">%1$s, inside %2$s, wants to use the camera</string>
+    <string name="capture_frame_microphone">%1$s, inside %2$s, wants to use the microphone</string>
+    <string name="capture_frame_both">%1$s, inside %2$s, wants to use the camera and microphone</string>
+    <string name="capture_allow">Allow</string>
+    <string name="capture_dont_allow">Don\'t allow</string>
+
+    <!-- A finished download's sheet. -->
+    <string name="download_save">Save</string>
+    <string name="download_share">Share</string>
+    <string name="download_open">Open</string>
+    <string name="download_save_failed">Couldn\'t save %1$s</string>
+</resources>

@@ -15,7 +15,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
  * view lives outside composition on a [MutableContextWrapper], its profile named by its app's
  * data store, and is attached to the screen only while its app is open. Main thread only.
  */
-class WebViewPool(private val context: Context, private val nodes: NodeManager, private val scope: CoroutineScope) {
+class WebViewPool(
+    private val context: Context,
+    private val nodes: NodeManager,
+    private val scope: CoroutineScope,
+    /** Ovenlight is locked: nothing downloads or captures. */
+    val isLocked: () -> Boolean,
+) {
     private val pages = mutableMapOf<UUID, AppPage>()
     private val recent = mutableListOf<UUID>()
 
@@ -37,6 +43,7 @@ class WebViewPool(private val context: Context, private val nodes: NodeManager, 
     private val maxLive = maxLive(context)
 
     init {
+        DownloadShelf.emptyAtLaunch(context)
         nodes.onLoggingOut = { node -> discard { it.node === node } }
         nodes.onOwnerSuffixChanged = ::discardStaleRoutes
     }
@@ -62,6 +69,9 @@ class WebViewPool(private val context: Context, private val nodes: NodeManager, 
 
     /** Whether the app has a live page; tests ask. */
     internal fun hasPage(id: UUID): Boolean = id in pages
+
+    /** Ends every page's microphone and camera streams, on screen or not, so none runs under the lock. */
+    fun stopCapture() = pages.values.forEach { it.capture.stop() }
 
     /** Where opening the app got, while it has a page, for Report a Problem. */
     fun gate(id: UUID): AppLoadGate? = pages[id]?.gate?.value

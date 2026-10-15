@@ -1,5 +1,8 @@
 """A test app for e2e.sh: serves its folder on $PORT, and echoes WebSocket messages at /ws.
 
+For the downloads scenario, /session sets an HttpOnly cookie, and /private.csv is an
+attachment only with that cookie (403 without it).
+
 The standard library has no WebSocket server, so this is the least of one: the handshake,
 then text frames echoed back until the client closes.
 """
@@ -15,7 +18,21 @@ GUID = b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
+    def reply(self, code, body, headers=()):
+        self.send_response(code)
+        for name, value in headers:
+            self.send_header(name, value)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def do_GET(self):
+        if self.path == "/session":
+            return self.reply(200, b"ok", [("Set-Cookie", "e2e=1; Secure; HttpOnly; Path=/; SameSite=Lax")])
+        if self.path == "/private.csv":
+            if "e2e=1" not in self.headers.get("Cookie", ""):
+                return self.reply(403, b"no session")
+            return self.reply(200, b"name,amount\nflour,500\n", [("Content-Type", "text/csv"), ("Content-Disposition", 'attachment; filename="server.csv"')])
         if self.path != "/ws" or self.headers.get("Upgrade", "").lower() != "websocket":
             return super().do_GET()
         accept = base64.b64encode(hashlib.sha1(self.headers["Sec-WebSocket-Key"].encode() + GUID).digest())

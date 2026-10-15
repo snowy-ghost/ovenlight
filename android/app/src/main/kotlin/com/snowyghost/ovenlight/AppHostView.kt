@@ -183,6 +183,8 @@ private fun AppPageView(model: AppModel, page: AppPage, onClose: () -> Unit) {
             confirmButton = { TextButton(onClick = { page.cantReachAlert.value = false }) { Text(stringResource(R.string.app_ok)) } },
         )
     }
+    CapturePrompt(page)
+    DownloadSheet(model, page)
 }
 
 private enum class Cover { None, Placeholder, CantReach, Error, Node }

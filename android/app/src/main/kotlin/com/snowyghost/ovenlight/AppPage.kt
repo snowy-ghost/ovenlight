@@ -14,6 +14,8 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.webkit.WebViewCompat
 import com.snowyghost.ovenlight.core.Core
+import java.net.URI
+import java.util.concurrent.TimeUnit
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.TimeSource
 import kotlinx.coroutines.CoroutineScope
@@ -58,8 +60,30 @@ class AppPage(
     /** A link the person tapped after the first load couldn't reach the computer: say so, once. */
     val cantReachAlert = MutableStateFlow(false)
 
-    /** Set by the screen-level code that handles downloads; the pool keeps such pages. */
+    /** Downloads are under way (set by [downloads]); the pool keeps such pages. */
     var isDownloading = false
+
+    /** Its downloads, refetched on its route with its profile's cookies (PageDownloads.kt). */
+    val downloads = PageDownloads(
+        app.id, app.host, DownloadShelf.folder(context), scope,
+        mayStart = { shown && !pool.isLocked() }, isLocked = pool.isLocked,
+        client = {
+            TailnetCore.client(routeKey).cookieJar(ProfileCookieJar(WebViewCompat.getProfile(view).cookieManager))
+                .readTimeout(30, TimeUnit.SECONDS).build()
+        },
+        busy = { isDownloading = it },
+    )
+
+    /** Its microphone and camera (PageCapture.kt). */
+    val capture = PageCapture(
+        app, ownersHosts = { nodes.ownersHosts }, isLocked = pool.isLocked, isOnScreen = { shown }, scope = scope,
+        permissions = { needed, done ->
+            CaptureMonitor.watch(this.context)
+            RuntimePermissions.request(this.context, needed, done)
+        },
+        stillCapturing = { CaptureMonitor.capturing(this.context) },
+        destroy = { pool.replace(this) },
+    )
 
     /** First navigations that failed at the connection level after the probe answered. */
     private var failedLoads = 0
@@ -91,6 +115,10 @@ class AppPage(
         )
         view.webViewClient = Client()
         view.webChromeClient = edges.chrome
+        // Camera and microphone requests go to the capture handler, through the edges' one client.
+        edges.capture = capture
+        view.setDownloadListener(downloads)
+        PageBridge(view, app.startURL, capture, downloads)
         view.onPause()
     }
 
@@ -115,6 +143,7 @@ class AppPage(
         shown = false
         edges.takenAway()
         view.onPause()
+        capture.stop()
     }
 
     // Loading
@@ -282,6 +311,7 @@ class AppPage(
         destroyed = true
         edges.destroy()
         gateJob?.cancel()
+        downloads.cancel()
         Core.clearRoute(routeKey)
         view.stopLoading()
         (view.parent as? android.view.ViewGroup)?.removeView(view)
@@ -301,6 +331,7 @@ class AppPage(
         override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
             navigationFailed = false
             edges.pageStarted(url)
+            capture.documentChanged()
         }
 
         override fun onPageFinished(view: WebView, url: String?) {

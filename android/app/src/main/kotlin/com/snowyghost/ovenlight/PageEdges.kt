@@ -13,6 +13,7 @@ import android.util.Log
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.GeolocationPermissions
+import android.webkit.PermissionRequest
 import android.webkit.JsPromptResult
 import android.webkit.JsResult
 import android.webkit.MimeTypeMap
@@ -139,6 +140,9 @@ class PageEdges(
 
     private val mutableFullscreen = MutableStateFlow<Fullscreen?>(null)
     val fullscreen: StateFlow<Fullscreen?> = mutableFullscreen
+
+    /** Answers the page's camera and microphone requests (PageCapture); the page gets none without it. */
+    var capture: PageCapture? = null
 
     val chrome: WebChromeClient = Chrome()
 
@@ -499,6 +503,14 @@ class PageEdges(
         }
 
         /** Ovenlight never gives a page the phone's location, as on iOS (docs/building-apps.md). */
+        override fun onPermissionRequest(request: PermissionRequest) {
+            capture?.onPermissionRequest(request) ?: request.deny()
+        }
+
+        override fun onPermissionRequestCanceled(request: PermissionRequest) {
+            capture?.onPermissionRequestCanceled(request)
+        }
+
         override fun onGeolocationPermissionsShowPrompt(origin: String?, callback: GeolocationPermissions.Callback?) {
             callback?.invoke(origin, false, false)
         }

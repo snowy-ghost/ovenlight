@@ -88,7 +88,7 @@ class AppModel(context: Context) {
         TailnetCore, preferences, MembershipStore(ovenlight), nodesDirectory, scope, Dispatchers.IO, SystemClock::elapsedRealtime,
         log = { Log.i(TAG, it) }, debugBuild = BuildConfig.DEBUG,
     )
-    val pool = WebViewPool(context, nodes, scope)
+    val pool = WebViewPool(context, nodes, scope, isLocked = { lock.isLocked.value })
     val registry = AppRegistry(
         ovenlight, session = nodes::fetch, webData = WebProfiles(context, discard = pool::discard),
         iconPNG = { withContext(Dispatchers.Default) { IconDecoder.png(it) } }, scope = scope,
@@ -126,6 +126,7 @@ class AppModel(context: Context) {
                 if (state == NodeState.Ready && sheet == RootSheet.Approve) router.sheet.value = null
             }
         }
+        scope.launch { lock.isLocked.collect { locked -> if (locked) pool.stopCapture() } }
         // An app a link asked for while locked opens once Ovenlight unlocks.
         scope.launch { lock.isLocked.drop(1).collect { locked -> if (!locked) router.appsChanged(registry.apps) } }
         scope.launch {

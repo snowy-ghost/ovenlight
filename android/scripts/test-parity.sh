@@ -18,7 +18,6 @@ excluded() {
   sed 's/#.*//' <<'EOF' | awk 'NF { print $1 }'
 testTheShareSheetClosesOnce              # iOS presentation only: Android has its own Save, Share and Open sheet
 testOnlyAShownSheetTakesItsFiles         # iOS presentation only, as above
-testPagesStillSeeMobileSafari            # pending, Phase 4: needs a WebView (instrumented)
 testScreenshotsAreDecodedSmall           # pending, Phase 6: Android's Bitmap, with the feedback inbox
 testAppReplacedByAppStaysOnScreen        # SwiftUI only: a replaced cover's onDismiss
 testSheetsReplaceEachOther               # SwiftUI only: a replaced sheet's onDismiss

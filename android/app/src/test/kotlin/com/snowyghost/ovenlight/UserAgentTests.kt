@@ -3,10 +3,7 @@ package com.snowyghost.ovenlight
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-/**
- * testPagesStillSeeMobileSafari needs a WebView: Phase 4's instrumented tests check that a
- * page's `navigator.userAgent` says `; wv)` and ends with `Ovenlight/<versionName>`.
- */
+/** What a page itself sees, in a real WebView, is testPagesStillSeeMobileSafari (PageScriptTests). */
 class UserAgentTests {
     @Test
     fun testEndsWithOvenlightAndItsVersion() {
