@@ -151,7 +151,7 @@ func printReviewInvite(res *shareResult) {
 		fmt.Printf("Warning: %s\n", e)
 	}
 	fmt.Printf("\nLink (it's a credential until it's used):\n  %s\n", res.Link)
-	printAppLink(res)
+	fmt.Println(joinPageHint)
 	fmt.Printf("\nInstructions for the reviewers, to paste into the submission:\n\n%s\n", reviewNotes(res))
 }
 
@@ -193,17 +193,14 @@ func printInvite(res *shareResult) {
 		}
 	}
 	fmt.Printf("\nLink (it's a credential until it's used, so send it privately):\n  %s\n", res.Link)
-	printAppLink(res)
+	fmt.Println(joinPageHint)
 	fmt.Printf("\nTo send:\n  %s\n", inviteMessage(res))
 }
 
-// printAppLink shows the ovenlight:// form, for a phone where the link opens the web
-// page instead of Ovenlight.
-func printAppLink(res *shareResult) {
-	if res.AppLink != "" {
-		fmt.Printf("If the link doesn't open Ovenlight (it has to be installed), open this one on the iPhone instead:\n  %s\n", res.AppLink)
-	}
-}
+// joinPageHint is for a phone where the link opens the join page instead of Ovenlight.
+// The page's button hands the invite over as ovenlight://, so the terminal never prints
+// that form: any app on the phone may claim the scheme, and the link carries the key.
+const joinPageHint = "If the link opens a web page instead of Ovenlight, tap Open in Ovenlight on that page (Ovenlight has to be installed)."
 
 // inviteMessage is what the owner sends, in a terminal or from Ovenlight's Send Invite.
 func inviteMessage(res *shareResult) string {

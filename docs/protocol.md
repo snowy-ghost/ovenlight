@@ -202,7 +202,8 @@ ovenlight://join?v=1&control=&key=&owner=&app=&invite=&host=&name=&to=
 The first is the one to send. Its fields ride in the fragment, which browsers never send
 to a server, so the key never reaches the website. It opens Ovenlight when it's
 installed; otherwise the page offers Open in Ovenlight (the second form) and a way to
-get the app.
+get the app. `ovenlight share` prints only the first, since any app on the phone may
+claim the `ovenlight://` scheme. `POST /v1/invites` answers both.
 The fields are form-encoded (`+` is a space) and may come in any order: the connector
 sorts them by name.
 

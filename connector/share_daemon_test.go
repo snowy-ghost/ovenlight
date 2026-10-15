@@ -251,6 +251,32 @@ func TestPlainInviteIsNotReview(t *testing.T) {
 	}
 }
 
+// share prints the link to send and points to the join page's button, never the
+// ovenlight:// form: any app on the phone may claim the scheme, and the link carries the key.
+func TestShareOutputHasNoAppLink(t *testing.T) {
+	d, _ := testDaemon(t)
+	for _, review := range []bool{false, true} {
+		res, err := d.createInvite(guestRef{To: fmt.Sprint("Sam ", review)}, "coach", "terminal", review)
+		if err != nil {
+			t.Fatal(err)
+		}
+		stdout := os.Stdout
+		f, _ := os.Create(filepath.Join(t.TempDir(), "out"))
+		os.Stdout = f
+		if review {
+			printReviewInvite(&res)
+		} else {
+			printInvite(&res)
+		}
+		os.Stdout = stdout
+		f.Close()
+		out, _ := os.ReadFile(f.Name())
+		if !strings.Contains(string(out), res.Link) || !strings.Contains(string(out), joinPageHint) || strings.Contains(string(out), "ovenlight://") {
+			t.Errorf("review %v printed:\n%s", review, out)
+		}
+	}
+}
+
 func TestShareNeedsShareableTaggedApp(t *testing.T) {
 	d, f := testDaemon(t)
 	d.cfg.Apps[0].Shareable = false
