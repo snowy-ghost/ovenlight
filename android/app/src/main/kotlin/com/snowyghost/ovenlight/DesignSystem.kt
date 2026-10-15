@@ -381,3 +381,23 @@ fun OvenRack(width: Dp, modifier: Modifier = Modifier) {
     val alpha = if (isSystemInDarkTheme()) 0.6f else 0.45f
     Box(modifier.size(width, 3.dp).clip(CircleShape).background(oven.ember.copy(alpha = alpha)).clearAndSetSemantics {})
 }
+
+/** Whether an app's computer is reachable, for its launcher tile. */
+enum class AppReachability {
+    Offline,
+    ;
+
+    val label: String get() = "Offline"
+
+    companion object {
+        /**
+         * Tiles only speak up when something is wrong: an app reached through Ovenlight's node
+         * whose computer didn't answer the last probe, or wasn't online to be probed. Nothing
+         * before the node is ready (the launcher shows that) or before the first probe.
+         */
+        fun forTile(host: String, route: Routing.Route, nodeState: NodeState, answers: Map<String, Boolean>?): AppReachability? {
+            if (route != Routing.Route.TailnetNode || nodeState != NodeState.Ready || answers == null) return null
+            return if (answers[Discovery.normalizedHost(host)] == true) null else Offline
+        }
+    }
+}
