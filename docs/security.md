@@ -428,7 +428,8 @@ the web manifest, from `127.0.0.1` without identity headers too, as the connecto
 them for the app's icon and color. The agent chooses none of them. What guests wrote in
 feedback, and the output of the apps the connector runs, reach the agent fenced as
 untrusted data: that output holds what requests sent the app, which a guest, or any
-website open in this computer's browser, can choose.
+website open in this computer's browser, can choose. A screenshot can't be fenced, so the
+agent is told that it is an image its sender chose, and any text in it is data.
 
 ## On the iPhone
 

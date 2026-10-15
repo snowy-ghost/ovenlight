@@ -1520,6 +1520,9 @@ func TestMCPFencesGuestText(t *testing.T) {
 	if m == nil || len(items) != 2 {
 		t.Fatalf("notice %q, items %+v", notice, items)
 	}
+	if !strings.Contains(notice, "screenshot is an image its sender chose") {
+		t.Errorf("the notice doesn't frame screenshots: %q", notice)
+	}
 	open, end := "<untrusted-"+m[1]+">", "</untrusted-"+m[1]+">"
 	guest, owner := items[0], items[1]
 	if guest.ID != "f2" {
