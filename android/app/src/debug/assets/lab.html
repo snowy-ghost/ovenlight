@@ -1,0 +1,53 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lab</title>
+<style>
+  html, body { margin: 0; height: 100%; font: 16px system-ui; background: #f6efe6; }
+  #insets { position: fixed; inset: 0; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); pointer-events: none; }
+  #insets div { width: 100%; height: 100%; box-sizing: border-box; border: 3px solid #c0392b; }
+  #bottom { position: fixed; left: 0; right: 0; bottom: env(safe-area-inset-bottom); padding: 8px; }
+  #bottom input { width: 100%; font-size: 18px; box-sizing: border-box; }
+  pre { padding: 48px 16px; white-space: pre-wrap; }
+</style>
+<div id="insets"><div></div></div>
+<pre id="out">lab</pre>
+<div id="bottom"><input id="field" placeholder="An input at the bottom"></div>
+<script>
+// The Phase 1 gates read and write every kind of storage a profile keeps.
+const out = document.getElementById("out");
+function db() {
+  return new Promise((ok, fail) => {
+    const r = indexedDB.open("lab", 1);
+    r.onupgradeneeded = () => r.result.createObjectStore("kv");
+    r.onsuccess = () => ok(r.result);
+    r.onerror = () => fail(r.error);
+  });
+}
+async function labSet(v) {
+  document.cookie = "lab=" + v + "; path=/; max-age=86400; secure";
+  localStorage.setItem("lab", v);
+  const d = await db();
+  await new Promise((ok, fail) => { const t = d.transaction("kv", "readwrite"); t.objectStore("kv").put(v, "lab"); t.oncomplete = ok; t.onerror = fail; });
+  const c = await caches.open("lab");
+  await c.put("/lab", new Response(v));
+  window.labResult = "set " + v;
+  out.textContent = window.labResult;
+}
+async function labGet() {
+  const cookie = (document.cookie.match(/(?:^|; )lab=([^;]*)/) || [])[1] || "";
+  const local = localStorage.getItem("lab") || "";
+  const d = await db();
+  const idb = await new Promise(ok => { const r = d.transaction("kv").objectStore("kv").get("lab"); r.onsuccess = () => ok(r.result || ""); r.onerror = () => ok(""); });
+  const hit = await (await caches.open("lab")).match("/lab");
+  const cache = hit ? await hit.text() : "";
+  window.labResult = JSON.stringify({ cookie, local, idb, cache });
+  out.textContent = window.labResult;
+}
+function labInsets() {
+  const s = getComputedStyle(document.getElementById("insets"));
+  window.labResult = JSON.stringify({ top: s.paddingTop, right: s.paddingRight, bottom: s.paddingBottom, left: s.paddingLeft, width: innerWidth, height: innerHeight, visual: visualViewport.height, dpr: devicePixelRatio });
+  out.textContent = window.labResult;
+  return window.labResult;
+}
+</script>

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug builds also trust the e2e harness's test CA (android/e2e/e2e.sh). debug-overrides
+     apply only to a debuggable build. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+    <debug-overrides>
+        <trust-anchors>
+            <certificates src="@raw/debug_ca" />
+        </trust-anchors>
+    </debug-overrides>
+</network-security-config>
