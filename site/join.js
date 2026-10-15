@@ -17,8 +17,7 @@
 
   // Also on a fragment change, since a page already open in a tab doesn't reload for one.
   function render() {
-    var fields = location.hash.slice(1);
-    var params = new URLSearchParams(fields);
+    var params = new URLSearchParams(location.hash.slice(1));
     var required = ["control", "key", "app", "invite", "host"];
     var isInvite = params.get("v") === "1" && required.every(function (name) { return params.get(name); });
     var title = "You're invited to an app on Ovenlight";
@@ -28,7 +27,9 @@
       var app = label(params.get("name")) || label(params.get("app"));
       title = owner + " invited you to " + app;
       guest = label(params.get("to"));
-      document.getElementById("open").href = "ovenlight://join?" + fields;
+      // Rebuilt from the parsed fields, so a "#" or anything else in a crafted link stays
+      // inside a field's value.
+      document.getElementById("open").href = "ovenlight://join?" + params.toString();
     }
     document.getElementById("title").textContent = title;
     document.title = isInvite ? title + " · Ovenlight" : title;
