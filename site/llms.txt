@@ -11,10 +11,13 @@ system to build.
 
 - A computer that stays on and awake while the apps are used: a Mac with macOS 13 or
   later (kept logged in), a Linux computer with systemd (such as Ubuntu), or a Windows 11
-  PC.
+  PC. A laptop must stay open, since closing its lid puts it to sleep. Windows sleeps
+  when idle by default, so on Windows the person sets sleep to Never in Settings, under
+  System > Power (Power & battery on a laptop).
 - A Tailscale account with MagicDNS and HTTPS Certificates turned on (admin console, DNS
-  page). Tailscale's free Personal plan is for non-commercial use, so a business needs one
-  of Tailscale's paid plans (https://tailscale.com/pricing).
+  page: https://console.tailscale.com/admin/dns). Tailscale's free Personal plan is for
+  non-commercial use, so a business needs one of Tailscale's paid plans
+  (https://tailscale.com/pricing).
 - An iPhone with iOS 18.1 or later and Ovenlight from the App Store.
 - The connector. Download the archive for the computer:
   - Mac: https://downloads.ovenlight.app/connector/latest/ovenlight-connector-macos.tar.gz
@@ -29,7 +32,9 @@ system to build.
   in that folder. The script installs `ovenlight` at
   `~/Library/Application Support/ovenlight/bin/ovenlight` on a Mac,
   `~/.local/state/ovenlight/bin/ovenlight` on Linux and
-  `%LOCALAPPDATA%\ovenlight\bin\ovenlight.exe` on Windows, and keeps it running.
+  `%LOCALAPPDATA%\ovenlight\bin\ovenlight.exe` on Windows, and keeps it running. If
+  `install.sh` prints an `export PATH` line, the person adds it to their shell profile
+  and opens a new terminal window, so `ovenlight` works by name.
 
 Signing in to Tailscale, connecting the iPhone and sharing an app are steps only the
 person can do. Ask them, in plain words, rather than working around them.

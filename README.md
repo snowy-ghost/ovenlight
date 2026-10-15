@@ -125,7 +125,9 @@ When you share an app, your friend's iPhone joins your tailnet as a guest device
 
 - **A computer that stays on and awake** while anyone uses your apps: a Mac with macOS 13
   or later, logged in to its desktop; a Linux computer with systemd, such as Ubuntu; or a
-  Windows 11 PC.
+  Windows 11 PC. A laptop must stay open, since closing its lid puts it to sleep, and
+  Windows sleeps when idle until you
+  [turn that off](docs/connector.md#what-the-computer-needs).
 - **An iPhone with iOS 18.1 or later** and Ovenlight from the
   [App Store](https://apps.apple.com/app/id6817561066), for you and for everyone you share
   with.
@@ -172,8 +174,7 @@ echo >> ~/.zshrc
 echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
 ```
 
-Then open a new Terminal window and run `~/ovenlight-connector/install.sh` again, so the
-commands below work as written.
+Then open a new Terminal window, so the commands below work as written.
 
 #### Linux
 
@@ -187,9 +188,9 @@ curl -fsSL https://downloads.ovenlight.app/connector/latest/ovenlight-connector-
 ```
 
 On an Arm computer, use `linux-arm64` in place of `linux-amd64`. If the script prints a
-line for your shell profile, add it to `~/.bashrc`, open a new terminal and run
-`~/ovenlight-connector/install.sh` again. If it prints a `sudo loginctl enable-linger`
-command, run it, so the connector keeps serving with nobody logged in and after a restart.
+line for your shell profile, add it to `~/.bashrc` and open a new terminal. If it prints a
+`sudo loginctl enable-linger` command, run it, so the connector keeps serving with nobody
+logged in and after a restart.
 
 #### Windows
 
