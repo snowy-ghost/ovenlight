@@ -39,6 +39,9 @@ enum class AppLoadGate {
         Woke,
     }
 
+    /** Written as iOS writes the gate, for Report a Problem's Opening line. */
+    val logDescription: String get() = name.replaceFirstChar { it.lowercase() }
+
     fun next(event: Event): AppLoadGate = when {
         event == Event.Retry -> Waiting
         this == Ready && event == Event.LoadFailed -> Waiting
