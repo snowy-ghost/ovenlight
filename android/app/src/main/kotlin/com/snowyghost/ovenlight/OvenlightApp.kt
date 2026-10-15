@@ -4,6 +4,23 @@ import android.app.Application
 import android.content.Context
 import android.os.SystemClock
 import android.util.Log
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ProcessLifecycleOwner
@@ -270,5 +287,54 @@ sealed class RootSheet {
 
     data class People(val machineID: String, val slug: String) : RootSheet() {
         override val id: String get() = "people $machineID $slug"
+    }
+}
+
+/**
+ * The launcher, with the open app over it and one screen at a time over both (iOS's RootView).
+ * While locked, none of it is composed: the activity shows only the lock screen.
+ */
+@Composable
+fun RootView(model: AppModel) {
+    val active by DebugLaunch.active.collectAsState()
+    if (active) return DebugLaunch.Content()
+    Box(Modifier.fillMaxSize()) {
+        LauncherView(model)
+        ScreenLayer(model)
+    }
+}
+
+/**
+ * The router's screens, one at a time, sliding in from the end. Each reports when it has
+ * appeared and once it has finished closing, which the router waits for before showing what
+ * comes next.
+ */
+@Composable
+private fun ScreenLayer(model: AppModel) {
+    val router = model.router
+    val sheet by router.sheet.collectAsState()
+    // A Custom Tab shows the sign-in and Machines pages (see MainActivity), not a screen here.
+    val screen = sheet?.takeUnless { it is RootSheet.Login || it == RootSheet.Approve }
+    var last by remember { mutableStateOf<RootSheet?>(null) }
+    if (screen != null) last = screen
+    AnimatedVisibility(
+        visible = screen != null,
+        enter = slideInHorizontally { it } + fadeIn(),
+        exit = slideOutHorizontally { it } + fadeOut(),
+    ) {
+        val shown = screen ?: last ?: return@AnimatedVisibility
+        val close = { if (router.sheet.value?.id == shown.id) router.sheet.value = null }
+        key(shown.id) {
+            DisposableEffect(Unit) {
+                router.sheetAppeared()
+                onDispose { router.sheetDismissed() }
+            }
+            BackHandler(enabled = screen != null, onBack = close)
+            when (shown) {
+                RootSheet.Settings -> SettingsView(model, onClose = close)
+                // The rest arrive with their phases: Add App and Join with Phase 5, sharing with Phase 6.
+                else -> Unit
+            }
+        }
     }
 }

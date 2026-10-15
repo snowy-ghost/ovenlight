@@ -4,6 +4,7 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
+import java.net.URI
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -38,7 +39,7 @@ class MainActivity : ComponentActivity() {
         // replays.
         val handled = savedInstanceState?.getBoolean(HANDLED_LAUNCH) ?: false
         if (!handled && intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY == 0) receive(intent)
-        setContent { Root(lock, onUnlock = { lifecycleScope.launch { lock.unlock(unlockPrompt) } }) }
+        setContent { Root(OvenlightApp.model, onUnlock = { lifecycleScope.launch { lock.unlock(unlockPrompt) } }) }
     }
 
     /**
@@ -95,8 +96,12 @@ class MainActivity : ComponentActivity() {
         outState.putBoolean(HANDLED_LAUNCH, true)
     }
 
+    /** A link: an App Link to an invite, `ovenlight://join` or `ovenlight://open`, held while locked. */
     private fun receive(intent: Intent) {
         DebugLaunch.receive(this, intent)
+        if (intent.action != Intent.ACTION_VIEW) return
+        val url = intent.dataString?.let { runCatching { URI(it) }.getOrNull() } ?: return
+        OvenlightApp.router.handle(url, OvenlightApp.model.registry.apps)
     }
 
     private companion object {
@@ -105,7 +110,8 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun Root(lock: LockManager, onUnlock: () -> Unit) {
+private fun Root(model: AppModel, onUnlock: () -> Unit) {
+    val lock = model.lock
     OvenlightTheme {
         val locked by lock.isLocked.collectAsState()
         val authenticating by lock.isAuthenticating.collectAsState()
@@ -117,7 +123,7 @@ private fun Root(lock: LockManager, onUnlock: () -> Unit) {
             if (!locked) {
                 when (val s = state) {
                     is WebViewSetup.State.NeedsUpdate -> WebViewUpdateScreen(s.webViewPackage)
-                    WebViewSetup.State.Ready -> DebugLaunch.Content()
+                    WebViewSetup.State.Ready -> RootView(model)
                     WebViewSetup.State.Starting -> Unit
                 }
             }

@@ -32,6 +32,7 @@ import androidx.webkit.WebViewCompat
 import com.snowyghost.ovenlight.core.Core
 import com.snowyghost.ovenlight.core.Node
 import java.io.File
+import java.net.URI
 import java.net.InetSocketAddress
 import java.net.Proxy
 import java.util.concurrent.TimeUnit
@@ -39,6 +40,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -68,6 +70,12 @@ import org.json.JSONObject
  *   --es preview lock|lock-error|cover|none  a screen of Phase 3's, before it's wired up
  *   --ez writeProxySecret true               files/proxy.txt: address, secret, realm
  *
+ * And the app's own, as iOS's launch arguments are:
+ *
+ *   --es controlURL <url> --es authKey <key>   the owner's node on a local Headscale, signed in with a key
+ *   --es joinInvite <ovenlight://join?...>     opens an invite
+ *   --es openApp <name>                        opens an app by name
+ *
  * Results go to logcat under OvenlightLab, never a secret or a sign-in link. Commands wait
  * until WebViewSetup is Ready, which means it found every WebView feature they use.
  */
@@ -79,6 +87,10 @@ object DebugLaunch {
     private val view = MutableStateFlow<WebView?>(null)
     private val status = MutableStateFlow("Lab")
     private val preview = MutableStateFlow("none")
+    private val showing = MutableStateFlow(false)
+
+    /** A lab command or a preview came in, so the lab shows in place of the launcher. */
+    val active: StateFlow<Boolean> = showing
     private var viewProfile = ""
 
     private fun log(line: String) {
@@ -88,12 +100,17 @@ object DebugLaunch {
 
     fun receive(activity: ComponentActivity, intent: Intent) {
         if (intent.getBooleanExtra("fakeOldWebView", false)) WebViewSetup.pretendNeedsUpdate()
-        intent.getStringExtra("preview")?.let { preview.value = it }
+        intent.getStringExtra("preview")?.let {
+            preview.value = it
+            showing.value = it != "none"
+        }
+        receiveAppExtras(activity, intent)
         if (intent.getBooleanExtra("writeProxySecret", false)) {
             File(activity.filesDir, "proxy.txt").writeText(listOf(TailnetCore.proxyAddress, TailnetCore.proxySecret, TailnetCore.proxyRealm).joinToString("\n", postfix = "\n"))
         }
         intent.getLongExtra("labHold", 0).takeIf { it > 0 }?.let(Core::debugAnswerWithin)
         val command = intent.getStringExtra("lab") ?: return
+        showing.value = true
         val id = intent.getStringExtra("labId") ?: "lab"
         scope.launch {
             try {
@@ -101,6 +118,20 @@ object DebugLaunch {
             } catch (e: Exception) {
                 log("$command $id: failed: ${e.message}")
             }
+        }
+    }
+
+    private fun receiveAppExtras(activity: ComponentActivity, intent: Intent) {
+        if (intent.hasExtra("lab")) return
+        val preferences = PreferencesStore(activity)
+        intent.getStringExtra("controlURL")?.let { preferences.putString(NodeManager.CONTROL_URL_KEY, it) }
+        intent.getStringExtra("authKey")?.let { preferences.putString(NodeManager.AUTH_KEY_KEY, it) }
+        val model = OvenlightApp.model
+        // A key given now, after the model read the settings, starts the owner's node too.
+        if (intent.hasExtra("authKey")) model.nodes.enableOwner()
+        intent.getStringExtra("joinInvite")?.let { link -> runCatching { URI(link) }.getOrNull()?.let { model.router.handle(it, model.registry.apps) } }
+        intent.getStringExtra("openApp")?.let { name ->
+            model.router.handle(URI("ovenlight", "open", null, "app=$name", null), model.registry.apps)
         }
     }
 
