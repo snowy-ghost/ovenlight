@@ -163,6 +163,7 @@ android {
         // Play gives every upload its versionCode (the highest on any track plus one).
         versionCode = providers.gradleProperty("versionCode").orNull?.toInt() ?: 1
         versionName = "1.0.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // The Go core's ABIs. A library built for any other (AndroidX ships x86) would let
         // a phone install Ovenlight without its core.
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
@@ -226,6 +227,12 @@ dependencies {
     testImplementation(libs.compose.ui.test.junit4)
     testImplementation(libs.compose.ui.test.junit4.accessibility)
     debugImplementation(libs.compose.ui.test.manifest)
+
+    androidTestImplementation(platform(libs.compose.bom))
+    androidTestImplementation(libs.compose.ui.test.junit4)
+    androidTestImplementation(libs.compose.ui.test.junit4.accessibility)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.runner)
 }
 
 // The connector's wire fixtures, which the wire test decodes, so a connector change that
