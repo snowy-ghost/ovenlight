@@ -85,6 +85,11 @@ final class WebViewPool: ObservableObject {
         coordinators.values.forEach { $0.presentWaitingDownloads() }
     }
 
+    /// Where opening the app is, while it has a view, for Report a Problem.
+    func gate(of id: UUID) -> AppLoadGate? {
+        coordinators[id]?.gate
+    }
+
     /// What every app view gets, whichever app it shows.
     static func configure(_ config: WKWebViewConfiguration) {
         config.allowsInlineMediaPlayback = true
@@ -326,7 +331,7 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
 
     private func giveUp() {
         guard !Task.isCancelled else { return }
-        Self.log.info("\(self.app.host, privacy: .public): unreachable")
+        Self.log.notice("\(self.app.host, privacy: .public): unreachable")
         gate = gate.next(.gaveUp)
         // A page already on screen keeps it. Once a page has loaded, only the person's Reload
         // checks the path again, so an alert tells them it couldn't reach the computer.
@@ -352,7 +357,7 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
     /// drops this view and the app's screen makes a new one through the right node.
     private func routeIsCurrent() -> Bool {
         if Routing.mayLoad(built: node, current: NodeManager.shared.node(for: app)) { return true }
-        Self.log.info("\(self.app.host, privacy: .public): route changed, making a new view")
+        Self.log.notice("\(self.app.host, privacy: .public): route changed, making a new view")
         WebViewPool.shared.replace(self)
         return false
     }
@@ -432,7 +437,7 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
         }
         let delay = AppLoadGate.appDownRetries[appDownLoads]
         appDownLoads += 1
-        Self.log.info("\(self.app.host, privacy: .public): the app is down, trying again in \(delay) s")
+        Self.log.notice("\(self.app.host, privacy: .public): the app is down, trying again in \(delay) s")
         gateTask?.cancel()
         gateTask = Task { [weak self] in
             guard (try? await Task.sleep(for: .seconds(delay))) != nil, let self, routeIsCurrent(), nodeMayCarry else { return }

@@ -1,5 +1,6 @@
 import Combine
 import ImageIO
+import os
 import SwiftUI
 import WebKit
 
@@ -49,18 +50,22 @@ final class AppRegistry: ObservableObject {
             apps = loaded.elements
             unread = loaded.unread
             loadFailed = false
+            if !unread.isEmpty { SavedJSON.log.error("apps: kept \(self.unread.count) this version can't read") }
         } catch {
             loadFailed = true
+            SavedJSON.log.error("apps: couldn't read: \(String(describing: error), privacy: .public)")
         }
     }
 
     private func save() {
         guard !loadFailed else { return }
-        if let data = try? SavedJSON.encode(apps, keeping: unread) {
-            try? data.write(to: fileURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
-        }
-        if let data = try? JSONEncoder().encode(dismissedHosts) {
-            try? data.write(to: dismissedURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        do {
+            try SavedJSON.encode(apps, keeping: unread)
+                .write(to: fileURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+            try JSONEncoder().encode(dismissedHosts)
+                .write(to: dismissedURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        } catch {
+            SavedJSON.log.error("apps: couldn't save: \(String(describing: error), privacy: .public)")
         }
     }
 

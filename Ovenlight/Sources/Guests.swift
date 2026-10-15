@@ -207,13 +207,13 @@ final class GuestManager: ObservableObject {
             guard let self, let membership = store[id], let apps = registry?.apps else { return }
             let gone = GuestCleanup.revokedApps(in: membership, apps: apps, notInvited: hosts)
             guard !gone.isEmpty else { return }
-            log.info("\(id, privacy: .public): \(hosts.sorted().joined(separator: ", "), privacy: .public) left the peers")
+            log.notice("\(id, privacy: .public): \(hosts.sorted().joined(separator: ", "), privacy: .public) left the peers")
             accessEnded(for: gone)
         }
         node.onLoginLost = { [weak self] in
             guard let self, let membership = store[id],
                   GuestCleanup.isRemoved(membership) else { return }
-            log.info("\(id, privacy: .public): the owner removed this device")
+            log.notice("\(id, privacy: .public): the owner removed this device")
             store.update(id) { $0.pendingClaims = [] }
             let apps = (registry?.apps ?? []).filter { $0.membershipID == id }
             Task {
@@ -336,7 +336,7 @@ final class GuestManager: ObservableObject {
             await node.stop() // after any start under way, which then closes its node
         }
 
-        log.info("joining \(invite.host, privacy: .public) (invite \(inviteID, privacy: .public), membership \(membershipID, privacy: .public))")
+        log.notice("joining \(invite.host, privacy: .public) (invite \(inviteID, privacy: .public), membership \(membershipID, privacy: .public))")
         let wasJoined = store[membershipID]?.joined == true
         var up: Result<Void, JoinError> = .failure(.canceled)
         // A foreground can replace a node whose listener iOS reclaimed, which ends this
@@ -388,7 +388,7 @@ final class GuestManager: ObservableObject {
                 $0.ownerName = owner
                 if !invite.to.isEmpty { $0.guestName = invite.to }
             }
-            log.info("claimed \(invite.host, privacy: .public)")
+            log.notice("claimed \(invite.host, privacy: .public)")
             if let app { phases[inviteID] = .joined(app.id) }
             await node.rediscover()
         case .failed(let error):
@@ -399,7 +399,7 @@ final class GuestManager: ObservableObject {
     }
 
     private func fail(_ inviteID: String, in membershipID: String, _ error: JoinError, node: MembershipNode) async {
-        log.info("invite \(inviteID, privacy: .public) failed: \(String(describing: error), privacy: .public)")
+        log.notice("invite \(inviteID, privacy: .public) failed: \(String(describing: error), privacy: .public)")
         // An invite for an app already here that couldn't be claimed again (an old link)
         // still leaves the app; say so rather than fail.
         let host = pendingInvite(inviteID, in: membershipID).map { Discovery.normalizedHost($0.host) }
@@ -467,7 +467,7 @@ final class GuestManager: ObservableObject {
     func accessEnded(for apps: [WebApp]) {
         let apps = apps.filter { app in registry?.apps.contains { $0.id == app.id } == true }
         guard let first = apps.first else { return }
-        log.info("access ended for \(apps.map(\.host).joined(separator: ", "), privacy: .public)")
+        log.notice("access ended for \(apps.map(\.host).joined(separator: ", "), privacy: .public)")
         if let open = router?.openApp, apps.contains(where: { $0.id == open.id }) {
             router?.openApp = nil
         }
@@ -499,7 +499,7 @@ final class GuestManager: ObservableObject {
         }
         let apps = registry.apps
         for id in GuestCleanup.orphans(store.memberships, apps: apps) {
-            log.info("\(id, privacy: .public): no apps left, leaving")
+            log.notice("\(id, privacy: .public): no apps left, leaving")
             await nodes.removeGuest(id)
         }
     }

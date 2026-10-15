@@ -682,6 +682,17 @@ final class SupportMailTests: XCTestCase {
         XCTAssertTrue(draft.body.hasSuffix("App: Coach\nAddress: coach.example.com\nOvenlight: 1.0 (1)\niOS: 26.5"))
     }
 
+    func testProblemReportSaysWhereTheConnectionAndOpeningAre() {
+        let login = NodeState.needsLogin(URL(string: "https://login.tailscale.com/a/secret")!)
+        XCTAssertEqual(MailDraft.connection(login, listedOffline: false), "Not signed in (needsLogin)", "never the sign-in link")
+        let connection = MailDraft.connection(.retrying(attempt: 2), listedOffline: true)
+        XCTAssertEqual(connection, "Connecting (retrying(attempt: 2), computer listed offline)")
+        let draft = MailDraft.problemReport(appName: "Echo", host: "echo.taildef456.ts.net", sharedBy: "Riley", connection: connection,
+                                            opening: String(describing: AppLoadGate.unreachable), version: "1.0.2 (1)", iOS: "26.5")
+        XCTAssertTrue(draft.body.contains("\nConnection: Connecting (retrying(attempt: 2), computer listed offline)\nOpening: unreachable\nOvenlight: 1.0.2 (1)"))
+        CopyRules.assertNeutral(draft.body)
+    }
+
     func testMailtoFallbackCarriesSubjectAndBody() throws {
         let draft = MailDraft.problemReport(appName: "Echo & Notes+", host: "echo.example.com", sharedBy: "Riley", connection: nil,
                                             version: "1.0 (1)", iOS: "26.5")

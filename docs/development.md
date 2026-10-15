@@ -309,8 +309,9 @@ Sign Ovenlight in to the first with `-authKey`, and open the second owner's invi
   valid, invite canceled, used on another iPhone, or the owner's computer not answering
   (the invite is kept for Try Again).
 - **Report a Problem** (every app's menu, and a guest's long-press menu) opens a mail to
-  team@snowyghost.com with the app, its address, who shared it, its connection state and
-  the Ovenlight and iOS versions. Settings, Support has Contact Us, the privacy policy
+  team@snowyghost.com with the app, its address, who shared it, its connection state (in
+  detail, without the sign-in link), how far opening it got, and the Ovenlight and iOS
+  versions. Settings, Support has Contact Us, the privacy policy
   (`AppLinks` in `Support.swift`) and Acknowledgements, the licenses
   `scripts/build-tailscalekit.sh` puts in the framework.
 - **Leaving.** Settings, Shared with You, Leave (or Leave in a shared app's menu) removes

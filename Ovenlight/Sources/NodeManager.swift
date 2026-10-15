@@ -270,7 +270,7 @@ final class MembershipNode: ObservableObject {
             let alive = await loopbackIsAlive()
             isCheckingHealth = false
             if alive { return }
-            log.info("loopback \(self.loopback?.address ?? "?", privacy: .public) is dead, restarting the node")
+            log.notice("loopback \(self.loopback?.address ?? "?", privacy: .public) is dead, restarting the node")
             await stop()
         }
         await start()
@@ -365,7 +365,7 @@ final class MembershipNode: ObservableObject {
             absence = PeerAbsence()
             // Live data stores pick up the new proxy without recreating their web views.
             for store in stores.values { store.proxyConfigurations = [proxy] }
-            log.info("\(self.id, privacy: .public): node started, loopback \(loopback.address, privacy: .public), proxy applied to \(self.stores.count) stores")
+            log.notice("\(self.id, privacy: .public): node started, loopback \(loopback.address, privacy: .public), proxy applied to \(self.stores.count) stores")
             pollTask = Task { [weak self] in await self?.poll(generation: current) }
         } catch {
             log.error("\(self.id, privacy: .public): node start failed: \(String(describing: error), privacy: .public)")
@@ -492,7 +492,7 @@ final class MembershipNode: ObservableObject {
         let noPage = status.backendState == "NeedsLogin" && status.authURL.isEmpty
         loginLostPolls = noPage ? loginLostPolls + 1 : 0
         guard loginLostPolls == 10, let request = localAPIRequest("login-interactive", method: "POST", timeout: 5) else { return }
-        log.info("owner: needs a login and has no sign-in page, asking for one")
+        log.notice("owner: needs a login and has no sign-in page, asking for one")
         Task { _ = try? await URLSession.shared.data(for: request) }
     }
 
@@ -586,7 +586,7 @@ final class MembershipNode: ObservableObject {
     private func send(_ event: NodeEvent) {
         let next = NodeMachine.next(state, event)
         if next != state {
-            log.info("\(self.id, privacy: .public): state \(self.state.logDescription, privacy: .public) -> \(next.logDescription, privacy: .public)")
+            log.notice("\(self.id, privacy: .public): state \(self.state.logDescription, privacy: .public) -> \(next.logDescription, privacy: .public)")
             state = next
         }
     }

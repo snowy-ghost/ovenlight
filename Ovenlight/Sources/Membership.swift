@@ -1,4 +1,5 @@
 import Combine
+import os
 import UIKit
 
 /// Ovenlight's place in someone else's network: a guest device, one per owner whose invite
@@ -113,8 +114,10 @@ final class MembershipStore: ObservableObject {
             memberships = list.elements
             unread = list.unread
             loadFailed = false
+            if !unread.isEmpty { SavedJSON.log.error("memberships: kept \(self.unread.count) this version can't read") }
         } catch {
             loadFailed = true
+            SavedJSON.log.error("memberships: couldn't read: \(String(describing: error), privacy: .public)")
         }
     }
 
@@ -143,8 +146,13 @@ final class MembershipStore: ObservableObject {
     }
 
     private func save() {
-        guard !loadFailed, let data = try? SavedJSON.encode(memberships, keeping: unread) else { return }
-        try? data.write(to: fileURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        guard !loadFailed else { return }
+        do {
+            try SavedJSON.encode(memberships, keeping: unread)
+                .write(to: fileURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        } catch {
+            return SavedJSON.log.error("memberships: couldn't save: \(String(describing: error), privacy: .public)")
+        }
         // An atomic write replaces the file, and with it the flag.
         var url = fileURL
         url.excludeFromBackup()
@@ -155,6 +163,8 @@ final class MembershipStore: ObservableObject {
 /// be read (before the first unlock after a restart, say) or decoded throws, and must never
 /// be taken for an empty one: the next save would write that over it.
 enum SavedJSON {
+    static let log = Logger(subsystem: "com.snowyghost.ovenlight", category: "storage")
+
     /// A saved list as read.
     struct List<Element> {
         var elements: [Element] = []

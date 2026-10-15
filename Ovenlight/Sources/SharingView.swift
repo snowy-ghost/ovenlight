@@ -294,17 +294,27 @@ struct SharingAppView: View {
         do {
             let result = try await client.removeGuest(person, app: slug)
             error = result.errors?.first
-        } catch let failure as AdminError {
-            error = failure.message
-        } catch {}
+        } catch {
+            show(error)
+        }
         await sharing.refresh(apps: registry.apps)
     }
 
     private func cancel(_ invite: AdminInvite) async {
         guard let machine, let client = sharing.client(for: machine) else { return }
         defer { client.session.finishTasksAndInvalidate() }
-        _ = try? await client.cancelInvite(invite.id)
+        do {
+            _ = try await client.cancelInvite(invite.id)
+            error = nil
+        } catch {
+            show(error)
+        }
         await sharing.refresh(apps: registry.apps)
+    }
+
+    /// As People shows it: the connector's words, or that the computer didn't answer.
+    private func show(_ failure: Error) {
+        error = (failure as? AdminError)?.message ?? AdminError.unreachable.message
     }
 }
 
