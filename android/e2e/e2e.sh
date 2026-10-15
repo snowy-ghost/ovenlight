@@ -5,12 +5,15 @@
 # connector runs from this run's folder with its own HOME, config and state, logs in only to
 # the local Headscale, and stops by its recorded pid.
 #
-#   android/e2e/e2e.sh [gates | owner | signin [seconds]] [avd]
+#   android/e2e/e2e.sh [gates | owner | signin [seconds] | screens] [avd]
 #
 # gates runs Phase 1's checks G2 to G5 through the debug lab. owner signs the owner's node in
 # with a preauth key and waits for the launcher to show both test apps. signin goes through
 # the launcher's Connect card and the sign-in page in a Custom Tab, approves the phone after
-# [seconds] (default 30), and checks that it ends connected. Each writes what it saw to
+# [seconds] (default 30), and checks that it ends connected. screens signs in as owner does,
+# takes the launcher, Settings and lock screenshots in light and dark, and checks the lock: at
+# Immediately, Home and back through the icon or Recents asks for it, and a canceled prompt
+# doesn't come back by itself. Each writes what it saw to
 # android/e2e/out/: gates.txt, logs and screenshots.
 #
 # Needs Headscale v0.29.4 (docs/development.md#local-headscale) and the fixed AVD set
@@ -93,7 +96,7 @@ until_ok() {
 }
 
 [[ -x $HS ]] || fail "no headscale at $HS"
-[[ $SCENARIO =~ ^(gates|owner|signin)$ ]] || fail "unknown scenario $SCENARIO"
+[[ $SCENARIO =~ ^(gates|owner|signin|screens)$ ]] || fail "unknown scenario $SCENARIO"
 
 say "the test CA in $CA, made once, and a *.$BASE certificate for this run"
 if [[ ! -f $CA/ca.pem ]]; then
@@ -273,13 +276,63 @@ await_text() {
   for i in $(seq 1 $seconds); do
     local seen=$(screen_text) missing=0
     # Back after the lock's delay: answer its prompt with fingerprint 1.
-    if grep -qxE 'Unlock Ovenlight|Ovenlight is locked' <<<"$seen"; then a emu finger touch 1 >/dev/null; sleep 1; continue; fi
+    if [[ -z ${KEEP_LOCK:-} ]] && grep -qxE 'Unlock Ovenlight|Ovenlight is locked' <<<"$seen"; then a emu finger touch 1 >/dev/null; sleep 1; continue; fi
     for want in "$@"; do grep -qxF -- "$want" <<<"$seen" || missing=1; done
     (( missing == 0 )) && return 0
     sleep 1
   done
   return 1
 }
+
+night() { a shell cmd uimode night $1 >/dev/null; sleep 3; }
+locked() { screen_text | grep -qxE 'Unlock Ovenlight|Ovenlight is locked'; }
+
+if [[ $SCENARIO == screens ]]; then
+  say "screens: the owner signs in, then the screenshots"
+  a shell "am start -W -n $PKG/.MainActivity --es controlURL $CTRL --es authKey $KEY" >/dev/null
+  await_text 90 Recipes Pantry || fail "the launcher never showed both apps: $(screen_text | tr '\n' '|')"
+  sleep 2; shot launcher-light
+  night yes; shot launcher-dark
+  tap_text More && sleep 1 && tap_text Settings
+  await_text 10 "Require screen lock" || fail "no Settings: $(screen_text | tr '\n' '|')"
+  sleep 1; shot settings-dark
+  night no; shot settings-light
+  note "screenshots of the launcher and Settings in light and dark"
+
+  say "lock: Immediately, from Settings"
+  tap_text "Require screen lock" && sleep 1 && tap_text Immediately
+  await_text 10 Immediately || fail "the delay didn't change"
+  a shell input keyevent KEYCODE_BACK; sleep 2
+  tap_text "Lock Ovenlight"; sleep 2
+  KEEP_LOCK=1 await_text 10 "Ovenlight is locked" || fail "Lock Ovenlight didn't lock"
+  shot lock-light; night yes; shot lock-dark; night no
+  note "Lock Ovenlight locks; screenshots of the lock screen in light and dark"
+  tap_text Unlock; sleep 2; a emu finger touch 1 >/dev/null
+  await_text 20 Recipes || fail "didn't unlock"
+
+  say "lock: Home, then back through the icon"
+  a shell input keyevent KEYCODE_HOME; sleep 3
+  a shell monkey -p $PKG -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1; sleep 3
+  locked || fail "back through the icon without the lock: $(screen_text | tr '\n' '|')"
+  note "back through the icon: locked"
+  # The prompt opened by itself; cancel it, and it must stay closed.
+  a shell input keyevent KEYCODE_BACK; sleep 6
+  ! screen_text | grep -qxF 'Unlock Ovenlight' || fail "the canceled prompt came back by itself"
+  KEEP_LOCK=1 await_text 5 "Ovenlight is locked" || fail "the lock screen went away: $(screen_text | tr '\n' '|')"
+  note "a canceled prompt stays closed, and the lock screen stays"
+  tap_text Unlock; sleep 2; a emu finger touch 1 >/dev/null
+  await_text 20 Recipes || fail "didn't unlock"
+
+  say "lock: Home, then back through Recents"
+  a shell input keyevent KEYCODE_HOME; sleep 3
+  a shell input keyevent KEYCODE_APP_SWITCH; sleep 3
+  size=$(a shell wm size | tail -1 | sed 's/.*: //' | tr -d '\r'); w=${size%x*}; h=${size#*x}
+  a shell input tap $((w / 2)) $((h / 2)); sleep 3
+  locked || fail "back through Recents without the lock: $(screen_text | tr '\n' '|')"
+  note "back through Recents: locked"
+  say "PASSED"
+  exit 0
+fi
 
 if [[ $SCENARIO == owner ]]; then
   say "owner: the owner's node signs in with a preauth key"
