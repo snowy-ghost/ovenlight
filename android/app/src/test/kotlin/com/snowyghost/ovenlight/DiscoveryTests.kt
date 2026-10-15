@@ -96,6 +96,31 @@ class DiscoveryTests {
         assertFalse(OvenlightTag.isApp("tag:ovenlight-apple"))
     }
 
+    @Test
+    fun testAListingCoversOnlyHostsItCanVouchFor() {
+        val owners = Discovery.ownersHosts(TailnetStatus.decode(trustStatus)!!)
+        val json = """
+        [{"slug":"coach","name":"Coach","url":"https://coach.tailabc123.ts.net/","state":"running","online":true,"shareable":true,"guests":0},
+         {"slug":"cw","name":"Coworker","url":"https://coworker.tailabc123.ts.net/","state":"running","online":true,"shareable":false,"guests":0},
+         {"slug":"echo","name":"Echo","url":"https://echo.tail99.ts.net/","state":"running","online":true,"shareable":false,"guests":0},
+         {"slug":"web","name":"Web","url":"https://example.com/","state":"running","online":true,"shareable":false,"guests":0},
+         {"slug":"off","name":"Off","state":"stopped","online":false,"shareable":false,"guests":0}]
+        """
+        // iOS decodes the list as a whole, so every record must decode.
+        val each = AdminAPI.decodeEach(AdminApp.decoder, json.toByteArray())
+        assertEquals(emptyList<Int>(), each.skipped)
+        val listed = each.elements
+
+        val listing = OwnerSharing.vouched(listed, ownersHosts = owners)
+        assertEquals("only the owner's own computers", setOf("coach.tailabc123.ts.net"), listing.covered)
+        assertEquals(listOf("coach", "off"), listing.apps.map { it.slug })
+
+        val shared = WebApp(name = "Echo", startURL = URI("https://echo.tail99.ts.net/"), discovered = true, membershipID = "m1")
+        val apps = listOf(WebApp(name = "Coworker", startURL = URI("https://coworker.tailabc123.ts.net/"), discovered = true), shared)
+        val found = listOf(DiscoveredApp("coach.tailabc123.ts.net", OvenlightManifest(name = "Coach", version = 1)))
+        assertEquals(listOf("coach.tailabc123.ts.net"), OwnerSharing.candidateHosts(apps, discovered = found, ownersHosts = owners))
+    }
+
     /** A computer that drops the probe (a firewall, or just asleep) mustn't hold up apps on the others. */
     @OptIn(ExperimentalCoroutinesApi::class)
     @Test
