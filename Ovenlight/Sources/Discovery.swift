@@ -95,8 +95,9 @@ enum Discovery {
         var answered: [String: Bool] = [:]
     }
 
-    /// Fetches every candidate's manifest concurrently.
-    static func probe(hosts: [String], session: URLSession?) async -> Outcome {
+    /// Fetches every candidate's manifest concurrently. `firstAnswer` runs as the first host
+    /// answers, which proves the path, without waiting for a machine that drops the probe.
+    static func probe(hosts: [String], session: URLSession?, firstAnswer: @MainActor () -> Void = {}) async -> Outcome {
         guard let session, !hosts.isEmpty else { return Outcome() }
         return await withTaskGroup(of: (String, Data?, Bool).self) { group in
             for host in hosts {
@@ -113,6 +114,7 @@ enum Discovery {
             }
             var outcome = Outcome()
             for await (host, data, answered) in group {
+                if answered, !outcome.reachable { await firstAnswer() }
                 outcome.reachable = outcome.reachable || answered
                 outcome.answered[host] = answered
                 if let data, let manifest = OvenlightManifest.parse(data) {

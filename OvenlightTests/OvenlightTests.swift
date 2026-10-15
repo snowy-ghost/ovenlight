@@ -679,6 +679,30 @@ final class DiscoveryTests: XCTestCase {
         XCTAssertEqual(OwnerSharing.candidateHosts(apps, discovered: found, ownersHosts: owners), ["coach.tailabc123.ts.net"])
     }
 
+    /// A computer that drops the probe (a firewall, or just asleep) mustn't hold up apps on
+    /// the others.
+    @MainActor
+    func testTheFirstAnswerCountsWithoutWaitingForTheSlowest() async {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [SlowHostProtocol.self]
+        let session = URLSession(configuration: config)
+        defer { session.invalidateAndCancel() }
+        let start = Date.now
+        var answeredAfter: TimeInterval?
+        let outcome = await Discovery.probe(hosts: ["coach.tailabc123.ts.net", SlowHostProtocol.host], session: session) {
+            XCTAssertNil(answeredAfter, "once")
+            answeredAfter = Date.now.timeIntervalSince(start)
+        }
+        XCTAssertLessThan(try XCTUnwrap(answeredAfter), SlowHostProtocol.delay / 2)
+        XCTAssertGreaterThanOrEqual(Date.now.timeIntervalSince(start), SlowHostProtocol.delay, "discovery still hears from every host")
+        XCTAssertEqual(outcome.answered, ["coach.tailabc123.ts.net": true, SlowHostProtocol.host: false])
+        XCTAssertEqual(outcome.apps.map(\.manifest.name), ["Coach"])
+
+        var called = false
+        _ = await Discovery.probe(hosts: [SlowHostProtocol.host], session: session) { called = true }
+        XCTAssertFalse(called, "nothing answered")
+    }
+
     func testRoutesOnlyTheOwnersTailnetThroughTheOwnersNode() {
         let own = "tailabc123.ts.net"
         XCTAssertEqual(Routing.route(host: "interview-coach.tailabc123.ts.net", ownerSuffix: own), .tailnetNode)
@@ -697,6 +721,31 @@ final class DiscoveryTests: XCTestCase {
             XCTAssertEqual(Routing.route(host: "ts.net.example.com", ownerSuffix: unknown), .direct)
         }
     }
+}
+
+/// Serves every host a connector's manifest at once, except `host`, which fails after `delay`.
+private final class SlowHostProtocol: URLProtocol {
+    static let host = "slow.tailabc123.ts.net"
+    static let delay: TimeInterval = 1
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        guard let url = request.url else { return }
+        if url.host == Self.host {
+            DispatchQueue.global().asyncAfter(deadline: .now() + Self.delay) { [self] in
+                client?.urlProtocol(self, didFailWithError: URLError(.timedOut))
+            }
+            return
+        }
+        client?.urlProtocol(self, didReceive: HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!,
+                            cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data(#"{"name":"Coach","version":1}"#.utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
 }
 
 /// A public Funnel name added before the owner ever signed in routes to the owner's node;

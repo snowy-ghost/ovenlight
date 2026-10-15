@@ -518,10 +518,10 @@ final class MembershipNode: ObservableObject {
         !Discovery.offlineHosts([host], in: status).isEmpty
     }
 
-    private func probe(_ hosts: [String]) async -> Discovery.Outcome {
+    private func probe(_ hosts: [String], firstAnswer: @MainActor () -> Void = {}) async -> Discovery.Outcome {
         lastProbe = .now
-        if isOwner { return await Discovery.probe(hosts: hosts, session: session()) }
-        let outcome = await GuestProbe.probe(hosts: hosts, session: session())
+        if isOwner { return await Discovery.probe(hosts: hosts, session: session(), firstAnswer: firstAnswer) }
+        let outcome = await GuestProbe.probe(hosts: hosts, session: session(), firstAnswer: firstAnswer)
         if !outcome.notInvited.isEmpty { onNotInvited(outcome.notInvited) }
         return outcome.base
     }
@@ -531,7 +531,8 @@ final class MembershipNode: ObservableObject {
     /// the SOCKS proxy, timeouts) count as "not yet" and are retried with backoff.
     private func checkReachability(generation current: Int) async {
         let hosts = probeHosts
-        let outcome = await probe(hosts)
+        // The first answer proves the path: apps may load while the rest are still asked.
+        let outcome = await probe(hosts) { [self] in if current == generation { send(.reachable) } }
         guard current == generation else { return }
         record(outcome, probed: hosts)
         if outcome.reachable || hosts.isEmpty {
@@ -637,7 +638,8 @@ enum GuestProbe {
         var notInvited: Set<String> = []
     }
 
-    static func probe(hosts: [String], session: URLSession?) async -> Outcome {
+    /// `firstAnswer` as in `Discovery.probe`.
+    static func probe(hosts: [String], session: URLSession?, firstAnswer: @MainActor () -> Void = {}) async -> Outcome {
         guard let session, !hosts.isEmpty else { return Outcome() }
         return await withTaskGroup(of: (String, Reach).self) { group in
             for host in hosts {
@@ -646,6 +648,7 @@ enum GuestProbe {
             var outcome = Outcome()
             for await (host, reach) in group {
                 let answered = reach != .unreachable
+                if answered, !outcome.base.reachable { await firstAnswer() }
                 outcome.base.reachable = outcome.base.reachable || answered
                 outcome.base.answered[host] = answered
                 if reach == .notInvited { outcome.notInvited.insert(host) }
