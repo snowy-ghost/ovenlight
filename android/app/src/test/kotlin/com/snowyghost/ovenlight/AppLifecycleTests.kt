@@ -1,6 +1,7 @@
 package com.snowyghost.ovenlight
 
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
@@ -16,12 +17,17 @@ class AppLifecycleTests {
     private class Recorder {
         var paused = false
         var closes = 0
+        var closed = 0
         var fronts = 0
     }
 
     /** [clock] stands in for elapsedRealtime, which keeps counting while a frozen process's timers don't. */
     private fun TestScope.lifecycle(recorder: Recorder, clock: () -> Long = { testScheduler.currentTime }) = AppLifecycle(
-        backgroundScope, clock, pausePolling = { recorder.paused = it }, closeNodes = { recorder.closes += 1 }, cameToFront = { recorder.fronts += 1 },
+        backgroundScope, clock, pausePolling = { recorder.paused = it }, closeNodes = {
+            recorder.closes += 1
+            delay(1_000) // the nodes' stops take a moment
+            recorder.closed += 1
+        }, cameToFront = { recorder.fronts += 1 },
     )
 
     @Test
@@ -94,7 +100,40 @@ class AppLifecycleTests {
         now = 120_000
         life.activityStarted()
         runCurrent()
-        assertEquals("closed before the nodes start again", 1, r.closes)
+        assertEquals(1, r.closes)
+        assertEquals("the nodes start again once closed", 0, r.fronts)
+        advanceTimeBy(2_000)
+        assertEquals(1, r.fronts)
+    }
+
+    @Test
+    fun testAnExcursionFrozenPastFiveMinutesClosesFromItsFiveMinutes() = runTest {
+        val r = Recorder()
+        var now = 0L
+        val life = lifecycle(r) { now }
+        life.beginExcursion()
+        life.activityStopped()
+        // Frozen with the phone awake: ten minutes pass, and the late timer runs before the return.
+        now = 10 * 60_000
+        advanceTimeBy(5 * 60_000 + 1)
+        runCurrent()
+        life.activityStarted()
+        advanceTimeBy(5_000)
+        assertEquals("the close came due at six minutes", 1, r.closes)
+        assertEquals("and finished", 1, r.closed)
+        assertEquals(1, r.fronts)
+    }
+
+    @Test
+    fun testAReturnDuringTheCloseLetsItFinish() = runTest {
+        val r = Recorder()
+        val life = lifecycle(r)
+        life.activityStopped()
+        advanceTimeBy(60_500)
+        assertEquals("closing", 1, r.closes)
+        life.activityStarted()
+        advanceTimeBy(5_000)
+        assertEquals("the close finished before the nodes started again", 1, r.closed)
         assertEquals(1, r.fronts)
     }
 

@@ -307,9 +307,7 @@ class MembershipNode(
     // Lifecycle
 
     /** Starts the node unless one is running. The core's proxy lives as long as the process, so a running node needs no check. */
-    suspend fun ensureRunning() {
-        if (node == null) start()
-    }
+    suspend fun ensureRunning() = start()
 
     /** Tries again after a failure. */
     suspend fun restart() {

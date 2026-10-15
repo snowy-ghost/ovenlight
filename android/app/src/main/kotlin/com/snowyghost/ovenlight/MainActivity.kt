@@ -22,6 +22,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -41,7 +42,12 @@ class MainActivity : ComponentActivity() {
         unlockPrompt = UnlockPrompt(this)
         lifecycleScope.launch { repeatOnLifecycle(Lifecycle.State.CREATED) { lock.isLocked.collect(::guardWhileLocked) } }
         // Collected while stopped too: the tab is in front then, and Ovenlight comes back over it.
-        lifecycleScope.launch { repeatOnLifecycle(Lifecycle.State.CREATED) { model.router.sheet.collect(::sheetChanged) } }
+        // A tab waits for the unlock, as iOS's sheets wait under the lock window.
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.CREATED) {
+                combine(model.router.sheet, lock.isLocked) { sheet, locked -> sheet to locked }.collect { (sheet, locked) -> sheetChanged(sheet, locked) }
+            }
+        }
         clearNavigationBarScrim()
         if (Build.VERSION.SDK_INT >= 33) setRecentsScreenshotEnabled(false)
         // A launch intent is handled once: not again after a restore from process death,
@@ -82,11 +88,10 @@ class MainActivity : ComponentActivity() {
      * router closes the sheet (the phone connected) while the tab is in front, Ovenlight comes
      * back over it.
      */
-    private fun sheetChanged(sheet: RootSheet?) {
+    private fun sheetChanged(sheet: RootSheet?, locked: Boolean) {
         val open = tab
         if (open != null && open.id != sheet?.id) {
             tab = null
-            returning?.cancel()
             if (!lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
                 startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
             }
@@ -97,11 +102,12 @@ class MainActivity : ComponentActivity() {
             RootSheet.Approve -> machinesPage
             else -> return
         }
-        if (tab != null) return
+        if (tab != null || locked) return
         tab = sheet
         model.router.sheetAppeared()
-        model.lifecycle.beginExcursion()
-        if (!CustomTabs.open(this, url)) {
+        if (CustomTabs.open(this, url)) {
+            model.lifecycle.beginExcursion()
+        } else {
             tab = null
             model.router.sheet.value = null
             model.router.sheetDismissed()
@@ -109,19 +115,21 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * Back from the tab, closed or left behind. Android may have frozen Ovenlight meanwhile, so
-     * the node gets up to 10 seconds to say where the sign-in got before Ovenlight acts on it:
-     * still waiting for approval goes on to the Machines page, as on iOS.
+     * Back from the tab, closed or left behind: its sheet closes at once, so Connect can open it
+     * again. Android may have frozen Ovenlight meanwhile, so the node gets up to 10 seconds to say
+     * where the sign-in got: still waiting for approval goes on to the Machines page, as on iOS,
+     * unless something else has been opened since.
      */
     private fun returnedFromTab() {
         val open = tab ?: return
-        if (returning?.isActive == true) return
+        model.router.sheet.value = null
+        if (open !is RootSheet.Login) return
         val owner = model.nodes.owner
+        returning?.cancel()
         returning = lifecycleScope.launch {
             val state = withTimeoutOrNull(10_000) { owner.state.first { it !is NodeState.NeedsLogin && !it.isBusy } } ?: owner.state.value
-            if (tab?.id != open.id) return@launch
-            model.router.sheet.value = null
-            if (open is RootSheet.Login && state == NodeState.AwaitingApproval) model.router.present(RootSheet.Approve)
+            val router = model.router
+            if (state == NodeState.AwaitingApproval && router.sheet.value == null && router.openApp.value == null) router.present(RootSheet.Approve)
         }
     }
 

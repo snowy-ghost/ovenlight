@@ -2,8 +2,10 @@ package com.snowyghost.ovenlight
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Coming and going, Android only: iOS suspends Ovenlight itself. An excursion is a trip out
@@ -27,7 +29,8 @@ class AppLifecycle(
 ) {
     private var excursionStartedAt: Long? = null
     private var leftAt: Long? = null
-    private var nodesClosed = false
+    /** The close of this time away has begun; it always runs to the end. */
+    private var closing = false
     private var away: Job? = null
 
     /** Ovenlight is about to send the person somewhere that hands a result back. */
@@ -39,13 +42,12 @@ class AppLifecycle(
     fun activityStarted() {
         away?.cancel()
         away = null
-        val closeDue = !nodesClosed && closeIsDue()
+        val closeDue = !closing && closeIsDue()
         excursionStartedAt = null
         leftAt = null
         pausePolling(false)
         scope.launch {
-            if (closeDue) closeNodes()
-            nodesClosed = false
+            if (closeDue) close()
             cameToFront()
         }
     }
@@ -55,24 +57,31 @@ class AppLifecycle(
         away?.cancel()
         val excursion = excursionStartedAt
         if (excursion == null) {
-            leave()
+            leave(from = now())
             return
         }
         away = scope.launch {
             delay((excursion + EXCURSION_MILLIS - now()).coerceAtLeast(0))
-            leave()
+            // From the excursion's five minutes, even when a freeze makes this run late.
+            leave(from = excursion + EXCURSION_MILLIS)
         }
     }
 
-    private fun leave() {
-        leftAt = now()
+    private fun leave(from: Long) {
+        leftAt = from
+        closing = false
         pausePolling(true)
         away = scope.launch {
             // A frozen process wakes here late or not at all, so the clock decides, not the timer.
-            while (!closeIsDue()) delay((leftAt ?: now()) + CLOSE_AFTER_MILLIS - now())
-            nodesClosed = true
-            closeNodes()
+            while (!closeIsDue()) delay(from + CLOSE_AFTER_MILLIS - now())
+            close()
         }
+    }
+
+    /** Closes every node, all the way even if Ovenlight comes back meanwhile; the return then starts them again. */
+    private suspend fun close() {
+        closing = true
+        withContext(NonCancellable) { closeNodes() }
     }
 
     private fun closeIsDue(): Boolean {
