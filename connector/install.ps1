@@ -142,5 +142,7 @@ if (($path -split ';') -notcontains $binDir) {
 }
 $envKey.Close()
 Write-Output 'next:'
+Write-Output '  turn on HTTPS certificates for your tailnet, if they aren''t on: https://console.tailscale.com/admin/dns'
+Write-Output "  $cmd new `"My App`""
 Write-Output "  $cmd publish --port <n> --name `"<App Name>`""
 Write-Output "  $cmd status"

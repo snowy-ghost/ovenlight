@@ -154,9 +154,9 @@ replacing the one before. What bypasses the log, such as a crash, goes to
 `ovenlight.stderr.log` beside the log on macOS and Windows, and to the user journal on
 Linux (`journalctl --user -u ovenlight`).
 
-On macOS and Linux, when `~/.local/bin` is on your `PATH`, `install.sh` links `ovenlight`
-there; otherwise it prints the full path to use and the `export PATH` line to add. It
-never replaces a file it didn't make. On Windows, `install.ps1` adds the bin folder to
+On macOS and Linux, `install.sh` links `ovenlight` in `~/.local/bin`, and when that folder
+isn't on your `PATH`, prints the `export PATH` line to add to your shell profile. It never
+replaces a file it didn't make. On Windows, `install.ps1` adds the bin folder to
 your `PATH`, for PowerShell windows opened after it.
 
 ### Start and stop

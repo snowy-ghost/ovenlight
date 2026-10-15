@@ -131,25 +131,26 @@ fi
 
 # Put `ovenlight` on PATH with a link in ~/.local/bin, never over a file this didn't make.
 cmd="$(printf %q "$bin")"
-case ":$PATH:" in
-*":$HOME/.local/bin:"*)
-  if { [ ! -e "$link" ] && [ ! -L "$link" ]; } || [ "$(readlink "$link")" = "$bin" ]; then
-    mkdir -p "$(dirname "$link")"
-    ln -sfn "$bin" "$link"
-    cmd=ovenlight
-    echo "linked $link"
-  else
-    echo "left $link alone (it isn't this install's link); run this one as $cmd"
-  fi
-  ;;
-*)
-  # Printed for the reader to copy, so ~ and $HOME stay literal.
-  # shellcheck disable=SC2088
-  echo "~/.local/bin isn't on your PATH, so neither is ovenlight: run it as $cmd, or add this line to your shell profile ($profile) and run install.sh again:"
-  # shellcheck disable=SC2016
-  echo '  export PATH="$HOME/.local/bin:$PATH"'
-  ;;
-esac
+if { [ ! -e "$link" ] && [ ! -L "$link" ]; } || [ "$(readlink "$link")" = "$bin" ]; then
+  mkdir -p "$(dirname "$link")"
+  ln -sfn "$bin" "$link"
+  echo "linked $link"
+  cmd=ovenlight
+  case ":$PATH:" in
+  *":$HOME/.local/bin:"*) ;;
+  *)
+    # Printed for the reader to copy, so ~ and $HOME stay literal.
+    # shellcheck disable=SC2088
+    echo "~/.local/bin isn't on your PATH yet. Add this line to your shell profile ($profile), then open a new terminal window to run ovenlight (until then, it's ~/.local/bin/ovenlight):"
+    # shellcheck disable=SC2016
+    echo '  export PATH="$HOME/.local/bin:$PATH"'
+    ;;
+  esac
+else
+  echo "left $link alone (it isn't this install's link); run this one as $cmd"
+fi
 echo "next:"
+echo "  turn on HTTPS certificates for your tailnet, if they aren't on: https://console.tailscale.com/admin/dns"
+echo "  $cmd new \"My App\""
 echo "  $cmd publish --port <n> --name \"<App Name>\""
 echo "  $cmd status"
