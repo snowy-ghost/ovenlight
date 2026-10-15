@@ -529,6 +529,9 @@ final class MembershipNode: ObservableObject {
     private func probe(_ hosts: [String], firstAnswer: @MainActor () -> Void = {}) async -> Discovery.Outcome {
         lastProbe = .now
         if isOwner { return await Discovery.probe(hosts: hosts, session: session(), firstAnswer: firstAnswer) }
+        // A guest's hosts count as looked at even when none answers: they come back with a
+        // change to the list, or in a minute, not every poll.
+        probedHosts = hosts
         let outcome = await GuestProbe.probe(hosts: hosts, session: session(), firstAnswer: firstAnswer)
         if !outcome.notInvited.isEmpty { onNotInvited(outcome.notInvited) }
         return outcome.base
