@@ -967,6 +967,17 @@ final class AppLoadGateTests: XCTestCase {
         XCTAssertEqual(run([.retry], from: gaveUp), .waiting)
     }
 
+    /// What every released connector, 1.0.0 to 1.0.6, sends for an app that isn't running.
+    func testTheConnectorsAppDownAnswer() {
+        XCTAssertTrue(AppLoadGate.appIsDown(status: 502, header: "unavailable"))
+        XCTAssertTrue(AppLoadGate.appIsDown(status: 502, header: " unavailable "))
+        XCTAssertFalse(AppLoadGate.appIsDown(status: 502, header: nil), "the app's own 502 is its page")
+        XCTAssertFalse(AppLoadGate.appIsDown(status: 503, header: "unavailable"))
+        XCTAssertFalse(AppLoadGate.appIsDown(status: 403, header: "not_invited"))
+        XCTAssertFalse(AppLoadGate.appIsDown(status: nil, header: nil))
+        CopyRules.assertNeutral(ConnectionCopy.notResponding("Coach"))
+    }
+
     func testAComputerListedOfflineOpensTheAppWhenItAnswers() {
         let gaveUp = run([.nodeReady, .gaveUp])
         XCTAssertEqual(run([.woke], from: gaveUp), .ready, "a quiet retry answered")

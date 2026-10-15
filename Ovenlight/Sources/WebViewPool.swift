@@ -182,6 +182,10 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
     /// First navigations that failed at the connection level after the probe answered.
     private var failedLoads = 0
     private static let maxFailedLoads = 2
+    /// First pages the connector answered for because the app itself was down.
+    private var appDownLoads = 0
+    /// One of them was just cancelled, which WebKit reports as a failed load.
+    private var cancelledAppDown = false
     /// The page's latest navigation is a link the person tapped (see `isTap`), not one the
     /// page started itself.
     private var tapped = false
@@ -228,6 +232,7 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
     /// while the path is checked again.
     func reload() {
         failedLoads = 0
+        appDownLoads = 0
         loadError = nil
         gate = gate.next(.retry)
         openGate()
@@ -398,6 +403,11 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
                  decisionHandler: @escaping @MainActor (WKNavigationResponsePolicy) -> Void) {
         guard response.isForMainFrame else { return decisionHandler(.allow) }
         let http = response.response as? HTTPURLResponse
+        if !hasLoadedOnce, AppLoadGate.appIsDown(status: http?.statusCode, header: http?.value(forHTTPHeaderField: ConnectorError.header)) {
+            cancelledAppDown = true
+            decisionHandler(.cancel)
+            return appIsDown()
+        }
         if app.isShared, http?.statusCode == 403 {
             let app = app
             Task { await GuestManager.shared.verifyAccess(to: app) }
@@ -412,10 +422,29 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
         }
     }
 
+    /// The first page's app is down on its computer: the placeholder stays while it's tried
+    /// again a few times, then the app's error screen says so.
+    private func appIsDown() {
+        guard appDownLoads < AppLoadGate.appDownRetries.count else {
+            appDownLoads = 0
+            loadError = ConnectionCopy.notResponding(app.name)
+            return
+        }
+        let delay = AppLoadGate.appDownRetries[appDownLoads]
+        appDownLoads += 1
+        Self.log.info("\(self.app.host, privacy: .public): the app is down, trying again in \(delay) s")
+        gateTask?.cancel()
+        gateTask = Task { [weak self] in
+            guard (try? await Task.sleep(for: .seconds(delay))) != nil, let self, routeIsCurrent(), nodeMayCarry else { return }
+            webView?.load(URLRequest(url: app.startURL))
+        }
+    }
+
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         hasLoadedOnce = true
         loadError = nil
         failedLoads = 0
+        appDownLoads = 0
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
@@ -439,6 +468,11 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
     private func handle(_ error: Error) {
         let ns = error as NSError
         if ns.domain == NSURLErrorDomain && ns.code == NSURLErrorCancelled { return }
+        // WebKit reports the app-down response it was told to cancel (see `appIsDown`).
+        if cancelledAppDown {
+            cancelledAppDown = false
+            if ns.domain == "WebKitErrorDomain" && ns.code == Self.frameLoadInterrupted { return }
+        }
         // Once the app has rendered, a failed load (offline, a file WebKit can't show)
         // leaves the page as it is. A link the person tapped says so when it can't reach the
         // computer; what the page loads by itself, a reload on a timer say, never does.
@@ -475,6 +509,8 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
                                         NSURLErrorNetworkConnectionLost, NSURLErrorDNSLookupFailed]
     static let retryableThroughNode: Set<Int> = [NSURLErrorBadURL, NSURLErrorTimedOut, NSURLErrorCannotFindHost,
                                                  NSURLErrorCannotConnectToHost, NSURLErrorNetworkConnectionLost]
+    /// WebKit's "Frame load interrupted", for a navigation whose response policy cancelled it.
+    static let frameLoadInterrupted = 102
 
     // MARK: UI
 

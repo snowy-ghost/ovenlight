@@ -411,6 +411,7 @@ enum ConnectorError: String {
     case badRequest = "bad_request"
     case rateLimited = "rate_limited"
     case tooLarge = "too_large"
+    case unavailable
 
     static let header = "Ovenlight-Error"
 

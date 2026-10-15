@@ -248,7 +248,9 @@ Sign Ovenlight in to the first with `-authKey`, and open the second owner's invi
   Again. When the network lists the app's computer as offline, it shows that at once,
   keeps trying quietly while it's on screen, and opens as soon as the computer answers.
   Launcher tiles dim with a badge while their machine isn't answering, or is listed
-  offline, which is never probed.
+  offline, which is never probed. When the connector answers but the app itself isn't
+  running (a 502 with the code `unavailable`), the first page is tried a few more times,
+  then Ovenlight says the app isn't responding rather than showing the connector's text.
 - **The open app** has one piece of native chrome: a small capsule at the top with the
   way home and the app's menu, which tucks up under the status bar. Tapping its handle,
   scrolling up or pulling down at the top of the page brings it back. Tapping the status

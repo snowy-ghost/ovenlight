@@ -34,6 +34,17 @@ enum AppLoadGate: Equatable {
     /// Between quiet retries of an app whose computer is listed offline.
     static let quietRetryInterval: TimeInterval = 3
 
+    /// The connector answered for the app, but the app itself isn't running on its computer:
+    /// every released connector sends a plain-text 502 with the code `unavailable`. The
+    /// probe can't tell, since the connector answers it.
+    static func appIsDown(status: Int?, header: String?) -> Bool {
+        status == 502 && ConnectorError(header: header, body: Data()) == .unavailable
+    }
+
+    /// Seconds before each new try of a first page whose app is down; then Ovenlight says
+    /// so itself, rather than showing the connector's text.
+    static let appDownRetries: [Double] = [1, 2, 4]
+
     func next(_ event: Event) -> AppLoadGate {
         switch (self, event) {
         case (_, .retry):
@@ -71,6 +82,7 @@ enum ConnectionCopy {
     static func connecting(to app: String) -> String { "Connecting to \(app)…" }
     static func cantReach(_ app: String) -> String { "Can't Reach \(app)" }
     static let cantReachDetail = "Its computer may be asleep or offline. Try again in a moment."
+    static func notResponding(_ app: String) -> String { "\(app) isn't responding on its computer right now. Try again in a moment." }
     static func signIn(toOpen app: String) -> String { "Sign In to Open \(app)" }
 
     // Apps someone shared, and joining them. Guests see all of these.
