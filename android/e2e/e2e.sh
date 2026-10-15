@@ -297,7 +297,22 @@ if [[ $SCENARIO == screens ]]; then
   await_text 10 "Require screen lock" || fail "no Settings: $(screen_text | tr '\n' '|')"
   sleep 1; shot settings-dark
   night no; shot settings-light
-  note "screenshots of the launcher and Settings in light and dark"
+  a shell input keyevent KEYCODE_BACK; sleep 2
+  # Landscape, then the largest font, each on the launcher and Settings.
+  a shell settings put system accelerometer_rotation 0; a shell settings put system user_rotation 1; sleep 3
+  shot launcher-landscape
+  tap_text More && sleep 1 && tap_text Settings && sleep 2 && shot settings-landscape
+  a shell input keyevent KEYCODE_BACK; sleep 2
+  a shell settings put system user_rotation 0; sleep 3
+  a shell settings put system font_scale 2.0; sleep 3
+  shot launcher-largest-font
+  tap_text More && sleep 1 && tap_text Settings && sleep 2 && shot settings-largest-font
+  a shell input keyevent KEYCODE_BACK; sleep 2
+  a shell settings put system font_scale 1.0; sleep 3
+  await_text 10 Recipes || fail "the launcher didn't come back after the font change"
+  tap_text More && sleep 1 && tap_text Settings
+  await_text 10 "Require screen lock" || fail "no Settings after the font change"
+  note "screenshots of the launcher and Settings in light, dark, landscape and at the largest font"
 
   say "lock: Immediately, from Settings"
   tap_text "Require screen lock" && sleep 1 && tap_text Immediately
