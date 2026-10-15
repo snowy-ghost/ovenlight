@@ -56,6 +56,14 @@ class RouterTests {
     }
 
     @Test
+    fun testLinkedNamesMatchAsIOSMatchesThem() {
+        assertTrue("composed either way", sameName("Caf\u00E9", "Cafe\u0301"))
+        assertTrue(sameName("Stra\u00DFe", "STRASSE"))
+        assertTrue(sameName("Coach", "coach"))
+        assertFalse("a dotted capital I is its own letter", sameName("\u0130stanbul", "istanbul"))
+    }
+
+    @Test
     fun testALinkedAppWaitsForTheUnlock() {
         var locked = true
         val router = Router(isLocked = { locked })

@@ -89,6 +89,18 @@ class GuestActivityTests {
         assertEquals("2 months ago", relative(-45 * 86_400))
         assertEquals("in 2 hours", relative(90 * 60))
         assertEquals("now", relative(0))
+        assertEquals("a half second rounds away from zero", "in 1 second", RelativePhrase.relative(now.plusMillis(500), now, zone, RelativePhrase.withoutWeeks))
+
+        // Months clamp to the month's end, as Apple's calendar adds them.
+        val endOfJanuary = java.time.ZonedDateTime.of(2026, 1, 31, 12, 0, 0, 0, zone).toInstant()
+        fun fromJanuary31(days: Long) = RelativePhrase.relative(endOfJanuary.plus(java.time.Duration.ofDays(days)), endOfJanuary, zone, RelativePhrase.withoutWeeks)
+        assertEquals("Feb 28 is a month after Jan 31", "next month", fromJanuary31(28))
+        assertEquals("in 2 months", fromJanuary31(29))
+    }
+
+    @Test
+    fun testNamesSortAsIOSSortsThem() {
+        assertEquals(listOf("Guest 2", "Guest 10", "sam", "Sam"), listOf("Sam", "Guest 10", "sam", "Guest 2").sortedWith(standardOrder()))
     }
 
     @Test

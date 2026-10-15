@@ -14,6 +14,7 @@ import java.time.temporal.TemporalAdjusters
 import java.time.temporal.WeekFields
 import java.util.Locale
 import kotlin.math.abs
+import kotlin.math.sign
 import kotlinx.serialization.DeserializationStrategy
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.Serializable
@@ -27,7 +28,7 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.doubleOrNull
-import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.longOrNull
 
 // The owner's admin API on the connector: HTTPS on port 8443 of every app node, JSON, owner
 // only (WhoIs), closed to guests by policy. Changes need `X-Ovenlight-Request: 1`. Types mirror
@@ -43,7 +44,7 @@ data class AdminApp(
     /** The app answers on its local port. */
     val online: Boolean = false,
     val shareable: Boolean = false,
-    val guests: Int = 0,
+    val guests: Long = 0,
 ) {
     val id: String get() = slug
     val host: String? get() = url?.let(::uri)?.bareHost?.let(Discovery::normalizedHost)
@@ -186,9 +187,7 @@ data class GuestPerson(val id: String, val name: String, val guests: List<AdminG
          */
         fun byActivity(list: AdminGuestList): List<GuestPerson> {
             fun last(person: GuestPerson): Instant = GuestActivity(person.guests, list.openedSince).lastOpened ?: Instant.MIN
-            // Names as iOS's localizedStandardCompare orders them: in the phone's language, ignoring case.
-            val names = Collator.getInstance().apply { strength = Collator.SECONDARY }
-            return all(list.guests).sortedWith(compareByDescending(::last).thenBy(names) { it.name })
+            return all(list.guests).sortedWith(compareByDescending(::last).thenBy(standardOrder()) { it.name })
         }
     }
 }
@@ -271,8 +270,9 @@ internal object RelativePhrase {
      */
     fun relative(date: Instant, now: Instant, zone: ZoneId, units: List<ChronoUnit>): String {
         val to = date.atZone(zone)
-        // To the whole second, as iOS measures.
-        val from = date.plusMillis(Math.round((now.toEpochMilli() - date.toEpochMilli()) / 1000.0) * 1000).atZone(zone)
+        // To the whole second, as iOS measures, halves away from zero.
+        val millis = now.toEpochMilli() - date.toEpochMilli()
+        val from = date.plusMillis(millis.sign * Math.round(abs(millis) / 1000.0) * 1000).atZone(zone)
         val (unit, count) = largest(from, to, units) ?: return named(0, ChronoUnit.SECONDS)
         if (unit == ChronoUnit.HOURS || unit == ChronoUnit.MINUTES || unit == ChronoUnit.SECONDS) {
             val rest = from.plus(count, unit).until(to, if (unit == ChronoUnit.HOURS) ChronoUnit.MINUTES else ChronoUnit.SECONDS)
@@ -288,7 +288,17 @@ internal object RelativePhrase {
 
     /** The largest of [units] with a whole one between [from] and [to], and how many. */
     private fun largest(from: ZonedDateTime, to: ZonedDateTime, units: List<ChronoUnit>): Pair<ChronoUnit, Long>? =
-        units.firstNotNullOfOrNull { unit -> from.until(to, unit).takeIf { it != 0L }?.let { unit to it } }
+        units.firstNotNullOfOrNull { unit -> count(from, to, unit).takeIf { it != 0L }?.let { unit to it } }
+
+    /**
+     * Whole [unit]s from [from] to [to]. Apple's calendar adds months and years clamped to the
+     * month's end, so Feb 28 is a whole month after Jan 31, where java.time counts none.
+     */
+    private fun count(from: ZonedDateTime, to: ZonedDateTime, unit: ChronoUnit): Long {
+        val whole = from.until(to, unit)
+        val clamped = (unit == ChronoUnit.MONTHS || unit == ChronoUnit.YEARS) && from.isBefore(to) && !from.plus(whole + 1, unit).isAfter(to)
+        return if (clamped) whole + 1 else whole
+    }
 
     /** The start of the day, week (on the phone's first weekday), month or year [time] falls in. */
     private fun startOf(time: ZonedDateTime, unit: ChronoUnit): ZonedDateTime {
@@ -333,7 +343,7 @@ internal object RelativePhrase {
  * The tailnet's tagged devices, which Tailscale's plans count apart from people's own: the
  * connector's shareable apps and guest devices, and every tagged device.
  */
-data class AdminTaggedDevices(val apps: Int, val guests: Int, val tailnet: Int) {
+data class AdminTaggedDevices(val apps: Long, val guests: Long, val tailnet: Long) {
     companion object {
         val decoder = ObjectDecoder("AdminTaggedDevices") { fields ->
             AdminTaggedDevices(apps = fields.requiredInt("apps"), guests = fields.requiredInt("guests"), tailnet = fields.requiredInt("tailnet"))
@@ -631,16 +641,19 @@ class ObjectDecoder<T>(name: String, private val decode: (JsonObject) -> T) : De
     }
 }
 
-/** An integer field, or null when it's missing, null or another type. A whole number written as 1.0 counts, as iOS reads it. */
-private fun JsonObject.int(key: String): Int? {
+/**
+ * An integer field, 64 bits as iOS's Int, or null when it's missing, null or another type. A
+ * whole number written as 1.0 counts, as iOS reads it.
+ */
+private fun JsonObject.int(key: String): Long? {
     val value = (this[key] as? JsonPrimitive)?.takeIf { !it.isString } ?: return null
-    value.intOrNull?.let { return it }
+    value.longOrNull?.let { return it }
     val number = value.doubleOrNull ?: return null
-    return if (number % 1.0 == 0.0 && number >= Int.MIN_VALUE && number <= Int.MAX_VALUE) number.toInt() else null
+    return if (number % 1.0 == 0.0 && number >= Long.MIN_VALUE.toDouble() && number < Long.MAX_VALUE.toDouble()) number.toLong() else null
 }
 
 /** An integer field that must be there and be one. */
-private fun JsonObject.requiredInt(key: String): Int = int(key) ?: throw SerializationException(key)
+private fun JsonObject.requiredInt(key: String): Long = int(key) ?: throw SerializationException(key)
 
 /** A date field as [AdminAPI.parseDate] reads it, or null when it's missing, null or not a date. */
 private fun JsonObject.date(key: String): Instant? = string(key)?.let(AdminAPI::parseDate)
@@ -664,3 +677,28 @@ private fun <T> JsonObject.each(key: String, decoder: DeserializationStrategy<T>
         emptyList()
     }
 }
+
+/**
+ * Names as iOS's localizedStandardCompare orders them: in the phone's language ignoring case,
+ * numbers by their value ("Guest 2" before "Guest 10"), then lowercase before uppercase.
+ */
+internal fun standardOrder(): Comparator<String> {
+    val loose = Collator.getInstance().apply { strength = Collator.SECONDARY }
+    val strict = Collator.getInstance().apply { strength = Collator.TERTIARY }
+    val runs = Regex("[0-9]+|[^0-9]+")
+    return Comparator { a, b -> compareNames(a, b, loose, strict, runs) }
+}
+
+private fun compareNames(a: String, b: String, loose: Collator, strict: Collator, runs: Regex): Int {
+    val x = runs.findAll(a).map { it.value }.toList()
+    val y = runs.findAll(b).map { it.value }.toList()
+    for (i in 0 until minOf(x.size, y.size)) {
+        val p = x[i]
+        val q = y[i]
+        val order = if (p[0].isAsciiDigit() && q[0].isAsciiDigit()) p.toBigInteger().compareTo(q.toBigInteger()) else loose.compare(p, q)
+        if (order != 0) return order
+    }
+    return x.size.compareTo(y.size).takeIf { it != 0 } ?: strict.compare(a, b)
+}
+
+private fun Char.isAsciiDigit() = this in '0'..'9'

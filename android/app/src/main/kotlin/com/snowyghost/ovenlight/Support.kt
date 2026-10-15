@@ -71,12 +71,15 @@ object Acknowledgements {
 
     /** All of them in one text, or null when any is missing; [open] opens an asset by path. */
     fun notices(open: (String) -> InputStream): String? = try {
-        files.joinToString("\n\n") { name -> open("licenses/$name").use { it.readBytes().decodeToString() } }
+        files.joinToString("\n\n") { name -> open("licenses/$name").use { strictUTF8(it.readBytes()) } }
     } catch (_: IOException) {
         null
     }
 
     /** One entry per paragraph, so a lazy list lays out only what shows: the text runs to thousands of lines. */
     fun paragraphs(notices: String?): List<String> =
-        (notices ?: "The licenses are missing from this build.").split("\n\n").map { it.trim('\n') }.filter { it.isNotEmpty() }
+        (notices ?: "The licenses are missing from this build.").split("\n\n").map { it.trim(*newlines) }.filter { it.isNotEmpty() }
+
+    /** What iOS's `.newlines` trims. */
+    private val newlines = charArrayOf('\n', '\r', '\u000B', '\u000C', '\u0085', '\u2028', '\u2029')
 }

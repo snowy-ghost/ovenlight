@@ -13,7 +13,7 @@ object SharingList {
         if (used <= 0) return null
         val share = when {
             used < all -> "$used of the $all tagged devices"
-            used == 1 -> "the only tagged device"
+            used == 1L -> "the only tagged device"
             else -> "all $all tagged devices"
         }
         return "Your shareable apps and your guests' devices use $share in your Tailscale network. Tailscale's plans include a set number and charge for more."

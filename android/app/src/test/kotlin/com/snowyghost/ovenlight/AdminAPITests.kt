@@ -107,7 +107,8 @@ class AdminAPITests {
         assertEquals(listOf(1), each.skipped)
         val decoded = each.elements
         assertEquals(listOf("coach", "notes"), decoded.map { it.slug })
-        assertEquals("what isn't essential falls back", listOf(0, 0), decoded.map { it.guests })
+        assertEquals("what isn't essential falls back", listOf(0L, 0L), decoded.map { it.guests })
+        assertEquals("counts are 64 bits, as iOS's Int", 3_000_000_000L, AdminAPI.decodeEach(AdminApp.decoder, """[{"slug":"a","name":"A","guests":3000000000}]""".toByteArray()).elements.single().guests)
 
         val guests = """{"guests":[{"deviceId":"7","person":"p1","app":"echo","claimedAt":"2026-09-28T17:05:00Z"},{"deviceId":"8"}],"invites":null}"""
         val list = AdminAPI.decode(AdminGuestList.decoder, guests.toByteArray())

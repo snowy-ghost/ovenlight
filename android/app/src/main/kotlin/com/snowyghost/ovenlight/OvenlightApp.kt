@@ -26,6 +26,8 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ProcessLifecycleOwner
 import java.io.File
 import java.net.URI
+import java.text.Normalizer
+import java.util.Locale
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
@@ -241,12 +243,21 @@ class Router(private val isLocked: () -> Boolean = { false }) {
     fun appsChanged(apps: List<WebApp>): Boolean {
         if (isLocked()) return false
         val name = pendingName ?: return false
-        val app = apps.firstOrNull { it.name.equals(name, ignoreCase = true) } ?: return false
+        val app = apps.firstOrNull { sameName(it.name, name) } ?: return false
         pendingName = null
         val another = openApp.value?.id != app.id
         open(app)
         return another
     }
+}
+
+/**
+ * Names compared as iOS's localizedCaseInsensitiveCompare does: composed the same way and case
+ * folded, so "Café" written either way and "Straße" against "STRASSE" match.
+ */
+internal fun sameName(a: String, b: String): Boolean {
+    fun folded(s: String) = Normalizer.normalize(Normalizer.normalize(s, Normalizer.Form.NFC).uppercase(Locale.ROOT).lowercase(Locale.ROOT), Normalizer.Form.NFC)
+    return folded(a) == folded(b)
 }
 
 /** The sheets the root presents. */
