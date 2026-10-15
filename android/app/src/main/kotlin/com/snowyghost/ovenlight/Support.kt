@@ -1,8 +1,20 @@
 package com.snowyghost.ovenlight
 
+import android.content.ClipData
+import android.content.Intent
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.res.stringResource
+import androidx.core.net.toUri
 import java.io.IOException
 import java.io.InputStream
 import java.net.URI
+import kotlinx.coroutines.launch
 
 /** Where people reach the team behind Ovenlight. */
 object AppLinks {
@@ -63,6 +75,37 @@ data class MailDraft(val to: String = AppLinks.supportEmail, val subject: String
             }
         }
     }
+}
+
+/**
+ * The draft as an email intent: `ACTION_SENDTO` with the mailto: link, and the same fields as
+ * extras, since some mail apps read only one or the other.
+ */
+fun MailDraft.intent(): Intent = Intent(Intent.ACTION_SENDTO, (mailtoURL?.toString() ?: "mailto:$to").toUri())
+    .putExtra(Intent.EXTRA_EMAIL, arrayOf(to))
+    .putExtra(Intent.EXTRA_SUBJECT, subject)
+    .putExtra(Intent.EXTRA_TEXT, body)
+
+/** For a phone with no email app: where to write instead, with the address to copy. */
+@Composable
+fun NoEmailAppDialog(onDismiss: () -> Unit) {
+    val clipboard = LocalClipboard.current
+    val scope = rememberCoroutineScope()
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.mail_no_app_title)) },
+        text = { Text(stringResource(R.string.mail_no_app_body, AppLinks.supportEmail)) },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.mail_ok)) } },
+        dismissButton = {
+            TextButton(onClick = {
+                // Closes once copied: closing first would cancel the copy with the dialog's scope.
+                scope.launch {
+                    clipboard.setClipEntry(ClipEntry(ClipData.newPlainText(AppLinks.supportEmail, AppLinks.supportEmail)))
+                    onDismiss()
+                }
+            }) { Text(stringResource(R.string.mail_copy_address)) }
+        },
+    )
 }
 
 /** Every license the app ships, which the build writes into assets/licenses. */

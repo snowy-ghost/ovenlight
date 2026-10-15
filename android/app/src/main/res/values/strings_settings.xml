@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Settings and Acknowledgements. Copy a guest can see names no network. -->
+<resources>
+    <string name="settings_title">Settings</string>
+    <string name="settings_back">Back</string>
+    <string name="settings_cancel">Cancel</string>
+
+    <string name="settings_require_screen_lock">Require screen lock</string>
+    <string name="settings_lock_immediately">Immediately</string>
+    <string name="settings_lock_after_1_minute">After 1 minute</string>
+    <string name="settings_lock_after_5_minutes">After 5 minutes</string>
+    <string name="settings_lock_after_15_minutes">After 15 minutes</string>
+    <string name="settings_lock_footer">How long Ovenlight can stay in the background before it locks.</string>
+    <string name="settings_no_screen_lock">Ovenlight can\'t lock until this phone has a screen lock.</string>
+    <string name="settings_set_screen_lock">Set screen lock</string>
+
+    <string name="settings_shared_with_you">Shared with you</string>
+    <string name="settings_joining">Joining…</string>
+    <string name="settings_leave">Leave</string>
+    <string name="settings_shared_footer">Leaving removes their apps and everything they stored on this phone.</string>
+
+    <string name="settings_use_my_own_computers">Use my own computers</string>
+    <string name="settings_use_my_own_computers_footer">Open apps that run on your own computers. You\'ll sign in once to connect them.</string>
+
+    <string name="settings_your_computers">Your computers</string>
+    <string name="settings_connected_as">Connected as %1$s</string>
+    <string name="settings_sign_in">Sign in to your computers</string>
+    <string name="settings_approve">Approve this phone</string>
+    <string name="settings_sign_out">Sign out</string>
+    <string name="settings_sign_out_title">Sign out of your computers?</string>
+    <string name="settings_sign_out_detail">Your apps stay in Ovenlight. Sign in again to open them.</string>
+    <string name="settings_stop_using_my_own_computers">Stop using my own computers</string>
+
+    <string name="settings_advanced">Advanced</string>
+    <string name="settings_status">Status</string>
+    <string name="settings_tailscale_account">Tailscale account</string>
+    <string name="settings_tailnet">Tailnet</string>
+    <string name="settings_this_phone">This phone</string>
+
+    <string name="settings_support">Support</string>
+    <string name="settings_contact_us">Contact us</string>
+    <string name="settings_privacy_policy">Privacy policy</string>
+    <string name="settings_acknowledgements">Acknowledgements</string>
+    <string name="settings_version">Version</string>
+
+    <!-- Contact us and, later, Report a problem, on a phone with no email app. -->
+    <string name="mail_no_app_title">No email app</string>
+    <string name="mail_no_app_body">Write to %1$s.</string>
+    <string name="mail_copy_address">Copy address</string>
+    <string name="mail_ok">OK</string>
+</resources>
