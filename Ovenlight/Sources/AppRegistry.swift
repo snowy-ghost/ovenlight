@@ -247,7 +247,7 @@ final class AppRegistry: ObservableObject {
         }
         guard let index = apps.firstIndex(where: { $0.id == id }) else { return }
         // Keep a name the user typed; only replace the placeholder host name.
-        if let name = meta.name, apps[index].hasDefaultName, !apps[index].hasConnector {
+        if let name = InviteLink.label(meta.name), apps[index].hasDefaultName, !apps[index].hasConnector {
             apps[index].name = name
         }
         if let theme = meta.themeColorHex { apps[index].themeColorHex = theme }

@@ -11,10 +11,12 @@ struct OvenlightManifest: Decodable, Equatable {
 
     static let path = "/.well-known/ovenlight.json"
 
+    /// The name is cleaned like an invite's labels (see `InviteLink.label`): it names the
+    /// app on its tile, and a shared app's comes from someone else's computer.
     static func parse(_ data: Data) -> OvenlightManifest? {
-        guard let manifest = try? JSONDecoder().decode(OvenlightManifest.self, from: data),
-              manifest.version >= 1,
-              !manifest.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        guard var manifest = try? JSONDecoder().decode(OvenlightManifest.self, from: data),
+              manifest.version >= 1, let name = InviteLink.label(manifest.name) else { return nil }
+        manifest.name = name
         return manifest
     }
 }

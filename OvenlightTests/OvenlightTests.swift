@@ -588,6 +588,11 @@ final class DiscoveryTests: XCTestCase {
         XCTAssertEqual(app.iconURL?.absoluteString, "https://interview-coach.tailabc123.ts.net/icon-512.png")
 
         XCTAssertNil(OvenlightManifest.parse(Data(#"{"name":"","version":1}"#.utf8)), "needs a name")
+        XCTAssertNil(OvenlightManifest.parse(Data(#"{"name":" \u0007\n","version":1}"#.utf8)), "and not just spaces and control characters")
+        let spoof = try XCTUnwrap(OvenlightManifest.parse(Data(#"{"name":" Bank‮\u0000 Login \n","version":1}"#.utf8)))
+        XCTAssertEqual(spoof.name, "Bank Login", "cleaned like an invite's names")
+        let long = try XCTUnwrap(OvenlightManifest.parse(Data(#"{"name":"\#(String(repeating: "x", count: 100))","version":1}"#.utf8)))
+        XCTAssertEqual(long.name.count, InviteLink.maxLabel)
         XCTAssertNil(OvenlightManifest.parse(Data(#"{"name":"X","version":0}"#.utf8)), "needs a version")
         XCTAssertNil(OvenlightManifest.parse(Data("<html>".utf8)))
         let offHost = DiscoveredApp(host: "a.tailabc123.ts.net",
