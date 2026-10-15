@@ -118,6 +118,17 @@ final class InviteLinkTests: XCTestCase {
         XCTAssertEqual(link.name, "echo-board", "the slug stands in for a missing name")
     }
 
+    func testLabelsKeepTheJoinersEmojiAndScriptsNeed() {
+        let family = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467} Family"
+        XCTAssertEqual(InviteLink.label(family), family)
+        XCTAssertEqual(InviteLink.label("می\u{200C}خواهم"), "می\u{200C}خواهم", "Persian keeps its zero-width non-joiner")
+        let england = "\u{1F3F4}\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F} Club"
+        XCTAssertEqual(InviteLink.label(england), england)
+        XCTAssertEqual(InviteLink.label("Bank\u{202E}nigoL\u{202C} \u{2066}Pay\u{2069}\u{200F}\u{200B}\u{FEFF}"), "BanknigoL Pay",
+                       "bidi controls and invisible characters go")
+        XCTAssertEqual(InviteLink.label(String(repeating: family, count: 30))?.count, InviteLink.maxLabel, "counted as people see them")
+    }
+
     func testControlServerAndNetwork() throws {
         let link = try parse(connectorLink)
         XCTAssertTrue(link.usesTailscaleControl)

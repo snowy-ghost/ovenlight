@@ -176,9 +176,19 @@ struct InviteLink: Codable, Equatable, Hashable {
     /// A display label: trimmed, without control characters, at most 64 characters.
     static func label(_ text: String?) -> String? {
         guard let text else { return nil }
-        let cleaned = String(text.unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) })
+        let cleaned = String(text.unicodeScalars.filter { !isHidden($0) })
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return cleaned.isEmpty ? nil : String(cleaned.prefix(maxLabel))
+    }
+
+    /// Control and invisible format characters, bidi overrides among them, which can make a
+    /// label read as something else. Not the joiners that emoji sequences and scripts such as
+    /// Persian and Hindi need (U+200C, U+200D), nor the tags in flags like England's.
+    private static func isHidden(_ scalar: Unicode.Scalar) -> Bool {
+        switch scalar.value {
+        case 0x200C, 0x200D, 0xE0020...0xE007F: return false
+        default: return CharacterSet.controlCharacters.contains(scalar)
+        }
     }
 
     /// A multi-label DNS name: letters, digits and hyphens, no IP address, no port.
