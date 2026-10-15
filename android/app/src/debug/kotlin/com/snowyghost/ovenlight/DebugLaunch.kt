@@ -289,6 +289,7 @@ object DebugLaunch {
         Box(Modifier.fillMaxSize()) {
             val current = web
             if (current == null) {
+                LampLight(level = 0.6f)
                 Text(line, Modifier.safeDrawingPadding().padding(16.dp))
             } else {
                 key(current) { AndroidView(factory = { current }, modifier = Modifier.fillMaxSize()) }

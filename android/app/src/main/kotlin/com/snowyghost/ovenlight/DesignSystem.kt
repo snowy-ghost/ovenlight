@@ -1,6 +1,44 @@
 package com.snowyghost.ovenlight
 
 import android.app.UiModeManager
+import android.graphics.Rect
+import android.os.SystemClock
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.BlurEffect
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.TileMode
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.unit.Dp
+import kotlin.math.min
 import android.content.Context
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -196,4 +234,150 @@ fun OvenlightTheme(content: @Composable () -> Unit) {
     androidx.compose.runtime.CompositionLocalProvider(LocalOvenColors provides ovenColors(dark, highContrast)) {
         MaterialTheme(colorScheme = ovenColorScheme(dark, highContrast), typography = ovenTypography, shapes = ovenShapes, content = content)
     }
+}
+
+/** The screen edge the light pours from, and where on it, in the window's physical pixels. */
+data class LightSource(val edge: Edge, val x: Float, val y: Float) {
+    enum class Edge { TOP, LEFT, RIGHT }
+
+    /** A camera cutout's bounds, in the window's physical pixels. */
+    data class Cutout(val left: Float, val top: Float, val right: Float, val bottom: Float) {
+        val centerX get() = (left + right) / 2
+        val centerY get() = (top + bottom) / 2
+    }
+
+    companion object {
+        /**
+         * The camera is the lamp: the light leaves a cutout centered on the top edge, or on a
+         * side edge of a phone on its side. A corner hole would light one side of the launcher
+         * and leave the other dim, so then, and with no cutout, it leaves the top center, half
+         * the status bar down. The rects are physical, so right to left can't move the light.
+         */
+        fun of(width: Float, height: Float, top: Cutout?, left: Cutout?, right: Cutout?, statusBarHeight: Float): LightSource {
+            fun middleThird(v: Float, length: Float) = v > length / 3 && v < length * 2 / 3
+            top?.takeIf { middleThird(it.centerX, width) }?.let { return LightSource(Edge.TOP, it.centerX, it.centerY) }
+            left?.takeIf { middleThird(it.centerY, height) }?.let { return LightSource(Edge.LEFT, it.centerX, it.centerY) }
+            right?.takeIf { middleThird(it.centerY, height) }?.let { return LightSource(Edge.RIGHT, it.centerX, it.centerY) }
+            return LightSource(Edge.TOP, width / 2, statusBarHeight / 2)
+        }
+    }
+}
+
+/** When the lamp came on, once per process, so the lock and the launcher share one warm-up. */
+private object LampWarmUp {
+    const val DURATION_MS = 900L
+    var litAt: Long? = null
+
+    fun progress(now: Long): Float = litAt?.let { ((now - it).toFloat() / DURATION_MS).coerceIn(0f, 1f) } ?: 0f
+}
+
+/**
+ * The oven light: a cone of warm light falls from the camera across the screen, with a soft
+ * halo where it leaves. The lock screen, the privacy states and the launcher are the same room
+ * lit to different levels: 0.35 at rest on the lock, 1 while unlocking, 0.6 on the launcher.
+ * It ignores insets, sits behind everything and takes no touches. Nothing is drawn for the
+ * camera itself.
+ */
+@Composable
+fun LampLight(level: Float, modifier: Modifier = Modifier) {
+    val view = LocalView.current
+    val density = LocalDensity.current
+    // Read so a rotation or a fold, which change the cutout, draw the light again.
+    WindowInsets.displayCutout.getTop(density)
+    val statusBar = WindowInsets.statusBars.getTop(density).toFloat()
+    // Android says which edge each cutout is on; an empty rect means none there.
+    val cutout = view.rootWindowInsets?.displayCutout
+    fun Rect?.asCutout() = this?.takeUnless { it.isEmpty }?.let { LightSource.Cutout(it.left.toFloat(), it.top.toFloat(), it.right.toFloat(), it.bottom.toFloat()) }
+    val top = cutout?.boundingRectTop.asCutout()
+    val left = cutout?.boundingRectLeft.asCutout()
+    val right = cutout?.boundingRectRight.asCutout()
+    val dark = isSystemInDarkTheme()
+    val oven = LocalOvenColors.current
+    val lit by animateFloatAsState(level / 0.6f, spring(dampingRatio = 1f, stiffness = Spring.StiffnessMediumLow), label = "lamp")
+    val warm = remember { Animatable(LampWarmUp.progress(SystemClock.uptimeMillis())) }
+    LaunchedEffect(Unit) {
+        val now = SystemClock.uptimeMillis()
+        if (LampWarmUp.litAt == null) LampWarmUp.litAt = now
+        val remaining = ((1 - LampWarmUp.progress(now)) * LampWarmUp.DURATION_MS).toInt()
+        if (remaining > 0) warm.animateTo(1f, tween(remaining, easing = LinearEasing)) else warm.snapTo(1f)
+    }
+    BoxWithConstraints(modifier.fillMaxSize().graphicsLayer { alpha = warm.value }.clearAndSetSemantics {}) {
+        val source = LightSource.of(constraints.maxWidth.toFloat(), constraints.maxHeight.toFloat(), top, left, right, statusBar)
+        val sideways = source.edge != LightSource.Edge.TOP
+        val blur = with(density) { (if (sideways) 58.dp else 26.dp).toPx() }
+        // The cone's soft edge is a blur where Android has one (12 and later), else three
+        // widening cones.
+        Canvas(Modifier.fillMaxSize().graphicsLayer {
+            if (Build.VERSION.SDK_INT >= 31) renderEffect = BlurEffect(blur, blur, TileMode.Decal)
+        }) {
+            turned(source) { originX, originY, across, along ->
+                val start = (if (sideways) 132.dp else 96.dp).toPx()
+                val spread = across * (if (sideways) 0.30f else 0.22f)
+                val beam = Brush.linearGradient(
+                    0f to oven.lampCore.copy(alpha = min((if (dark) 0.62f else 0.8f) * lit, 1f)),
+                    0.48f to oven.lampGlow.copy(alpha = ((if (dark) 0.30f else 0.34f) * lit).coerceIn(0f, 1f)),
+                    1f to oven.lampGlow.copy(alpha = 0f),
+                    start = Offset(originX, originY), end = Offset(originX, along),
+                )
+                val cones = if (Build.VERSION.SDK_INT >= 31) listOf(0f to 1f) else listOf(0f to 0.5f, 12.dp.toPx() to 0.3f, 24.dp.toPx() to 0.2f)
+                for ((widen, share) in cones) {
+                    drawPath(
+                        Path().apply {
+                            moveTo(originX - start / 2 - widen, originY)
+                            lineTo(originX + start / 2 + widen, originY)
+                            lineTo(across + spread + widen, along)
+                            lineTo(-spread - widen, along)
+                            close()
+                        },
+                        beam, alpha = share,
+                    )
+                }
+            }
+        }
+        // A soft halo where it leaves, not blurred.
+        Canvas(Modifier.fillMaxSize()) {
+            turned(source) { originX, originY, _, _ ->
+                val halo = 150.dp.toPx()
+                drawCircle(
+                    Brush.radialGradient(
+                        0f to oven.lampCore.copy(alpha = ((if (dark) 0.55f else 0.42f) * lit).coerceIn(0f, 1f)),
+                        0.4f to oven.lampGlow.copy(alpha = (0.18f * lit).coerceIn(0f, 1f)),
+                        1f to oven.lampGlow.copy(alpha = 0f),
+                        center = Offset(originX, originY), radius = halo,
+                    ),
+                    radius = halo, center = Offset(originX, originY),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Draws with the canvas turned so the light runs down its own y axis, passing where it
+ * leaves and the screen's size across and along the light.
+ */
+private inline fun DrawScope.turned(source: LightSource, draw: DrawScope.(Float, Float, Float, Float) -> Unit) {
+    val sideways = source.edge != LightSource.Edge.TOP
+    val across = if (sideways) size.height else size.width
+    val along = if (sideways) size.width else size.height
+    val (originX, originY) = when (source.edge) {
+        LightSource.Edge.TOP -> source.x to source.y
+        LightSource.Edge.LEFT -> (size.height - source.y) to source.x
+        LightSource.Edge.RIGHT -> source.y to (size.width - source.x)
+    }
+    withTransform({
+        when (source.edge) {
+            LightSource.Edge.TOP -> Unit
+            LightSource.Edge.LEFT -> { translate(0f, size.height); rotate(-90f, Offset.Zero) }
+            LightSource.Edge.RIGHT -> { translate(size.width, 0f); rotate(90f, Offset.Zero) }
+        }
+    }) { draw(originX, originY, across, along) }
+}
+
+/** The oven rack: a thin ember line the light falls on, under the wordmark and the welcome. */
+@Composable
+fun OvenRack(width: Dp, modifier: Modifier = Modifier) {
+    val oven = LocalOvenColors.current
+    val alpha = if (isSystemInDarkTheme()) 0.6f else 0.45f
+    Box(modifier.size(width, 3.dp).clip(CircleShape).background(oven.ember.copy(alpha = alpha)).clearAndSetSemantics {})
 }
