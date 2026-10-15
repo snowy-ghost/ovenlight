@@ -252,7 +252,7 @@ object SavedJSON {
 
     /** The file's text, or null when there is no file. Any other failure throws. */
     fun read(file: File): String? = try {
-        Files.readAllBytes(file.toPath()).decodeToString()
+        strictUTF8(Files.readAllBytes(file.toPath()))
     } catch (_: NoSuchFileException) {
         null
     }

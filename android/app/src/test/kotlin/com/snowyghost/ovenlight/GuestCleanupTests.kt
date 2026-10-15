@@ -6,10 +6,37 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** The tests of this class that pin the guest node's probe rules; the cleanup and claim ones come with the guests. */
+/** The tests of this class that pin the guest node's probe rules; the cleanup and claim ones, and the claim half of
+ * testWhoamiAndClaimAnswers, come with the guests. */
 class GuestCleanupTests {
     private val echo = "echo-board.taildef456.ts.net"
     private val notes = "notes.taildef456.ts.net"
+
+    /** The whoami half: Claim's answers come with the guests. */
+    @Test
+    fun testWhoamiAndClaimAnswers() {
+        fun refusal(code: String, words: String = "refused") = """{"error":"$words","code":"$code"}""".toByteArray()
+        assertEquals(Reach.Reached, GuestProbe.classify(403, header = "unknown_caller", body = "Unknown caller.".toByteArray()))
+        assertEquals(Reach.Reached, GuestProbe.classify(200, body = """{"role":"guest"}""".toByteArray()))
+        assertEquals("any answer proves the path", Reach.Reached, GuestProbe.classify(502, body = ByteArray(0)))
+
+        assertEquals(Reach.NotInvited, GuestProbe.classify(403, header = "not_invited", body = "Refused.".toByteArray()))
+        assertEquals(Reach.Reached, GuestProbe.classify(403, header = "owner_only", body = "You're not invited.".toByteArray()))
+
+        // Without a code this version knows, nothing ends access or deletes anything, whatever
+        // the words say: the answer is an unknown failure, tried again.
+        for (words in listOf(
+            refusal("from_the_future", "not invited"), """{"error":"not invited"}""".toByteArray(),
+            "You're not invited to this app.\n".toByteArray(),
+            """{"error":"not invited: this device already belongs to another guest"}""".toByteArray(),
+            """{"error":"this invite was already used by another device"}""".toByteArray(),
+        )) {
+            for (status in listOf(400, 403, 404)) {
+                assertEquals("$status ${words.decodeToString()}", Reach.Reached, GuestProbe.classify(status, body = words))
+            }
+        }
+        assertEquals(ConnectorError.OwnerOnly, ConnectorError(null, refusal("owner_only")))
+    }
 
     /** A guest node's status, as the node reports it, with these peers online or not. */
     private fun status(backend: String = "Running", peers: Map<String, Boolean>): TailnetStatus {

@@ -72,6 +72,13 @@ class NodeMachineTests {
         assertEquals("""failed("boom")""", NodeState.Failed("boom").logDescription)
     }
 
+    /** Android only: the rest of what iOS escapes in a failure's text. */
+    @Test
+    fun testTheLogQuotesAFailureAsIOSDoes() {
+        assertEquals("""failed("Ovenlight couldn\'t connect.")""", NodeState.Failed("Ovenlight couldn't connect.").logDescription)
+        assertEquals("""failed("a\tb\r\n\"c\" \\ \0 \u{7}")""", NodeState.Failed("a\tb\r\n\"c\" \\ \u0000 \u0007").logDescription)
+    }
+
     @Test
     fun testStatusDecoding() {
         val json = """

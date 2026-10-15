@@ -190,7 +190,7 @@ object ManifestParser {
     /** Reads name, theme color and the best raster icon from a web manifest. */
     fun metadata(fromManifest: ByteArray, manifestURL: URI): Metadata {
         val json = try {
-            ovenlightJSON.parseToJsonElement(fromManifest.decodeToString()) as? JsonObject
+            ovenlightJSON.parseToJsonElement(strictUTF8(fromManifest)) as? JsonObject
         } catch (_: Exception) {
             null
         } ?: return Metadata()

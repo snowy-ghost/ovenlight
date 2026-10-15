@@ -260,7 +260,14 @@ internal fun uri(text: String): URI? = try {
 
 /** A link resolved against this one, as iOS's `URL(string:relativeTo:)` does: a base with no path counts as "/". */
 internal fun URI.resolving(reference: String): URI? = try {
-    (if (rawAuthority != null && rawPath.isNullOrEmpty()) resolve("/") else this).resolve(reference)
+    val base = if (rawAuthority != null && rawPath.isNullOrEmpty()) resolve("/") else this
+    when {
+        // iOS reads an empty reference as no link at all.
+        reference.isEmpty() -> null
+        // RFC 3986 keeps the base's path for a query alone, where java.net.URI drops its last segment.
+        reference.startsWith("?") -> URI(base.toString().substringBefore('#').substringBefore('?') + reference)
+        else -> base.resolve(reference)
+    }
 } catch (_: Exception) {
     null
 }
@@ -288,15 +295,19 @@ internal fun removingPercentEncoding(text: String): String? {
         }
     }
     return try {
-        Charsets.UTF_8.newDecoder()
-            .onMalformedInput(CodingErrorAction.REPORT)
-            .onUnmappableCharacter(CodingErrorAction.REPORT)
-            .decode(ByteBuffer.wrap(bytes.toByteArray()))
-            .toString()
+        strictUTF8(bytes.toByteArray())
     } catch (_: CharacterCodingException) {
         null
     }
 }
+
+/** The bytes as UTF-8 text, throwing on bytes that aren't UTF-8 rather than replacing them, as iOS's JSON decoder does. */
+internal fun strictUTF8(bytes: ByteArray): String =
+    Charsets.UTF_8.newDecoder()
+        .onMalformedInput(CodingErrorAction.REPORT)
+        .onUnmappableCharacter(CodingErrorAction.REPORT)
+        .decode(ByteBuffer.wrap(bytes))
+        .toString()
 
 /** Trimmed of Unicode white space and newlines, as iOS's `.whitespacesAndNewlines` trims. */
 internal fun String.trimmingWhitespaceAndNewlines(): String = trim {

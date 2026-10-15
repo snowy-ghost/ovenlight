@@ -30,7 +30,7 @@ enum class ConnectorError(val code: String) {
         }
 
         private fun errorBody(body: ByteArray): ErrorBody? = try {
-            ovenlightJSON.decodeFromString(ErrorBody.serializer(), body.decodeToString())
+            ovenlightJSON.decodeFromString(ErrorBody.serializer(), strictUTF8(body))
         } catch (_: Exception) {
             null
         }

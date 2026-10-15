@@ -47,6 +47,18 @@ class MembershipStoreLoadTests {
         assertTrue(fresh.readInFull)
     }
 
+    /** Android only: bytes that aren't UTF-8 are a file it can't read, as iOS's decoder finds, not text to save back altered. */
+    @Test
+    fun testAFileThatIsntUTF8IsNeverSavedOver() = inTemporaryDirectory { dir ->
+        val file = File(dir, "memberships.json")
+        val damaged = byteArrayOf('['.code.toByte(), '"'.code.toByte(), 0xC3.toByte(), '"'.code.toByte(), ']'.code.toByte())
+        file.writeBytes(damaged)
+        val store = MembershipStore(dir)
+        assertTrue(store.loadFailed)
+        store.upsert(Membership(invite))
+        assertArrayEquals(damaged, file.readBytes())
+    }
+
     @Test
     fun testAMembershipItCantReadIsKeptAndHoldsBackCleanup() = inTemporaryDirectory { dir ->
         val file = File(dir, "memberships.json")

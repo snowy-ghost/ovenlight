@@ -33,6 +33,16 @@ class ManifestParserTests {
         assertEquals("icon-512.png", meta.iconURL?.path?.substringAfterLast('/'))
     }
 
+    /** Android only: java.net.URI resolves these two unlike iOS, so they're pinned here. */
+    @Test
+    fun testEmptyAndQueryOnlyLinksResolveAsOnIOS() {
+        val page = URI("https://alex-mac.example.ts.net/app/page?v=1")
+        val html = """<link rel="manifest" href=""><link rel="manifest" href="?v=2"><link rel="apple-touch-icon" href="icon.png">"""
+        val links = ManifestParser.links(inHTML = html, baseURL = page)
+        assertEquals("an empty link is no link", "https://alex-mac.example.ts.net/app/page?v=2", links.manifest?.toString())
+        assertEquals("https://alex-mac.example.ts.net/app/icon.png", links.touchIcon?.toString())
+    }
+
     @Test
     fun testTitleFallback() {
         assertEquals("Coach", ManifestParser.title(inHTML = "<title>\n Coach </title>"))

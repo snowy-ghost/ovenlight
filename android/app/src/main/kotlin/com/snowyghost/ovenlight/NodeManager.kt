@@ -49,8 +49,27 @@ sealed class NodeState {
             Connecting -> "connecting"
             Ready -> "ready"
             is Retrying -> "retrying(attempt: $attempt)"
-            is Failed -> "failed(\"${message.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")}\")"
+            is Failed -> "failed(${swiftQuoted(message)})"
         }
+
+    /** The text as Swift's `String(describing:)` quotes it inside an enum's payload. */
+    private fun swiftQuoted(text: String): String = buildString {
+        append('"')
+        text.codePoints().forEach { c ->
+            when {
+                c == '\\'.code -> append("\\\\")
+                c == '"'.code -> append("\\\"")
+                c == '\''.code -> append("\\'")
+                c == '\n'.code -> append("\\n")
+                c == '\r'.code -> append("\\r")
+                c == '\t'.code -> append("\\t")
+                c == 0 -> append("\\0")
+                Character.getType(c) == Character.CONTROL.toInt() -> append("\\u{").append(Integer.toHexString(c)).append('}')
+                else -> appendCodePoint(c)
+            }
+        }
+        append('"')
+    }
 }
 
 /**
@@ -220,7 +239,7 @@ object GuestProbe {
     fun reportsOnline(status: TailnetStatus): Boolean = status.peers.any { it.online }
 
     suspend fun whoami(host: String, fetch: Fetch): Reach {
-        val response = uri("https://$host/__ovenlight/whoami")?.let { fetch(it) } ?: return Reach.Unreachable
+        val response = uri("https://$host/__ovenlight/whoami")?.let { fetchOrNull(fetch, it) } ?: return Reach.Unreachable
         return classify(response.status, response.header(ConnectorError.header), response.body)
     }
 

@@ -1,6 +1,7 @@
 package com.snowyghost.ovenlight
 
 import java.net.URI
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -25,7 +26,7 @@ data class OvenlightManifest(
          */
         fun parse(data: ByteArray): OvenlightManifest? {
             val manifest = try {
-                ovenlightJSON.decodeFromString(serializer(), data.decodeToString())
+                ovenlightJSON.decodeFromString(serializer(), strictUTF8(data))
             } catch (_: Exception) {
                 return null
             }
@@ -55,11 +56,21 @@ object OvenlightTag {
 }
 
 /**
- * One GET through a node, as discovery and a guest's probes ask it: the response, or null when
- * nothing answered (a connection-level failure: refused, reset or timed out). The managers pass
- * OkHttp through the node's proxy; tests pass a fake.
+ * One GET through a node, as discovery and a guest's probes ask it: the response, or null (or a
+ * thrown exception) when nothing answered, a connection-level failure such as refused, reset or
+ * timed out. It suspends rather than blocking its caller's thread, so hosts are asked at once.
+ * The managers pass OkHttp through the node's proxy; tests pass a fake.
  */
 typealias Fetch = suspend (URI) -> FetchResponse?
+
+/** [fetch]'s answer, with a failure of that one request as no answer, so it never costs the other hosts theirs. */
+internal suspend fun fetchOrNull(fetch: Fetch, url: URI): FetchResponse? = try {
+    fetch(url)
+} catch (e: CancellationException) {
+    throw e
+} catch (_: Exception) {
+    null
+}
 
 /** What a [Fetch] got back. */
 class FetchResponse(val status: Int, val body: ByteArray = ByteArray(0), private val headers: Map<String, String> = emptyMap()) {
@@ -129,7 +140,7 @@ object Discovery {
             val results = Channel<Triple<String, ByteArray?, Boolean>>(hosts.size)
             for (host in hosts) {
                 launch {
-                    val response = uri("https://$host${OvenlightManifest.path}")?.let { fetch(it) }
+                    val response = uri("https://$host${OvenlightManifest.path}")?.let { fetchOrNull(fetch, it) }
                     results.send(Triple(host, response?.takeIf { it.status == 200 }?.body, response != null))
                 }
             }

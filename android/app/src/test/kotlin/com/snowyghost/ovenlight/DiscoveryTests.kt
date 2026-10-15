@@ -127,6 +127,19 @@ class DiscoveryTests {
         assertFalse("nothing answered", called)
     }
 
+    /** Android only: a fetch that throws, as OkHttp does when a computer refuses, costs only its own host. */
+    @Test
+    fun testOneHostsFailureCostsTheOthersNothing() = runTest {
+        val fetch: Fetch = { url ->
+            if (url.host == "off.tailabc123.ts.net") throw java.io.IOException("refused")
+            FetchResponse(200, """{"name":"Coach","version":1}""".toByteArray())
+        }
+        val outcome = Discovery.probe(listOf("coach.tailabc123.ts.net", "off.tailabc123.ts.net"), fetch)
+        assertEquals(mapOf("coach.tailabc123.ts.net" to true, "off.tailabc123.ts.net" to false), outcome.answered)
+        assertEquals(listOf("Coach"), outcome.apps.map { it.manifest.name })
+        assertEquals(Reach.Unreachable, GuestProbe.whoami("off.tailabc123.ts.net", fetch))
+    }
+
     /**
      * Android's twin asserts refusal where iOS asserts `.direct`: Android has no direct route
      * (plan decision 9), so a host on no known tailnet is refused, never loaded directly.
