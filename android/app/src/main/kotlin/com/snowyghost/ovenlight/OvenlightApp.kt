@@ -2,6 +2,7 @@ package com.snowyghost.ovenlight
 
 import android.app.Application
 import android.content.Context
+import android.icu.text.Normalizer2
 import android.os.SystemClock
 import android.util.Log
 import androidx.activity.compose.BackHandler
@@ -23,8 +24,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import java.io.File
 import java.net.URI
-import java.text.Normalizer
-import java.util.Locale
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
@@ -253,12 +252,13 @@ class Router(private val isLocked: () -> Boolean = { false }) {
 }
 
 /**
- * Names compared as iOS's localizedCaseInsensitiveCompare does: composed the same way and case
- * folded, so "Café" written either way and "Straße" against "STRASSE" match.
+ * Names compared as iOS's localizedCaseInsensitiveCompare does, with the phone's own ICU:
+ * composed the same way, case folded and with width and compatibility forms set aside, so
+ * "Café" written either way, "Straße" and "STRASSE", and "ｃｏａｃｈ" and "coach" match.
  */
 internal fun sameName(a: String, b: String): Boolean {
-    fun folded(s: String) = Normalizer.normalize(Normalizer.normalize(s, Normalizer.Form.NFC).uppercase(Locale.ROOT).lowercase(Locale.ROOT), Normalizer.Form.NFC)
-    return folded(a) == folded(b)
+    val fold = Normalizer2.getNFKCCasefoldInstance()
+    return fold.normalize(a) == fold.normalize(b)
 }
 
 /** The sheets the root presents. */

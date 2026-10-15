@@ -1,7 +1,8 @@
 package com.snowyghost.ovenlight
 
+import android.icu.text.Collator
+import android.icu.text.RuleBasedCollator
 import java.net.URI
-import java.text.Collator
 import java.time.Instant
 import java.time.LocalDate
 import java.time.OffsetDateTime
@@ -16,8 +17,8 @@ import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.sign
 import kotlinx.serialization.DeserializationStrategy
-import kotlinx.serialization.SerializationException
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
@@ -679,26 +680,14 @@ private fun <T> JsonObject.each(key: String, decoder: DeserializationStrategy<T>
 }
 
 /**
- * Names as iOS's localizedStandardCompare orders them: in the phone's language ignoring case,
- * numbers by their value ("Guest 2" before "Guest 10"), then lowercase before uppercase.
+ * Names as iOS's localizedStandardCompare orders them, with the phone's own ICU: in its
+ * language, numbers by their value ("Guest 2" before "Guest 10"), case only when nothing else
+ * differs ("sam" before "Sam"), and of names ICU calls equal the shorter first ("1" before "01").
  */
 internal fun standardOrder(): Comparator<String> {
-    val loose = Collator.getInstance().apply { strength = Collator.SECONDARY }
-    val strict = Collator.getInstance().apply { strength = Collator.TERTIARY }
-    val runs = Regex("[0-9]+|[^0-9]+")
-    return Comparator { a, b -> compareNames(a, b, loose, strict, runs) }
-}
-
-private fun compareNames(a: String, b: String, loose: Collator, strict: Collator, runs: Regex): Int {
-    val x = runs.findAll(a).map { it.value }.toList()
-    val y = runs.findAll(b).map { it.value }.toList()
-    for (i in 0 until minOf(x.size, y.size)) {
-        val p = x[i]
-        val q = y[i]
-        val order = if (p[0].isAsciiDigit() && q[0].isAsciiDigit()) p.toBigInteger().compareTo(q.toBigInteger()) else loose.compare(p, q)
-        if (order != 0) return order
+    val collator = (Collator.getInstance() as RuleBasedCollator).apply {
+        numericCollation = true
+        strength = Collator.TERTIARY
     }
-    return x.size.compareTo(y.size).takeIf { it != 0 } ?: strict.compare(a, b)
+    return Comparator { a, b -> collator.compare(a, b).takeIf { it != 0 } ?: a.length.compareTo(b.length).takeIf { it != 0 } ?: a.compareTo(b) }
 }
-
-private fun Char.isAsciiDigit() = this in '0'..'9'

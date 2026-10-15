@@ -1,5 +1,6 @@
 package com.snowyghost.ovenlight
 
+import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -8,7 +9,10 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
 
+/** Under Robolectric for the phone's ICU, which orders and matches names as iOS does. */
+@RunWith(AndroidJUnit4::class)
 class GuestActivityTests {
     private val zone = ZoneId.of("America/Los_Angeles")
 
@@ -100,7 +104,11 @@ class GuestActivityTests {
 
     @Test
     fun testNamesSortAsIOSSortsThem() {
-        assertEquals(listOf("Guest 2", "Guest 10", "sam", "Sam"), listOf("Sam", "Guest 10", "sam", "Guest 2").sortedWith(standardOrder()))
+        fun sorted(vararg names: String) = names.toList().shuffled(java.util.Random(7)).sortedWith(standardOrder())
+        assertEquals(listOf("Guest 2", "Guest 10", "sam", "Sam"), sorted("Sam", "Guest 10", "sam", "Guest 2"))
+        assertEquals("the shorter of names equal as numbers first", listOf("1", "01", "file1", "file01", "file001"), sorted("file001", "01", "file01", "1", "file1"))
+        assertEquals("a space before a digit", listOf("Guest 2", "Guest 10", "Guest10"), sorted("Guest10", "Guest 10", "Guest 2"))
+        assertEquals("letters before accents across the whole name", listOf("\u00C4", "a1b"), sorted("a1b", "\u00C4"))
     }
 
     @Test

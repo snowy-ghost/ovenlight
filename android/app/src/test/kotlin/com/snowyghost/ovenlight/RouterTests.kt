@@ -1,11 +1,13 @@
 package com.snowyghost.ovenlight
 
+import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.net.URI
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
 
 /** The invite in the connector's encoding, as InviteLinkTests has it. */
 private const val connectorLink = "ovenlight://join?app=echo-board&control=https%3A%2F%2Fcontrolplane.tailscale.com&host=echo-board.taildef456.ts.net" +
@@ -14,6 +16,8 @@ private const val connectorLink = "ovenlight://join?app=echo-board&control=https
 /** The same invite as the App Link the connector sends: the fields in the fragment. */
 private val universalLink = connectorLink.replace("ovenlight://join?", "https://ovenlight.app/join#")
 
+/** Under Robolectric for the phone's ICU, which orders and matches names as iOS does. */
+@RunWith(AndroidJUnit4::class)
 class RouterTests {
     private fun join(router: Router): JoinRequest? = (router.sheet.value as? RootSheet.Join)?.request
 
@@ -61,6 +65,9 @@ class RouterTests {
         assertTrue(sameName("Stra\u00DFe", "STRASSE"))
         assertTrue(sameName("Coach", "coach"))
         assertFalse("a dotted capital I is its own letter", sameName("\u0130stanbul", "istanbul"))
+        assertFalse("and so is a dotless i", sameName("\u0131stanbul", "Istanbul"))
+        assertTrue(sameName("\u00DF", "\u1E9E"))
+        assertTrue("full-width letters", sameName("\uFF43\uFF4F\uFF41\uFF43\uFF48", "coach"))
     }
 
     @Test
