@@ -27,9 +27,7 @@ type appView struct {
 	State     string `json:"state"`
 	Online    bool   `json:"online"` // the app answers on its local port
 	Shareable bool   `json:"shareable"`
-	Guests    int    `json:"guests"`                     // people, however many devices each
-	Cert      string `json:"certificate,omitempty"`      // fetching, ready or failed, once the node serves (NodeStatus.Cert)
-	CertErr   string `json:"certificateError,omitempty"` // why the last try to get it failed
+	Guests    int    `json:"guests"` // people, however many devices each
 }
 
 // adminHandler serves the owner's admin API on :8443 of every app node: JSON, owner
@@ -164,7 +162,7 @@ func (d *daemon) appViews() []appView {
 		v := appView{Slug: app.Slug, Name: app.Name, State: "not running", Shareable: app.Shareable, Guests: guests[app.Slug]}
 		if n := d.node(app.Slug); n != nil {
 			st := n.status()
-			v.State, v.URL, v.Cert, v.CertErr = st.State, st.URL, st.Cert, st.CertErr
+			v.State, v.URL = st.State, st.URL
 		}
 		if conn, err := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(app.Port)), time.Second); err == nil {
 			conn.Close()

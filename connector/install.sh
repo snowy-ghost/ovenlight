@@ -132,12 +132,13 @@ fi
 # Put `ovenlight` on PATH with a link in ~/.local/bin, never over a file this didn't make.
 cmd="$(printf %q "$bin")"
 if { [ ! -e "$link" ] && [ ! -L "$link" ]; } || [ "$(readlink "$link")" = "$bin" ]; then
-  mkdir -p "$(dirname "$link")"
-  ln -sfn "$bin" "$link"
-  echo "linked $link"
-  cmd=ovenlight
+  if mkdir -p "$(dirname "$link")" && ln -sfn "$bin" "$link"; then
+    echo "linked $link"
+  else
+    echo "couldn't link $link; run ovenlight as $cmd"
+  fi
   case ":$PATH:" in
-  *":$HOME/.local/bin:"*) ;;
+  *":$HOME/.local/bin:"*) [ -L "$link" ] && cmd=ovenlight ;;
   *)
     # Printed for the reader to copy, so ~ and $HOME stay literal.
     # shellcheck disable=SC2088
