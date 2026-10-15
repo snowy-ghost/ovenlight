@@ -136,6 +136,63 @@ jobs:
       - run: go install github.com/juanfont/headscale/cmd/headscale@v0.29.4
       - run: OVENLIGHT_E2E_HEADSCALE="$(go env GOPATH)/bin/headscale" go test -tags e2e ./e2e -v -count=1 -timeout 15m
 
+  # The Android app: its Go core's checks, the core library for the three release ABIs,
+  # lint, unit tests, debug and release builds, and Play's 16 KB page alignment.
+  android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: android
+        shell: bash
+    env:
+      NDK: '30.0.16248370'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: android/core/go.mod
+          cache-dependency-path: android/core/go.sum
+      - name: Gradle wrapper
+        run: echo "7a9ce74cff467ca1bf60a4fcd9f05185acceda4d0f382434d393e17864262c5d  gradle/wrapper/gradle-wrapper.jar" | sha256sum -c
+      - name: SDK packages (no-ops when the image has them)
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK" "platforms;android-37.0" "build-tools;36.0.0" > /dev/null
+      - name: Go core
+        working-directory: android/core
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "gofmt needed:"
+            echo "$unformatted"
+            exit 1
+          fi
+          go vet ./...
+          GOOS=android GOARCH=arm64 CGO_ENABLED=0 go vet ./...
+          go test -race -count=1 ./...
+          go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
+      - name: Core library
+        run: ../scripts/build-android-core.sh
+      - name: Third-party notices
+        run: grep -q '^tailscale.com v1.104.1$' app/libs/THIRD_PARTY_NOTICES.txt
+      - name: Lint, unit tests, and debug and release builds
+        run: ./gradlew --no-daemon -Povenlight.allAbis :app:lintDebug :app:lintRelease :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease
+      - name: 16 KB alignment
+        run: |
+          apk=app/build/outputs/apk/release/app-release-unsigned.apk
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 -v 4 "$apk" | tail -1 | grep -q 'Verification successful'
+          libs="$RUNNER_TEMP/libs" && unzip -q -o "$apk" 'lib/*' -d "$libs"
+          readelf="$ANDROID_HOME/ndk/$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
+          for so in "$libs"/lib/*/*.so; do
+            for align in $("$readelf" -lW "$so" | awk '$1 == "LOAD" { print $NF }'); do
+              [ $((align)) -ge 16384 ] || { echo "$so has a LOAD segment aligned to $align"; exit 1; }
+            done
+          done
+
   # The docs as the site renders them: a link or #anchor in docs/ that goes nowhere fails.
   docs:
     runs-on: ubuntu-24.04
