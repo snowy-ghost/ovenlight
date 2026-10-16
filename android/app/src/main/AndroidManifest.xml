@@ -111,8 +111,8 @@
              mode, text size and bold text changes itself, so pages survive them. No task
              affinity, so another app can't put its own screen into Ovenlight's task. Without
              one, Recents can't match a task a link started to the icon's, so a task whose
-             activity finished (Back, from a link) leaves Recents rather than start a second
-             Ovenlight from its card. -->
+             activity the system finished (an update, Force stop) leaves Recents rather than
+             start a second Ovenlight from its card. Back never finishes it (MainActivity). -->
         <activity
             android:name=".MainActivity"
             android:autoRemoveFromRecents="true"

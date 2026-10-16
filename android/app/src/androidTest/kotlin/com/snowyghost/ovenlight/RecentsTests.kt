@@ -33,26 +33,25 @@ class RecentsTests {
     }
 
     /**
-     * A link starts Ovenlight in a task of its own (no task affinity), which Back then leaves.
-     * Its card doesn't stay in Recents, where tapping it beside the task the icon opens would
-     * start a second Ovenlight sharing the first one's pages and lifecycle.
+     * A link starts Ovenlight in a task of its own (no task affinity), which Back sends behind
+     * rather than finishes. The icon brings that same Ovenlight back: one activity, one card, and
+     * never a card with no Ovenlight in it, which would start a second one sharing the first
+     * one's pages and lifecycle.
      */
     @Test
-    fun testALinksTaskLeftWithBackLeavesNoSecondCard() {
+    fun testBackSendsALinksTaskBehindAndTheIconBringsItBack() {
         tasks.appTasks.forEach { it.finishAndRemoveTask() }
         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("ovenlight://open?app=Nothing")).setPackage(context.packageName).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         waitFor("Ovenlight from the link") { resumed() is MainActivity }
         val fromLink = resumed()!!
         onMain { (fromLink as MainActivity).onBackPressedDispatcher.onBackPressed() }
-        waitFor("Back to leave it") { fromLink.isDestroyed }
+        waitFor("Back to send it behind") { resumed() !== fromLink }
+        assertEquals("finished", false, fromLink.isFinishing || fromLink.isDestroyed)
 
         context.startActivity(context.packageManager.getLaunchIntentForPackage(context.packageName)!!.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        waitFor("Ovenlight from the icon") { resumed().let { it is MainActivity && it !== fromLink } }
-        val fromIcon = resumed()!!
-        // Every other card, opened as Recents opens one.
-        tasks.appTasks.filter { it.taskInfo?.taskId != fromIcon.taskId }.forEach { it.moveToFront() }
+        waitFor("Ovenlight from the icon") { resumed() === fromLink }
         Thread.sleep(2_000)
-        assertEquals("activities", listOf(fromIcon), live())
+        assertEquals("activities", listOf(fromLink), live())
         assertEquals("cards", 1, tasks.appTasks.size)
     }
 }

@@ -142,6 +142,17 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * Back with nothing left to go back through: Android finishes Ovenlight through this, always
+     * on 10 and 11, and later unless the launcher opened it and nothing has arrived since (a link,
+     * say). It goes behind instead, so its card stays in Recents however it was opened, and a card
+     * never outlives its Ovenlight to start a second one. Overridden here rather than handled as a
+     * Back callback, which would take the system's back-to-home animation away.
+     */
+    override fun finishAfterTransition() {
+        moveTaskToBack(true)
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
@@ -211,7 +222,7 @@ private fun LockWindow(lock: LockManager, locked: Boolean, onUnlock: () -> Unit)
     if (!shown.currentState && !shown.targetState) return
     val authenticating by lock.isAuthenticating.collectAsState()
     val error by lock.lastError.collectAsState()
-    // Back goes to the activity, which has nothing left to go back through, so it leaves Ovenlight.
+    // Back goes to the activity, which has nothing left to go back through, so Ovenlight goes behind.
     val back = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
     // Compose makes the dialog's window anew when the density changes (text or display size, a
     // fold), leaving a frame with no lock above a page's picker: the window keeps the density it
