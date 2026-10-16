@@ -9,6 +9,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -317,25 +318,34 @@ func (n *Node) suffix(ctx context.Context) string {
 	return ""
 }
 
-func (n *Node) peerAddr(ctx context.Context, host string) (netip.Addr, bool) {
+// peer returns a peer that match accepts, from a status at most peersFresh old or, on
+// a miss, one at most peersRecheck old.
+func (n *Node) peer(ctx context.Context, match func(*ipnstate.PeerStatus) bool) *ipnstate.PeerStatus {
 	for _, maxAge := range []time.Duration{peersFresh, peersRecheck} {
 		if st := n.status(ctx, maxAge); st != nil {
 			for _, p := range st.Peer {
-				if lowerASCII(strings.TrimSuffix(p.DNSName, ".")) != host {
-					continue
-				}
-				for _, ip := range p.TailscaleIPs {
-					if ip.Is4() {
-						return ip, true
-					}
-				}
-				if len(p.TailscaleIPs) > 0 {
-					return p.TailscaleIPs[0], true
+				if match(p) {
+					return p
 				}
 			}
 		}
 	}
-	return netip.Addr{}, false
+	return nil
+}
+
+func (n *Node) peerAddr(ctx context.Context, host string) (netip.Addr, bool) {
+	p := n.peer(ctx, func(p *ipnstate.PeerStatus) bool {
+		return len(p.TailscaleIPs) > 0 && lowerASCII(strings.TrimSuffix(p.DNSName, ".")) == host
+	})
+	if p == nil {
+		return netip.Addr{}, false
+	}
+	for _, ip := range p.TailscaleIPs {
+		if ip.Is4() {
+			return ip, true
+		}
+	}
+	return p.TailscaleIPs[0], true
 }
 
 // endpoints come from the node's last status: what its magicsock found, the
@@ -358,18 +368,7 @@ func (n *Node) endpoints() []netip.Prefix {
 }
 
 func (n *Node) isPeer(ctx context.Context, ip netip.Addr) bool {
-	for _, maxAge := range []time.Duration{peersFresh, peersRecheck} {
-		if st := n.status(ctx, maxAge); st != nil {
-			for _, p := range st.Peer {
-				for _, pip := range p.TailscaleIPs {
-					if pip == ip {
-						return true
-					}
-				}
-			}
-		}
-	}
-	return false
+	return n.peer(ctx, func(p *ipnstate.PeerStatus) bool { return slices.Contains(p.TailscaleIPs, ip) }) != nil
 }
 
 func (n *Node) dial(ctx context.Context, addr netip.AddrPort) (net.Conn, error) {

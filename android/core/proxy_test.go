@@ -165,10 +165,7 @@ func newHarness(t *testing.T) (*harness, *fakeNode, *fakeNode) {
 func (h *harness) node(id string) upstream {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if n, ok := h.nodes[id]; ok && n != nil {
-		return n
-	}
-	return nil
+	return h.nodes[id]
 }
 
 func (h *harness) setNode(id string, n upstream) {
