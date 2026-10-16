@@ -238,9 +238,6 @@ object NavigationPolicy {
         data object Refuse : Decision()
     }
 
-    /** A request a popup makes, with only what [popupRequest] decides on. */
-    class Request(val url: URI?, val method: String = "GET", val body: ByteArray? = null)
-
     /**
      * Schemes the system itself confirms before acting: Android's dialer opens with the number
      * for the person to call, so `tel:` needs no question. Every other app Ovenlight asks about
@@ -355,18 +352,6 @@ object NavigationPolicy {
 
     /** The host of the page that made a blob URL: `blob:https://host/<uuid>` names its origin. */
     fun blobHost(url: URI): String? = uri(url.toString().drop("blob:".length))?.let { Discovery.normalizedHost(it.host ?: "") }
-
-    /**
-     * A popup loaded in the app's own view goes out as Ovenlight's load, without the cross-site
-     * marking the connector checks. Only the app's own pages keep the method and body; a popup
-     * from a frame of another site becomes a plain GET, which is all that site could send the
-     * app anyway.
-     */
-    fun popupRequest(request: Request, fromScheme: String?, host: String?, appHost: String): Request {
-        val own = fromScheme == "https" && Discovery.normalizedHost(host ?: "") == Discovery.normalizedHost(appHost)
-        if (own || request.url == null) return request
-        return Request(request.url)
-    }
 }
 
 /**

@@ -3,7 +3,6 @@ package com.snowyghost.ovenlight
 import android.Manifest
 import android.content.ActivityNotFoundException
 import android.content.Context
-import android.content.ContextWrapper
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -120,6 +119,8 @@ class PageEdges(
     private val scope: CoroutineScope,
     private val isLocked: StateFlow<Boolean>,
     private val lifecycle: AppLifecycle,
+    /** Answers the page's camera and microphone requests (PageCapture). */
+    private val capture: PageCapture,
     private val isShown: () -> Boolean,
     /** Loads the app's start page again, through the same checks as its first load. */
     private val home: () -> Unit,
@@ -166,9 +167,6 @@ class PageEdges(
     private val mutableFullscreen = MutableStateFlow<Fullscreen?>(null)
     val fullscreen: StateFlow<Fullscreen?> = mutableFullscreen
 
-    /** Answers the page's camera and microphone requests (PageCapture); the page gets none without it. */
-    var capture: PageCapture? = null
-
     val chrome: WebChromeClient = Chrome()
 
     /**
@@ -177,7 +175,7 @@ class PageEdges(
      * settles only on the return.
      */
     private val mayAct: Boolean
-        get() = isShown() && !isLocked.value && activity()?.lifecycle?.currentState?.isAtLeast(Lifecycle.State.RESUMED) == true
+        get() = isShown() && !isLocked.value && context.componentActivity()?.lifecycle?.currentState?.isAtLeast(Lifecycle.State.RESUMED) == true
 
     // Navigation
 
@@ -320,7 +318,7 @@ class PageEdges(
     /** Another app opens only from the page on screen, unlocked; it takes the person out of Ovenlight. */
     private fun start(intent: Intent) {
         if (!mayAct) return
-        systemCall("open another app", Unit) { context.startActivity(intent) }
+        context.startOrFalse(intent)
     }
 
     // Dialogs
@@ -405,7 +403,7 @@ class PageEdges(
      */
     private fun chooseFiles(callback: ValueCallback<Array<Uri>>, params: WebChromeClient.FileChooserParams) {
         val answer = DialogAnswer<Array<Uri>?>(null) { callback.onReceiveValue(it) }
-        val activity = activity()
+        val activity = context.componentActivity()
         if (!mayAct || activity == null) return answer.dropped()
         val multiple = params.mode == WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE
         val mime = { ext: String -> MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) }
@@ -466,7 +464,7 @@ class PageEdges(
             pick(activity, contract, uri, answer) { taken -> if (taken && file.length() > 0) arrayOf(uri) else null.also { file.delete() } }
         }
         if (ContextCompat.checkSelfPermission(activity, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) return take()
-        startForResult(activity, ActivityResultContracts.RequestPermission(), Manifest.permission.CAMERA, excursion = false, failed = answer::dropped) { granted ->
+        activity.launchOnce(ActivityResultContracts.RequestPermission(), Manifest.permission.CAMERA, failed = answer::dropped) { granted ->
             // The person just answered Ovenlight's own question; the result can come before the resume.
             if (granted && !isLocked.value) take() else answer.dropped()
         }
@@ -475,15 +473,21 @@ class PageEdges(
     private fun <I, O> pick(
         activity: ComponentActivity, contract: ActivityResultContract<I, O>, input: I,
         answer: DialogAnswer<Array<Uri>?>, files: (O) -> Array<Uri>?,
-    ) = startForResult(activity, contract, input, excursion = true, failed = answer::dropped) { result ->
-        lifecycle.excursionEnded()
-        val picked = files(result) ?: return@startForResult answer.dropped()
-        // After the unlock: a return from a picker may lock first.
-        scope.launch {
-            val state = activity.lifecycle.currentStateFlow.first { it.isAtLeast(Lifecycle.State.STARTED) || it == Lifecycle.State.DESTROYED }
-            if (state != Lifecycle.State.DESTROYED) isLocked.first { !it }
-            withContext(Dispatchers.IO) { picked.forEach { ready(activity, it) } }
-            answer(picked)
+    ) {
+        lifecycle.beginExcursion()
+        activity.launchOnce(contract, input, failed = {
+            lifecycle.excursionEnded()
+            answer.dropped()
+        }) { result ->
+            lifecycle.excursionEnded()
+            val picked = files(result) ?: return@launchOnce answer.dropped()
+            // After the unlock: a return from a picker may lock first.
+            scope.launch {
+                val state = activity.lifecycle.currentStateFlow.first { it.isAtLeast(Lifecycle.State.STARTED) || it == Lifecycle.State.DESTROYED }
+                if (state != Lifecycle.State.DESTROYED) isLocked.first { !it }
+                withContext(Dispatchers.IO) { picked.forEach { ready(activity, it) } }
+                answer(picked)
+            }
         }
     }
 
@@ -505,46 +509,6 @@ class PageEdges(
             }
         }
     }
-
-    /**
-     * Registered on the activity's own registry without a lifecycle, so the result arrives
-     * even while the lock is up or the page is off screen, and unregistered once it has. An
-     * activity made again meanwhile (a change it doesn't handle itself) never gets this
-     * result, so its end answers the page with nothing, which lets the page ask again.
-     */
-    private fun <I, O> startForResult(
-        activity: ComponentActivity, contract: ActivityResultContract<I, O>, input: I,
-        excursion: Boolean, failed: () -> Unit, done: (O) -> Unit,
-    ) {
-        var launcher: ActivityResultLauncher<I>? = null
-        var ended: LifecycleEventObserver? = null
-        val finish = {
-            launcher?.unregister()
-            ended?.let(activity.lifecycle::removeObserver)
-        }
-        launcher = activity.activityResultRegistry.register("page-${UUID.randomUUID()}", contract) { result ->
-            finish()
-            done(result)
-        }
-        ended = LifecycleEventObserver { _, event ->
-            if (event != Lifecycle.Event.ON_DESTROY) return@LifecycleEventObserver
-            finish()
-            if (excursion) lifecycle.excursionEnded()
-            failed()
-        }
-        activity.lifecycle.addObserver(ended)
-        if (excursion) lifecycle.beginExcursion()
-        try {
-            launcher.launch(input)
-        } catch (_: ActivityNotFoundException) {
-            finish()
-            if (excursion) lifecycle.excursionEnded()
-            failed()
-        }
-    }
-
-    private fun activity(): ComponentActivity? =
-        generateSequence(context) { (it as? ContextWrapper)?.baseContext }.firstNotNullOfOrNull { it as? ComponentActivity }
 
     private inner class Chrome : WebChromeClient() {
         // Unanswered, WebView writes every console message, with its page's address, to the
@@ -591,11 +555,11 @@ class PageEdges(
 
         /** Ovenlight never gives a page the phone's location, as on iOS (docs/building-apps.md). */
         override fun onPermissionRequest(request: PermissionRequest) {
-            capture?.onPermissionRequest(request) ?: request.deny()
+            capture.onPermissionRequest(request)
         }
 
         override fun onPermissionRequestCanceled(request: PermissionRequest) {
-            capture?.onPermissionRequestCanceled(request)
+            capture.onPermissionRequestCanceled(request)
         }
 
         override fun onGeolocationPermissionsShowPrompt(origin: String?, callback: GeolocationPermissions.Callback?) {
@@ -657,6 +621,37 @@ class PageEdges(
             intent.addCategory(Intent.CATEGORY_BROWSABLE)
             return intent
         }
+    }
+}
+
+/**
+ * Launches [contract] once, on the activity's own registry without a lifecycle, so the result
+ * arrives even while the lock is up or the asking screen has gone, and unregisters once it has.
+ * An activity made again meanwhile never gets the result, so its end calls [failed], as does a
+ * contract nothing on the phone handles.
+ */
+internal fun <I, O> ComponentActivity.launchOnce(contract: ActivityResultContract<I, O>, input: I, failed: () -> Unit, done: (O) -> Unit) {
+    var launcher: ActivityResultLauncher<I>? = null
+    var ended: LifecycleEventObserver? = null
+    val finish = {
+        launcher?.unregister()
+        ended?.let(lifecycle::removeObserver)
+    }
+    launcher = activityResultRegistry.register("ovenlight-${UUID.randomUUID()}", contract) { result ->
+        finish()
+        done(result)
+    }
+    ended = LifecycleEventObserver { _, event ->
+        if (event != Lifecycle.Event.ON_DESTROY) return@LifecycleEventObserver
+        finish()
+        failed()
+    }
+    lifecycle.addObserver(ended)
+    try {
+        launcher.launch(input)
+    } catch (_: ActivityNotFoundException) {
+        finish()
+        failed()
     }
 }
 

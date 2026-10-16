@@ -256,10 +256,7 @@ fun LauncherView(state: LauncherState) {
         }
     }
     leaving?.let { membership ->
-        Confirmation(
-            title = ConnectionCopy.leaveTitle(membership.ownerName), message = ConnectionCopy.leaveDetail(membership.ownerName),
-            confirm = stringResource(R.string.launcher_leave), onDismiss = { leaving = null },
-        ) { state.leave(membership.id) }
+        LeaveConfirmation(membership.ownerName, onDismiss = { leaving = null }) { state.leave(membership.id) }
     }
     if (noMailApp) NoEmailAppDialog(onDismiss = { noMailApp = false })
 }
@@ -413,29 +410,18 @@ private fun ColumnScope.AppMenu(
             maxLines = 1, overflow = TextOverflow.Ellipsis,
         )
     }
-
-    @Composable
-    fun item(label: String, icon: Int, destructive: Boolean = false, action: () -> Unit) = DropdownMenuItem(
-        text = { Text(label) },
-        leadingIcon = { Icon(painterResource(icon), contentDescription = null) },
-        onClick = {
-            close()
-            action()
-        },
-        colors = if (destructive) MenuDefaults.itemColors(textColor = colors.error, leadingIconColor = colors.error) else MenuDefaults.itemColors(),
-    )
     // Add to Home screen comes first here, with Phase 7's pinned shortcuts.
-    item(stringResource(R.string.launcher_rename), R.drawable.ic_edit, action = rename)
-    item(stringResource(R.string.launcher_refresh_icon), R.drawable.ic_refresh, action = refreshIcon)
+    AppMenuItem(close, stringResource(R.string.launcher_rename), R.drawable.ic_edit, action = rename)
+    AppMenuItem(close, stringResource(R.string.launcher_refresh_icon), R.drawable.ic_refresh, action = refreshIcon)
     // Share… and People (n) open this section for the owner's apps, with Phase 6.
     if (plan.reportProblem || plan.leaveOwner != null) {
         HorizontalDivider()
-        if (plan.reportProblem) item(ConnectionCopy.reportProblem, R.drawable.ic_flag, action = reportProblem)
-        plan.leaveOwner?.let { item(ConnectionCopy.leaveApps(it), R.drawable.ic_logout, destructive = true, action = leave) }
+        if (plan.reportProblem) AppMenuItem(close, ConnectionCopy.reportProblem, R.drawable.ic_flag, action = reportProblem)
+        plan.leaveOwner?.let { AppMenuItem(close, ConnectionCopy.leaveApps(it), R.drawable.ic_logout, destructive = true, action = leave) }
     }
     HorizontalDivider()
-    item(stringResource(R.string.launcher_sign_out_clear), R.drawable.ic_ink_eraser, action = clearData)
-    item(stringResource(R.string.launcher_remove_app), R.drawable.ic_delete, destructive = true, action = remove)
+    AppMenuItem(close, stringResource(R.string.launcher_sign_out_clear), R.drawable.ic_ink_eraser, action = clearData)
+    AppMenuItem(close, stringResource(R.string.launcher_remove_app), R.drawable.ic_delete, destructive = true, action = remove)
 }
 
 @Composable
@@ -463,6 +449,21 @@ private fun RenameDialog(app: WebApp, onDismiss: () -> Unit, save: (String) -> U
     )
 }
 
+/** A row of an app's menu, which closes the menu before it acts; a destructive one is in the error color. */
+@Composable
+internal fun AppMenuItem(close: () -> Unit, label: String, icon: Int, destructive: Boolean = false, action: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    DropdownMenuItem(
+        text = { Text(label) },
+        leadingIcon = { Icon(painterResource(icon), contentDescription = null) },
+        onClick = {
+            close()
+            action()
+        },
+        colors = if (destructive) MenuDefaults.itemColors(textColor = colors.error, leadingIconColor = colors.error) else MenuDefaults.itemColors(),
+    )
+}
+
 /** A confirmation whose button is in the error color, as iOS marks destructive ones red. */
 @Composable
 internal fun Confirmation(title: String, message: String, confirm: String, onDismiss: () -> Unit, action: () -> Unit) {
@@ -482,3 +483,9 @@ internal fun Confirmation(title: String, message: String, confirm: String, onDis
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.launcher_cancel)) } },
     )
 }
+
+/** Leaving an owner's apps, asked the same way from the launcher, an app's menu and Settings. */
+@Composable
+internal fun LeaveConfirmation(owner: String, onDismiss: () -> Unit, leave: () -> Unit) = Confirmation(
+    ConnectionCopy.leaveTitle(owner), ConnectionCopy.leaveDetail(owner), stringResource(R.string.launcher_leave), onDismiss, leave,
+)

@@ -1,9 +1,7 @@
 package com.snowyghost.ovenlight
 
 import android.annotation.SuppressLint
-import android.app.Activity
 import android.content.Context
-import android.content.ContextWrapper
 import android.graphics.Bitmap
 import android.graphics.Rect
 import android.os.Handler
@@ -55,13 +53,11 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.RichTooltip
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -573,32 +569,20 @@ private fun Pill(app: WebApp, icon: Bitmap?, actions: AppChromeActions, controll
 /** The app menu, in iOS's sections: getting around, then this app, then the lock. */
 @Composable
 private fun AppMenuItems(app: WebApp, actions: AppChromeActions, close: () -> Unit) {
-    val colors = MaterialTheme.colorScheme
-
-    @Composable
-    fun item(label: String, icon: Int, destructive: Boolean = false, action: () -> Unit) = DropdownMenuItem(
-        text = { Text(label) },
-        leadingIcon = { Icon(painterResource(icon), contentDescription = null) },
-        onClick = {
-            close()
-            action()
-        },
-        colors = if (destructive) MenuDefaults.itemColors(textColor = colors.error, leadingIconColor = colors.error) else MenuDefaults.itemColors(),
-    )
-    item(stringResource(R.string.chrome_all_apps), R.drawable.ic_apps, action = actions.home)
-    item(stringResource(R.string.chrome_reload), R.drawable.ic_refresh, action = actions.reload)
+    AppMenuItem(close, stringResource(R.string.chrome_all_apps), R.drawable.ic_apps, action = actions.home)
+    AppMenuItem(close, stringResource(R.string.chrome_reload), R.drawable.ic_refresh, action = actions.reload)
     // Open in browser never applies: every Android app goes through Ovenlight's own connection.
     HorizontalDivider()
-    actions.share?.let { item(stringResource(R.string.chrome_share), R.drawable.ic_share, action = it) }
+    actions.share?.let { AppMenuItem(close, stringResource(R.string.chrome_share), R.drawable.ic_share, action = it) }
     actions.sendFeedback?.let {
         // A guest's feedback goes to the owner; Report a problem goes to Ovenlight.
         val label = app.sharedBy?.let { owner -> stringResource(R.string.chrome_send_feedback_to, owner) } ?: stringResource(R.string.chrome_send_feedback)
-        item(label, R.drawable.ic_feedback, action = it)
+        AppMenuItem(close, label, R.drawable.ic_feedback, action = it)
     }
-    item(ConnectionCopy.reportProblem, R.drawable.ic_flag, action = actions.reportProblem)
-    actions.leave?.let { item(ConnectionCopy.leaveApps(it.owner), R.drawable.ic_logout, destructive = true, action = it.action) }
+    AppMenuItem(close, ConnectionCopy.reportProblem, R.drawable.ic_flag, action = actions.reportProblem)
+    actions.leave?.let { AppMenuItem(close, ConnectionCopy.leaveApps(it.owner), R.drawable.ic_logout, destructive = true, action = it.action) }
     HorizontalDivider()
-    item(stringResource(R.string.chrome_lock), R.drawable.ic_lock, action = actions.lock)
+    AppMenuItem(close, stringResource(R.string.chrome_lock), R.drawable.ic_lock, action = actions.lock)
 }
 
 /**
@@ -651,7 +635,7 @@ private fun WatchPage(view: PageWebView, controller: ChromeController) {
 /** A snapshot of the view as the screen shows it, through PixelCopy, or drawn in software when that fails. */
 private suspend fun snapshot(view: View): Bitmap? {
     if (view.width == 0 || view.height == 0) return null
-    val window = view.context.activity()?.window
+    val window = view.context.componentActivity()?.window
     if (window != null) {
         val bitmap = createBitmap(view.width, view.height)
         val at = IntArray(2).also(view::getLocationInWindow)
@@ -670,12 +654,6 @@ private suspend fun snapshot(view: View): Bitmap? {
         bitmap.recycle()
     }
     return runCatching { view.drawToBitmap() }.getOrNull()
-}
-
-private tailrec fun Context.activity(): Activity? = when (this) {
-    is Activity -> this
-    is ContextWrapper -> baseContext.activity()
-    else -> null
 }
 
 /** The page's script result, a JSON value as text, or null when the view goes first. */
@@ -750,10 +728,7 @@ fun AppChromeHost(model: AppModel, page: AppPage, icon: Bitmap?, onClose: () -> 
     }
     if (noMailApp) NoEmailAppDialog(onDismiss = { noMailApp = false })
     leaving?.let { membership ->
-        Confirmation(
-            title = ConnectionCopy.leaveTitle(membership.ownerName), message = ConnectionCopy.leaveDetail(membership.ownerName),
-            confirm = stringResource(R.string.launcher_leave), onDismiss = { leaving = null },
-        ) {
+        LeaveConfirmation(membership.ownerName, onDismiss = { leaving = null }) {
             // As iOS: the app closes first, then its owner's apps go, this one among them.
             onClose()
             model.scope.launch { model.guests.leave(membership.id) }

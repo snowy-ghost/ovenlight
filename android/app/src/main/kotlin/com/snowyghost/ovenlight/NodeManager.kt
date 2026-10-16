@@ -9,7 +9,6 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -209,13 +208,13 @@ interface TailnetNode {
     fun close()
 }
 
-/** What the managers need from the Go core: nodes, and fetches through its proxy. */
 /** Sends one request through a node, as a [Fetch] sends a GET: null when no answer came. */
 typealias Send = suspend (Request) -> FetchResponse?
 
 /** GETs through this session. */
 fun Send.asFetch(): Fetch = { uri -> this(Request.Builder().url(uri.toString()).build()) }
 
+/** What the managers need from the Go core: nodes, and fetches through its proxy. */
 interface TailnetClients {
     fun newNode(id: String, directory: File, hostName: String, controlURL: String, authKey: String): TailnetNode
 
@@ -307,9 +306,6 @@ class MembershipNode(
     private val routeKey: String get() = "node-$id"
 
     // Lifecycle
-
-    /** Starts the node unless one is running. The core's proxy lives as long as the process, so a running node needs no check. */
-    suspend fun ensureRunning() = start()
 
     /** Tries again after a failure. */
     suspend fun restart() {
@@ -675,12 +671,6 @@ class NodeManager(
     /** The owner's own computers (see [Discovery.ownersHosts]). */
     val ownersHosts: Set<String> get() = Discovery.ownersHosts(owner.status.value)
 
-    /** The ones online now that could run a connector (see [Discovery.candidateHosts]). */
-    val ownersOnlineHosts: Set<String> get() = Discovery.candidateHosts(owner.status.value).toSet()
-
-    /** The owner can manage sharing: signed in and connected. */
-    val ownerIsConnected: Boolean get() = mutableOwnerEnabled.value && owner.state.value == NodeState.Ready
-
     /**
      * Owner mode is on and no account is signed in: the node asks for a login, or it has never
      * been in a tailnet. A signed-in node has no status while it restarts, but its tailnet is
@@ -696,7 +686,7 @@ class NodeManager(
     fun enableOwner() {
         mutableOwnerEnabled.value = true
         preferences.putBoolean(OWNER_ENABLED_KEY, true)
-        scope.launch { owner.ensureRunning() }
+        scope.launch { owner.start() }
     }
 
     /**
@@ -723,8 +713,8 @@ class NodeManager(
 
     /** Brings every node up: on return to the foreground, and at launch. */
     suspend fun didBecomeActive() = coroutineScope {
-        if (mutableOwnerEnabled.value) launch { owner.ensureRunning() }
-        for (node in mutableGuests.value.values) launch { node.ensureRunning() }
+        if (mutableOwnerEnabled.value) launch { owner.start() }
+        for (node in mutableGuests.value.values) launch { node.start() }
     }
 
     /** Closes every node, keeping its state: a minute after Ovenlight leaves. */
@@ -781,21 +771,16 @@ class NodeManager(
     /** The node an app goes through: its guest membership's, the owner's for hosts on the owner's own tailnet, or none (refused). */
     fun node(app: WebApp): MembershipNode? = Routing.node(app, owner, owner.magicDNSSuffixSeen, ::guestNode)
 
-    fun route(url: URI): Routing.Route = Routing.route(url.host.orEmpty(), owner.magicDNSSuffixSeen)
-
     /** A fetch for the app's pages and icon, through its node; null until the node is up, and for a refused app. */
     fun fetch(app: WebApp): Fetch? = node(app)?.fetch()
 
     /** A fetch for posting to an app (feedback), with its own timeouts, through the app's node; null without one. */
     fun uploadSession(app: WebApp, timeoutMillis: Long): Send? = node(app)?.makeSession(timeoutMillis)
 
-    /** A fetch for the owner's admin API, with its own timeouts; null while the owner's node isn't up. */
-    fun ownerSession(timeoutMillis: Long): Send? = owner.makeSession(timeoutMillis)
-
     /** What an app's launcher tile shows about its computer. */
     fun reachability(app: WebApp): AppReachability? {
         val node = node(app) ?: return null
-        return AppReachability.forTile(app.host, Routing.Route.TailnetNode, node.state.value, node.answers.value)
+        return AppReachability.forTile(app.host, node.state.value, node.answers.value)
     }
 
     // Configuration
@@ -834,25 +819,12 @@ class NodeManager(
 object GuestProbe {
     data class Outcome(val base: Discovery.Outcome = Discovery.Outcome(), val notInvited: Set<String> = emptySet())
 
-    /** [firstAnswer] as in [Discovery.probe]. */
+    /** [firstAnswer] as in [Discovery.probeEach]. */
     suspend fun probe(hosts: List<String>, fetch: Fetch?, firstAnswer: () -> Unit = {}): Outcome {
         if (fetch == null || hosts.isEmpty()) return Outcome()
-        return coroutineScope {
-            val results = Channel<Pair<String, Reach>>(hosts.size)
-            for (host in hosts) launch { results.send(host to whoami(host, fetch)) }
-            var reachable = false
-            val answered = mutableMapOf<String, Boolean>()
-            val notInvited = mutableSetOf<String>()
-            repeat(hosts.size) {
-                val (host, reach) = results.receive()
-                val didAnswer = reach != Reach.Unreachable
-                if (didAnswer && !reachable) firstAnswer()
-                reachable = reachable || didAnswer
-                answered[host] = didAnswer
-                if (reach == Reach.NotInvited) notInvited += host
-            }
-            Outcome(Discovery.Outcome(reachable = reachable, answered = answered), notInvited)
-        }
+        val reaches = Discovery.probeEach(hosts, firstAnswer) { host -> whoami(host, fetch).takeIf { it != Reach.Unreachable } }
+        val answered = reaches.mapValues { it.value != null }
+        return Outcome(Discovery.Outcome(reachable = answered.containsValue(true), answered = answered), reaches.filterValues { it == Reach.NotInvited }.keys)
     }
 
     /**

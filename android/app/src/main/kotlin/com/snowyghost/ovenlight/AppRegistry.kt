@@ -3,17 +3,13 @@ package com.snowyghost.ovenlight
 import java.io.File
 import java.net.URI
 import java.util.UUID
-import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
-import kotlinx.serialization.json.JsonElement
 
 /**
  * The user's apps, persisted as JSON in [directory] (the app's `files/Ovenlight`), with icons
@@ -42,8 +38,8 @@ class AppRegistry(
         /** Deletes a data store's cookies, storage and caches, even while a web view still uses it. */
         suspend fun clear(store: UUID)
 
-        /** Deletes the data store itself; false while a web view still uses it. */
-        fun delete(store: UUID): Boolean
+        /** Deletes the data store itself, now or, while a web view still uses it, at the next launch. */
+        fun delete(store: UUID)
 
         /** Every data store there is. */
         suspend fun stores(): List<UUID>
@@ -67,21 +63,18 @@ class AppRegistry(
     /** Hosts of apps the user removed; discovery won't add them back. */
     private var dismissedHosts: Set<String> = emptySet()
 
-    /**
-     * A file is there but couldn't be read or decoded. Nothing is saved over it and no data store
-     * is swept, until a reload reads it.
-     */
-    var loadFailed = false
-        private set
+    private val savedApps = SavedList(File(directory, "apps.json"), WebApp.serializer(), "apps")
+    private val savedDismissed = SavedList(File(directory, "dismissed-hosts.json"), String.serializer(), "dismissed hosts")
 
-    /** Apps another build saved that this one can't read (see [SavedJSON.List]). */
-    private var unread: List<JsonElement> = emptyList()
+    /**
+     * A file is there but couldn't be read or decoded. Nothing is saved over either file and no
+     * data store is swept, until a reload reads both.
+     */
+    val loadFailed: Boolean get() = savedApps.loadFailed || savedDismissed.loadFailed
 
     /** Every saved app was read, so cleaning up after the list deletes only what it means to. */
-    val readInFull: Boolean get() = !loadFailed && unread.isEmpty()
+    val readInFull: Boolean get() = savedApps.readInFull && !savedDismissed.loadFailed
 
-    private val file = File(directory, "apps.json")
-    private val dismissedFile = File(directory, "dismissed-hosts.json")
     val iconsDirectory = File(directory, "icons")
 
     init {
@@ -95,31 +88,16 @@ class AppRegistry(
     }
 
     private fun load() {
-        try {
-            val loaded = SavedJSON.read(WebApp.serializer(), file) ?: SavedJSON.List()
-            dismissedHosts = (SavedJSON.read(String.serializer(), dismissedFile)?.elements ?: emptyList()).toSet()
-            apps = loaded.elements
-            unread = loaded.unread
-            loadFailed = false
-            if (unread.isNotEmpty()) SavedJSON.problem("apps: kept ${unread.size} this version can't read")
-        } catch (e: Exception) {
-            loadFailed = true
-            SavedJSON.problem("apps: couldn't read: $e")
-        }
+        val loaded = savedApps.load() ?: return
+        val dismissed = savedDismissed.load() ?: return
+        dismissedHosts = dismissed.toSet()
+        apps = loaded
     }
 
     private fun save() {
         if (loadFailed) return
-        try {
-            SavedJSON.write(SavedJSON.encode(WebApp.serializer(), apps, unread), file)
-        } catch (e: Exception) {
-            SavedJSON.problem("apps: couldn't save: $e")
-        }
-        try {
-            SavedJSON.write(ovenlightJSON.encodeToString(ListSerializer(String.serializer()), dismissedHosts.sorted()), dismissedFile)
-        } catch (e: Exception) {
-            SavedJSON.problem("dismissed hosts: couldn't save: $e")
-        }
+        savedApps.save(apps)
+        savedDismissed.save(dismissedHosts.sorted())
     }
 
     /** The app's cached icon on disk, if one was fetched. Decoding it for the launcher is Android's. */
@@ -192,17 +170,10 @@ class AppRegistry(
         removeDataStore(app.dataStoreID)
     }
 
-    /**
-     * Deletes a data store's cookies, storage and caches. A web view that is still closing keeps
-     * its store in use, and deleting a store in use fails. So the data is cleared at once, and
-     * the store itself is deleted once it's free: retried here, and swept at the next launch.
-     */
+    /** Deletes a data store's cookies, storage and caches at once, and the store itself as soon as it can. */
     private suspend fun removeDataStore(id: UUID) {
         webData.clear(id)
-        for (wait in listOf(0, 1, 2, 4, 8)) {
-            delay(wait.seconds)
-            if (webData.delete(id)) return
-        }
+        webData.delete(id)
     }
 
     /** Deletes data stores no app uses: ones a removal couldn't delete while a web view still held them. Runs after launch. */

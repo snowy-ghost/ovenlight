@@ -1,8 +1,6 @@
 package com.snowyghost.ovenlight
 
 import android.app.admin.DevicePolicyManager
-import android.content.ActivityNotFoundException
-import android.content.Context
 import android.content.Intent
 import android.icu.text.ListFormatter
 import android.provider.Settings as SystemSettings
@@ -153,7 +151,7 @@ fun SettingsView(model: AppModel, onClose: () -> Unit) {
             lockAfter = seconds
         },
         // Straight to choosing a screen lock, or the security settings where that isn't offered.
-        setScreenLock = { context.open(Intent(DevicePolicyManager.ACTION_SET_NEW_PASSWORD)) || context.open(Intent(SystemSettings.ACTION_SECURITY_SETTINGS)) },
+        setScreenLock = { context.startOrFalse(Intent(DevicePolicyManager.ACTION_SET_NEW_PASSWORD)) || context.startOrFalse(Intent(SystemSettings.ACTION_SECURITY_SETTINGS)) },
         leave = { id -> model.scope.launch { model.guests.leave(id) } },
         useMyOwnComputers = {
             nodes.enableOwner()
@@ -171,14 +169,6 @@ fun SettingsView(model: AppModel, onClose: () -> Unit) {
         notices = { withContext(Dispatchers.IO) { Acknowledgements.notices { context.assets.open(it) } } },
     )
     SettingsScreen(state, onClose)
-}
-
-/** Starts another app's screen; false when no app handles it. */
-private fun Context.open(intent: Intent): Boolean = try {
-    startActivity(intent)
-    true
-} catch (_: ActivityNotFoundException) {
-    false
 }
 
 /** Settings, and Acknowledgements over it, which Back returns from. */
@@ -315,31 +305,12 @@ private fun SettingsList(state: SettingsState, scroll: ScrollState, onClose: () 
         )
     }
     leaving?.let { owner ->
-        AlertDialog(
-            onDismissRequest = { leaving = null },
-            title = { Text(ConnectionCopy.leaveTitle(owner.ownerName)) },
-            text = { Text(ConnectionCopy.leaveDetail(owner.ownerName)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    leaving = null
-                    state.leave(owner.membershipID)
-                }) { Text(stringResource(R.string.settings_leave), color = error) }
-            },
-            dismissButton = { TextButton(onClick = { leaving = null }) { Text(stringResource(R.string.settings_cancel)) } },
-        )
+        LeaveConfirmation(owner.ownerName, onDismiss = { leaving = null }) { state.leave(owner.membershipID) }
     }
     if (confirmingSignOut) {
-        AlertDialog(
-            onDismissRequest = { confirmingSignOut = false },
-            title = { Text(stringResource(R.string.settings_sign_out_title)) },
-            text = { Text(stringResource(R.string.settings_sign_out_detail)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    confirmingSignOut = false
-                    state.signOut()
-                }) { Text(stringResource(R.string.settings_sign_out), color = error) }
-            },
-            dismissButton = { TextButton(onClick = { confirmingSignOut = false }) { Text(stringResource(R.string.settings_cancel)) } },
+        Confirmation(
+            stringResource(R.string.settings_sign_out_title), stringResource(R.string.settings_sign_out_detail), stringResource(R.string.settings_sign_out),
+            onDismiss = { confirmingSignOut = false }, action = state.signOut,
         )
     }
     if (noEmailApp) NoEmailAppDialog(onDismiss = { noEmailApp = false })

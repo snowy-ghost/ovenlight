@@ -90,65 +90,18 @@ fun LockScreen(isLocked: Boolean, isAuthenticating: Boolean, lastError: String?,
             3f at 310
         })
     }
-    LockLayout(
-        level = level,
-        paneTitle = stringResource(R.string.lock_locked_description),
-        message = {
-            val lockedDescription = stringResource(R.string.lock_locked_description)
-            AnimatedContent(lastError, transitionSpec = { fadeIn() togetherWith fadeOut() }, label = "lock message") { error ->
-                Box(
-                    Modifier
-                        .padding(horizontal = 40.dp)
-                        .offset { IntOffset(with(density) { shake.value.dp.toPx() }.roundToInt(), 0) }
-                        .clearAndSetSemantics {
-                            contentDescription = error ?: lockedDescription
-                            liveRegion = LiveRegionMode.Polite
-                        },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    if (error == null) {
-                        Text(stringResource(R.string.lock_locked), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    } else {
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(painterResource(R.drawable.ic_error), contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
-                            Text(error, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
-                        }
-                    }
-                }
-            }
-        },
-        controls = {
-            FilledTonalButton(
-                onClick = onUnlock,
-                modifier = Modifier.padding(horizontal = 40.dp).widthIn(max = 400.dp).fillMaxWidth().height(56.dp),
-                contentPadding = ButtonDefaults.ButtonWithIconContentPadding,
-            ) {
-                Icon(painterResource(R.drawable.ic_lock_open), contentDescription = null, tint = LocalOvenColors.current.ember)
-                Spacer(Modifier.size(ButtonDefaults.IconSpacing))
-                Text(stringResource(R.string.lock_unlock), style = MaterialTheme.typography.titleMedium)
-            }
-        },
-    )
-}
-
-/**
- * The wordmark on its rack near the top, clear of the unlock prompt's sheet at the bottom,
- * with any message under it; the controls rest above the navigation bar. The light is the
- * launcher's.
- */
-@Composable
-private fun LockLayout(level: Float, paneTitle: String? = null, message: @Composable () -> Unit, controls: @Composable () -> Unit) {
-    val largeText = LocalDensity.current.fontScale >= 1.5f
+    val lockedDescription = stringResource(R.string.lock_locked_description)
+    val largeText = density.fontScale >= 1.5f
     // As a pane, TalkBack announces the lock as it appears, which its message's live region can't.
-    val pane = paneTitle?.let { title -> Modifier.semantics { this.paneTitle = title } } ?: Modifier
-    Box(Modifier.fillMaxSize().background(LocalOvenColors.current.ovenInterior).then(pane)) {
+    Box(Modifier.fillMaxSize().background(LocalOvenColors.current.ovenInterior).semantics { paneTitle = lockedDescription }) {
         LampLight(level)
-        // Measured from below the status bar (or a cutout reaching lower), as iOS measures from its safe area.
+        // The wordmark on its rack near the top, clear of the unlock prompt's sheet at the bottom,
+        // measured from below the status bar (or a cutout reaching lower), as iOS measures from its safe area.
         val statusBar = WindowInsets.statusBars.union(WindowInsets.displayCutout).asPaddingValues().calculateTopPadding()
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val top = statusBar + maxHeight * (if (largeText) 0.06f else 0.16f)
             Column(Modifier.fillMaxSize().navigationBarsPadding()) {
-                // Scrolls only when the largest text sizes don't fit above the controls.
+                // Scrolls only when the largest text sizes don't fit above the button.
                 Column(
                     Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(top = top),
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -157,9 +110,40 @@ private fun LockLayout(level: Float, paneTitle: String? = null, message: @Compos
                     // The message speaks for the whole block.
                     Text("Ovenlight", style = OvenType.wordmark, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.clearAndSetSemantics {})
                     OvenRack(120.dp)
-                    message()
+                    AnimatedContent(lastError, transitionSpec = { fadeIn() togetherWith fadeOut() }, label = "lock message") { error ->
+                        Box(
+                            Modifier
+                                .padding(horizontal = 40.dp)
+                                .offset { IntOffset(with(density) { shake.value.dp.toPx() }.roundToInt(), 0) }
+                                .clearAndSetSemantics {
+                                    contentDescription = error ?: lockedDescription
+                                    liveRegion = LiveRegionMode.Polite
+                                },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            if (error == null) {
+                                Text(stringResource(R.string.lock_locked), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            } else {
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(painterResource(R.drawable.ic_error), contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
+                                    Text(error, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+                                }
+                            }
+                        }
+                    }
                 }
-                Box(Modifier.fillMaxWidth().padding(vertical = 20.dp), contentAlignment = Alignment.Center) { controls() }
+                // The button rests above the navigation bar.
+                Box(Modifier.fillMaxWidth().padding(vertical = 20.dp), contentAlignment = Alignment.Center) {
+                    FilledTonalButton(
+                        onClick = onUnlock,
+                        modifier = Modifier.padding(horizontal = 40.dp).widthIn(max = 400.dp).fillMaxWidth().height(56.dp),
+                        contentPadding = ButtonDefaults.ButtonWithIconContentPadding,
+                    ) {
+                        Icon(painterResource(R.drawable.ic_lock_open), contentDescription = null, tint = LocalOvenColors.current.ember)
+                        Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+                        Text(stringResource(R.string.lock_unlock), style = MaterialTheme.typography.titleMedium)
+                    }
+                }
             }
         }
     }

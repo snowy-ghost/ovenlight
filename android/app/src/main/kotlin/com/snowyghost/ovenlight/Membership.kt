@@ -159,20 +159,13 @@ class MembershipStore(directory: File) {
     /** Runs after every change to [memberships]: the node manager makes the nodes of new ones. */
     var onChange: () -> Unit = {}
 
-    /**
-     * The file is there but couldn't be read or decoded. Nothing is saved over it, and nothing
-     * may clean up after the empty list, until a reload reads it.
-     */
-    var loadFailed = false
-        private set
+    private val saved = SavedList(File(directory, "memberships.json"), Membership.serializer(), "memberships")
 
-    /** Memberships another build saved that this one can't read (see [SavedJSON.List]). */
-    private var unread: List<JsonElement> = emptyList()
+    /** The file is there but couldn't be read: nothing may clean up after the empty list until a reload reads it. */
+    val loadFailed: Boolean get() = saved.loadFailed
 
     /** Every saved membership was read, so cleaning up after the list deletes only what it means to. */
-    val readInFull: Boolean get() = !loadFailed && unread.isEmpty()
-
-    private val file = File(directory, "memberships.json")
+    val readInFull: Boolean get() = saved.readInFull
 
     init {
         directory.mkdirs()
@@ -185,16 +178,7 @@ class MembershipStore(directory: File) {
     }
 
     private fun load() {
-        try {
-            val list = SavedJSON.read(Membership.serializer(), file) ?: SavedJSON.List()
-            memberships = list.elements
-            unread = list.unread
-            loadFailed = false
-            if (unread.isNotEmpty()) SavedJSON.problem("memberships: kept ${unread.size} this version can't read")
-        } catch (e: Exception) {
-            loadFailed = true
-            SavedJSON.problem("memberships: couldn't read: $e")
-        }
+        saved.load()?.let { memberships = it }
     }
 
     operator fun get(id: String): Membership? = memberships.firstOrNull { it.id == id }
@@ -219,12 +203,42 @@ class MembershipStore(directory: File) {
         save()
     }
 
-    private fun save() {
+    private fun save() = saved.save(memberships)
+}
+
+/**
+ * One saved list, in [file]. A file that is there but can't be read or decoded sets [loadFailed],
+ * and nothing is saved over it until a load reads it. Entries this version can't read are kept
+ * and written back (see [SavedJSON.List]).
+ */
+class SavedList<Element>(private val file: File, private val serializer: KSerializer<Element>, private val label: String) {
+    var loadFailed = false
+        private set
+
+    private var unread: List<JsonElement> = emptyList()
+
+    /** Every entry was read, so cleaning up after the list deletes only what it means to. */
+    val readInFull: Boolean get() = !loadFailed && unread.isEmpty()
+
+    /** The list as saved, empty without a file; null when the file couldn't be read. */
+    fun load(): List<Element>? = try {
+        val list = SavedJSON.read(serializer, file) ?: SavedJSON.List()
+        unread = list.unread
+        loadFailed = false
+        if (unread.isNotEmpty()) SavedJSON.problem("$label: kept ${unread.size} this version can't read")
+        list.elements
+    } catch (e: Exception) {
+        loadFailed = true
+        SavedJSON.problem("$label: couldn't read: $e")
+        null
+    }
+
+    fun save(elements: List<Element>) {
         if (loadFailed) return
         try {
-            SavedJSON.write(SavedJSON.encode(Membership.serializer(), memberships, unread), file)
+            SavedJSON.write(SavedJSON.encode(serializer, elements, unread), file)
         } catch (e: Exception) {
-            SavedJSON.problem("memberships: couldn't save: $e")
+            SavedJSON.problem("$label: couldn't save: $e")
         }
     }
 }

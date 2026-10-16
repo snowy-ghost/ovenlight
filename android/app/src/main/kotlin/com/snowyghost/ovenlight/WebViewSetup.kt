@@ -27,6 +27,7 @@ import kotlinx.coroutines.flow.StateFlow
  * deletions and the proxy override run, and no WebView is made until the override's own
  * callback has run.
  */
+@SuppressLint("RequiresFeature") // Ready, and every view, only once every required feature was found.
 object WebViewSetup {
     sealed interface State {
         data object Starting : State
@@ -99,19 +100,12 @@ object WebViewSetup {
         }
         // Client hints say the same: no model and Android 10. Left alone, WebView gives an agent
         // that contains its default (Android 17's is already reduced) the phone's full metadata.
-        // A required feature: without it the update screen shows and no app loads.
-        if (WebViewFeature.isFeatureSupported(WebViewFeature.USER_AGENT_METADATA)) {
-            WebSettingsCompat.setUserAgentMetadata(
-                view.settings,
-                UserAgentMetadata.Builder(WebSettingsCompat.getUserAgentMetadata(view.settings))
-                    .setModel("").setPlatformVersion("10.0.0").build(),
-            )
-        }
+        WebSettingsCompat.setUserAgentMetadata(
+            view.settings,
+            UserAgentMetadata.Builder(WebSettingsCompat.getUserAgentMetadata(view.settings)).setModel("").setPlatformVersion("10.0.0").build(),
+        )
         if (WebViewFeature.isFeatureSupported(WebViewFeature.ALGORITHMIC_DARKENING)) {
             WebSettingsCompat.setAlgorithmicDarkeningAllowed(view.settings, false)
-        }
-        if (WebViewFeature.isFeatureSupported(WebViewFeature.SAFE_BROWSING_ENABLE)) {
-            WebSettingsCompat.setSafeBrowsingEnabled(view.settings, false)
         }
     }
 
@@ -121,8 +115,6 @@ object WebViewSetup {
      * a direct one.
      */
     fun overrideProxy(context: Context, proxy: String, done: () -> Unit) {
-        // Without the override nothing may load, so done never runs and no view is made.
-        if (!WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE)) return
         val config = ProxyConfig.Builder().addProxyRule(proxy).removeImplicitRules().build()
         ProxyController.getInstance().setProxyOverride(config, ContextCompat.getMainExecutor(context), done)
     }
@@ -147,6 +139,7 @@ object WebViewSetup {
  * its name is kept, synchronously, and the profile is deleted at the next launch before
  * any profile loads.
  */
+@SuppressLint("RequiresFeature") // Runs only once the requirement check found MULTI_PROFILE.
 object ProfileDeletions {
     private const val KEY = "pendingProfileDeletions"
 
@@ -159,7 +152,7 @@ object ProfileDeletions {
 
     fun run(context: Context) {
         val pending = preferences(context).getStringSet(KEY, emptySet()).orEmpty()
-        if (pending.isEmpty() || !WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) return
+        if (pending.isEmpty()) return
         val store = ProfileStore.getInstance()
         val existing = store.allProfileNames.toSet()
         val left = pending.filter { name -> name in existing && !runCatching { store.deleteProfile(name) }.getOrDefault(false) }

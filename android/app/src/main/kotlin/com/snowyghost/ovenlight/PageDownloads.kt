@@ -1,10 +1,8 @@
 package com.snowyghost.ovenlight
 
 import android.annotation.SuppressLint
-import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.Context
-import android.content.ContextWrapper
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -15,8 +13,6 @@ import android.webkit.CookieManager
 import android.webkit.DownloadListener
 import android.webkit.MimeTypeMap
 import android.widget.Toast
-import androidx.activity.ComponentActivity
-import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
@@ -615,9 +611,7 @@ private fun DownloadSheet(model: AppModel, app: WebApp, download: DownloadShelf.
             canOpen = canOpen,
             onSave = {
                 done {
-                    // The picker hands its answer back: an excursion, not leaving.
-                    model.lifecycle.beginExcursion()
-                    SaveDocument.launch(context, download.file, type, model.scope)
+                    SaveDocument.launch(context, download.file, type, model.scope, model.lifecycle)
                 }
             },
             // The Sharesheet and Open take the person to another app, so they are leaving.
@@ -631,11 +625,8 @@ private fun DownloadSheet(model: AppModel, app: WebApp, download: DownloadShelf.
             onOpen = {
                 val openAs = download.type ?: return@DownloadSheetContent
                 done {
-                    try {
-                        context.startActivity(open(uri, openAs))
-                    } catch (_: ActivityNotFoundException) {
-                        // Whatever opened it is gone since the sheet looked.
-                    }
+                    // Whatever opened it may be gone since the sheet looked.
+                    context.startOrFalse(open(uri, openAs))
                 }
             },
         )
@@ -648,15 +639,13 @@ private fun DownloadSheet(model: AppModel, app: WebApp, download: DownloadShelf.
  * has gone, or the lock came meanwhile.
  */
 private object SaveDocument {
-    private var next = 0
-
-    fun launch(context: Context, file: File, type: String, scope: CoroutineScope) {
-        val activity = generateSequence(context) { (it as? ContextWrapper)?.baseContext }.firstNotNullOfOrNull { it as? ComponentActivity } ?: return
+    fun launch(context: Context, file: File, type: String, scope: CoroutineScope, lifecycle: AppLifecycle) {
+        val activity = context.componentActivity() ?: return
         val failed = activity.getString(R.string.download_save_failed, file.name)
-        var launcher: ActivityResultLauncher<String>? = null
-        launcher = activity.activityResultRegistry.register("ovenlight.save.${next++}", ActivityResultContracts.CreateDocument(type)) { target ->
-            launcher?.unregister()
-            target ?: return@register
+        // The picker hands its answer back: an excursion, not leaving.
+        lifecycle.beginExcursion()
+        activity.launchOnce(ActivityResultContracts.CreateDocument(type), file.name, failed = lifecycle::excursionEnded) { target ->
+            target ?: return@launchOnce
             scope.launch {
                 val saved = withContext(Dispatchers.IO) {
                     runCatching { activity.contentResolver.openOutputStream(target)?.use { out -> file.inputStream().use { it.copyTo(out) } } != null }.getOrDefault(false)
@@ -664,7 +653,6 @@ private object SaveDocument {
                 if (!saved) Toast.makeText(activity, failed, Toast.LENGTH_LONG).show()
             }
         }
-        launcher.launch(file.name)
     }
 }
 

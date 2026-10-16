@@ -1,6 +1,5 @@
 package com.snowyghost.ovenlight
 
-import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.Context
 import android.content.Intent
@@ -26,7 +25,6 @@ import kotlinx.coroutines.launch
 object AppLinks {
     const val supportEmail = "team@snowyghost.com"
     val privacyPolicy = URI("https://ovenlight.app/privacy")
-    val tailscalePricing = URI("https://tailscale.com/pricing")
 
     /** How to publish apps from your own computers. */
     const val ownComputersHelp = "https://ovenlight.app/support#own-computer"
@@ -111,12 +109,7 @@ fun MailDraft.intent(): Intent = Intent(Intent.ACTION_SENDTO, (mailtoURL?.toStri
     .putExtra(Intent.EXTRA_TEXT, body)
 
 /** Opens the draft in the person's mail app; false when the phone has none. */
-fun MailDraft.send(context: Context): Boolean = try {
-    context.startActivity(intent())
-    true
-} catch (_: ActivityNotFoundException) {
-    false
-}
+fun MailDraft.send(context: Context): Boolean = context.startOrFalse(intent())
 
 /** For a phone with no email app: where to write instead, with the address to copy. */
 @Composable

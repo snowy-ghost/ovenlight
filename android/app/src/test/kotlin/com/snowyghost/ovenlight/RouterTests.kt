@@ -78,12 +78,8 @@ class RouterTests {
         router.handle(URI("ovenlight://open?app=coach"), apps = listOf(app))
         assertNull("nothing opens under the lock screen", router.openApp.value)
         locked = false
-        assertTrue("the app it opens shows its own files", router.appsChanged(listOf(app)))
+        router.appsChanged(listOf(app))
         assertEquals(app.id, router.openApp.value?.id)
-        locked = true
-        router.handle(URI("ovenlight://open?app=coach"), apps = listOf(app))
-        locked = false
-        assertFalse("already open: the unlock shows its files", router.appsChanged(listOf(app)))
     }
 
     /** On a return from the background, a link arrives before the lock does. */

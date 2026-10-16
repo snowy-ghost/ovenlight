@@ -13,7 +13,6 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.webkit.WebViewCompat
 import com.snowyghost.ovenlight.core.Core
-import java.net.URI
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.TimeSource
 import kotlinx.coroutines.CoroutineScope
@@ -119,16 +118,13 @@ class AppPage(
         // The profile goes on before anything else touches the view.
         WebViewCompat.setProfile(view, profileName)
         WebViewSetup.configure(view)
-        if (BuildConfig.DEBUG) WebView.setWebContentsDebuggingEnabled(true)
         if (node != null) Core.setRoute(routeKey, node.id) else Core.clearRoute(routeKey)
         edges = PageEdges(
-            app, view, this.context, scope, OvenlightApp.lock.isLocked, OvenlightApp.model.lifecycle, isShown = { shown },
+            app, view, this.context, scope, OvenlightApp.lock.isLocked, OvenlightApp.model.lifecycle, capture, isShown = { shown },
             home = { if (routeIsCurrent() && nodeMayCarry && !destroyed) view.loadUrl(app.startURL.toString()) },
         )
         view.webViewClient = Client()
         view.webChromeClient = edges.chrome
-        // Camera and microphone requests go to the capture handler, through the edges' one client.
-        edges.capture = capture
         view.setDownloadListener(downloads)
         bridge = PageBridge(view, app.startURL, capture, downloads, scope)
         view.onPause()
@@ -305,7 +301,7 @@ class AppPage(
         // Once the app has rendered, a failed load leaves the page as it is. A link the person
         // tapped that can't reach the computer says so; what the page loads by itself never does.
         if (loaded.value) {
-            if (tapped && code in unreachable) cantReachAlert.value = true
+            if (tapped && code in retryableThroughNode) cantReachAlert.value = true
             return
         }
         if (code in retryableThroughNode && failedLoads < MAX_FAILED_LOADS) {
@@ -316,8 +312,8 @@ class AppPage(
         }
         failedLoads = 0
         // Chromium's description is a code ("net::ERR_TOO_MANY_REDIRECTS"): the log keeps it, the page says it plainly.
-        if (code !in unreachable) OvenlightLog.i("${app.host}: error $code, $description")
-        error.value = if (code in unreachable) ConnectionCopy.cantReachDetail else ConnectionCopy.pageFailed
+        if (code !in retryableThroughNode) OvenlightLog.i("${app.host}: error $code, $description")
+        error.value = if (code in retryableThroughNode) ConnectionCopy.cantReachDetail else ConnectionCopy.pageFailed
     }
 
     // Leaving
@@ -415,6 +411,5 @@ class AppPage(
             WebViewClient.ERROR_FAILED_SSL_HANDSHAKE, WebViewClient.ERROR_TIMEOUT, WebViewClient.ERROR_PROXY_AUTHENTICATION,
             WebViewClient.ERROR_CONNECT, WebViewClient.ERROR_HOST_LOOKUP, WebViewClient.ERROR_IO,
         )
-        val unreachable = retryableThroughNode
     }
 }

@@ -1,6 +1,5 @@
 package com.snowyghost.ovenlight
 
-import android.content.ActivityNotFoundException
 import android.content.Intent
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Button
@@ -24,16 +23,9 @@ fun WebViewUpdateScreen(webViewPackage: String) {
             Text(stringResource(R.string.webview_update_title), style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
             Text(stringResource(R.string.webview_update_body), style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center)
             Button(onClick = {
-                val market = Intent(Intent.ACTION_VIEW, "market://details?id=$webViewPackage".toUri())
-                try {
-                    context.startActivity(market)
-                } catch (_: ActivityNotFoundException) {
-                    try {
-                        context.startActivity(Intent(Intent.ACTION_VIEW, "https://play.google.com/store/apps/details?id=$webViewPackage".toUri()))
-                    } catch (_: ActivityNotFoundException) {
-                        // No store and no browser: nothing to open.
-                    }
-                }
+                // No store and no browser: nothing opens.
+                context.startOrFalse(Intent(Intent.ACTION_VIEW, "market://details?id=$webViewPackage".toUri())) ||
+                    context.startOrFalse(Intent(Intent.ACTION_VIEW, "https://play.google.com/store/apps/details?id=$webViewPackage".toUri()))
             }) { Text(stringResource(R.string.webview_update_button)) }
         }
     }

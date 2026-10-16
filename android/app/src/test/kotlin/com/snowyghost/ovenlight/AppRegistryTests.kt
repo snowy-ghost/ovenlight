@@ -32,7 +32,7 @@ internal fun offlineRegistry(dir: File) = AppRegistry(
     webData = object : AppRegistry.WebData {
         override fun discard(app: UUID) {}
         override suspend fun clear(store: UUID) {}
-        override fun delete(store: UUID) = true
+        override fun delete(store: UUID) {}
         override suspend fun stores() = emptyList<UUID>()
     },
     iconPNG = { null },

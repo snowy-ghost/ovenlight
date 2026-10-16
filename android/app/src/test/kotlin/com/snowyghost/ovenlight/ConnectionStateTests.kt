@@ -6,23 +6,20 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class ConnectionStateTests {
-    /** iOS's `.direct` tile is Android's refused one: neither goes through a node. */
     @Test
     fun testTilesFlagOnlyTailnetAppsThatDidNotAnswer() {
         val coach = "interview-coach.tailabc123.ts.net"
         fun tile(
             host: String = coach,
-            route: Routing.Route = Routing.Route.TailnetNode,
             node: NodeState = NodeState.Ready,
             answers: Map<String, Boolean>? = mapOf(coach to true),
-        ) = AppReachability.forTile(host, route, node, answers)
+        ) = AppReachability.forTile(host, node, answers)
         assertNull(tile())
         assertNull("hosts compare normalized", tile("Interview-Coach.tailabc123.ts.net"))
         assertEquals(AppReachability.Offline, tile(answers = mapOf(coach to false)))
         assertEquals("not probed: its computer is offline", AppReachability.Offline, tile(answers = mapOf("other.tailabc123.ts.net" to true)))
         assertNull("nothing before the first probe", tile(answers = null))
         assertNull("the launcher shows the connection itself", tile(node = NodeState.Connecting, answers = mapOf(coach to false)))
-        assertNull(tile("example.com", route = Routing.Route.Refused, answers = emptyMap()))
     }
 
     @Test

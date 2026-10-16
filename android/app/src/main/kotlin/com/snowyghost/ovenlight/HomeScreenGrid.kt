@@ -171,11 +171,6 @@ class HomeGridLayout(width: Double, labelHeight: Double, largeText: Boolean) {
         return max(row, 0) * columns + min(max(column, 0), columns - 1)
     }
 
-    override fun equals(other: Any?): Boolean =
-        other is HomeGridLayout && width == other.width && columns == other.columns && iconSize == other.iconSize && tileHeight == other.tileHeight
-
-    override fun hashCode(): Int = listOf(width, columns, iconSize, tileHeight).hashCode()
-
     companion object {
         const val labelGap = 6.0
         const val rowGap = 24.0
@@ -207,8 +202,6 @@ object HomeReorder {
         return moved
     }
 }
-
-/** Where the owner's empty grid sends them to learn about the connector. */
 
 /**
  * An icon being moved: where the finger is, where on the tile it took hold (from the tile's
