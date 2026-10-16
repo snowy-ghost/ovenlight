@@ -40,13 +40,18 @@ class MainActivity : ComponentActivity() {
     private val model get() = OvenlightApp.model
     private val lock get() = model.lock
 
+    /** The screen lock, entered on the system's screen before Android ended the last process. */
+    private val screenLockEntered = object : Authenticator {
+        override suspend fun authenticate() = Authenticator.Result.Success
+    }
+
     /** The return from a Custom Tab under way. */
     private var returning: Job? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        unlockPrompt = UnlockPrompt(this)
+        unlockPrompt = UnlockPrompt(this, confirmedAfterRestart = { lifecycleScope.launch { lock.unlock(screenLockEntered) } })
         // Collected while stopped too: the tab is in front then, and Ovenlight comes back over it.
         // A tab waits for the unlock, as iOS's sheets wait under the lock window.
         lifecycleScope.launch {

@@ -25,12 +25,19 @@ import kotlinx.coroutines.suspendCancellableCoroutine
  * screen at once when none is enrolled.
  *
  * Register it in the activity's onCreate: the screen lock's screen answers through an
- * activity result.
+ * activity result. [confirmedAfterRestart] takes a yes that comes with nothing waiting for it.
  */
-class UnlockPrompt(private val activity: ComponentActivity) : Authenticator {
+class UnlockPrompt(private val activity: ComponentActivity, confirmedAfterRestart: () -> Unit) : Authenticator {
     private var credentialAnswer: CompletableDeferred<Boolean>? = null
     private val credentialScreen = activity.registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-        credentialAnswer?.complete(it.resultCode == Activity.RESULT_OK)
+        val confirmed = it.resultCode == Activity.RESULT_OK
+        val waiting = credentialAnswer
+        // Nothing waits when Android ended Ovenlight's process while the screen lock's screen was
+        // up, and this activity is the one it made again. The yes is still the screen lock's own:
+        // Android hands a result only to the activity that asked, under this launcher's key, which
+        // the activity's saved state restores; this launcher opens only the system's screen lock
+        // screen; and that screen says yes only once the screen lock was entered.
+        if (waiting != null) waiting.complete(confirmed) else if (confirmed) confirmedAfterRestart()
     }
 
     /** True while Android 10's screen lock screen is up, which stops Ovenlight without leaving it. */
