@@ -20,11 +20,17 @@ import (
 
 	_ "golang.org/x/mobile/bind" // keeps x/mobile in the module graph, for gomobile and the notices
 	"tailscale.com/envknob"
+	"tailscale.com/logtail"
 	"tailscale.com/net/netmon"
 )
 
-// No node uploads logs to Tailscale, as on iOS.
-func init() { envknob.SetNoLogsNoSupport() }
+// No node uploads logs to Tailscale, as on iOS, and none buffers them on disk to upload:
+// without logtail.Disable, tsnet still writes every backend line to tailscaled.log*.txt in the
+// node's folder until the no-op upload drains it, and a process killed meanwhile leaves them.
+func init() {
+	envknob.SetNoLogsNoSupport()
+	logtail.Disable()
+}
 
 // Platform is implemented in Kotlin. Go calls it on its own threads.
 type Platform interface {
