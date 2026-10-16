@@ -1,3 +1,4 @@
+import com.github.triplet.gradle.androidpublisher.ResolutionStrategy
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier
 import org.gradle.api.artifacts.result.ResolvedArtifactResult
 import org.gradle.maven.MavenModule
@@ -7,6 +8,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.play.publisher)
 }
 
 fun intProperty(name: String) = providers.gradleProperty(name).get().toInt()
@@ -169,8 +171,26 @@ android {
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
     }
 
+    // The upload key, from ship-play's environment. Without it a release build is unsigned,
+    // as CI's are.
+    val uploadKeystore = providers.environmentVariable("PLAY_UPLOAD_KEYSTORE").orNull
+    if (uploadKeystore != null) {
+        // The configuration cache would keep the password on disk.
+        if (gradle.startParameter.isConfigurationCacheRequested) {
+            throw GradleException("Sign release builds with --no-configuration-cache")
+        }
+        signingConfigs.create("upload") {
+            storeFile = file(uploadKeystore)
+            storeType = "pkcs12"
+            storePassword = providers.environmentVariable("PLAY_UPLOAD_PASSWORD").get()
+            keyAlias = "upload"
+            keyPassword = storePassword
+        }
+    }
+
     buildTypes {
         release {
+            signingConfig = signingConfigs.findByName("upload")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
@@ -200,6 +220,18 @@ android {
         // The pins move only with the plan, and these checks ask the network.
         disable += setOf("AndroidGradlePluginVersion", "GradleDependency", "NewerVersionAvailable")
     }
+}
+
+// Internal testing uploads (decision 9), for ship-play: the service account's key file is
+// named by PLAY_CREDENTIALS, and the versionCode comes from Play, one past the
+// highest on any track. Without the variable the plugin's tasks stay off.
+play {
+    val credentials = providers.environmentVariable("PLAY_CREDENTIALS").orNull
+    enabled = credentials != null
+    credentials?.let { serviceAccountCredentials = file(it) }
+    track = "internal"
+    defaultToAppBundles = true
+    resolutionStrategy = ResolutionStrategy.AUTO
 }
 
 kotlin {

@@ -21,6 +21,7 @@ androidx-test = "1.7.0"
 orchestrator = "1.6.1"
 espresso = "3.7.0"
 uiautomator = "2.4.0"
+play-publisher = "4.1.1"
 
 [libraries]
 kotlin-gradle-plugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
@@ -64,3 +65,4 @@ uiautomator = { module = "androidx.test.uiautomator:uiautomator", version.ref = 
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+play-publisher = { id = "com.github.triplet.play", version.ref = "play-publisher" }
