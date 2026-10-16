@@ -3,8 +3,10 @@ package com.snowyghost.ovenlight
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.graphics.Rect
 import android.view.KeyEvent
+import android.view.View
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
+import android.view.inspector.WindowInspector
 import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -285,6 +287,26 @@ class OpenPageTests {
             tap(takes)
             waitFor("${picker.opens}, $way: set after the unlock") { evaluate(picker.value) == "\"${picker.chosen}\"" }
             waitFor("${picker.opens}'s picker to close") { find(picker.takes) == null }
+        }
+    }
+
+    /** A text or display size change while locked keeps the lock's window: Compose would make it anew, with a frame between. */
+    @Test
+    fun testTheLockKeepsItsWindowThroughATextSizeChange() {
+        lock()
+        var activityWindow: View? = null
+        scenario.onActivity { activityWindow = it.window.decorView }
+        // With no picker open, the lock's is the one window shown besides the activity's own.
+        val lockWindow = { onMain { WindowInspector.getGlobalWindowViews().single { it !== activityWindow && it.isShown } } }
+        val before = lockWindow()
+        val shell = { command: String -> instrumentation.uiAutomation.executeShellCommand(command).close() }
+        try {
+            shell("settings put system font_scale 1.3")
+            waitFor("the new text size") { onMain { page.view.resources.configuration.fontScale } == 1.3f }
+            Thread.sleep(1_000)
+            assertTrue("the same lock window", lockWindow() === before)
+        } finally {
+            shell("settings put system font_scale 1.0")
         }
     }
 

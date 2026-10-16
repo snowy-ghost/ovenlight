@@ -10,7 +10,9 @@ import android.webkit.WebViewClient
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.webkit.WebMessageCompat
+import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewMediaIntegrityApiStatusConfig
 import java.io.File
 import java.net.URI
 import java.util.concurrent.CountDownLatch
@@ -210,10 +212,19 @@ class PageScriptTests {
     @Test
     fun testSpeechRecognitionIsHidden() {
         open()
-        val names = "['SpeechRecognition', 'webkitSpeechRecognition', 'SpeechGrammarList', 'webkitSpeechGrammarList']"
+        val names = "['SpeechRecognition', 'webkitSpeechRecognition', 'SpeechGrammarList', 'webkitSpeechGrammarList', 'BarcodeDetector']"
         assertEquals("[]", eval("JSON.stringify($names.filter(n => n in window))"))
         waitFor("the frame loads") { eval("document.querySelector('iframe').contentDocument.readyState") == "complete" }
         assertEquals("in the app's own frames too", "[]", eval("JSON.stringify($names.filter(n => n in document.querySelector('iframe').contentWindow))"))
+    }
+
+    /** WebView's media integrity check, which Play services answers with Ovenlight's identity, is off for every frame. */
+    @Test
+    fun testMediaIntegrityIsOff() {
+        open()
+        val status = onMain { WebSettingsCompat.getWebViewMediaIntegrityApiStatus(view.settings) }
+        assertEquals(WebViewMediaIntegrityApiStatusConfig.WEBVIEW_MEDIA_INTEGRITY_API_DISABLED, status.defaultStatus)
+        assertTrue("no origin allowed it: ${status.overrideRules}", status.overrideRules.isEmpty())
     }
 
     @Test

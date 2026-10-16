@@ -6,7 +6,6 @@ import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
-import java.net.URI
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.activity.compose.setContent
@@ -17,16 +16,19 @@ import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeOut
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import java.net.URI
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
@@ -211,24 +213,38 @@ private fun LockWindow(lock: LockManager, locked: Boolean, onUnlock: () -> Unit)
     val error by lock.lastError.collectAsState()
     // Back goes to the activity, which has nothing left to go back through, so it leaves Ovenlight.
     val back = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
-    Dialog(
-        onDismissRequest = { back?.onBackPressed() },
-        properties = DialogProperties(dismissOnClickOutside = false, usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
-    ) {
-        FullScreenDialogBars()
-        GuardedFromOverlays()
-        // As the activity's window: no scrim behind the navigation bar, and no dialog animation
-        // or dim, so it shows at once and fades over the content alone.
-        val view = LocalView.current
-        SideEffect {
-            view.dialogWindow()?.run {
-                isNavigationBarContrastEnforced = false
-                setWindowAnimations(0)
-                clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-            }
+    // Compose makes the dialog's window anew when the density changes (text or display size, a
+    // fold), leaving a frame with no lock above a page's picker: the window keeps the density it
+    // was made with, and its content gets the current one.
+    val density = LocalDensity.current
+    val madeWith = remember { density }
+    CompositionLocalProvider(LocalDensity provides madeWith) {
+        Dialog(
+            onDismissRequest = { back?.onBackPressed() },
+            properties = DialogProperties(dismissOnClickOutside = false, usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+        ) {
+            CompositionLocalProvider(LocalDensity provides density) { LockWindowContent(shown, locked, authenticating, error, onUnlock) }
         }
-        AnimatedVisibility(shown, enter = EnterTransition.None, exit = fadeOut(tween(300))) {
-            LockScreen(isLocked = locked, isAuthenticating = authenticating, lastError = error, onUnlock = onUnlock)
+    }
+}
+
+@Composable
+private fun LockWindowContent(
+    shown: MutableTransitionState<Boolean>, locked: Boolean, authenticating: Boolean, error: String?, onUnlock: () -> Unit,
+) {
+    FullScreenDialogBars()
+    GuardedFromOverlays()
+    // As the activity's window: no scrim behind the navigation bar, and no dialog animation
+    // or dim, so it shows at once and fades over the content alone.
+    val view = LocalView.current
+    SideEffect {
+        view.dialogWindow()?.run {
+            isNavigationBarContrastEnforced = false
+            setWindowAnimations(0)
+            clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
         }
+    }
+    AnimatedVisibility(shown, enter = EnterTransition.None, exit = fadeOut(tween(300))) {
+        LockScreen(isLocked = locked, isAuthenticating = authenticating, lastError = error, onUnlock = onUnlock)
     }
 }
