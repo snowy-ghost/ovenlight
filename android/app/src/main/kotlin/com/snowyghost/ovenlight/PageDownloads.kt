@@ -135,6 +135,7 @@ class PageDownloads(
                 clicks.remove(url)?.let { return fetch(url, userAgent, contentDisposition, mimetype, contentLength, it.name) }
                 // The page's report of an `<a download>` click comes over a message port, which keeps
                 // no order with this start: its name may still be on the way.
+                if (jobs.size + naming.size >= CONCURRENT) return log("refused a download: $CONCURRENT already under way")
                 val wait = scope.launch {
                     var name: String? = null
                     for (wait in 1..CLICK_WAITS) {
@@ -142,6 +143,8 @@ class PageDownloads(
                         if (name != null) break
                         delay(CLICK_WAIT_MILLIS)
                     }
+                    // The page may have gone off screen meanwhile, without Ovenlight leaving.
+                    if (!mayStart()) return@launch log("refused a download while off screen or locked")
                     fetch(url, userAgent, contentDisposition, mimetype, contentLength, name)
                 }
                 naming += wait

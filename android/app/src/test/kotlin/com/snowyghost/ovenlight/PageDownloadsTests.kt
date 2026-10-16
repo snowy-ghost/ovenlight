@@ -190,6 +190,13 @@ class PageDownloadsTests {
         assertEquals(listOf("Recipes export.csv"), shelf().map { it.name })
     }
 
+    @Test
+    fun testADownloadWaitingForItsNameStopsIfThePageLeavesTheScreen() {
+        downloads.onDownloadStart("https://$host/export.csv", "agent", null, "text/csv", 0)
+        onScreen = false
+        assertTrue(shelf().isEmpty())
+    }
+
     /** Android only: the app's own address with characters java.net.URI refuses, as Chromium writes them, still downloads. */
     @Test
     fun testAnAppsOwnOddAddressStillDownloads() {
