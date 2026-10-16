@@ -1,14 +1,10 @@
 package com.snowyghost.ovenlight
 
-import android.content.res.Configuration
 import androidx.activity.OnBackPressedDispatcher
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
@@ -19,28 +15,24 @@ import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.isRoot
-import androidx.compose.ui.test.junit4.accessibility.enableAccessibilityChecks
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
-import androidx.compose.ui.test.tryPerformAccessibilityChecks
-import androidx.compose.ui.unit.Density
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.net.URI
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
-import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
-/** Settings in each state it has, in light, dark and at twice the text size, with the accessibility checks on. */
+/** Settings in each state it has, in light, dark and at twice the text size, with every tappable thing labeled. */
 @RunWith(AndroidJUnit4::class)
 @Config(qualifiers = "w411dp-h891dp")
 // Real drawing, which the icons need.
@@ -49,44 +41,18 @@ class SettingsViewTests {
     @get:Rule
     val composeRule = createComposeRule()
 
-    @Before
-    fun enableChecks() {
-        composeRule.enableAccessibilityChecks()
-    }
-
-    private fun checkAccessibility() = composeRule.checkAccessibility()
-
-    private enum class Look(val dark: Boolean, val fontScale: Float) { Light(false, 1f), Dark(true, 1f), LargeText(false, 2f) }
-
-    private var look by mutableStateOf(Look.Light)
+    private val look = mutableStateOf(Look.Light)
     private lateinit var back: OnBackPressedDispatcher
 
     private fun show(onClose: () -> Unit = {}, state: () -> SettingsState) {
         composeRule.setContent {
             back = LocalOnBackPressedDispatcherOwner.current!!.onBackPressedDispatcher
-            val configuration = Configuration(LocalConfiguration.current).apply {
-                uiMode = (uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or
-                    (if (look.dark) Configuration.UI_MODE_NIGHT_YES else Configuration.UI_MODE_NIGHT_NO)
-                fontScale = look.fontScale
-            }
-            CompositionLocalProvider(
-                LocalConfiguration provides configuration,
-                LocalDensity provides Density(LocalDensity.current.density, look.fontScale),
-            ) {
-                OvenlightTheme { SettingsScreen(state(), onClose) }
-            }
+            Looked(look.value) { SettingsScreen(state(), onClose) }
         }
     }
 
-    /** Runs [check] in each look, then the accessibility checks on everything showing. */
-    private fun inEveryLook(check: () -> Unit) {
-        for (each in Look.entries) {
-            look = each
-            composeRule.waitForIdle()
-            check()
-            checkAccessibility()
-        }
-    }
+    /** Runs [check] in each look, then the label checks on everything showing. */
+    private fun inEveryLook(check: () -> Unit) = composeRule.inEveryLook(look) { check(); composeRule.checkAccessibility() }
 
     /** Scrolled to, so it's on screen at any text size. */
     private fun row(text: String, substring: Boolean = false): SemanticsNodeInteraction =
@@ -157,7 +123,7 @@ class SettingsViewTests {
             composeRule.onAllNodesWithText("Leave")[0].performScrollTo().performClick()
             inDialog(ConnectionCopy.leaveTitle("Riley")).assertIsDisplayed()
             inDialog(ConnectionCopy.leaveDetail("Riley")).assertIsDisplayed()
-            checkAccessibility()
+            composeRule.checkAccessibility()
             inDialog("Cancel").performClick()
             assertTrue(left.isEmpty())
             composeRule.onNode(isDialog()).assertDoesNotExist()
@@ -242,7 +208,7 @@ class SettingsViewTests {
             row("Sign out").performClick()
             inDialog("Sign out of your computers?").assertIsDisplayed()
             inDialog("Your apps stay in Ovenlight. Sign in again to open them.").assertIsDisplayed()
-            checkAccessibility()
+            composeRule.checkAccessibility()
             inDialog("Cancel").performClick()
             assertEquals(0, signedOut)
         }
@@ -274,7 +240,7 @@ class SettingsViewTests {
             for ((label, seconds) in choices) {
                 row("Require screen lock").performClick()
                 for ((each, _) in choices) inDialog(each).assertIsDisplayed()
-                checkAccessibility()
+                composeRule.checkAccessibility()
                 inDialog(label).performClick()
                 composeRule.onNode(isDialog()).assertDoesNotExist()
                 assertEquals(seconds, state.lockAfterSeconds)
@@ -296,9 +262,9 @@ class SettingsViewTests {
             composeRule.onNodeWithText("Go standard library", substring = true).assertIsDisplayed()
             composeRule.onNodeWithText("Source Serif 4", substring = true).assertIsDisplayed()
             assertLacks("Require screen lock")
-            checkAccessibility()
+            composeRule.checkAccessibility()
             // The back arrow and Back both return to Settings, not out of it.
-            if (look == Look.Dark) {
+            if (look.value == Look.Dark) {
                 composeRule.runOnUiThread { back.onBackPressed() }
             } else {
                 composeRule.onNodeWithContentDescription("Back").performClick()
@@ -327,7 +293,7 @@ class SettingsViewTests {
         inEveryLook {
             row("Acknowledgements").performClick()
             composeRule.onNodeWithText("The licenses are missing from this build.").assertIsDisplayed()
-            checkAccessibility()
+            composeRule.checkAccessibility()
             composeRule.onNodeWithContentDescription("Back").performClick()
         }
     }
@@ -341,7 +307,7 @@ class SettingsViewTests {
             inDialog("No email app").assertIsDisplayed()
             inDialog("Write to team@snowyghost.com.").assertIsDisplayed()
             inDialog("Copy address").assertIsDisplayed()
-            checkAccessibility()
+            composeRule.checkAccessibility()
             inDialog("OK").performClick()
             composeRule.onNode(isDialog()).assertDoesNotExist()
         }

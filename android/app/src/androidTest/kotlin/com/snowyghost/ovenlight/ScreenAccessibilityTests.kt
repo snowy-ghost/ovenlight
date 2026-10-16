@@ -1,15 +1,9 @@
 package com.snowyghost.ovenlight
 
-import android.content.res.Configuration
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.junit4.accessibility.enableAccessibilityChecks
@@ -21,7 +15,6 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.tryPerformAccessibilityChecks
-import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.net.URI
@@ -42,8 +35,6 @@ class ScreenAccessibilityTests {
     @get:Rule
     val composeRule = createComposeRule()
 
-    private enum class Look(val dark: Boolean, val fontScale: Float) { Light(false, 1f), Dark(true, 1f), LargestText(false, 2f) }
-
     @Before
     fun checks() {
         composeRule.enableAccessibilityChecks()
@@ -54,23 +45,11 @@ class ScreenAccessibilityTests {
      * opens a menu or dialog once, before the first look; it stays open through the others.
      */
     private fun check(open: () -> Unit = {}, content: @Composable () -> Unit) {
-        var look by mutableStateOf(Look.Light)
-        composeRule.setContent {
-            val base = LocalConfiguration.current
-            val configuration = Configuration(base).apply {
-                uiMode = (uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or
-                    (if (look.dark) Configuration.UI_MODE_NIGHT_YES else Configuration.UI_MODE_NIGHT_NO)
-            }
-            val density = LocalDensity.current
-            CompositionLocalProvider(LocalConfiguration provides configuration, LocalDensity provides Density(density.density, look.fontScale)) {
-                OvenlightTheme(content)
-            }
-        }
+        val look = mutableStateOf(Look.Light)
+        composeRule.setContent { Looked(look.value, content) }
         composeRule.waitForIdle()
         open()
-        for (each in Look.entries) {
-            look = each
-            composeRule.waitForIdle()
+        composeRule.inEveryLook(look) {
             composeRule.onAllNodes(isRoot()).fetchSemanticsNodes().indices.forEach { composeRule.onAllNodes(isRoot())[it].tryPerformAccessibilityChecks() }
         }
     }
