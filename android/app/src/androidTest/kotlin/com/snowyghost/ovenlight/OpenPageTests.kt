@@ -39,7 +39,7 @@ class OpenPageTests {
     private lateinit var page: AppPage
 
     /** The shared model's lock delay, kept long here so the trips out don't lock on return. */
-    private var lockAfter = 0
+    private var lockAfter: Int? = null
 
     /** Unlocks as a fingerprint would. */
     private val fingerprint = object : Authenticator {
@@ -81,12 +81,13 @@ class OpenPageTests {
 
     @After
     fun tearDown() {
+        // First, so a setUp that failed part way still leaves the shared delay as it found it.
+        lockAfter?.let { model.lock.lockAfterSeconds = it }
         runBlocking { model.lock.unlock(fingerprint) }
         onMain { model.router.openApp.value = null }
         // The registry drops the app's views, which WebView takes only on the main thread.
-        runBlocking(Dispatchers.Main) { model.registry.remove(app.id) }
-        scenario.close()
-        model.lock.lockAfterSeconds = lockAfter
+        if (::app.isInitialized) runBlocking(Dispatchers.Main) { model.registry.remove(app.id) }
+        if (::scenario.isInitialized) scenario.close()
     }
 
     // Helpers
@@ -112,7 +113,9 @@ class OpenPageTests {
         return result.poll(5, TimeUnit.SECONDS)
     }
 
-    private fun number(script: String): Double = evaluate(script)?.toDoubleOrNull() ?: -1.0
+    // A read that fails fails the test, so a comparison of two failed reads can't pass.
+    private fun number(script: String): Double =
+        evaluate(script)?.toDoubleOrNull() ?: throw AssertionError("no number from $script")
 
     private fun lock() {
         onMain { model.lock.lock() }
