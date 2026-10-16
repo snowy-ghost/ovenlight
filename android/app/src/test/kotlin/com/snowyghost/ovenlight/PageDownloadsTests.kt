@@ -181,6 +181,15 @@ class PageDownloadsTests {
         assertEquals(0, folder.listFiles()!!.size)
     }
 
+    /** Android only: the app's own address with characters java.net.URI refuses, as Chromium writes them, still downloads. */
+    @Test
+    fun testAnAppsOwnOddAddressStillDownloads() {
+        start("https://$host/export.csv?q={%22a%22:1}&a|b")
+        assertEquals(1, shelf().size)
+        start("https://pantry.tail0000.ts.net/x?q={a}")
+        assertEquals("another app's stays refused", 1, shelf(2).size)
+    }
+
     @Test
     fun testAtMostThreeDownloadsAtOnce() {
         held = java.util.concurrent.CountDownLatch(1)

@@ -126,7 +126,8 @@ class PageDownloads(
         if (!mayStart()) return log("refused a download while off screen or locked")
         when (url.substringBefore(':').lowercase()) {
             "http", "https" -> {
-                val uri = runCatching { URI(url) }.getOrNull()
+                // As Chromium writes it: java.net.URI refuses some of an app's own addresses.
+                val uri = NavigationPolicy.pageURI(url)
                 if (uri == null || !DownloadPolicy.allows(uri, from = null, appHost = appHost, locked = isLocked())) return log("refused a download from another site")
                 fetch(url, userAgent, contentDisposition, mimetype, contentLength, clicks.remove(url)?.name)
             }
