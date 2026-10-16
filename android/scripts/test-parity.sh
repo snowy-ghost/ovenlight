@@ -21,6 +21,7 @@ testOnlyAShownSheetTakesItsFiles         # iOS presentation only, as above
 testScreenshotsAreDecodedSmall           # pending, Phase 6: Android's Bitmap, with the feedback inbox
 testAppReplacedByAppStaysOnScreen        # SwiftUI only: a replaced cover's onDismiss
 testSheetsReplaceEachOther               # SwiftUI only: a replaced sheet's onDismiss
+testOnlyTheAppsOwnPagesPopUpAPost        # Android opens no popups: setSupportMultipleWindows(false)
 EOF
 }
 
