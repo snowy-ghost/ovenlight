@@ -570,8 +570,9 @@ EOF
   await_text 15 "Allow Recipes to use the camera?" || fail "no capture prompt: $(screen_text | tr '\n' '|')"
   shot downloads-capture-prompt
   tap_text Allow
-  # The camera's clients, as the camera service lists them.
-  camera_clients() { a shell dumpsys media.camera | tr -d '\r' | sed -n '/Active Camera Clients/,/^$/p' | grep -c 'Client package: ' || true; }
+  # Ovenlight's camera clients, as the camera service lists them: "(Camera ID: 1, ..., Client
+  # Package Name: <package>, ...)" lines between "Active Camera Clients:" and "Allowed user IDs".
+  camera_clients() { a shell dumpsys media.camera | tr -d '\r' | sed -n '/Active Camera Clients/,/Allowed user IDs/p' | grep -c "Client Package Name: $PKG," || true; }
   for i in $(seq 1 15); do screen_text | grep -qE '^Camera (live|error)' && break; sleep 1; done
   if screen_text | grep -qxF "Camera live"; then
     note "the page has the camera after Ovenlight's prompt"
