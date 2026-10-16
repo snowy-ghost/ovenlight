@@ -1,6 +1,7 @@
 package com.snowyghost.ovenlight
 
 import android.app.ActivityManager
+import android.content.ComponentCallbacks2
 import android.content.Context
 import android.content.MutableContextWrapper
 import java.net.URI
@@ -72,6 +73,26 @@ class WebViewPool(
 
     /** Ends every page's microphone and camera streams, on screen or not, so none runs under the lock. */
     fun stopCapture() = pages.values.forEach { it.capture.stop() }
+
+    /**
+     * Pages' timers pause while Ovenlight is away (AppLifecycle's leaving rules), never during an
+     * excursion or for the lock. WebView's timers are process-wide, so one view does it for all.
+     */
+    var timersPaused = false
+        set(value) {
+            if (field == value) return
+            field = value
+            val view = pages.values.firstOrNull()?.view ?: return
+            if (value) view.pauseTimers() else view.resumeTimers()
+        }
+
+    /**
+     * Memory is short: pages off screen go, down to one. Android sends BACKGROUND once Ovenlight is
+     * in the background; UI_HIDDEN also comes for an excursion, when pages must stay.
+     */
+    fun trimMemory(level: Int, away: Boolean) {
+        if (level >= ComponentCallbacks2.TRIM_MEMORY_BACKGROUND || (level == ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN && away)) trim(keeping = 1)
+    }
 
     /** Where opening the app got, while it has a page, for Report a Problem. */
     fun gate(id: UUID): AppLoadGate? = pages[id]?.gate?.value

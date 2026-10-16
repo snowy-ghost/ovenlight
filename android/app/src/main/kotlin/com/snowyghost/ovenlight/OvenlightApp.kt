@@ -45,6 +45,11 @@ class OvenlightApp : Application() {
         model = AppModel(this)
     }
 
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        model.pool.trimMemory(level, away = model.lifecycle.isAway)
+    }
+
     companion object {
         /** Made once per process, so a configuration change or a restore after process death starts locked. */
         lateinit var model: AppModel
@@ -98,7 +103,10 @@ class AppModel(context: Context) {
     /** The router's sheet showing in a Custom Tab, kept with the process so a recreated activity returns from it. */
     var openTab: RootSheet? = null
     val lifecycle = AppLifecycle(
-        scope, SystemClock::elapsedRealtime, pausePolling = { nodes.pollingPaused = it }, closeNodes = nodes::closeAll,
+        scope, SystemClock::elapsedRealtime, setAway = {
+            nodes.pollingPaused = it
+            pool.timersPaused = it
+        }, closeNodes = nodes::closeAll,
         cameToFront = ::didBecomeActive,
     )
 

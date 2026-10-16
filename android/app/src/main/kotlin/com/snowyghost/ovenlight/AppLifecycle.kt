@@ -22,7 +22,8 @@ class AppLifecycle(
     private val scope: CoroutineScope,
     /** Milliseconds on a clock that counts while the phone sleeps. */
     private val now: () -> Long,
-    private val pausePolling: (Boolean) -> Unit,
+    /** Ovenlight left (true) or came back (false): nodes stop polling and pages' timers pause. */
+    private val setAway: (Boolean) -> Unit,
     private val closeNodes: suspend () -> Unit,
     /** Back in front: start closed nodes, look for apps and icons. */
     private val cameToFront: suspend () -> Unit,
@@ -31,6 +32,9 @@ class AppLifecycle(
     private var leftAt: Long? = null
     /** The close of this time away has begun; it always runs to the end. */
     private var closing = false
+
+    /** Away, by the leaving rules: an excursion's first five minutes don't count. */
+    val isAway: Boolean get() = leftAt != null
     private var away: Job? = null
 
     /** Ovenlight is about to send the person somewhere that hands a result back. */
@@ -53,7 +57,7 @@ class AppLifecycle(
         val closeDue = !closing && closeIsDue()
         excursionStartedAt = null
         leftAt = null
-        pausePolling(false)
+        setAway(false)
         scope.launch {
             if (closeDue) close()
             cameToFront()
@@ -78,7 +82,7 @@ class AppLifecycle(
     private fun leave(from: Long) {
         leftAt = from
         closing = false
-        pausePolling(true)
+        setAway(true)
         away = scope.launch {
             // A frozen process wakes here late or not at all, so the clock decides, not the timer.
             while (!closeIsDue()) delay(from + CLOSE_AFTER_MILLIS - now())

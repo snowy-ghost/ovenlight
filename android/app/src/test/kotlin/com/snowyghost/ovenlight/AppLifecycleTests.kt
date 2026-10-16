@@ -23,7 +23,7 @@ class AppLifecycleTests {
 
     /** [clock] stands in for elapsedRealtime, which keeps counting while a frozen process's timers don't. */
     private fun TestScope.lifecycle(recorder: Recorder, clock: () -> Long = { testScheduler.currentTime }) = AppLifecycle(
-        backgroundScope, clock, pausePolling = { recorder.paused = it }, closeNodes = {
+        backgroundScope, clock, setAway = { recorder.paused = it }, closeNodes = {
             recorder.closes += 1
             delay(1_000) // the nodes' stops take a moment
             recorder.closed += 1
@@ -39,6 +39,7 @@ class AppLifecycleTests {
         assertEquals(1, r.fronts)
         life.activityStopped()
         assertTrue(r.paused)
+        assertTrue(life.isAway)
         advanceTimeBy(59_000)
         assertEquals(0, r.closes)
         advanceTimeBy(2_000)
@@ -47,6 +48,7 @@ class AppLifecycleTests {
         life.activityStarted()
         runCurrent()
         assertFalse(r.paused)
+        assertFalse(life.isAway)
         assertEquals("closed once, then started again", 1, r.closes)
         assertEquals(2, r.fronts)
     }
@@ -71,6 +73,7 @@ class AppLifecycleTests {
         life.activityStopped()
         advanceTimeBy(4 * 60_000)
         assertFalse("polling goes on", r.paused)
+        assertFalse("an excursion isn't away", life.isAway)
         assertEquals(0, r.closes)
         life.activityStarted()
         advanceTimeBy(10 * 60_000)
