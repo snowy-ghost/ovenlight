@@ -110,9 +110,6 @@ class PageDownloads(
     private val reads = mutableMapOf<String, Read>()
     private val jobs = mutableSetOf<Job>()
 
-    /** http downloads waiting for the click report that names them. */
-    private val naming = mutableSetOf<Job>()
-
     /** The refetches under way, which [cancel] ends at once: a blocked read never sees its job end. */
     private val calls: MutableSet<Call> = ConcurrentHashMap.newKeySet()
 
@@ -131,29 +128,7 @@ class PageDownloads(
                 // As Chromium writes it: java.net.URI refuses some of an app's own addresses.
                 val uri = NavigationPolicy.pageURI(url)
                 if (uri == null || !DownloadPolicy.allows(uri, from = null, appHost = appHost, locked = isLocked())) return log("refused a download from another site")
-                clicks.remove(url)?.let { return fetch(url, userAgent, contentDisposition, mimetype, contentLength, it.name) }
-                // The page's report of an `<a download>` click comes over a message port, which keeps
-                // no order with this start: its name may still be on the way.
-                if (jobs.size + naming.size >= CONCURRENT) return log("refused a download: $CONCURRENT already under way")
-                val wait = scope.launch {
-                    var name: String? = null
-                    for (wait in 1..CLICK_WAITS) {
-                        name = clicks.remove(url)?.name
-                        if (name != null) break
-                        delay(CLICK_WAIT_MILLIS)
-                    }
-                    // The page may have gone off screen meanwhile, without Ovenlight leaving.
-                    if (!mayStart()) return@launch log("refused a download while off screen or locked")
-                    fetch(url, userAgent, contentDisposition, mimetype, contentLength, name)
-                }
-                naming += wait
-                busy(true)
-                wait.invokeOnCompletion {
-                    scope.launch {
-                        naming -= wait
-                        busy(jobs.isNotEmpty() || naming.isNotEmpty())
-                    }
-                }
+                fetch(url, userAgent, contentDisposition, mimetype, contentLength)
             }
             "blob", "data" -> {
                 if (url.length > HREF_LIMIT && url.startsWith("data:", ignoreCase = true)) return log("refused a data URL over the limit")
@@ -213,7 +188,6 @@ class PageDownloads(
 
     /** The page is going: its downloads stop, and their partial files go. */
     fun cancel() {
-        naming.toList().forEach { it.cancel() }
         jobs.toList().forEach { it.cancel() }
         calls.forEach { it.cancel() }
         started.clear()
@@ -256,10 +230,22 @@ class PageDownloads(
         reads.values.removeAll { it.at < since }
     }
 
-    private fun fetch(url: String, userAgent: String?, disposition: String?, type: String?, length: Long, name: String?) {
+    private fun fetch(url: String, userAgent: String?, disposition: String?, type: String?, length: Long) {
         if (jobs.size >= CONCURRENT) return log("refused a download: $CONCURRENT already under way")
         val client = client()
-        track {
+        var name: String? = null
+        val named: suspend () -> Boolean = {
+            // The page's report of an `<a download>` click comes over a message port, which keeps
+            // no order with WebView's start: its name may still be on the way.
+            for (wait in 1..CLICK_WAITS) {
+                name = clicks.remove(url)?.name
+                if (name != null) break
+                delay(CLICK_WAIT_MILLIS)
+            }
+            // The page may have gone off screen meanwhile, without Ovenlight leaving.
+            mayStart().also { if (!it) log("refused a download while off screen or locked") }
+        }
+        track(first = named) {
             val request = Request.Builder().url(url).apply { userAgent?.let { header("User-Agent", it) } }.build()
             val call = client.newCall(request)
             calls += call
@@ -297,10 +283,14 @@ class PageDownloads(
         }
     }
 
-    /** Runs a download off the main thread; a file it makes waits for the sheet. */
-    private fun track(work: suspend () -> File?) {
+    /**
+     * Runs a download off the main thread, after [first] (on the page's own thread) says go; a
+     * file it makes waits for the sheet.
+     */
+    private fun track(first: suspend () -> Boolean = { true }, work: suspend () -> File?) {
         val job = scope.launch {
             try {
+                if (!first()) return@launch
                 withContext(Dispatchers.IO) {
                     val file = work() ?: return@withContext
                     // Cancelled while it finished: the file goes with the rest.
@@ -321,7 +311,7 @@ class PageDownloads(
         job.invokeOnCompletion {
             scope.launch {
                 jobs -= job
-                busy(jobs.isNotEmpty() || naming.isNotEmpty())
+                busy(jobs.isNotEmpty())
             }
         }
     }
