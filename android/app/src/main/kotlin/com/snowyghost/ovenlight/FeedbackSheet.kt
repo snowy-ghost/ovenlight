@@ -40,12 +40,12 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -56,6 +56,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -102,8 +103,12 @@ fun FeedbackSheet(
     density: Float,
     send: suspend (FeedbackPayload) -> FeedbackResult,
     onDismiss: () -> Unit,
-    scope: CoroutineScope = rememberCoroutineScope(),
+    scope: CoroutineScope,
 ) {
+    // The lock can take the sheet away with the keyboard up, and the keyboard's stale back
+    // callback would then swallow the first Back after the unlock.
+    val keyboard = LocalSoftwareKeyboardController.current
+    DisposableEffect(Unit) { onDispose { keyboard?.hide() } }
     val note = draft.note
     val screenshot = draft.screenshot
     val includeScreenshot = draft.includeScreenshot
@@ -194,7 +199,8 @@ private fun FeedbackForm(
     // With nothing to look at, the note is the whole form: the keyboard comes up for it.
     LaunchedEffect(Unit) { if (screenshot == null) focus.requestFocus() }
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).imePadding().padding(horizontal = 16.dp, vertical = 8.dp),
+        // The keyboard shrinks the scrolling area, so the field being typed in scrolls into view above it.
+        Modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
