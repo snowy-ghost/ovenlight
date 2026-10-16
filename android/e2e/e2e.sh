@@ -255,7 +255,15 @@ evaljs() {
 }
 
 # The screen's text and content descriptions, one per line.
-screen_text() { a exec-out uiautomator dump /dev/tty 2>/dev/null | tr '>' '\n' | LC_ALL=C sed -n -E 's/.*(text|content-desc)="([^"]+)".*/\2/p'; }
+screen_text() {
+  # Values with a double quote are quoted with single quotes in the dump.
+  a exec-out uiautomator dump /dev/tty 2>/dev/null | python3 -c '
+import html, re, sys
+for m in re.finditer(r"(?<![\w-])(?:text|content-desc)=(?:\"([^\"]*)\"|\x27([^\x27]*)\x27)", sys.stdin.read()):
+    value = html.unescape(m.group(1) if m.group(1) is not None else m.group(2))
+    if value: print(value)
+'
+}
 # Taps the first element whose text or description is exactly $1.
 tap_text() {
   local spot
@@ -296,6 +304,7 @@ if [[ $SCENARIO == app ]]; then
   # The page's own heading, read from the web view.
   await_text 40 "Recipe Box" || { shot app-failed; fail "Recipes never loaded: $(screen_text | tr '\n' '|')"; }
   sleep 8; shot app-recipes
+  a exec-out uiautomator dump /dev/tty > "$OUT/app-recipes.xml" 2>/dev/null || true
   report=$(screen_text | grep -m1 -F '"ws"' || true)
   note "Recipes opened and its page loaded: $report"
   # Its WebSocket and the internet work; Pantry's files don't, since the connector refuses a

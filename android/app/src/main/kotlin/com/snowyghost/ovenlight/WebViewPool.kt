@@ -60,6 +60,9 @@ class WebViewPool(private val context: Context, private val nodes: NodeManager, 
         return page
     }
 
+    /** Whether the app has a live page; tests ask. */
+    internal fun hasPage(id: UUID): Boolean = id in pages
+
     /** Where opening the app got, while it has a page, for Report a Problem. */
     fun gate(id: UUID): AppLoadGate? = pages[id]?.gate?.value
 

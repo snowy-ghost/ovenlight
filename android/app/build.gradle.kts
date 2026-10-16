@@ -190,6 +190,10 @@ android {
     // Robolectric runs the screens' Compose tests and Android's image decoding on the JVM.
     testOptions.unitTests.isIncludeAndroidResources = true
 
+    // Fakes shared by the JVM and device tests.
+    sourceSets["test"].kotlin.directories += "src/sharedTest/kotlin"
+    sourceSets["androidTest"].kotlin.directories += "src/sharedTest/kotlin"
+
     lint {
         warningsAsErrors = true
         abortOnError = true

@@ -6,25 +6,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class MemoryStore : KeyValueStore {
-    private val values = mutableMapOf<String, Any>()
-    override fun getInt(key: String, default: Int) = values[key] as? Int ?: default
-    override fun putInt(key: String, value: Int) {
-        values[key] = value
-    }
-    override fun getString(key: String) = values[key] as? String
-    override fun putString(key: String, value: String) {
-        values[key] = value
-    }
-    override fun getBoolean(key: String) = values[key] as? Boolean ?: false
-    override fun putBoolean(key: String, value: Boolean) {
-        values[key] = value
-    }
-    override fun remove(key: String) {
-        values.remove(key)
-    }
-}
-
 class LockTimingTests {
     @Test
     fun testLocksByTimeInTheBackgroundNotTheClock() {
