@@ -305,31 +305,12 @@ private fun SettingsList(state: SettingsState, scroll: ScrollState, onClose: () 
         )
     }
     leaving?.let { owner ->
-        AlertDialog(
-            onDismissRequest = { leaving = null },
-            title = { Text(ConnectionCopy.leaveTitle(owner.ownerName)) },
-            text = { Text(ConnectionCopy.leaveDetail(owner.ownerName)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    leaving = null
-                    state.leave(owner.membershipID)
-                }) { Text(stringResource(R.string.settings_leave), color = error) }
-            },
-            dismissButton = { TextButton(onClick = { leaving = null }) { Text(stringResource(R.string.settings_cancel)) } },
-        )
+        LeaveConfirmation(owner.ownerName, onDismiss = { leaving = null }) { state.leave(owner.membershipID) }
     }
     if (confirmingSignOut) {
-        AlertDialog(
-            onDismissRequest = { confirmingSignOut = false },
-            title = { Text(stringResource(R.string.settings_sign_out_title)) },
-            text = { Text(stringResource(R.string.settings_sign_out_detail)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    confirmingSignOut = false
-                    state.signOut()
-                }) { Text(stringResource(R.string.settings_sign_out), color = error) }
-            },
-            dismissButton = { TextButton(onClick = { confirmingSignOut = false }) { Text(stringResource(R.string.settings_cancel)) } },
+        Confirmation(
+            stringResource(R.string.settings_sign_out_title), stringResource(R.string.settings_sign_out_detail), stringResource(R.string.settings_sign_out),
+            onDismiss = { confirmingSignOut = false }, action = state.signOut,
         )
     }
     if (noEmailApp) NoEmailAppDialog(onDismiss = { noEmailApp = false })
