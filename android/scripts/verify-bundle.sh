@@ -1,8 +1,8 @@
 #!/bin/bash
 # Checks a release bundle against what Play and the plan require: the SDK level, the
 # Go core's three ABIs aligned to 16 KB pages, the license notices, no advertising ID or
-# media permissions, the camera and microphone not required, and WebView metrics and Safe
-# Browsing off.
+# media permissions, the camera and microphone not required, WebView metrics and Safe Browsing
+# off, and nothing backed up or transferred.
 # ship-play runs it as VERIFY_CMD, against the exact file it then uploads.
 #
 #   android/scripts/verify-bundle.sh <app-release.aab>
@@ -62,5 +62,7 @@ done
   fail "WebView metrics aren't opted out"
 [ "$(attr "/manifest/application/meta-data[@android:name='android.webkit.WebView.EnableSafeBrowsing']/@android:value")" = false ] ||
   fail "Safe Browsing isn't off"
+[ "$(attr /manifest/application/@android:allowBackup)" = false ] && [ -n "$(attr /manifest/application/@android:dataExtractionRules)" ] ||
+  fail "backups or device transfer could carry Ovenlight's data"
 
 echo "the bundle passes"

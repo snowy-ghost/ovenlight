@@ -62,6 +62,7 @@ func Init(p Platform, debugBuild bool) error {
 			log.SetOutput(lineWriter{})
 		} else {
 			log.SetOutput(io.Discard)
+			silenceStderr()
 		}
 		log.SetFlags(0)
 		netmon.RegisterInterfaceGetter(interfaces)
