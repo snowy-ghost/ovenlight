@@ -84,7 +84,9 @@ object TailnetCore : Platform, TailnetClients {
     private val reports = Executors.newSingleThreadExecutor()
 
     private fun report(properties: LinkProperties) {
-        val defaults = properties.routes.filter { it.isDefaultRoute && it.gateway != null }
+        // A directly connected default route, as cellular often has, reports 0.0.0.0 or :: as
+        // its gateway, which the port mapper would then probe: only a real next hop counts.
+        val defaults = properties.routes.filter { it.isDefaultRoute && it.hasGateway() }
         val gateway = (defaults.firstOrNull { it.gateway is Inet4Address } ?: defaults.firstOrNull())?.gateway
         Core.networkChanged(properties.interfaceName.orEmpty(), gateway?.hostAddress.orEmpty(), nat64Prefix(properties))
     }
