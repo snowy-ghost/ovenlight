@@ -228,6 +228,27 @@ class OpenPageTests {
         assertEquals("the date didn't change", "\"2026-03-05\"", evaluate("document.getElementById('when').value"))
     }
 
+    /** Leaving with the picker open and coming back locked: Android shows an activity's dialogs again as it returns. */
+    @Test
+    fun testADatePickerLeftOpenIsGoneWhenOvenlightComesBackLocked() {
+        tap(element("when"))
+        waitFor("the date picker") { screen().any { it.contains("DatePicker") } }
+        model.lock.lockAfterSeconds = 0
+        scenario.moveToState(Lifecycle.State.CREATED)
+        Thread.sleep(500)
+        scenario.moveToState(Lifecycle.State.RESUMED)
+        waitFor("the lock") { model.lock.isLocked.value }
+        val locked = screen()
+        assertFalse("a date picker over the lock: $locked", locked.any { it.contains("DatePicker") })
+        // Coming back locked opens the system's own prompt, which goes first.
+        if (model.lock.isAuthenticating.value) {
+            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+            waitFor("the prompt to close") { !model.lock.isAuthenticating.value }
+        }
+        unlock()
+        assertEquals("the date didn't change", "\"2026-03-05\"", evaluate("document.getElementById('when').value"))
+    }
+
     // A trip out and back
 
     /** Ovenlight's own Custom Tab or a picker: for its first minutes the page runs on, and nothing reloads it. */
