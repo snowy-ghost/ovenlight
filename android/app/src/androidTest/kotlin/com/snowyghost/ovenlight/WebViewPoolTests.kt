@@ -47,7 +47,7 @@ class WebViewPoolTests {
                 FakeClients(), MemoryStore(), MembershipStore(File(folder, "Ovenlight")), File(folder, "tailscale"),
                 scope, Dispatchers.IO, System::currentTimeMillis, {},
             )
-            pool = WebViewPool(context, nodes, scope)
+            pool = WebViewPool(context, nodes, scope, isLocked = { false })
         }
     }
 
