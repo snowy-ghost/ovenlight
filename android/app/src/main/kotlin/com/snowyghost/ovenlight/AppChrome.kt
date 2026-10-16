@@ -696,7 +696,7 @@ fun AppChromeHost(model: AppModel, page: AppPage, icon: Bitmap?, onClose: () -> 
     val loaded by page.hasLoadedOnce.collectAsState()
     val memberships by model.nodes.memberships.membershipsFlow.collectAsState()
     val controller = remember(page) { ChromeController(PreferencesStore(context)) }
-    var feedback by remember { mutableStateOf<FeedbackCapture?>(null) }
+    val feedback by page.feedback.collectAsState()
     var noMailApp by remember { mutableStateOf(false) }
     var leaving by remember { mutableStateOf<Membership?>(null) }
     val density = LocalDensity.current.density
@@ -727,7 +727,7 @@ fun AppChromeHost(model: AppModel, page: AppPage, icon: Bitmap?, onClose: () -> 
                         } finally {
                             controller.hiddenForSnapshot = false
                         }
-                        feedback = FeedbackCapture(image, page.view.url?.let { runCatching { URI(it) }.getOrNull() })
+                        page.feedback.value = FeedbackDraft(image, page.view.url?.let { runCatching { URI(it) }.getOrNull() })
                     }
                 }
             } else {
@@ -740,11 +740,12 @@ fun AppChromeHost(model: AppModel, page: AppPage, icon: Bitmap?, onClose: () -> 
         controller,
     )
 
-    feedback?.let { capture ->
+    feedback?.let { draft ->
         FeedbackSheet(
-            app, capture.image, capture.pageURL, density,
+            app, draft, density,
             send = { FeedbackSender.send(it, app, model.nodes, model.guests) },
-            onDismiss = { feedback = null },
+            onDismiss = { if (page.feedback.value === draft) page.feedback.value = null },
+            scope = model.scope,
         )
     }
     if (noMailApp) NoEmailAppDialog(onDismiss = { noMailApp = false })
@@ -759,6 +760,3 @@ fun AppChromeHost(model: AppModel, page: AppPage, icon: Bitmap?, onClose: () -> 
         }
     }
 }
-
-/** What Send feedback captured: the page as it looked, and where it was. */
-class FeedbackCapture(val image: Bitmap?, val pageURL: URI?)

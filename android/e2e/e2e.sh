@@ -15,8 +15,9 @@
 # Immediately, Home and back through the icon or Recents asks for it, and a canceled prompt
 # doesn't come back by itself. app opens Recipes from the launcher and waits for its page.
 # chrome opens Recipes, closes the pill's one-time tip, brings the pill back with its handle,
-# opens the app menu and sends feedback, and checks that the connector got it, screenshot
-# and all, with no pill or handle in the screenshot.
+# opens the app menu and writes feedback, locks and unlocks with the note still there, sends
+# it, and checks that the connector got it, screenshot and all, with no pill or handle in the
+# screenshot.
 # edges gives Recipes a page of links and checks where each goes: an outside link opens in a
 # Custom Tab, mailto: asks first and Cancel opens nothing, an intent: for Ovenlight does
 # nothing, and a POST to Pantry goes back and opens Pantry outside.
@@ -332,6 +333,22 @@ await_text() {
 
 night() { a shell cmd uimode night $1 >/dev/null; sleep 3; }
 locked() { screen_text | grep -qxE 'Unlock Ovenlight|Ovenlight is locked'; }
+# Locks Ovenlight where it is. The activity pauses and resumes for the intent, so the system's
+# unlock prompt ("Unlock Ovenlight") opens over the lock screen at once, as on a return; its
+# window is secure (black in a screenshot) and the only one uiautomator reads, so either counts.
+lock_now() {
+  a shell "am start -n $PKG/.MainActivity --ez lockNow true" >/dev/null
+  for i in $(seq 1 10); do locked && return 0; sleep 1; done
+  fail "lockNow didn't lock: $(screen_text | tr '\n' '|')"
+}
+# Answers the prompt with fingerprint 1, opening it first from the lock screen if it was closed.
+unlock_now() {
+  # The prompt may still be on its way over the lock screen.
+  local i
+  for i in 1 2 3 4; do screen_text | grep -qxF "Unlock Ovenlight" && break; sleep 1; done
+  screen_text | grep -qxF "Unlock Ovenlight" || { tap_text Unlock || true; sleep 2; }
+  a emu finger touch 1 >/dev/null
+}
 
 # The activity in front, as the activity manager names it.
 front() { a shell dumpsys activity activities | LC_ALL=C grep -m1 -E 'topResumedActivity|mResumedActivity' || true; }
@@ -427,6 +444,12 @@ if [[ $SCENARIO == chrome ]]; then
   a shell input text 'e2e%snote%sfrom%sthe%sapp%smenu'
   sleep 1
   shot chrome-feedback
+  # The lock takes the screen apart; the note waits with the app's page and comes back with it.
+  lock_now
+  unlock_now
+  await_text 15 "e2e note from the app menu" "Include screenshot" || { shot chrome-failed; fail "Send feedback didn't come back with its note after the lock: $(screen_text | tr '\n' '|')"; }
+  shot chrome-feedback-unlocked
+  note "Send feedback came back after the lock, its note as typed"
   tap_text Send || fail "no Send button"
   await_text 30 "Feedback sent" || { shot chrome-failed; fail "the feedback wasn't sent: $(screen_text | tr '\n' '|')"; }
   # It closes by itself 1.4 s later.
@@ -615,22 +638,6 @@ EOF
   shot downloads-capture-prompt
   # Allow takes no tap in its first half second.
   sleep 1; tap_text Allow
-  # Locks Ovenlight where it is. The activity pauses and resumes for the intent, so the system's
-  # unlock prompt ("Unlock Ovenlight") opens over the lock screen at once, as on a return; its
-  # window is secure (black in a screenshot) and the only one uiautomator reads, so either counts.
-  lock_now() {
-    a shell "am start -n $PKG/.MainActivity --ez lockNow true" >/dev/null
-    for i in $(seq 1 10); do locked && return 0; sleep 1; done
-    fail "lockNow didn't lock: $(screen_text | tr '\n' '|')"
-  }
-  # Answers the prompt with fingerprint 1, opening it first from the lock screen if it was closed.
-  unlock_now() {
-    # The prompt may still be on its way over the lock screen.
-    local i
-    for i in 1 2 3 4; do screen_text | grep -qxF "Unlock Ovenlight" && break; sleep 1; done
-    screen_text | grep -qxF "Unlock Ovenlight" || { tap_text Unlock || true; sleep 2; }
-    a emu finger touch 1 >/dev/null
-  }
   # Ovenlight's camera clients, as the camera service lists them: "(Camera ID: 1, ..., Client
   # Package Name: <package>, ...)" lines between "Active Camera Clients:" and "Allowed user IDs".
   camera_clients() { a shell dumpsys media.camera | tr -d '\r' | sed -n '/Active Camera Clients/,/Allowed user IDs/p' | grep -c "Client Package Name: $PKG," || true; }

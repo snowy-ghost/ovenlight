@@ -55,6 +55,12 @@ class AppPage(
     private val error = MutableStateFlow<String?>(null)
     val loadError: StateFlow<String?> = error
 
+    /**
+     * Send feedback while it's open. It outlasts the lock, which takes the screen apart, and goes
+     * once it's sent or closed, when the app closes, or with the page.
+     */
+    val feedback = MutableStateFlow<FeedbackDraft?>(null)
+
     /** A link the person tapped after the first load couldn't reach the computer: say so, once. */
     val cantReachAlert = MutableStateFlow(false)
 
@@ -319,6 +325,7 @@ class AppPage(
     /** The pool dropped this page: its route goes nowhere, its view stops and goes. */
     internal fun destroy() {
         destroyed = true
+        feedback.value = null
         edges.destroy()
         gateJob?.cancel()
         downloads.cancel()

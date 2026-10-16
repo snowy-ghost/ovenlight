@@ -117,8 +117,14 @@ class AppModel(context: Context) {
             }
         }
         scope.launch { nodes.owner.discovered.collect { registry.mergeDiscovered(it) } }
-        // Opening an app, from anywhere, clears its new dot.
-        scope.launch { router.openApp.collect { app -> app?.let { registry.markOpened(it.id) } } }
+        // Opening an app, from anywhere, clears its new dot. Closing one drops its Send feedback;
+        // the lock, which leaves the app open, doesn't.
+        scope.launch {
+            router.openApp.collect { app ->
+                app?.let { registry.markOpened(it.id) }
+                pool.appClosed(open = app?.id)
+            }
+        }
         // Signed in, but the tailnet approves each new device: the sign-in page stays, so the
         // owner can carry on in Tailscale's pages, and closes once the phone is approved.
         scope.launch {

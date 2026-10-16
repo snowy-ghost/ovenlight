@@ -100,6 +100,11 @@ class WebViewPool(
     /** Where opening the app got, while it has a page, for Report a Problem. */
     fun gate(id: UUID): AppLoadGate? = pages[id]?.gate?.value
 
+    /** Every app but [open] is closed, so its Send feedback goes. */
+    fun appClosed(open: UUID?) {
+        for (page in pages.values) if (page.app.id != open) page.feedback.value = null
+    }
+
     /** Drops a page whose route is stale, unless the pool already replaced it. */
     fun replace(page: AppPage) {
         if (pages[page.app.id] !== page) return

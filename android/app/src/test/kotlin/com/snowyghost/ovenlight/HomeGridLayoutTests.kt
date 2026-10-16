@@ -31,6 +31,13 @@ class HomeGridLayoutTests {
     }
 
     @Test
+    fun testLargeTextAtTheLargestDisplaySizeGetsTwoColumns() {
+        // 1080 px at 560 dpi: three columns would leave a name 89 dp.
+        assertEquals(2, HomeGridLayout(width = 308.0, labelHeight = 2 * 32.0, largeText = true).columns)
+        assertEquals(4, HomeGridLayout(width = 308.0, labelHeight = 16.0, largeText = false).columns)
+    }
+
+    @Test
     fun testLandscapeFitsMoreColumns() {
         // An iPhone 17 Pro on its side, inside the safe area.
         assertEquals(7, HomeGridLayout(width = 750.0, labelHeight = 15.0, largeText = false).columns)
