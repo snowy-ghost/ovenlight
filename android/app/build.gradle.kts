@@ -175,9 +175,13 @@ android {
     // as CI's are.
     val uploadKeystore = providers.environmentVariable("PLAY_UPLOAD_KEYSTORE").orNull
     if (uploadKeystore != null) {
-        // The configuration cache would keep the password on disk.
+        // The configuration cache would keep the password on disk, and a Kotlin daemon would
+        // hold it in its environment for hours after the build.
         if (gradle.startParameter.isConfigurationCacheRequested) {
             throw GradleException("Sign release builds with --no-configuration-cache")
+        }
+        tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+            compilerExecutionStrategy = org.jetbrains.kotlin.gradle.tasks.KotlinCompilerExecutionStrategy.IN_PROCESS
         }
         signingConfigs.create("upload") {
             storeFile = file(uploadKeystore)
