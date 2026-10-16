@@ -164,6 +164,24 @@ class PageDownloadsTests {
     }
 
     @Test
+    fun testCancelEndsADownloadUnderWay() {
+        held = java.util.concurrent.CountDownLatch(1)
+        var busy = false
+        val downloads = PageDownloads(
+            app, host, folder, scope, mayStart = { true }, isLocked = { false },
+            client = { server }, freeBytes = { free }, busy = { busy = it }, now = { clock },
+        )
+        downloads.onDownloadStart("https://$host/export.csv", "agent", null, "text/csv", 0)
+        assertTrue(busy)
+        downloads.cancel()
+        held!!.countDown()
+        repeat(200) { if (busy) Thread.sleep(10) }
+        assertFalse("the page no longer counts as downloading", busy)
+        assertTrue("and nothing reached the sheet", shelf().isEmpty())
+        assertEquals(0, folder.listFiles()!!.size)
+    }
+
+    @Test
     fun testAtMostThreeDownloadsAtOnce() {
         held = java.util.concurrent.CountDownLatch(1)
         repeat(PageDownloads.CONCURRENT + 1) { start("https://$host/export-$it.csv") }

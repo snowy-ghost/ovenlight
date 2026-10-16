@@ -61,11 +61,13 @@
     const href = a.href, name = a.download;
     const isBlob = href.startsWith("blob:"), blob = isBlob && blobs.get(href);
     if (blob ? blob.size > LIMIT : href.length > HREF_LIMIT) return;
+    // A blob URL this script didn't see made (a worker's, say) is fetched now, before it's revoked.
+    const read = isBlob && (blob ? Promise.resolve(blob) : fetch(href).then(response => response.blob()));
     setTimeout(() => {
       if (event.defaultPrevented) return;
       if (!isBlob) return send({ t: "click", href, name });
       // One message: the header's length (4 bytes, big-endian), the header, then the bytes.
-      (blob ? Promise.resolve(blob) : fetch(href).then(response => response.blob()))
+      read
         .then(blob => {
           if (blob.size > LIMIT) return;
           const head = new TextEncoder().encode(JSON.stringify({ href, name, type: blob.type }));

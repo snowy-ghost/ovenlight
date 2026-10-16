@@ -1,5 +1,6 @@
 package com.snowyghost.ovenlight
 
+import android.annotation.SuppressLint
 import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.Context
@@ -9,7 +10,6 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.ParcelFileDescriptor
 import android.os.SystemClock
-import android.os.storage.StorageManager
 import android.text.format.Formatter
 import android.util.Log
 import android.webkit.CookieManager
@@ -53,6 +53,7 @@ import java.io.InputStream
 import java.net.URI
 import java.util.Base64
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -60,11 +61,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import okhttp3.Call
 import okhttp3.Cookie
 import okhttp3.CookieJar
 import okhttp3.HttpUrl
@@ -107,6 +111,12 @@ class PageDownloads(
     private val reads = mutableMapOf<String, Read>()
     private val jobs = mutableSetOf<Job>()
 
+    /** The refetches under way, which [cancel] ends at once: a blocked read never sees its job end. */
+    private val calls: MutableSet<Call> = ConcurrentHashMap.newKeySet()
+
+    /** A blob message is being taken apart; another meanwhile is dropped. */
+    private var parsing = false
+
     /** Whether the page may start a download now; the bridge drops reports otherwise. */
     val accepting: Boolean get() = mayStart()
 
@@ -143,10 +153,15 @@ class PageDownloads(
 
     /** The page script's message with a blob's bytes, read at the click; it's taken apart off the main thread. */
     fun blobMessage(message: ByteArray, fromHost: String) {
-        if (!mayStart()) return
+        if (!mayStart() || parsing) return
+        parsing = true
         scope.launch {
-            val blob = withContext(Dispatchers.Default) { PageMessage.blob(message) } ?: return@launch
-            blob(blob, fromHost)
+            try {
+                val blob = withContext(Dispatchers.Default) { PageMessage.blob(message) } ?: return@launch
+                blob(blob, fromHost)
+            } finally {
+                parsing = false
+            }
         }
     }
 
@@ -174,6 +189,7 @@ class PageDownloads(
     /** The page is going: its downloads stop, and their partial files go. */
     fun cancel() {
         jobs.toList().forEach { it.cancel() }
+        calls.forEach { it.cancel() }
         started.clear()
         clicks.clear()
         reads.clear()
@@ -220,8 +236,12 @@ class PageDownloads(
         track {
             val request = Request.Builder().url(url).apply { userAgent?.let { header("User-Agent", it) } }.build()
             val call = client.newCall(request)
-            currentCoroutineContext()[Job]?.invokeOnCompletion { if (it != null) call.cancel() }
-            call.execute().use { response ->
+            calls += call
+            try {
+                call.execute()
+            } finally {
+                calls -= call
+            }.use { response ->
                 // WebView hands over the URL it was redirected to; another redirect now could lead
                 // anywhere the owner's node reaches, so it isn't followed.
                 if (response.code in 300..399) {
@@ -255,6 +275,11 @@ class PageDownloads(
             try {
                 withContext(Dispatchers.IO) {
                     val file = work() ?: return@withContext
+                    // Cancelled while it finished: the file goes with the rest.
+                    if (!isActive) {
+                        file.parentFile?.deleteRecursively()
+                        return@withContext
+                    }
                     if (!DownloadShelf.add(appID, file)) log("refused a download: $WAITING_FILES files already wait")
                 }
             } catch (e: CancellationException) {
@@ -277,7 +302,7 @@ class PageDownloads(
      * Writes a file in a folder of its own, keeping the page's name; an empty one is no file. It
      * stops, and the partial file goes, before the phone's free space would fall under the floor.
      */
-    private fun write(name: String, expected: Long, input: InputStream): File? {
+    private suspend fun write(name: String, expected: Long, input: InputStream): File? {
         val directory = File(folder, UUID.randomUUID().toString())
         if (!directory.mkdirs()) throw IOException("no folder for the download")
         val file = File(directory, DownloadPolicy.fileName(name))
@@ -289,6 +314,7 @@ class PageDownloads(
                 while (true) {
                     val read = input.read(buffer)
                     if (read < 0) break
+                    currentCoroutineContext().ensureActive()
                     out.write(buffer, 0, read)
                     sinceCheck += read
                     if (sinceCheck >= SPACE_CHECK_BYTES) {
@@ -381,11 +407,13 @@ object DownloadShelf {
 
     fun folder(context: Context) = File(context.cacheDir, "Downloads")
 
-    /** What the phone can still give the downloads, counting caches it would clear. Off the main thread. */
-    fun freeBytes(context: Context): Long {
-        val storage = context.getSystemService(StorageManager::class.java)
-        return storage.getAllocatableBytes(storage.getUuidForPath(context.cacheDir))
-    }
+    /**
+     * The free space where the downloads go. Not StorageManager's allocatable bytes, which count
+     * cache the system could clear: a download in cacheDir is such cache, so that figure would
+     * stay flat while it fills the phone.
+     */
+    @SuppressLint("UsableSpace")
+    fun freeBytes(context: Context): Long = context.cacheDir.usableSpace
 
     /** Last session's files: saved, shared, opened or left waiting. */
     fun emptyAtLaunch(context: Context) {

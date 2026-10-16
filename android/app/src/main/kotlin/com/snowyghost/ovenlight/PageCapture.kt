@@ -262,7 +262,7 @@ internal fun CapturePromptDialog(title: String, answer: (Boolean) -> Unit) {
         },
         // Not at once: the page's own "tap twice here" can't land its second tap on Allow.
         confirmButton = {
-            val shownAt = remember { SystemClock.uptimeMillis() }
+            val shownAt = remember(answer) { SystemClock.uptimeMillis() }
             TextButton(onClick = { if (SystemClock.uptimeMillis() - shownAt >= PROMPT_DELAY_MILLIS) answer(true) }) { Text(stringResource(R.string.capture_allow)) }
         },
         dismissButton = { TextButton(onClick = { answer(false) }) { Text(stringResource(R.string.capture_dont_allow)) } },

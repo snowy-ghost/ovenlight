@@ -582,7 +582,10 @@ EOF
   }
   # Answers the prompt with fingerprint 1, opening it first from the lock screen if it was closed.
   unlock_now() {
-    screen_text | grep -qxF "Unlock Ovenlight" || { tap_text Unlock; sleep 2; }
+    # The prompt may still be on its way over the lock screen.
+    local i
+    for i in 1 2 3 4; do screen_text | grep -qxF "Unlock Ovenlight" && break; sleep 1; done
+    screen_text | grep -qxF "Unlock Ovenlight" || { tap_text Unlock || true; sleep 2; }
     a emu finger touch 1 >/dev/null
   }
   # Ovenlight's camera clients, as the camera service lists them: "(Camera ID: 1, ..., Client
