@@ -198,6 +198,16 @@ class PageScriptTests {
         assertTrue(agent, agent.startsWith("Mozilla/5.0 (Linux; Android "))
         assertTrue("WebView's own marker stays", agent.contains("; wv)"))
         assertTrue(agent, Regex(" Mobile Safari/\\S+ Ovenlight/${Regex.escape(BuildConfig.VERSION_NAME)}$").containsMatchIn(agent))
+        assertTrue("no phone model or build: $agent", agent.startsWith("Mozilla/5.0 (Linux; Android 10; K; wv)"))
+        // Nor through client hints, which a page can ask for whatever the string says.
+        eval(
+            "window.hints = 'pending'; navigator.userAgentData ? navigator.userAgentData" +
+                ".getHighEntropyValues(['model', 'platformVersion']).then(h => window.hints = JSON.stringify(h), " +
+                "e => window.hints = 'failed') : (window.hints = 'none')",
+        )
+        until(what = "the client hints") { eval("window.hints") != "\"pending\"" }
+        val model = eval("window.hints === 'none' ? '' : (JSON.parse(window.hints).model || '')")
+        assertEquals("no model in the client hints", "\"\"", model)
     }
 
     @Test

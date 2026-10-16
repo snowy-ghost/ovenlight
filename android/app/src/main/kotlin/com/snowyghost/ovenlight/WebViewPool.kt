@@ -143,7 +143,17 @@ class WebViewPool(
          * browser.
          */
         fun userAgentName(after: String?, version: String? = BuildConfig.VERSION_NAME): String =
-            listOfNotNull(after, "Ovenlight/${version ?: "?"}").filter { it.isNotEmpty() }.joinToString(" ")
+            listOfNotNull(after?.let(::reduced), "Ovenlight/${version ?: "?"}").filter { it.isNotEmpty() }.joinToString(" ")
+
+        /**
+         * WebView's user agent as Android 17 sends it: no phone model, build or Android version
+         * (`Linux; Android 10; K; wv`) and Chrome's major version only. Up to Android 16 it names
+         * the model and build, which would tell every app a guest opens which phone they carry;
+         * iOS sends no model.
+         */
+        fun reduced(agent: String): String =
+            agent.replaceFirst(Regex("""\(Linux; Android [^)]*\)"""), "(Linux; Android 10; K; wv)")
+                .replace(Regex("""Chrome/(\d+)\.[\d.]+"""), "Chrome/$1.0.0.0")
 
         /** Live views: 1 on a low-RAM phone, 2 at 4 GB or less, else 4. */
         fun maxLive(context: Context): Int {
