@@ -515,6 +515,21 @@ class PageEdgesTests {
         waitFor("the page to know") { evaluate("document.fullscreenElement === null").answer() == "true" }
     }
 
+    /** Asked for off screen or locked, full screen is refused, and the page doesn't stay in it. */
+    @Test
+    fun testFullScreenOffScreenOrLockedEndsInThePageToo() {
+        load("<div style='position:fixed;inset:0' onclick='document.title = \"asked\"; document.documentElement.requestFullscreen()'>Go</div>")
+        for (away in listOf({ shown = false }, { shown = true; locked.value = true })) {
+            away()
+            evaluate("document.title = 'ready'").answer()
+            tap()
+            waitFor("the page to ask") { title() == "asked" }
+            Thread.sleep(2_000)
+            assertNull(edges.fullscreen.value)
+            assertEquals("true", evaluate("document.fullscreenElement === null").answer())
+        }
+    }
+
     // What a page can do to Ovenlight
 
     /** An address of megabytes reaches no intent, and Ovenlight keeps running. */

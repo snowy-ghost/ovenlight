@@ -544,7 +544,12 @@ class PageEdges(
         }
 
         override fun onShowCustomView(view: View, callback: CustomViewCallback) {
-            if (!mayAct) return callback.onCustomViewHidden()
+            // Refused on the next turn: Chromium ignores a hide before it has finished entering
+            // full screen, and the page would stay in it.
+            if (!mayAct) {
+                scope.launch { callback.onCustomViewHidden() }
+                return
+            }
             exitFullscreen()
             mutableFullscreen.value = Fullscreen(view, callback)
         }
