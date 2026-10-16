@@ -290,12 +290,14 @@ portrait and landscape) with no browser bar.
 <link rel="manifest" href="/manifest.webmanifest">
 ```
 
-**Safe areas.** The page runs edge to edge, under the status bar and the home indicator,
-and Ovenlight adds no insets. Pad with `env(safe-area-inset-top)`, `-bottom`, `-left` and
-`-right`, which need `viewport-fit=cover`. Paint the top safe area with your header's
-background: the status bar sits on top of your page. Pad a fixed bottom tab bar with
+**Safe areas.** With `viewport-fit=cover` the page runs edge to edge, under the status bar
+and the home indicator, and Ovenlight adds no insets. Pad with `env(safe-area-inset-top)`,
+`-bottom`, `-left` and `-right`. Paint the top safe area with your header's background:
+the status bar sits on top of your page. Pad a fixed bottom tab bar with
 `env(safe-area-inset-bottom)`, and the page's bottom by the bar's height so it scrolls
-clear.
+clear. A page without `viewport-fit=cover` starts below the status bar instead, as in a
+browser, and Ovenlight paints the strip behind the status bar (and on Android the
+navigation bar) with its `theme-color`, or its background without one.
 
 **Ovenlight's chrome.** The only thing Ovenlight draws over the app is a small pill at the
 top center, just below the status bar, with the way home and the app's menu (Reload and

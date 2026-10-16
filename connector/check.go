@@ -791,8 +791,9 @@ func readStylesheets(app App, host string, page *url.URL, hrefs []string) []styl
 	return sheets
 }
 
-// layoutChecks check that the page fits the phone's screen: Ovenlight's web view is full
-// screen and adds no insets, so the page pads itself with env(safe-area-inset-*).
+// layoutChecks check that the page fits the phone's screen: Ovenlight shows a page with
+// viewport-fit=cover full screen and adds no insets, so the page pads itself with
+// env(safe-area-inset-*).
 func layoutChecks(viewport *string, body []byte, sheets []stylesheet) []Check {
 	c := Check{ID: "viewport", Actor: actorAgent}
 	switch {
@@ -802,7 +803,7 @@ func layoutChecks(viewport *string, body []byte, sheets []stylesheet) []Check {
 		return []Check{c}
 	case !coversScreen(*viewport):
 		c.Status = statusWarn
-		c.Message = fmt.Sprintf("the viewport (%s) doesn't set viewport-fit=cover. Ovenlight shows the page full screen, under the status bar and the home indicator; with viewport-fit=cover the page fills the screen and env(safe-area-inset-*) tells it how far to pad", clip(*viewport, 80))
+		c.Message = fmt.Sprintf("the viewport (%s) doesn't set viewport-fit=cover, so Ovenlight keeps the page below the status bar and paints the strip behind it with the page's theme-color; with viewport-fit=cover the page fills the screen and env(safe-area-inset-*) tells it how far to pad", clip(*viewport, 80))
 		c.Fix = "Add viewport-fit=cover to the viewport meta tag's content, and pad the page's edges with env(safe-area-inset-top) and the other insets."
 		return []Check{c}
 	}

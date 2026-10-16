@@ -683,7 +683,10 @@ fun AppChromeHost(model: AppModel, page: AppPage, icon: Bitmap?, onClose: () -> 
     WatchPage(page.view, controller)
     // After the first load, and each time the app opens loaded: what the page's header is now.
     LaunchedEffect(page, loaded, dark) {
-        if (loaded) StatusBarTint(PreferencesStore(context)).remember(StatusBarTint.decoded(page.view.evaluate(StatusBarTint.script)), app, dark)
+        if (!loaded) return@LaunchedEffect
+        val css = StatusBarTint.decoded(page.view.evaluate(StatusBarTint.script))
+        page.headerColor.value = css?.let(StatusBarTint::opaqueHex)
+        StatusBarTint(PreferencesStore(context)).remember(css, app, dark)
     }
 
     val membership = memberships.firstOrNull { it.id == app.membershipID }

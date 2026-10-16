@@ -55,6 +55,16 @@ class AppPage(
     val loadError: StateFlow<String?> = error
 
     /**
+     * The page lays itself out under the bars (`viewport-fit=cover`), read as each page finishes
+     * loading and before the first one shows, so it never moves. One that doesn't sits inside them.
+     */
+    private val cover = MutableStateFlow(true)
+    val fitsCover: StateFlow<Boolean> = cover
+
+    /** The page's header color (StatusBarTint's `#rrggbb`) once loaded, painted around a page that doesn't cover the screen. */
+    val headerColor = MutableStateFlow<String?>(null)
+
+    /**
      * Send feedback while it's open. It outlasts the lock, which takes the screen apart, and goes
      * once it's sent or closed, when the app closes, or with the page.
      */
@@ -358,7 +368,11 @@ class AppPage(
                 clearHistoryOnLoad = false
                 view.clearHistory()
             }
-            loaded.value = true
+            view.evaluateJavascript(COVER_SCRIPT) {
+                if (destroyed) return@evaluateJavascript
+                cover.value = it == "true"
+                loaded.value = true
+            }
             error.value = null
             failedLoads = 0
             appDownLoads = 0
@@ -403,6 +417,9 @@ class AppPage(
 
     private companion object {
         const val MAX_FAILED_LOADS = 2
+
+        /** Whether the page's viewport, its last viewport meta, asks for `viewport-fit=cover` (iOS's WebCoordinator.coverScript). */
+        const val COVER_SCRIPT = """/viewport-fit\s*=\s*cover/i.test([...document.querySelectorAll('meta[name="viewport" i]')].pop()?.content ?? "")"""
 
         // WebView's codes for a path through the proxy that didn't connect: -11 for a tunnel the
         // proxy refused or couldn't open (502, 503, 504), -8 for one held past 10 s, -5 for the

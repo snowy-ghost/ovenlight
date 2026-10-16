@@ -173,6 +173,10 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
 
     @Published var loadError: String?
     @Published var hasLoadedOnce = false
+    /// The page lays itself out under the status bar (`viewport-fit=cover`), read as each page
+    /// finishes loading and before the first one shows, so it never moves. One that doesn't
+    /// sits inside the safe area.
+    @Published private(set) var fitsCover = true
     @Published private(set) var gate: AppLoadGate = .waiting
 
     private static let log = Logger(subsystem: "com.snowyghost.ovenlight", category: "node")
@@ -382,10 +386,16 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        hasLoadedOnce = true
         loadError = nil
         failedLoads = 0
+        webView.evaluateJavaScript(Self.coverScript) { [weak self] result, _ in
+            self?.fitsCover = result as? Bool == true
+            self?.hasLoadedOnce = true
+        }
     }
+
+    /// Whether the page's viewport, its last viewport meta, asks for `viewport-fit=cover`.
+    static let coverScript = #"/viewport-fit\s*=\s*cover/i.test([...document.querySelectorAll('meta[name="viewport" i]')].pop()?.content ?? "")"#
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         handle(error)

@@ -2,7 +2,8 @@ import SwiftUI
 import WebKit
 
 /// Full-screen host for one app: its web view edge to edge, with the tuck-away chrome from
-/// `AppChrome` as the only thing Ovenlight draws over it.
+/// `AppChrome` as the only thing Ovenlight draws over it. A page that doesn't ask for
+/// `viewport-fit=cover` sits below the status bar instead, its header color behind the bar.
 struct AppHostView: View {
     let app: WebApp
     let onClose: () -> Void
@@ -56,14 +57,16 @@ private struct AppPage: View {
     var body: some View {
         let icon = registry.icon(for: app)
         ZStack {
-            Color(.systemBackground)
+            (coordinator.fitsCover ? Color(.systemBackground) : Color(uiColor: webView.themeColor ?? webView.underPageBackgroundColor))
                 .ignoresSafeArea()
             // Files that finished while the person was back in the launcher, once the page
             // is in a window to present over (it isn't yet as the view appears). The page
             // stays visible under the opaque placeholder, which fades out over it, and takes
             // no touches until it has loaded.
             WebViewContainer(webView: webView, onWindow: { coordinator.presentWaitingDownloads() })
-                .ignoresSafeArea()
+                .ignoresSafeArea(edges: coordinator.fitsCover ? .all : .bottom)
+                // Moves at once, under the placeholder, rather than with its fade.
+                .transaction { $0.animation = nil }
                 .allowsHitTesting(coordinator.hasLoadedOnce)
             // A zIndex keeps each of these over the page as it fades out: without one, SwiftUI
             // draws a view leaving a ZStack behind its siblings.

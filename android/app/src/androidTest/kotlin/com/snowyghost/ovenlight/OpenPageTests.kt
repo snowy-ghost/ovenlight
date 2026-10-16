@@ -1,6 +1,7 @@
 package com.snowyghost.ovenlight
 
 import android.accessibilityservice.AccessibilityServiceInfo
+import android.content.pm.ActivityInfo
 import android.graphics.Rect
 import android.os.SystemClock
 import android.view.KeyEvent
@@ -8,6 +9,8 @@ import android.view.View
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
 import android.view.inspector.WindowInspector
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -215,6 +218,66 @@ class OpenPageTests {
             val scale = page.view.resources.displayMetrics.density
             (at[0] + box[0] * scale) to (at[1] + box[1] * scale)
         }
+    }
+
+    // The safe area
+
+    /** The page's `env(safe-area-inset-top)` and the status bar's height, both in CSS pixels (dp). */
+    private fun topInsets(): Pair<Double, Double> {
+        evaluate("document.body.insertAdjacentHTML('beforeend', \"<div id=inset style='position:fixed;padding-top:env(safe-area-inset-top)'></div>\")")
+        val env = number("parseFloat(getComputedStyle(document.getElementById('inset')).paddingTop)")
+        evaluate("document.getElementById('inset').remove()")
+        val bar = onMain {
+            val insets = ViewCompat.getRootWindowInsets(page.view) ?: error("no insets")
+            insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()).top / page.view.resources.displayMetrics.density.toDouble()
+        }
+        return env to bar
+    }
+
+    private fun viewTop(): Int = onMain { IntArray(2).also(page.view::getLocationOnScreen)[1] }
+
+    /**
+     * A page that asks for `viewport-fit=cover` runs under the status bar and gets its height
+     * through `env()`, however the page came on screen: opened, reopened from the pool, after the
+     * lock and after a rotation. A page that doesn't sits below the status bar instead, and sees
+     * no inset.
+     */
+    @Test
+    fun testACoverPageGetsTheStatusBarAndAnyOtherSitsBelowIt() {
+        fun assertCovers(how: String) {
+            waitFor("the cover page laid out edge to edge, $how") { viewTop() == 0 }
+            val (env, bar) = topInsets()
+            assertTrue("$how: env(safe-area-inset-top) $env, the status bar $bar", bar > 0 && kotlin.math.abs(env - bar) < 1.5)
+        }
+        onMain { page.view.loadDataWithBaseURL(app.startURL.toString(), html.replace("initial-scale=1", "initial-scale=1, viewport-fit=cover"), "text/html", "utf-8", null) }
+        waitFor("the cover page") { onMain { page.fitsCover.value } }
+        assertCovers("opened")
+
+        onMain { model.router.openApp.value = null }
+        waitFor("the page to leave the window") { onMain { !page.view.isAttachedToWindow } }
+        onMain { model.router.open(app) }
+        waitFor("the page back in the window") { onMain { page.view.isAttachedToWindow } }
+        assertCovers("reopened")
+
+        lock()
+        unlock()
+        assertCovers("unlocked")
+
+        try {
+            scenario.onActivity { it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
+            waitFor("landscape") { onMain { page.view.width > page.view.height } }
+            scenario.onActivity { it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }
+            waitFor("portrait") { onMain { page.view.width < page.view.height } }
+        } finally {
+            scenario.onActivity { it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED }
+        }
+        assertCovers("rotated and back")
+
+        onMain { page.view.loadDataWithBaseURL(app.startURL.toString(), html, "text/html", "utf-8", null) }
+        waitFor("the plain page") { onMain { !page.fitsCover.value } }
+        val bar = topInsets().second
+        waitFor("the plain page below the status bar") { kotlin.math.abs(viewTop() / onMain { page.view.resources.displayMetrics.density } - bar) < 1 }
+        assertEquals("no inset for a page inside the bars", 0.0, topInsets().first, 0.0)
     }
 
     // The lock
