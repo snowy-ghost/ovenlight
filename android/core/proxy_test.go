@@ -25,9 +25,23 @@ type fakeNode struct {
 	peers  map[string]netip.Addr
 	target string // where every dial really goes: the test's echo server
 	eps    []netip.Prefix
+	// before runs ahead of each dial; an error fails it. Tests set it before any CONNECT.
+	before func(ctx context.Context, a netip.AddrPort) error
+	open   atomic.Int32 // connections dialed and not yet closed
 
 	mu    sync.Mutex
 	dials []netip.AddrPort
+}
+
+type countedConn struct {
+	net.Conn
+	open *atomic.Int32
+	once sync.Once
+}
+
+func (c *countedConn) Close() error {
+	c.once.Do(func() { c.open.Add(-1) })
+	return c.Conn.Close()
 }
 
 func (f *fakeNode) running(context.Context) bool  { return f.up.Load() }
@@ -49,8 +63,18 @@ func (f *fakeNode) dial(ctx context.Context, a netip.AddrPort) (net.Conn, error)
 	f.mu.Lock()
 	f.dials = append(f.dials, a)
 	f.mu.Unlock()
+	if f.before != nil {
+		if err := f.before(ctx, a); err != nil {
+			return nil, err
+		}
+	}
 	var d net.Dialer
-	return d.DialContext(ctx, "tcp", f.target)
+	c, err := d.DialContext(context.WithoutCancel(ctx), "tcp", f.target)
+	if err != nil {
+		return nil, err
+	}
+	f.open.Add(1)
+	return &countedConn{Conn: c, open: &f.open}, nil
 }
 
 func (f *fakeNode) lastDial() netip.AddrPort {
@@ -117,6 +141,9 @@ func newHarness(t *testing.T) (*harness, *fakeNode, *fakeNode) {
 			return []netip.Addr{netip.MustParseAddr("192.168.1.1")}, nil
 		case "mapped-rebind.example.com":
 			return []netip.Addr{netip.MustParseAddr("::ffff:10.0.0.1")}, nil
+		case "dual.example.com":
+			return []netip.Addr{netip.MustParseAddr("2606:4700::1111"), netip.MustParseAddr("2606:4700::1001"),
+				netip.MustParseAddr("192.168.1.1"), netip.MustParseAddr("93.184.215.14")}, nil
 		case "mixed.example.com":
 			return []netip.Addr{netip.MustParseAddr("127.0.0.1"), netip.MustParseAddr("93.184.215.15")}, nil
 		}
@@ -389,6 +416,96 @@ func TestTheNetworksNAT64Prefix(t *testing.T) {
 		if p := parseNAT64(bad); p.IsValid() {
 			t.Errorf("%q was taken as %v", bad, p)
 		}
+	}
+}
+
+func TestTriesTheNextFamily(t *testing.T) {
+	v4 := netip.MustParseAddr("93.184.215.14")
+	for _, tc := range []struct {
+		name   string
+		v6, v4 func(context.Context) error
+		want   int
+		within time.Duration
+	}{
+		{"IPv6 hangs", hang, nil, 200, 2 * attemptDelay},
+		{"IPv6 fails at once", fail, nil, 200, attemptDelay / 2},
+		{"both fail", fail, fail, 502, attemptDelay / 2},
+		{"both hang", hang, hang, 504, 2 * time.Second},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			old := answerWithin.Load()
+			answerWithin.Store(int64(time.Second))
+			defer answerWithin.Store(old)
+			h, own, _ := newHarness(t)
+			own.before = func(ctx context.Context, a netip.AddrPort) error {
+				if f := map[bool]func(context.Context) error{true: tc.v6, false: tc.v4}[a.Addr().Is6()]; f != nil {
+					return f(ctx)
+				}
+				return nil
+			}
+			start := time.Now()
+			resp, br, c := h.connect(t, "app-recipes", "dual.example.com:443")
+			if resp.StatusCode != tc.want {
+				t.Fatalf("got %d, want %d", resp.StatusCode, tc.want)
+			}
+			if d := time.Since(start); d > tc.within {
+				t.Errorf("answered after %v", d)
+			}
+			if tc.want == 200 && (!echoes(t, br, c) || own.lastDial() != netip.AddrPortFrom(v4, 443)) {
+				t.Errorf("not through IPv4: last dial %v", own.lastDial())
+			}
+			own.mu.Lock()
+			defer own.mu.Unlock()
+			for _, a := range own.dials {
+				if a.Addr() == netip.MustParseAddr("192.168.1.1") {
+					t.Error("a refused address was dialed")
+				}
+			}
+		})
+	}
+}
+
+func hang(ctx context.Context) error { <-ctx.Done(); return ctx.Err() }
+func fail(context.Context) error     { return errors.New("unreachable") }
+
+func TestALateConnectionIsClosed(t *testing.T) {
+	h, own, _ := newHarness(t)
+	own.before = func(_ context.Context, a netip.AddrPort) error {
+		if a.Addr().Is6() {
+			time.Sleep(2 * attemptDelay) // connects anyway, after IPv4 won
+		}
+		return nil
+	}
+	resp, br, c := h.connect(t, "app-recipes", "dual.example.com:443")
+	if resp.StatusCode != 200 || !echoes(t, br, c) {
+		t.Fatalf("got %d", resp.StatusCode)
+	}
+	time.Sleep(3 * attemptDelay)
+	if n := own.open.Load(); n != 1 {
+		t.Errorf("%d connections open, want the winner's alone", n)
+	}
+	c.Close()
+	for deadline := time.Now().Add(2 * time.Second); own.open.Load() != 0 && time.Now().Before(deadline); {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if n := own.open.Load(); n != 0 {
+		t.Errorf("%d connections left open", n)
+	}
+}
+
+func TestInterleavesTheFamilies(t *testing.T) {
+	var addrs []netip.AddrPort
+	for _, s := range []string{"[2606:4700::1]:443", "[2606:4700::2]:443", "[2606:4700::3]:443", "1.1.1.1:443", "1.0.0.1:443"} {
+		addrs = append(addrs, netip.MustParseAddrPort(s))
+	}
+	if got := fmt.Sprint(interleave(addrs)); got != "[[2606:4700::1]:443 1.1.1.1:443 [2606:4700::2]:443 1.0.0.1:443 [2606:4700::3]:443]" {
+		t.Errorf("IPv6 first: %s", got)
+	}
+	if got := fmt.Sprint(interleave(addrs[2:])); got != "[[2606:4700::3]:443 1.1.1.1:443 1.0.0.1:443]" {
+		t.Errorf("one IPv6: %s", got)
+	}
+	if got := fmt.Sprint(interleave([]netip.AddrPort{addrs[3], addrs[0], addrs[4]})); got != "[1.1.1.1:443 [2606:4700::1]:443 1.0.0.1:443]" {
+		t.Errorf("IPv4 first: %s", got)
 	}
 }
 

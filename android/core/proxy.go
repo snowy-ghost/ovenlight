@@ -300,11 +300,11 @@ func (p *proxy) open(ctx context.Context, key, target string) (int, *tunnel, net
 	}
 	for {
 		if n := p.node(membership); n != nil && n.running(ctx) {
-			addr, err := p.resolve(ctx, n, target)
+			addrs, err := p.resolve(ctx, n, target)
 			if err != nil {
 				return http.StatusBadGateway, nil, nil, err
 			}
-			conn, err := n.dial(ctx, addr)
+			conn, err := dialFirst(ctx, n, addrs)
 			if err != nil {
 				if ctx.Err() != nil {
 					return http.StatusGatewayTimeout, nil, nil, err
@@ -327,6 +327,64 @@ func (p *proxy) open(ctx context.Context, key, target string) (int, *tunnel, net
 	}
 }
 
+// attemptDelay is how long one address has before the next starts alongside it,
+// as RFC 8305 recommends.
+const attemptDelay = 250 * time.Millisecond
+
+// dialFirst dials addrs in turn, Happy Eyeballs style, since Chromium leaves
+// resolving, and so falling back, to the proxy: each attempt has attemptDelay
+// before the next starts, a failure starts the next at once, and the first
+// connection wins. The others are canceled, and closed if they connect anyway.
+func dialFirst(ctx context.Context, n upstream, addrs []netip.AddrPort) (net.Conn, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	type result struct {
+		conn net.Conn
+		err  error
+	}
+	results := make(chan result, len(addrs))
+	next, pending := 0, 0
+	start := func() {
+		a := addrs[next]
+		next, pending = next+1, pending+1
+		go func() {
+			c, err := n.dial(ctx, a)
+			results <- result{c, err}
+		}()
+	}
+	start()
+	var firstErr error
+	for pending > 0 {
+		var later <-chan time.Time
+		if next < len(addrs) {
+			later = time.After(attemptDelay)
+		}
+		select {
+		case r := <-results:
+			pending--
+			if r.err == nil {
+				go func(left int) {
+					for ; left > 0; left-- {
+						if r := <-results; r.err == nil {
+							r.conn.Close()
+						}
+					}
+				}(pending)
+				return r.conn, nil
+			}
+			if firstErr == nil {
+				firstErr = r.err
+			}
+			if next < len(addrs) {
+				start()
+			}
+		case <-later:
+			start()
+		}
+	}
+	return nil, firstErr
+}
+
 func pipe(client net.Conn, buffered *bufio.Reader, upstream net.Conn) {
 	var src io.Reader = client
 	if buffered.Buffered() > 0 {
@@ -343,39 +401,71 @@ func pipe(client net.Conn, buffered *bufio.Reader, upstream net.Conn) {
 
 var errRefused = errors.New("refused")
 
-// resolve picks the address to dial. A name in a tailnet resolves only from the
-// node's peers, never public DNS. Every other address must be on the internet:
-// not the phone itself, its local network or any tailnet, unless it is one of the
-// node's peers.
-func (p *proxy) resolve(ctx context.Context, n upstream, target string) (netip.AddrPort, error) {
+// resolve picks the addresses to dial, in the order to try them. A name in a
+// tailnet resolves only from the node's peers, never public DNS. Every other
+// address must be on the internet: not the phone itself, its local network or
+// any tailnet, unless it is one of the node's peers.
+func (p *proxy) resolve(ctx context.Context, n upstream, target string) ([]netip.AddrPort, error) {
 	host, portText, err := net.SplitHostPort(target)
 	if err != nil {
-		return netip.AddrPort{}, err
+		return nil, err
 	}
 	port, err := strconv.ParseUint(portText, 10, 16)
 	if err != nil || port == 0 {
-		return netip.AddrPort{}, fmt.Errorf("bad port %q", portText)
+		return nil, fmt.Errorf("bad port %q", portText)
 	}
 	host = strings.TrimRight(lowerASCII(host), ".")
 	if ip, err := netip.ParseAddr(host); err == nil {
-		return p.allowed(ctx, n, ip, uint16(port))
+		a, err := p.allowed(ctx, n, ip, uint16(port))
+		if err != nil {
+			return nil, err
+		}
+		return []netip.AddrPort{a}, nil
 	}
 	if isTailnetName(host, n.suffix(ctx)) {
 		if ip, ok := n.peerAddr(ctx, host); ok {
-			return netip.AddrPortFrom(ip, uint16(port)), nil
+			return []netip.AddrPort{netip.AddrPortFrom(ip, uint16(port))}, nil
 		}
-		return netip.AddrPort{}, errRefused
+		return nil, errRefused
 	}
 	ips, err := p.lookup(ctx, host)
 	if err != nil {
-		return netip.AddrPort{}, err
+		return nil, err
 	}
+	var addrs []netip.AddrPort
 	for _, ip := range ips {
 		if a, err := p.allowed(ctx, n, ip, uint16(port)); err == nil {
-			return a, nil
+			addrs = append(addrs, a)
 		}
 	}
-	return netip.AddrPort{}, errRefused
+	if len(addrs) == 0 {
+		return nil, errRefused
+	}
+	return interleave(addrs), nil
+}
+
+// interleave alternates the address families, starting with the first
+// address's, as RFC 8305 orders them, so a broken IPv6 path costs one
+// attemptDelay, not one per IPv6 address.
+func interleave(addrs []netip.AddrPort) []netip.AddrPort {
+	var same, other []netip.AddrPort
+	for _, a := range addrs {
+		if a.Addr().Is4() == addrs[0].Addr().Is4() {
+			same = append(same, a)
+		} else {
+			other = append(other, a)
+		}
+	}
+	out := make([]netip.AddrPort, 0, len(addrs))
+	for i := 0; len(out) < len(addrs); i++ {
+		if i < len(same) {
+			out = append(out, same[i])
+		}
+		if i < len(other) {
+			out = append(out, other[i])
+		}
+	}
+	return out
 }
 
 func isTailnetName(host, suffix string) bool {
