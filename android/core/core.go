@@ -11,6 +11,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"net/netip"
 	"os"
 	"regexp"
 	"strings"
@@ -121,14 +122,82 @@ func ClearRoute(key string) {
 	}
 }
 
-// NetworkChanged reports the default network's interface and gateway ("" for
-// none) and wakes every running node's link monitor, which on Android otherwise
-// looks only every 10 minutes.
-func NetworkChanged(ifName, gatewayIP string) {
+// NetworkChanged reports the default network's interface, gateway and NAT64
+// prefix ("" for none; the prefix from LinkProperties.getNat64Prefix, as
+// "2001:db8:64::/96", which Android reports only from API 30, so API 29 gets
+// only 64:ff9b::/96 unwrapped), and wakes every running node's link monitor, which on
+// Android otherwise looks only every 10 minutes.
+func NetworkChanged(ifName, gatewayIP, nat64Prefix string) {
+	phone.Lock()
+	phone.nat64 = parseNAT64(nat64Prefix)
+	phone.at = time.Time{}
+	phone.Unlock()
 	updateDefaultRoute(ifName, gatewayIP)
 	for _, n := range openNodes() {
 		n.injectLinkChange()
 	}
+}
+
+// parseNAT64 reads a NAT64 prefix, or returns none. Android's are always /96.
+func parseNAT64(s string) netip.Prefix {
+	p, err := netip.ParsePrefix(s)
+	if err != nil || !p.Addr().Is6() || p.Addr().Is4In6() || p.Bits() != 96 {
+		return netip.Prefix{}
+	}
+	return p.Masked()
+}
+
+// phone caches the phone's own networks for the proxy's refusals. NetworkChanged
+// marks it stale, and an interface that isn't the default network's is caught
+// within phoneNetsFresh.
+var phone struct {
+	sync.Mutex
+	own   []netip.Prefix
+	nat64 netip.Prefix
+	at    time.Time // when own was read; zero when stale
+}
+
+const phoneNetsFresh = 2 * time.Second
+
+func phoneNetworks() phoneNets {
+	phone.Lock()
+	defer phone.Unlock()
+	if time.Since(phone.at) >= phoneNetsFresh {
+		if own, err := ownPrefixes(); err == nil {
+			phone.own, phone.at = own, time.Now()
+		}
+	}
+	return phoneNets{own: phone.own, nat64: phone.nat64}
+}
+
+// ownPrefixes lists every interface's address with its prefix: the phone itself
+// and the networks it is on. An empty list is an error, since loopback is always
+// there: Kotlin sends one when it can't read the interfaces.
+func ownPrefixes() ([]netip.Prefix, error) {
+	list, err := platformInterfaces()
+	if err != nil {
+		return nil, err
+	}
+	var own []netip.Prefix
+	for _, pi := range list {
+		for _, a := range pi.Addrs {
+			ip, err := netip.ParseAddr(a.IP)
+			if err != nil {
+				continue
+			}
+			ip = ip.Unmap().WithZone("")
+			bits := a.PrefixLen
+			if bits < 0 || bits > ip.BitLen() {
+				bits = ip.BitLen()
+			}
+			p, _ := ip.Prefix(bits)
+			own = append(own, p)
+		}
+	}
+	if len(own) == 0 {
+		return nil, errors.New("core: no interface addresses")
+	}
+	return own, nil
 }
 
 type platformInterface struct {
@@ -145,15 +214,23 @@ type platformInterface struct {
 	} `json:"addrs"`
 }
 
-// interfaces answers netmon from Kotlin's list: Android denies apps the netlink
-// socket Go's own net.Interfaces needs.
-func interfaces() ([]netmon.Interface, error) {
+func platformInterfaces() ([]platformInterface, error) {
 	if platform == nil {
 		return nil, errors.New("core: no platform")
 	}
 	var list []platformInterface
 	if err := json.Unmarshal([]byte(platform.InterfacesJSON()), &list); err != nil {
 		return nil, fmt.Errorf("core: interfaces: %w", err)
+	}
+	return list, nil
+}
+
+// interfaces answers netmon from Kotlin's list: Android denies apps the netlink
+// socket Go's own net.Interfaces needs.
+func interfaces() ([]netmon.Interface, error) {
+	list, err := platformInterfaces()
+	if err != nil {
+		return nil, err
 	}
 	var out []netmon.Interface
 	for _, pi := range list {

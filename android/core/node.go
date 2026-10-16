@@ -338,6 +338,25 @@ func (n *Node) peerAddr(ctx context.Context, host string) (netip.Addr, bool) {
 	return netip.Addr{}, false
 }
 
+// endpoints come from the node's last status: what its magicsock found, the
+// local, STUN and port-mapped addresses. None until the node has looked.
+func (n *Node) endpoints() []netip.Prefix {
+	n.peersMu.Lock()
+	st := n.peers
+	n.peersMu.Unlock()
+	if st == nil || st.Self == nil {
+		return nil
+	}
+	var out []netip.Prefix
+	for _, s := range st.Self.Addrs {
+		if ap, err := netip.ParseAddrPort(s); err == nil {
+			ip := ap.Addr().Unmap().WithZone("")
+			out = append(out, netip.PrefixFrom(ip, ip.BitLen()))
+		}
+	}
+	return out
+}
+
 func (n *Node) isPeer(ctx context.Context, ip netip.Addr) bool {
 	for _, maxAge := range []time.Duration{peersFresh, peersRecheck} {
 		if st := n.status(ctx, maxAge); st != nil {
