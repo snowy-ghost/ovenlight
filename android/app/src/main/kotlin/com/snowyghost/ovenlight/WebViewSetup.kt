@@ -40,7 +40,12 @@ object WebViewSetup {
         WebViewFeature.MULTI_PROFILE,
         WebViewFeature.DELETE_BROWSING_DATA,
         WebViewFeature.DOCUMENT_START_SCRIPT,
-        WebViewFeature.WEB_MESSAGE_LISTENER,
+        // The page bridge's channel (PageBridge.kt).
+        WebViewFeature.POST_WEB_MESSAGE,
+        WebViewFeature.CREATE_WEB_MESSAGE_CHANNEL,
+        WebViewFeature.WEB_MESSAGE_PORT_POST_MESSAGE,
+        WebViewFeature.WEB_MESSAGE_PORT_SET_MESSAGE_CALLBACK,
+        WebViewFeature.WEB_MESSAGE_PORT_CLOSE,
         WebViewFeature.WEB_MESSAGE_ARRAY_BUFFER,
     )
     private const val DEFAULT_WEBVIEW_PACKAGE = "com.google.android.webview"

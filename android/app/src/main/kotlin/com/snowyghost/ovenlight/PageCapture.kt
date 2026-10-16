@@ -24,7 +24,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.res.stringResource
 import androidx.core.content.ContextCompat
-import androidx.webkit.JavaScriptReplyProxy
 import com.snowyghost.ovenlight.MediaCapturePolicy.MediaCaptureType
 import com.snowyghost.ovenlight.MediaCapturePolicy.PermissionDecision
 import kotlinx.coroutines.CoroutineScope
@@ -68,8 +67,8 @@ class PageCapture(
     /** What the person allowed in this document, by the origin that asked. */
     private val allowed = mutableMapOf<String, Set<String>>()
 
-    /** The frames that called getUserMedia, which the stop goes to. */
-    private val frames = mutableSetOf<JavaScriptReplyProxy>()
+    /** Reaches the page script, which stops its tracks and its frames' (see [PageBridge]). */
+    private var stopTracks: (() -> Unit)? = null
 
     /** Granted capture since the page's last load, so it may hold a stream. */
     private var granted = false
@@ -109,15 +108,15 @@ class PageCapture(
         mutablePrompt.value?.answer?.dropped()
     }
 
-    /** A frame called getUserMedia (see [PageBridge]). */
-    fun capturing(frame: JavaScriptReplyProxy) {
-        if (frames.size < MAX_FRAMES) frames += frame
+    /** A frame called getUserMedia; [stop] reaches its page script (see [PageBridge]). */
+    fun capturing(stop: () -> Unit) {
+        stopTracks = stop
     }
 
     /** A new document in the main frame: what was allowed, and its streams, went with the old one. */
     fun documentChanged() {
         allowed.clear()
-        frames.clear()
+        stopTracks = null
         granted = false
         dropPending()
     }
@@ -127,7 +126,7 @@ class PageCapture(
      * stops, and a page that may still capture is destroyed once the system says it does.
      */
     fun stop() {
-        frames.forEach { runCatching { it.postMessage(PageBridge.STOP) } }
+        stopTracks?.invoke()
         allowed.clear()
         dropPending()
         if (!granted) return
@@ -160,7 +159,6 @@ class PageCapture(
     companion object {
         private const val TAG = "Ovenlight"
         const val CHECK_AFTER_MILLIS = 500L
-        private const val MAX_FRAMES = 64
 
         fun typeOf(resources: Set<String>): MediaCaptureType? {
             val audio = PermissionRequest.RESOURCE_AUDIO_CAPTURE in resources

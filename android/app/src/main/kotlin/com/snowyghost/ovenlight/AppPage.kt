@@ -107,6 +107,9 @@ class AppPage(
     private var destroyed = false
     private var shown = false
 
+    /** The page script's channel (PageBridge.kt), offered to each new document. */
+    private val bridge: PageBridge
+
     init {
         // The profile goes on before anything else touches the view.
         WebViewCompat.setProfile(view, profileName)
@@ -122,7 +125,7 @@ class AppPage(
         // Camera and microphone requests go to the capture handler, through the edges' one client.
         edges.capture = capture
         view.setDownloadListener(downloads)
-        PageBridge(view, app.startURL, capture, downloads)
+        bridge = PageBridge(view, app.startURL, capture, downloads, scope)
         view.onPause()
     }
 
@@ -318,6 +321,7 @@ class AppPage(
         edges.destroy()
         gateJob?.cancel()
         downloads.cancel()
+        bridge.close()
         Core.clearRoute(routeKey)
         view.stopLoading()
         (view.parent as? android.view.ViewGroup)?.removeView(view)
@@ -336,12 +340,14 @@ class AppPage(
 
         override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
             navigationFailed = false
+            bridge.documentStarted()
             edges.pageStarted(url)
             capture.documentChanged()
         }
 
         override fun onPageFinished(view: WebView, url: String?) {
             edges.pageFinished(url)
+            bridge.documentFinished()
             if (navigationFailed || url == null || url == "about:blank" || destroyed) return
             if (!loaded.value && clearHistoryOnLoad) {
                 // The app-down page never counts, and Back never returns to it.
