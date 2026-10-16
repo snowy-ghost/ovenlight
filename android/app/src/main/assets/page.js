@@ -152,43 +152,10 @@
       }
     }
   };
-  // WebView's date, time and color pickers are windows of their own, which the lock taking the
-  // page away doesn't close. A date or time picker closes with its input's blur; a color picker
-  // only when the input stops being a color input, so its type goes to text and back, which keeps
-  // the value. A page going hidden (the lock, leaving Ovenlight, another app) closes the one its
-  // frame has open, inside open shadow roots too.
-  const blur = HTMLElement.prototype.blur, activeElement = getter(Document, "activeElement");
-  const shadowRoot = getter(Element, "shadowRoot"), shadowActive = getter(ShadowRoot, "activeElement");
-  const hidden = getter(Document, "hidden"), inputType = getter(HTMLInputElement, "type");
-  const setInputType = describe(HTMLInputElement.prototype, "type").set;
-  const PICKERS = new Set(["date", "time", "datetime-local", "month", "week"]), has = Set.prototype.has;
-  const closePicker = () => {
-    if (!apply(hidden, document, [])) return;
-    let element = apply(activeElement, document, []);
-    for (;;) {
-      const root = element && apply(shadowRoot, element, []);
-      const inner = root && apply(shadowActive, root, []);
-      if (!inner) break;
-      element = inner;
-    }
-    if (!(element instanceof HTMLInputElement)) return;
-    const type = apply(inputType, element, []);
-    if (apply(has, PICKERS, [type])) {
-      apply(blur, element, []);
-    } else if (type === "color") {
-      apply(setInputType, element, ["text"]);
-      apply(setInputType, element, ["color"]);
-    }
-  };
-
-  const listenFirst = () => {
-    apply(listen, window, ["message", heard, true]);
-    apply(listen, document, ["visibilitychange", closePicker, true]);
-  };
+  const listenFirst = () => apply(listen, window, ["message", heard, true]);
   listenFirst();
-  // document.open() takes every listener off the window and document, this script's too, so they
-  // go back on as open() or write() returns, which keeps the channel and the picker's close working
-  // for a page that opens its document.
+  // document.open() takes every listener off the window, this script's too, so it goes back on as
+  // open() or write() returns, which keeps the channel working for a page that opens its document.
   // It isn't a boundary: page code that runs during open() or write() (a custom element's
   // reaction, a removed frame's unload, a script write() adds), or another realm's open(), can
   // put its own listener first and take the next offer. Such a page gains nothing new: reports

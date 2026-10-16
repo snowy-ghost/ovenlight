@@ -5,20 +5,25 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
+import android.view.WindowManager
 import java.net.URI
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Modifier
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -40,7 +45,6 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         unlockPrompt = UnlockPrompt(this)
-        lifecycleScope.launch { repeatOnLifecycle(Lifecycle.State.CREATED) { lock.isLocked.collect(::guardWhileLocked) } }
         // Collected while stopped too: the tab is in front then, and Ovenlight comes back over it.
         // A tab waits for the unlock, as iOS's sheets wait under the lock window.
         lifecycleScope.launch {
@@ -136,16 +140,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /**
-     * While locked, the lock screen can't be tapjacked: obscured touches are dropped and other
-     * apps' overlays are hidden. Not while unlocked, where it would drop a page's touches under
-     * a screen-dimming app.
-     */
-    private fun guardWhileLocked(locked: Boolean) {
-        window.decorView.filterTouchesWhenObscured = locked
-        if (Build.VERSION.SDK_INT >= 31) window.setHideOverlayWindows(locked)
-    }
-
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
@@ -189,23 +183,52 @@ private fun Root(model: AppModel, onUnlock: () -> Unit) {
     val lock = model.lock
     OvenlightTheme {
         val locked by lock.isLocked.collectAsState()
-        val authenticating by lock.isAuthenticating.collectAsState()
-        val error by lock.lastError.collectAsState()
         val state by WebViewSetup.state.collectAsState()
-        Box(Modifier.fillMaxSize()) {
-            // While locked, nothing but the lock screen is in the window, so neither TalkBack
-            // nor a keyboard nor a page's popup can reach what's behind it.
-            if (!locked) {
-                when (val s = state) {
-                    is WebViewSetup.State.NeedsUpdate -> WebViewUpdateScreen(s.webViewPackage)
-                    WebViewSetup.State.Ready -> RootView(model)
-                    WebViewSetup.State.Starting -> Unit
-                }
+        // While locked, nothing is in the activity's window, so neither TalkBack nor a keyboard
+        // can reach what's behind the lock.
+        if (!locked) {
+            when (val s = state) {
+                is WebViewSetup.State.NeedsUpdate -> WebViewUpdateScreen(s.webViewPackage)
+                WebViewSetup.State.Ready -> RootView(model)
+                WebViewSetup.State.Starting -> Unit
             }
-            // After an unlock the lock screen stays lit and fades out.
-            AnimatedVisibility(locked, enter = EnterTransition.None, exit = fadeOut(tween(300))) {
-                LockScreen(isLocked = locked, isAuthenticating = authenticating, lastError = error, onUnlock = onUnlock)
+        }
+        LockWindow(lock, locked, onUnlock)
+    }
+}
+
+/**
+ * The lock screen, in a window of its own, added as the lock comes. A window added later stacks
+ * above every window the activity already has, so whatever a page left open (a picker, a menu,
+ * a dialog Android shows again as Ovenlight returns) stays under the lock and out of reach.
+ * After an unlock the lock screen stays lit and fades out, then the window goes.
+ */
+@Composable
+private fun LockWindow(lock: LockManager, locked: Boolean, onUnlock: () -> Unit) {
+    val shown = remember { MutableTransitionState(locked) }.apply { targetState = locked }
+    if (!shown.currentState && !shown.targetState) return
+    val authenticating by lock.isAuthenticating.collectAsState()
+    val error by lock.lastError.collectAsState()
+    // Back goes to the activity, which has nothing left to go back through, so it leaves Ovenlight.
+    val back = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
+    Dialog(
+        onDismissRequest = { back?.onBackPressed() },
+        properties = DialogProperties(dismissOnClickOutside = false, usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+    ) {
+        FullScreenDialogBars()
+        GuardedFromOverlays()
+        // As the activity's window: no scrim behind the navigation bar, and no dialog animation
+        // or dim, so it shows at once and fades over the content alone.
+        val view = LocalView.current
+        SideEffect {
+            view.dialogWindow()?.run {
+                isNavigationBarContrastEnforced = false
+                setWindowAnimations(0)
+                clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
             }
+        }
+        AnimatedVisibility(shown, enter = EnterTransition.None, exit = fadeOut(tween(300))) {
+            LockScreen(isLocked = locked, isAuthenticating = authenticating, lastError = error, onUnlock = onUnlock)
         }
     }
 }
