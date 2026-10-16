@@ -52,8 +52,8 @@ class WebViewPool(
     fun page(app: WebApp): AppPage {
         pages[app.id]?.let { page ->
             // The app's route changed since its view was made (the owner's tailnet became
-            // known, or another one): the view starts over through the right node.
-            if (Routing.mayLoad(page.node, nodes.node(app))) {
+            // known, or another one), or its renderer went: the view starts over through the right node.
+            if (Routing.mayLoad(page.node, nodes.node(app)) && !page.rendererGone) {
                 touch(app.id)
                 return page
             }

@@ -3,6 +3,7 @@ package com.snowyghost.ovenlight
 import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -14,7 +15,8 @@ import android.webkit.CookieManager
 import android.webkit.DownloadListener
 import android.webkit.MimeTypeMap
 import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.ComponentActivity
+import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
@@ -32,6 +34,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
@@ -205,15 +208,13 @@ class PageDownloads(
     /** Runs a download off the main thread; a file it makes waits for the sheet. */
     private fun track(work: suspend () -> File?) {
         val job = scope.launch {
-            val file = try {
-                withContext(Dispatchers.IO) { work() }
+            try {
+                withContext(Dispatchers.IO) { work()?.let { DownloadShelf.add(appID, it) } }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 log("a download failed: ${e.message}")
-                null
             }
-            file?.let { DownloadShelf.add(appID, it) }
         }
         jobs += job
         busy(true)
@@ -430,41 +431,38 @@ class ProfileCookieJar(private val cookies: CookieManager) : CookieJar {
  * types [DownloadFiles] lets out. Every way out is the person's choice. Closing it, or taking
  * one, lets the next file show; the file stays on disk until the next launch.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DownloadSheet(model: AppModel, page: AppPage) {
     val waiting by DownloadShelf.waiting.collectAsState()
     val download = waiting[page.app.id]?.firstOrNull() ?: return
+    // Each file gets a sheet of its own, which shows itself as it comes.
+    key(download) { DownloadSheet(model, page.app, download) }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DownloadSheet(model: AppModel, app: WebApp, download: DownloadShelf.Download) {
     val context = LocalContext.current
     val sheet = rememberModalBottomSheetState()
     val scope = rememberCoroutineScope()
-    val uri = remember(download) { DownloadProvider.uri(context, download.file) }
-    val canOpen = remember(download) { download.type != null && context.packageManager.resolveActivity(open(uri, download.type), PackageManager.MATCH_DEFAULT_ONLY) != null }
+    val uri = remember { DownloadProvider.uri(context, download.file) }
+    val canOpen = remember { download.type != null && context.packageManager.resolveActivity(open(uri, download.type), PackageManager.MATCH_DEFAULT_ONLY) != null }
+    val size = remember { Formatter.formatShortFileSize(context, download.file.length()) }
     val type = DownloadFiles.sharedType(download.type)
-    val saveFailed = stringResource(R.string.download_save_failed, download.file.name)
-    val save = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(type)) { target ->
-        target ?: return@rememberLauncherForActivityResult
-        model.scope.launch {
-            val saved = withContext(Dispatchers.IO) {
-                runCatching { context.contentResolver.openOutputStream(target)?.use { out -> download.file.inputStream().use { it.copyTo(out) } } != null }.getOrDefault(false)
-            }
-            if (!saved) Toast.makeText(context, saveFailed, Toast.LENGTH_LONG).show()
-        }
-    }
     fun done(action: () -> Unit) {
         action()
-        scope.launch { sheet.hide() }.invokeOnCompletion { DownloadShelf.remove(page.app.id, download) }
+        scope.launch { sheet.hide() }.invokeOnCompletion { DownloadShelf.remove(app.id, download) }
     }
-    ModalBottomSheet(onDismissRequest = { DownloadShelf.remove(page.app.id, download) }, sheetState = sheet) {
+    ModalBottomSheet(onDismissRequest = { DownloadShelf.remove(app.id, download) }, sheetState = sheet) {
         DownloadSheetContent(
             name = download.file.name,
-            size = Formatter.formatShortFileSize(context, download.file.length()),
+            size = size,
             canOpen = canOpen,
             onSave = {
                 done {
                     // The picker hands its answer back: an excursion, not leaving.
                     model.lifecycle.beginExcursion()
-                    save.launch(download.file.name)
+                    SaveDocument.launch(context, download.file, type, model.scope)
                 }
             },
             // The Sharesheet and Open take the person to another app, so they are leaving.
@@ -486,6 +484,32 @@ fun DownloadSheet(model: AppModel, page: AppPage) {
                 }
             },
         )
+    }
+}
+
+/**
+ * Save, through the system's create-document picker. Registered on the activity outside
+ * composition, so the picker's answer reaches the file it was opened for even after the sheet
+ * has gone, or the lock came meanwhile.
+ */
+private object SaveDocument {
+    private var next = 0
+
+    fun launch(context: Context, file: File, type: String, scope: CoroutineScope) {
+        val activity = generateSequence(context) { (it as? ContextWrapper)?.baseContext }.firstNotNullOfOrNull { it as? ComponentActivity } ?: return
+        val failed = activity.getString(R.string.download_save_failed, file.name)
+        var launcher: ActivityResultLauncher<String>? = null
+        launcher = activity.activityResultRegistry.register("ovenlight.save.${next++}", ActivityResultContracts.CreateDocument(type)) { target ->
+            launcher?.unregister()
+            target ?: return@register
+            scope.launch {
+                val saved = withContext(Dispatchers.IO) {
+                    runCatching { activity.contentResolver.openOutputStream(target)?.use { out -> file.inputStream().use { it.copyTo(out) } } != null }.getOrDefault(false)
+                }
+                if (!saved) Toast.makeText(activity, failed, Toast.LENGTH_LONG).show()
+            }
+        }
+        launcher.launch(file.name)
     }
 }
 

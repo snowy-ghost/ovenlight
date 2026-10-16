@@ -63,6 +63,10 @@ class AppPage(
     /** Downloads are under way (set by [downloads]); the pool keeps such pages. */
     var isDownloading = false
 
+    /** Its renderer went while it was downloading off screen; it goes once they finish. */
+    var rendererGone = false
+        private set
+
     /** Its downloads, refetched on its route with its profile's cookies (PageDownloads.kt). */
     val downloads = PageDownloads(
         app.id, app.host, DownloadShelf.folder(context), scope,
@@ -71,7 +75,10 @@ class AppPage(
             TailnetCore.client(routeKey).cookieJar(ProfileCookieJar(WebViewCompat.getProfile(view).cookieManager))
                 .readTimeout(30, TimeUnit.SECONDS).build()
         },
-        busy = { isDownloading = it },
+        busy = { busy ->
+            isDownloading = busy
+            if (!busy && rendererGone) pool.replace(this)
+        },
     )
 
     /** Its microphone and camera (PageCapture.kt). */
@@ -379,7 +386,8 @@ class AppPage(
          */
         override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
             Log.w(TAG, "${app.host}: the page's renderer went (crashed: ${detail.didCrash()})")
-            pool.replace(this@AppPage)
+            // Downloads need no renderer, and replacing the view would end them and their route.
+            if (isDownloading && !shown) rendererGone = true else pool.replace(this@AppPage)
             return true
         }
     }

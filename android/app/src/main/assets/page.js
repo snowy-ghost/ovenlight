@@ -23,10 +23,16 @@
         return stream;
       });
     };
-    const clone = MediaStreamTrack.prototype.clone;
+    const cloneTrack = MediaStreamTrack.prototype.clone, cloneStream = MediaStream.prototype.clone;
     MediaStreamTrack.prototype.clone = function () {
-      const copy = clone.call(this);
+      const copy = cloneTrack.call(this);
       if (tracks.has(this)) tracks.add(copy);
+      return copy;
+    };
+    MediaStream.prototype.clone = function () {
+      const copy = cloneStream.call(this);
+      const kept = this.getTracks().map(track => tracks.has(track));
+      copy.getTracks().forEach((track, i) => kept[i] && tracks.add(track));
       return copy;
     };
   }
@@ -67,7 +73,8 @@
       })
       .then(bytes => bytes && bridge.postMessage(bytes), () => {});
   };
-  addEventListener("click", event => report(event.target.closest && event.target.closest("a")), true);
+  // From the path, so an anchor inside a shadow root counts too.
+  addEventListener("click", event => report(event.composedPath().find(node => node instanceof HTMLAnchorElement)), true);
   // A script's click on an anchor outside the document never passes through the document.
   const anchor = HTMLAnchorElement.prototype, click = anchor.click, dispatchEvent = EventTarget.prototype.dispatchEvent;
   anchor.click = function () {

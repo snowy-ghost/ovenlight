@@ -559,24 +559,36 @@ EOF
 
   say "capture: the camera stops on lock, and the page stays"
   tap_text "Start camera"
-  # Android's own permission first, then Ovenlight's question.
-  if await_text 10 "While using the app"; then tap_text "While using the app"; fi
+  # Android's own permission first ("While using the app" from API 30, "Allow" beside "Deny"
+  # on API 29), then Ovenlight's question.
+  for i in $(seq 1 10); do
+    seen=$(screen_text)
+    if grep -qxF "While using the app" <<<"$seen"; then tap_text "While using the app"; break; fi
+    if grep -qxF Deny <<<"$seen"; then tap_text Allow; break; fi
+    sleep 1
+  done
   await_text 15 "Allow Recipes to use the camera?" || fail "no capture prompt: $(screen_text | tr '\n' '|')"
   shot downloads-capture-prompt
   tap_text Allow
-  if await_text 15 "Camera live"; then
+  # The camera's clients, as the camera service lists them.
+  camera_clients() { a shell dumpsys media.camera | tr -d '\r' | sed -n '/Active Camera Clients/,/^$/p' | grep -c 'Client package: ' || true; }
+  for i in $(seq 1 15); do screen_text | grep -qE '^Camera (live|error)' && break; sleep 1; done
+  if screen_text | grep -qxF "Camera live"; then
     note "the page has the camera after Ovenlight's prompt"
+    (( $(camera_clients) > 0 )) || fail "the camera service lists no client while the page captures, so it can't show one closing: $(a shell dumpsys media.camera | grep -A5 'Active Camera Clients')"
     a shell "am start -n $PKG/.MainActivity --ez lockNow true" >/dev/null
     KEEP_LOCK=1 await_text 10 "Ovenlight is locked" || fail "lockNow didn't lock"
     sleep 3
-    clients=$(a shell dumpsys media.camera | tr -d '\r' | sed -n '/Active Camera Clients/,/^$/p' | grep -c 'Client package: ' || true)
-    (( clients == 0 )) || fail "the camera is still open under the lock: $(a shell dumpsys media.camera | grep -A3 'Active Camera Clients')"
+    (( $(camera_clients) == 0 )) || fail "the camera is still open under the lock: $(a shell dumpsys media.camera | grep -A3 'Active Camera Clients')"
     ! a logcat -d -s Ovenlight | grep -q 'still capturing after the stop' || fail "the page script didn't stop the camera, so the view went"
     tap_text Unlock; sleep 2; a emu finger touch 1 >/dev/null
     await_text 20 "Camera ended" || fail "after the unlock the page isn't the one that captured: $(screen_text | tr '\n' '|')"
     note "the lock stopped the page's track, the camera closed, and the same page came back"
   else
-    note "the emulator's camera didn't answer ($(screen_text | grep -m1 'Camera error' || echo 'no answer')); capture on lock not checked"
+    answer=$(screen_text | grep -m1 '^Camera error' || echo "no answer")
+    # Only a phone with no camera to give excuses this; Ovenlight refusing it fails.
+    [[ $answer == "Camera error NotFoundError" || $answer == "Camera error NotReadableError" ]] || fail "the page didn't get the camera: $answer"
+    note "the emulator's camera didn't answer ($answer); capture on lock not checked"
   fi
   say "PASSED"
   exit 0
