@@ -97,8 +97,10 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -242,8 +244,13 @@ fun HomeScreenGrid(
     val scope = rememberCoroutineScope()
     val largeText = density.fontScale >= 1.5f
     val typography = MaterialTheme.typography
-    val labelLine = with(density) { typography.bodySmall.lineHeight.toDp() }.value
-    val sharedByLine = with(density) { typography.labelSmall.lineHeight.toDp() }.value
+    // The label's lines as they're drawn: under Android 14's nonlinear font scaling, text keeps its
+    // line height's ratio to its size, so a line comes out taller than its lineHeight in dp.
+    val measurer = rememberTextMeasurer()
+    val (labelLines, sharedByLine) = remember(measurer, density, typography, largeText) {
+        fun height(text: String, style: TextStyle) = with(density) { measurer.measure(text, style).size.height.toDp() }.value
+        height(if (largeText) "A\nA" else "A", typography.bodySmall) to height("A", typography.labelSmall)
+    }
     var drag by remember { mutableStateOf<IconDrag?>(null) }
     var menuFor by remember { mutableStateOf<UUID?>(null) }
     var pressed by remember { mutableStateOf<UUID?>(null) }
@@ -258,7 +265,7 @@ fun HomeScreenGrid(
     Column(modifier.verticalScroll(rememberScrollState(), enabled = drag == null)) {
         header()
         BoxWithConstraints(Modifier.fillMaxWidth()) {
-            val labelHeight = labelLine * (if (largeText) 2 else 1) + (if (apps.any { it.isShared }) sharedByLine else 0f)
+            val labelHeight = labelLines + (if (apps.any { it.isShared }) sharedByLine else 0f)
             val layout = remember(maxWidth, labelHeight, largeText) { HomeGridLayout(maxWidth.value.toDouble(), labelHeight.toDouble(), largeText) }
             val px = density.density
             val tileSize = layout.tileSize

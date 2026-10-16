@@ -6,9 +6,9 @@ import android.content.Context
 import android.content.Intent
 import android.icu.text.ListFormatter
 import android.provider.Settings as SystemSettings
-import androidx.activity.compose.BackHandler
 import androidx.annotation.DrawableRes
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.rememberTransition
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
@@ -187,17 +187,16 @@ fun SettingsScreen(state: SettingsState, onClose: () -> Unit) {
     var acknowledgements by remember { mutableStateOf(false) }
     // Outlives the slide to Acknowledgements, so coming back keeps the place in the list.
     val scroll = rememberScrollState()
-    BackHandler(enabled = acknowledgements) { acknowledgements = false }
-    AnimatedContent(
-        acknowledgements,
+    val page = rememberScreenShown(acknowledgements)
+    ScreenBack(page, shown = acknowledgements) { acknowledgements = false }
+    rememberTransition(page, label = "settings page").AnimatedContent(
         transitionSpec = {
             if (targetState) {
-                slideInHorizontally { it } togetherWith slideOutHorizontally { -it / 3 }
+                slideInHorizontally(screenTween()) { it } togetherWith slideOutHorizontally(screenTween()) { -it / 3 }
             } else {
-                slideInHorizontally { -it / 3 } togetherWith slideOutHorizontally { it }
+                slideInHorizontally(screenTween()) { -it / 3 } togetherWith slideOutHorizontally(screenTween()) { it }
             }
         },
-        label = "settings page",
     ) { showing ->
         if (showing) {
             AcknowledgementsScreen(state.notices, onBack = { acknowledgements = false })

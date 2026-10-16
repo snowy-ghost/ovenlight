@@ -30,7 +30,7 @@ class ConnectionStateTests {
         val copy = listOf(
             ConnectionCopy.connecting, ConnectionCopy.stopped, ConnectionCopy.couldNotStart,
             ConnectionCopy.connecting(to = "Coach"), ConnectionCopy.cantReach("Coach"),
-            ConnectionCopy.cantReachDetail, ConnectionCopy.signIn(toOpen = "Coach"),
+            ConnectionCopy.cantReachDetail, ConnectionCopy.pageFailed, ConnectionCopy.signIn(toOpen = "Coach"),
             NodeState.Starting.summary, NodeMachine.next(NodeState.Ready, NodeEvent.Backend("Stopped", null)).summary,
             ConnectionCopy.reportProblem, ConnectionCopy.leaveApps("Riley"), ConnectionCopy.leaveTitle("Riley"),
             ConnectionCopy.leaveDetail("Riley"), LauncherWelcome.title, LauncherWelcome.message,

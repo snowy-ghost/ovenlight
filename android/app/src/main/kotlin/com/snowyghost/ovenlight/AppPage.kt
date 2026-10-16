@@ -309,7 +309,9 @@ class AppPage(
             return openGate()
         }
         failedLoads = 0
-        error.value = if (code in unreachable) ConnectionCopy.cantReachDetail else description
+        // Chromium's description is a code ("net::ERR_TOO_MANY_REDIRECTS"): the log keeps it, the page says it plainly.
+        if (code !in unreachable) OvenlightLog.i("${app.host}: error $code, $description")
+        error.value = if (code in unreachable) ConnectionCopy.cantReachDetail else ConnectionCopy.pageFailed
     }
 
     // Leaving

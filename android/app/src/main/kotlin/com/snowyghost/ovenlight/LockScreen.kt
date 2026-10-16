@@ -15,6 +15,9 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -22,6 +25,8 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -147,8 +152,10 @@ private fun LockLayout(level: Float, paneTitle: String? = null, message: @Compos
     val pane = paneTitle?.let { title -> Modifier.semantics { this.paneTitle = title } } ?: Modifier
     Box(Modifier.fillMaxSize().background(LocalOvenColors.current.ovenInterior).then(pane)) {
         LampLight(level)
+        // Measured from below the status bar (or a cutout reaching lower), as iOS measures from its safe area.
+        val statusBar = WindowInsets.statusBars.union(WindowInsets.displayCutout).asPaddingValues().calculateTopPadding()
         BoxWithConstraints(Modifier.fillMaxSize()) {
-            val top = maxHeight * (if (largeText) 0.06f else 0.16f)
+            val top = statusBar + maxHeight * (if (largeText) 0.06f else 0.16f)
             Column(Modifier.fillMaxSize().navigationBarsPadding()) {
                 // Scrolls only when the largest text sizes don't fit above the controls.
                 Column(

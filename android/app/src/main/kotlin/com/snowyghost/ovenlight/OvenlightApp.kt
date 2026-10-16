@@ -4,8 +4,8 @@ import android.app.Application
 import android.content.Context
 import android.icu.text.Normalizer2
 import android.os.SystemClock
-import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.rememberTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -385,10 +385,11 @@ private fun ScreenLayer(model: AppModel) {
     // A screen closed while the lock kept this layer out of composition never ran its own
     // dismissal, which the router would wait on for good.
     LaunchedEffect(Unit) { if (router.sheet.value == null) router.sheetDismissed() }
-    AnimatedVisibility(
-        visible = screen != null,
-        enter = slideInHorizontally { it } + fadeIn(),
-        exit = slideOutHorizontally { it } + fadeOut(),
+    val shownState = rememberScreenShown(screen != null)
+    rememberTransition(shownState, label = "screen").AnimatedVisibility(
+        visible = { it },
+        enter = slideInHorizontally(screenTween()) { it } + fadeIn(screenTween()),
+        exit = slideOutHorizontally(screenTween()) { it } + fadeOut(screenTween()),
     ) {
         val shown = screen ?: last ?: return@AnimatedVisibility
         val close = { if (router.sheet.value?.id == shown.id) router.sheet.value = null }
@@ -397,7 +398,7 @@ private fun ScreenLayer(model: AppModel) {
                 router.sheetAppeared()
                 onDispose { router.sheetDismissed() }
             }
-            BackHandler(enabled = screen != null, onBack = close)
+            ScreenBack(shownState, shown = screen != null, back = close)
             when (shown) {
                 RootSheet.Settings -> SettingsView(model, onClose = close)
                 // The rest arrive with their phases: Add App and Join with Phase 5, sharing with Phase 6.
