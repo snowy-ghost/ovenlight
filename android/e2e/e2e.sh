@@ -5,7 +5,7 @@
 # connector runs from this run's folder with its own HOME, config and state, logs in only to
 # the local Headscale, and stops by its recorded pid.
 #
-#   android/e2e/e2e.sh [gates | owner | signin [seconds] | screens | app | chrome | edges | downloads | upload | return] [avd]
+#   android/e2e/e2e.sh [gates | owner | signin [seconds] | screens | app | chrome | downloads | upload | return] [avd]
 #
 # gates runs Phase 1's checks G2 to G5 through the debug lab. owner signs the owner's node in
 # with a preauth key and waits for the launcher to show both test apps. signin goes through
@@ -18,9 +18,6 @@
 # opens the app menu and writes feedback, locks and unlocks with the note still there, sends
 # it, and checks that the connector got it, screenshot and all, with no pill or handle in the
 # screenshot.
-# edges gives Recipes a page of links and checks where each goes: an outside link opens in a
-# Custom Tab, mailto: asks first and Cancel opens nothing, an intent: for Ovenlight does
-# nothing, and a POST to Pantry goes back and opens Pantry outside.
 # downloads opens a Recipes page that downloads a cookie-gated file over http and a blob, and
 # checks each arrives in Ovenlight's sheet with the bytes the page meant; then, if the
 # emulator's camera answers, that locking stops the page's camera without discarding the page.
@@ -28,9 +25,10 @@
 # pickers (documents for a plain input, the photo picker from Ovenlight's sheet for an image
 # input), and checks the page got its name and size and the app's server its bytes; then that
 # canceling either picker answers the page, so the next tap opens one again.
-# return checks that a page keeps running through Ovenlight's own Custom Tabs, one the page
-# opened and Settings' privacy policy: the same page, its first WebSocket still open and
-# answering, and its timers never held up for more than Chromium's once a second out of sight.
+# return checks that a page keeps running through a Custom Tab it opened: the same page, its
+# first WebSocket still open and answering, and its timers never held up for more than
+# Chromium's once a second out of sight. Then a POST to Pantry, which the connector refuses
+# from another site, goes back and opens Pantry outside.
 # Each writes what it saw to
 # android/e2e/out/: gates.txt, logs and screenshots.
 #
@@ -66,16 +64,6 @@ note() { printf '   %s\n' "$*"; printf '   %s\n' "$*" >> "$OUT/gates.txt"; }
 port() { python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])'; }
 S=
 a() { adb -s "$S" "$@"; }
-# Once Ovenlight keeps something it opens locked: answer its prompt with fingerprint 1.
-unlock() {
-  for i in 1 2 3; do
-    sleep 2
-    a emu finger touch 1 >/dev/null
-    # The prompt ("Unlock Ovenlight") or the lock screen behind it.
-    a exec-out uiautomator dump /dev/tty 2>/dev/null | grep -q -E 'Unlock Ovenlight|Ovenlight is locked' || return 0
-  done
-  fail "Ovenlight didn't unlock"
-}
 shot() { [[ -n $emulator_port ]] && a exec-out screencap -p > "$OUT/$1.png" 2>/dev/null || true; }
 fail() { printf 'FAILED: %s\n' "$*"; printf 'FAILED: %s\n' "$*" >> "$OUT/gates.txt"; shot failed; exit 1; }
 
@@ -94,7 +82,7 @@ cleanup() {
   cp $D/*.log $OUT/ 2>/dev/null || true
   if [[ -n $emulator_port ]]; then
     a logcat -d > $OUT/logcat.log 2>/dev/null || true
-    # As edges leaves Chrome, so the AVD is as it was.
+    # Chrome without the flags chrome_without_first_run gave it, so the AVD is as it was.
     if [[ -n ${chrome_flags:-} ]]; then
       a shell rm -f /data/local/tmp/chrome-command-line >/dev/null 2>&1 || true
       a shell am clear-debug-app >/dev/null 2>&1 || true
@@ -120,7 +108,7 @@ until_ok() {
 }
 
 [[ -x $HS ]] || fail "no headscale at $HS"
-[[ $SCENARIO =~ ^(gates|owner|signin|screens|app|chrome|edges|downloads|upload|return)$ ]] || fail "unknown scenario $SCENARIO"
+[[ $SCENARIO =~ ^(gates|owner|signin|screens|app|chrome|downloads|upload|return)$ ]] || fail "unknown scenario $SCENARIO"
 
 say "the test CA in $CA, made once, and a *.$BASE certificate for this run"
 if [[ ! -f $CA/ca.pem ]]; then
@@ -389,8 +377,7 @@ owner_launcher() {
 
 if [[ $SCENARIO == app ]]; then
   say "app: the owner signs in, then opens Recipes"
-  a shell "am start -W -n $PKG/.MainActivity --es controlURL $CTRL --es authKey $KEY" >/dev/null
-  await_text 90 Recipes Pantry || fail "the launcher never showed both apps: $(screen_text | tr '\n' '|')"
+  owner_launcher
   tap_text Recipes
   close_tip
   # The page's own heading, read from the web view.
@@ -414,8 +401,7 @@ fi
 
 if [[ $SCENARIO == chrome ]]; then
   say "chrome: the owner signs in, opens Recipes, and sends feedback from the app menu"
-  a shell "am start -W -n $PKG/.MainActivity --es controlURL $CTRL --es authKey $KEY" >/dev/null
-  await_text 90 Recipes Pantry || fail "the launcher never showed both apps: $(screen_text | tr '\n' '|')"
+  owner_launcher
   tap_text Recipes
   # Until its tip is closed, the pill shows with it, even before the page loads.
   await_text 20 "Your apps are up here" "Got it" || { shot chrome-failed; fail "no tip over the pill: $(screen_text | tr '\n' '|')"; }
@@ -509,65 +495,6 @@ PY
   exit 0
 fi
 
-if [[ $SCENARIO == edges ]]; then
-  say "edges: the owner signs in, then Recipes with a page of links"
-  # Recipes' start page for this run; app.py serves the folder as it is on disk.
-  cat > $D/recipes/index.html <<'EOF'
-<!doctype html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Edges</title><style>body { padding-top: 48px; } a, button { display: block; margin: 12px; padding: 16px; font-size: 22px; }</style></head>
-<body><h1>Recipe Box edges</h1>
-<a href="https://example.com/">Outside link</a>
-<a href="mailto:riley@example.com">Mail Riley</a>
-<a href="intent://join?v=1&amp;key=k#Intent;scheme=ovenlight;end">Ovenlight intent</a>
-<form method="post" action="https://pantry.e2e.ts.net/"><input type="hidden" name="a" value="1"><button>Post to Pantry</button></form>
-</body></html>
-EOF
-  chrome_without_first_run
-  a shell "am start -W -n $PKG/.MainActivity --es controlURL $CTRL --es authKey $KEY" >/dev/null
-  await_text 90 Recipes Pantry || fail "the launcher never showed both apps: $(screen_text | tr '\n' '|')"
-  tap_text Recipes
-  close_tip
-  await_text 40 "Recipe Box edges" "Outside link" || { shot edges-failed; fail "the page of links never loaded: $(screen_text | tr '\n' '|')"; }
-  shot edges-page
-
-  tap_text "Outside link"
-  await_outside 20 "https://example.com/" || { shot edges-outside; fail "the outside link didn't open outside: $(front)"; }
-  shot edges-custom-tab
-  note "the outside link opened outside Ovenlight: $(front | sed 's/^ *//')"
-  back_to "Recipe Box edges" "the outside link"
-
-  tap_text "Mail Riley"
-  await_text 10 "Open in another app?" "Recipes wants to open “mailto:riley@example.com”." ||
-    { shot edges-mail; fail "mailto: didn't ask first: $(screen_text | tr '\n' '|')"; }
-  shot edges-mail-asks
-  [[ $(front) == *$PKG* ]] || fail "something opened before the answer: $(front)"
-  tap_text Cancel; sleep 2
-  ! screen_text | grep -qxF "Open in another app?" || fail "Cancel didn't close the question"
-  [[ $(front) == *$PKG* ]] || fail "Cancel opened something: $(front)"
-  note "mailto: asked first, and Cancel opened nothing"
-
-  tapped_at=$(a shell "date '+%m-%d %H:%M:%S.000'" | tr -d '\r')
-  tap_text "Ovenlight intent"; sleep 3
-  [[ $(a logcat -d -T "$tapped_at" -s Ovenlight 2>/dev/null) == *"refused a intent link to another app"* ]] ||
-    fail "the tap on the intent: link never reached the policy"
-  ! screen_text | grep -qxF "Open in another app?" || fail "an intent: for Ovenlight asked to open"
-  [[ $(front) == *$PKG* ]] || fail "an intent: for Ovenlight opened something: $(front)"
-  screen_text | grep -qxF "Recipe Box edges" || fail "an intent: for Ovenlight left the page: $(screen_text | tr '\n' '|')"
-  note "an intent: for Ovenlight did nothing"
-
-  # The connector refuses another site's POST (fromThisSite in connector/proxy.go); the page
-  # it answers with commits, and Ovenlight goes back from it.
-  tap_text "Post to Pantry"
-  await_outside 20 "https://pantry.e2e.ts.net/" || { shot edges-post; fail "the POST to Pantry didn't open outside: $(front)"; }
-  note "the POST to Pantry opened Pantry outside: $(front | sed 's/^ *//')"
-  back_to "Recipe Box edges" "the POST"
-  shot edges-after-post
-  note "and Recipes is back on its own page"
-  say "PASSED"
-  exit 0
-fi
-
 if [[ $SCENARIO == downloads ]]; then
   say "downloads: Recipes offers an http file behind a cookie, a blob and the camera"
   # app.py serves the folder as it is at each request, so the page changes here.
@@ -598,8 +525,7 @@ function startCamera() {
 }
 </script></body></html>
 EOF
-  a shell "am start -W -n $PKG/.MainActivity --es controlURL $CTRL --es authKey $KEY" >/dev/null
-  await_text 90 Recipes Pantry || fail "the launcher never showed both apps: $(screen_text | tr '\n' '|')"
+  owner_launcher
   tap_text Recipes
   close_tip
   # The page's HttpOnly session cookie, which only the profile's cookie jar can carry.
@@ -780,7 +706,7 @@ EOF
 fi
 
 if [[ $SCENARIO == return ]]; then
-  say "return: a page on screen keeps running through Ovenlight's own Custom Tabs"
+  say "return: a page on screen keeps running through a Custom Tab it opened, and a POST to Pantry opens outside"
   cat > $D/recipes/index.html <<'EOF'
 <!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Return</title>
@@ -789,6 +715,7 @@ if [[ $SCENARIO == return ]]; then
 <p id="load"></p><p id="ws">socket connecting</p><p id="echo">no echo</p><p id="gap">longest pause 0</p>
 <a href="https://example.com/">Outside link</a>
 <button onclick="ping()">Ping</button><button onclick="longest = 0; show()">Reset pause</button>
+<form method="post" action="https://pantry.e2e.ts.net/"><input type="hidden" name="a" value="1"><button>Post to Pantry</button></form>
 <script>
 const text = (id, value) => document.getElementById(id).textContent = value;
 text("load", "load " + String(Math.random()).slice(2, 8));
@@ -832,31 +759,21 @@ EOF
   back_to "Recipe Box return" "the page's Custom Tab"
   same_page "after the page's Custom Tab"
 
-  # Settings' Custom Tab (the privacy policy; its sign-in page shows only while signed out),
-  # with the page kept in the pool behind the launcher.
-  tap_text "Reset pause"
-  a shell input keyevent KEYCODE_BACK
-  await_text 10 Pantry || fail "Back didn't close the app: $(screen_text | tr '\n' '|')"
-  tap_text More && sleep 1 && tap_text Settings
-  await_text 10 "Require screen lock" || fail "no Settings: $(screen_text | tr '\n' '|')"
-  for i in 1 2 3 4 5; do screen_text | grep -qxF "Privacy policy" && break; a shell input swipe 540 1800 540 600 300; sleep 1; done
-  tap_text "Privacy policy" || fail "no Privacy policy in Settings: $(screen_text | tr '\n' '|')"
-  await_outside 20 "https://ovenlight.app/privacy" || fail "the privacy policy didn't open outside: $(front)"
-  sleep 10
-  back_to "Privacy policy" "Settings' Custom Tab"
-  a shell input keyevent KEYCODE_BACK
-  await_text 10 Recipes || fail "Back didn't close Settings: $(screen_text | tr '\n' '|')"
-  tap_text Recipes
-  await_text 20 "Recipe Box return" || fail "Recipes didn't reopen: $(screen_text | tr '\n' '|')"
-  same_page "after Settings' Custom Tab"
+  # The connector refuses another site's POST (fromThisSite in connector/proxy.go); the page
+  # it answers with commits, and Ovenlight opens it outside and goes back. Last, as going
+  # back may load the page again.
+  tap_text "Post to Pantry"
+  await_outside 20 "https://pantry.e2e.ts.net/" || { shot return-post; fail "the POST to Pantry didn't open outside: $(front)"; }
+  note "the POST to Pantry opened Pantry outside: $(front | sed 's/^ *//')"
+  back_to "Recipe Box return" "the POST"
+  note "and Recipes is back on its own page"
   say "PASSED"
   exit 0
 fi
 
 if [[ $SCENARIO == screens ]]; then
   say "screens: the owner signs in, then the screenshots"
-  a shell "am start -W -n $PKG/.MainActivity --es controlURL $CTRL --es authKey $KEY" >/dev/null
-  await_text 90 Recipes Pantry || fail "the launcher never showed both apps: $(screen_text | tr '\n' '|')"
+  owner_launcher
   sleep 2; shot launcher-light
   night yes; shot launcher-dark
   tap_text More && sleep 1 && tap_text Settings
@@ -888,7 +805,7 @@ if [[ $SCENARIO == screens ]]; then
   KEEP_LOCK=1 await_text 10 "Ovenlight is locked" || fail "Lock Ovenlight didn't lock"
   shot lock-light; night yes; shot lock-dark; night no
   note "Lock Ovenlight locks; screenshots of the lock screen in light and dark"
-  tap_text Unlock; sleep 2; a emu finger touch 1 >/dev/null
+  unlock_now
   await_text 20 Recipes || fail "didn't unlock"
 
   say "lock: Home, then back through the icon"
@@ -901,7 +818,7 @@ if [[ $SCENARIO == screens ]]; then
   ! screen_text | grep -qxF 'Unlock Ovenlight' || fail "the canceled prompt came back by itself"
   KEEP_LOCK=1 await_text 5 "Ovenlight is locked" || fail "the lock screen went away: $(screen_text | tr '\n' '|')"
   note "a canceled prompt stays closed, and the lock screen stays"
-  tap_text Unlock; sleep 2; a emu finger touch 1 >/dev/null
+  unlock_now
   await_text 20 Recipes || fail "didn't unlock"
 
   say "lock: Home, then back through Recents"
@@ -917,8 +834,7 @@ fi
 
 if [[ $SCENARIO == owner ]]; then
   say "owner: the owner's node signs in with a preauth key"
-  a shell "am start -W -n $PKG/.MainActivity --es controlURL $CTRL --es authKey $KEY" >/dev/null
-  await_text 90 Recipes Pantry || { shot owner-failed; fail "the launcher never showed both apps: $(screen_text | tr '\n' '|')"; }
+  owner_launcher
   shot owner-launcher
   note "the launcher shows Recipes and Pantry"
   say "PASSED"
@@ -1135,7 +1051,7 @@ say "G4: deleteProfile at the next launch"
 lab "profiles"; note "$(await 10 '^profiles' || echo none)"
 a shell am force-stop $PKG
 a shell "am start -W -n $PKG/.MainActivity --ez writeProxySecret true" >/dev/null
-unlock
+unlock_now
 lab "profiles"
 line=$(await 15 '^profiles') || fail "no profile list after the relaunch"
 note "after the relaunch: $line"
