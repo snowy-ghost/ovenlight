@@ -13,6 +13,7 @@ import androidx.webkit.UserAgentMetadata
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
+import androidx.webkit.WebViewMediaIntegrityApiStatusConfig
 import androidx.webkit.WebViewOutcomeReceiver
 import androidx.webkit.WebViewStartUpConfig
 import androidx.webkit.WebViewStartUpResult
@@ -49,6 +50,8 @@ object WebViewSetup {
         WebViewFeature.WEB_MESSAGE_PORT_SET_MESSAGE_CALLBACK,
         WebViewFeature.WEB_MESSAGE_PORT_CLOSE,
         WebViewFeature.WEB_MESSAGE_ARRAY_BUFFER,
+        // Media integrity off (configure).
+        WebViewFeature.WEBVIEW_MEDIA_INTEGRITY_API_STATUS,
         // The client hints' model and Android version (configure).
         WebViewFeature.USER_AGENT_METADATA,
     )
@@ -103,6 +106,12 @@ object WebViewSetup {
         WebSettingsCompat.setUserAgentMetadata(
             view.settings,
             UserAgentMetadata.Builder(WebSettingsCompat.getUserAgentMetadata(view.settings)).setModel("").setPlatformVersion("10.0.0").build(),
+        )
+        // WebView offers every frame an integrity check that Play services answers with
+        // Ovenlight's identity: off, for every frame a page can make.
+        WebSettingsCompat.setWebViewMediaIntegrityApiStatus(
+            view.settings,
+            WebViewMediaIntegrityApiStatusConfig.Builder(WebViewMediaIntegrityApiStatusConfig.WEBVIEW_MEDIA_INTEGRITY_API_DISABLED).build(),
         )
         if (WebViewFeature.isFeatureSupported(WebViewFeature.ALGORITHMIC_DARKENING)) {
             WebSettingsCompat.setAlgorithmicDarkeningAllowed(view.settings, false)
