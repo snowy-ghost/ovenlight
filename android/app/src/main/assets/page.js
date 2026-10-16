@@ -152,10 +152,33 @@
       }
     }
   };
-  const listenFirst = () => apply(listen, window, ["message", heard, true]);
+  // WebView's date and time pickers are windows of their own, which the lock taking the page
+  // away doesn't close; only the input's blur does. So a page going hidden (the lock, leaving
+  // Ovenlight, another app) closes the one its frame has open, inside open shadow roots too.
+  const blur = HTMLElement.prototype.blur, activeElement = getter(Document, "activeElement");
+  const shadowRoot = getter(Element, "shadowRoot"), shadowActive = getter(ShadowRoot, "activeElement");
+  const hidden = getter(Document, "hidden"), inputType = getter(HTMLInputElement, "type");
+  const PICKERS = new Set(["date", "time", "datetime-local", "month", "week"]), has = Set.prototype.has;
+  const closePicker = () => {
+    if (!apply(hidden, document, [])) return;
+    let element = apply(activeElement, document, []);
+    for (;;) {
+      const root = element && apply(shadowRoot, element, []);
+      const inner = root && apply(shadowActive, root, []);
+      if (!inner) break;
+      element = inner;
+    }
+    if (element instanceof HTMLInputElement && apply(has, PICKERS, [apply(inputType, element, [])])) apply(blur, element, []);
+  };
+
+  const listenFirst = () => {
+    apply(listen, window, ["message", heard, true]);
+    apply(listen, document, ["visibilitychange", closePicker, true]);
+  };
   listenFirst();
-  // document.open() takes every listener off the window, this script's too, so it goes back on as
-  // open() or write() returns, which keeps the channel working for a page that opens its document.
+  // document.open() takes every listener off the window and document, this script's too, so they
+  // go back on as open() or write() returns, which keeps the channel and the picker's close working
+  // for a page that opens its document.
   // It isn't a boundary: page code that runs during open() or write() (a custom element's
   // reaction, a removed frame's unload, a script write() adds), or another realm's open(), can
   // put its own listener first and take the next offer. Such a page gains nothing new: reports
@@ -241,15 +264,4 @@
     return apply(dispatchEvent, this, [event]);
   };
 
-  // WebView's date and time pickers are windows of their own, which the lock taking the page
-  // away doesn't close; only the input's blur does. So a page going hidden (the lock, leaving
-  // Ovenlight, another app) closes the one its frame has open.
-  const blur = HTMLElement.prototype.blur, activeElement = getter(Document, "activeElement");
-  const hidden = getter(Document, "hidden"), inputType = getter(HTMLInputElement, "type");
-  const PICKERS = new Set(["date", "time", "datetime-local", "month", "week"]), has = Set.prototype.has;
-  apply(listen, document, ["visibilitychange", () => {
-    if (!apply(hidden, document, [])) return;
-    const element = apply(activeElement, document, []);
-    if (element instanceof HTMLInputElement && apply(has, PICKERS, [apply(inputType, element, [])])) apply(blur, element, []);
-  }, true]);
 })();
