@@ -106,6 +106,14 @@
                 android:resource="@xml/download_paths" />
         </provider>
 
+        <!-- Chrome binds this while Ovenlight's tab is in front, so Android doesn't freeze
+             Ovenlight under it (CustomTabs.kt). Exported for the browser to bind; binding it
+             does nothing but keep Ovenlight running. -->
+        <service
+            android:name=".TabKeepAlive"
+            android:exported="true"
+            tools:ignore="ExportedService" />
+
         <!-- The one activity. singleTask, so links arrive in onNewIntent and bringing it
              back closes a tab above it. It handles rotation, size, density, keyboard, UI
              mode, text size and bold text changes itself, so pages survive them. No task

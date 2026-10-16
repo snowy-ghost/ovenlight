@@ -1,12 +1,17 @@
 package com.snowyghost.ovenlight
 
+import android.app.Service
+import android.content.ComponentName
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.Binder
 import androidx.activity.ComponentActivity
 import androidx.browser.customtabs.CustomTabsClient
 import androidx.browser.customtabs.CustomTabsIntent
+import androidx.browser.customtabs.CustomTabsServiceConnection
+import androidx.browser.customtabs.CustomTabsSession
 import androidx.core.net.toUri
 import java.net.URI
 
@@ -18,6 +23,40 @@ import java.net.URI
  */
 object CustomTabs {
     private var chosen: String? = null
+
+    /** The browser [connect] bound to, and the session it gave, once it answers. */
+    private var connected: String? = null
+    private var session: CustomTabsSession? = null
+
+    /**
+     * Connects to the browser ahead of a sign-in or approval. A tab opened with the session it
+     * gives keeps Ovenlight running while the tab is in front (see [TabKeepAlive]). Without it
+     * Android freezes Ovenlight about a minute after the tab covers it, and the node can't see
+     * the phone connect until the tab closes.
+     */
+    fun connect(context: Context) {
+        val browser = browser(context) ?: return
+        if (connected == browser || CustomTabsClient.getPackageName(context, listOf(browser), true) != browser) return
+        connected = browser
+        val app = context.applicationContext
+        val connection = object : CustomTabsServiceConnection() {
+            override fun onCustomTabsServiceConnected(name: ComponentName, client: CustomTabsClient) {
+                session = client.newSession(null)
+            }
+
+            override fun onServiceDisconnected(name: ComponentName) {
+                session = null
+            }
+
+            // The browser was updated or force-stopped: the owner's next sign-in or approval connects again.
+            override fun onBindingDied(name: ComponentName) {
+                session = null
+                connected = null
+                app.unbindService(this)
+            }
+        }
+        if (!systemCall("connect to $browser", false) { CustomTabsClient.bindCustomTabsService(app, browser, connection) }) connected = null
+    }
 
     /**
      * Opens [url]; false when nothing on the phone can show it. Ovenlight's own tab is an
@@ -31,7 +70,10 @@ object CustomTabs {
         if (browser == null && NavigationPolicy.isOvenlightLink(url)) return false
         val tabs = browser != null && CustomTabsClient.getPackageName(context, listOf(browser), true) == browser
         val intent = if (tabs) {
-            CustomTabsIntent.Builder().setShowTitle(true).setShareState(CustomTabsIntent.SHARE_STATE_OFF).build().intent.setData(uri)
+            val session = session?.takeIf { connected == browser }
+            CustomTabsIntent.Builder(session).setShowTitle(true).setShareState(CustomTabsIntent.SHARE_STATE_OFF).build().intent.setData(uri).apply {
+                if (session != null) putExtra(EXTRA_KEEP_ALIVE, Intent(context, TabKeepAlive::class.java))
+            }
         } else {
             Intent(Intent.ACTION_VIEW, uri).addCategory(Intent.CATEGORY_BROWSABLE)
         }
@@ -62,6 +104,18 @@ object CustomTabs {
 
     private fun installed(context: Context, packageName: String): Boolean =
         runCatching { context.packageManager.getPackageInfo(packageName, 0) }.isSuccess
+
+    /** Chrome's: the service its tab binds while in front. androidx.browser has no builder for it. */
+    private const val EXTRA_KEEP_ALIVE = "android.support.customtabs.extra.KEEP_ALIVE"
+}
+
+/**
+ * Bound by the browser while Ovenlight's tab is in front, which makes Ovenlight's process count
+ * as visible, so Android doesn't freeze it: the node goes on learning where the sign-in got, and
+ * Ovenlight comes back over the tab once the phone is connected. It does nothing else.
+ */
+class TabKeepAlive : Service() {
+    override fun onBind(intent: Intent) = Binder()
 }
 
 /**

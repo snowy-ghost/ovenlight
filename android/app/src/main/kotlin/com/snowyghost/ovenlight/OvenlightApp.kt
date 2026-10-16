@@ -129,6 +129,8 @@ class AppModel(context: Context) {
         // owner can carry on in Tailscale's pages, and closes once the phone is approved.
         scope.launch {
             nodes.owner.state.collect { state ->
+                // A sign-in or approval tab may come next.
+                if (state is NodeState.NeedsLogin || state == NodeState.AwaitingApproval) CustomTabs.connect(context)
                 val sheet = router.sheet.value
                 // Not for Idle: that is Ovenlight closing its nodes while away, not the sign-in ending.
                 if (state !is NodeState.NeedsLogin && state != NodeState.AwaitingApproval && state != NodeState.Idle && sheet is RootSheet.Login) {
