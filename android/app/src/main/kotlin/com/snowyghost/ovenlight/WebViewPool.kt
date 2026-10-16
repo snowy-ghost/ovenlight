@@ -157,7 +157,8 @@ class WebViewPool(
          * iOS sends no model.
          */
         fun reduced(agent: String): String =
-            agent.replaceFirst(Regex("""\(Linux; Android [^)]*\)"""), "(Linux; Android 10; K; wv)")
+            // Up to the bracket before AppleWebKit, since a model may have brackets of its own: moto g(30).
+            agent.replaceFirst(Regex("""\(Linux; Android .*?\)(?= AppleWebKit/)"""), "(Linux; Android 10; K; wv)")
                 .replace(Regex("""Chrome/(\d+)\.[\d.]+"""), "Chrome/$1.0.0.0")
 
         /** Live views: 1 on a low-RAM phone, 2 at 4 GB or less, else 4. */

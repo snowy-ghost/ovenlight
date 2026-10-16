@@ -20,6 +20,20 @@ class UserAgentTests {
                 "Chrome/145.0.0.0 Mobile Safari/537.36 Ovenlight/1.2",
             WebViewPool.userAgentName(after = android16, version = "1.2"),
         )
+        val moto = "Mozilla/5.0 (Linux; Android 11; moto g(30) Build/RRMS31.Q1-65-34; wv) AppleWebKit/537.36 " +
+            "(KHTML, like Gecko) Version/4.0 Chrome/145.0.7632.159 Mobile Safari/537.36"
+        assertEquals(
+            "Mozilla/5.0 (Linux; Android 10; K; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 " +
+                "Chrome/145.0.0.0 Mobile Safari/537.36 Ovenlight/1.2",
+            WebViewPool.userAgentName(after = moto, version = "1.2"),
+        )
+        val tablet = "Mozilla/5.0 (Linux; Android 16; SM-X710 Build/BP2A.250605.031; wv) AppleWebKit/537.36 " +
+            "(KHTML, like Gecko) Version/4.0 Chrome/145.0.7632.159 Safari/537.36"
+        assertEquals(
+            "Mozilla/5.0 (Linux; Android 10; K; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 " +
+                "Chrome/145.0.0.0 Safari/537.36 Ovenlight/1.2",
+            WebViewPool.userAgentName(after = tablet, version = "1.2"),
+        )
         val android17 = "Mozilla/5.0 (Linux; Android 10; K; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 " +
             "Chrome/150.0.0.0 Mobile Safari/537.36"
         assertEquals("$android17 Ovenlight/1.2", WebViewPool.userAgentName(after = android17, version = "1.2"))
