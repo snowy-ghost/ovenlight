@@ -33,8 +33,6 @@ import com.snowyghost.ovenlight.core.Core
 import com.snowyghost.ovenlight.core.Node
 import java.io.File
 import java.net.URI
-import java.net.InetSocketAddress
-import java.net.Proxy
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -45,8 +43,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
-import okhttp3.Credentials
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
 
@@ -246,11 +242,7 @@ object DebugLaunch {
 
     private fun node(id: String) = nodes[id] ?: error("no node $id; start it first")
 
-    private fun client(routeKey: String) = OkHttpClient.Builder()
-        .proxy(Proxy(Proxy.Type.HTTP, InetSocketAddress("127.0.0.1", TailnetCore.proxyAddress.substringAfterLast(':').toInt())))
-        .proxyAuthenticator { _, response -> response.request.newBuilder().header("Proxy-Authorization", Credentials.basic(routeKey, TailnetCore.proxySecret)).build() }
-        .callTimeout(20, TimeUnit.SECONDS)
-        .build()
+    private fun client(routeKey: String) = TailnetCore.client(routeKey).callTimeout(20, TimeUnit.SECONDS).build()
 
     private fun discardView() {
         view.value?.destroy()

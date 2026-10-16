@@ -48,10 +48,10 @@ class PageBridgeTests {
     }
 
     @Test
-    fun testThePageScriptGetsTheBlobLimit() {
+    fun testThePageScriptGetsItsLimits() {
         val dirs = System.getProperty("ovenlight.assetDirs")!!.split(File.pathSeparator)
         val script = dirs.map { File(it, "page.js") }.first { it.isFile }.readText()
-        assertTrue(script.contains("const LIMIT = __LIMIT__;"))
+        assertTrue(script.contains("const LIMIT = __LIMIT__, HREF_LIMIT = __HREF_LIMIT__;"))
         assertTrue("never the injected object's own name in reach of the page", script.contains("delete window.${PageBridge.OBJECT};"))
     }
 }

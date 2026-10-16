@@ -113,7 +113,7 @@ class PageScriptTests {
                 app, ownersHosts = { emptySet() }, isLocked = { false }, isOnScreen = { onScreen }, scope = scope,
                 permissions = { needed, done -> asked += needed; done(true) }, stillCapturing = { false }, destroy = {},
             )
-            downloads = PageDownloads(app.id, app.host, folder, scope, mayStart = { true }, isLocked = { false }, client = { refetch })
+            downloads = PageDownloads(app.id, app.host, folder, scope, mayStart = { true }, isLocked = { false }, client = { refetch }, freeBytes = { DownloadShelf.freeBytes(context) })
             view.webChromeClient = object : WebChromeClient() {
                 override fun onPermissionRequest(request: PermissionRequest) = capture.onPermissionRequest(request)
             }

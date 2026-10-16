@@ -82,6 +82,8 @@ class WebViewPool(
         set(value) {
             if (field == value) return
             field = value
+            // Leaving also ends every download: none runs on while the person is elsewhere.
+            if (value) pages.values.forEach { it.downloads.cancel() }
             val view = pages.values.firstOrNull()?.view ?: return
             if (value) view.pauseTimers() else view.resumeTimers()
         }
@@ -273,8 +275,17 @@ object DownloadPolicy {
      * which a page's script can put in a name and no Swift string holds, too.
      */
     private fun Int.isUnsafeInFileName(): Boolean =
-        this == '/'.code || this == '\\'.code || this == ':'.code ||
-            Character.getType(this).let { it == Character.CONTROL.toInt() || it == Character.FORMAT.toInt() || it == Character.SURROGATE.toInt() }
+        this == '/'.code || this == '\\'.code || this == ':'.code || this in blankLetters ||
+            Character.getType(this).let {
+                it == Character.CONTROL.toInt() || it == Character.FORMAT.toInt() || it == Character.SURROGATE.toInt() ||
+                    // Android only: line and paragraph breaks, and every space but the plain one, which
+                    // the sheet would show as nothing and so hide a name's real extension.
+                    it == Character.LINE_SEPARATOR.toInt() || it == Character.PARAGRAPH_SEPARATOR.toInt() ||
+                    it == Character.SPACE_SEPARATOR.toInt() && this != ' '.code
+            }
+
+    /** Letters that draw as nothing: Braille's blank and the Hangul fillers. */
+    private val blankLetters = setOf(0x2800, 0x3164, 0x115F, 0x1160, 0xFFA0)
 
     private val String.utf8Count: Int get() = toByteArray(Charsets.UTF_8).size
 

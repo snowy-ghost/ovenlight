@@ -8,7 +8,13 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
 import org.junit.After
+import okhttp3.CookieJar
+import okhttp3.OkHttpClient
+import okhttp3.Protocol
+import okhttp3.Response
+import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -27,9 +33,20 @@ class PageDownloadsTests {
     private var onScreen = true
     private var locked = false
     private val scope = CoroutineScope(Dispatchers.Unconfined)
+    /** What the refetch's server answers: a status, and a body. */
+    private var free = Long.MAX_VALUE / 2
+    private var answer: Pair<Int, String> = 200 to "flour,500\n"
+    private var held: java.util.concurrent.CountDownLatch? = null
+    private val server = OkHttpClient.Builder().addInterceptor { chain ->
+        held?.await(5, java.util.concurrent.TimeUnit.SECONDS)
+        val (code, body) = answer
+        Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(code).message("answer")
+            .apply { if (code in 300..399) header("Location", "https://pantry.tail0000.ts.net/secret") }
+            .header("Content-Disposition", "attachment; filename=\"export.csv\"").body(body.toResponseBody()).build()
+    }.build()
     private val downloads = PageDownloads(
         app, host, folder, scope, mayStart = { onScreen && !locked }, isLocked = { locked },
-        client = { error("no http(s) download here") }, now = { clock },
+        client = { server }, freeBytes = { free }, now = { clock },
     )
 
     @After
@@ -105,7 +122,6 @@ class PageDownloadsTests {
         downloads.clicked("data:text/plain,locked", "b.txt", host)
         start("data:text/plain,locked")
         locked = false
-        // The client would throw if anything fetched these.
         start("https://cdn.example.com/export.csv")
         start("file:///sdcard/x")
         assertTrue(shelf().isEmpty())
@@ -121,5 +137,69 @@ class PageDownloadsTests {
         assertEquals(1, files.size)
         assertTrue(files[0].name, files[0].name.startsWith("Download"))
         assertEquals("the empty file left no folder behind", 1, folder.listFiles()!!.size)
+    }
+
+    @Test
+    fun testARefetchFollowsNoRedirect() {
+        val client = PageDownloads.client(OkHttpClient.Builder(), CookieJar.NO_COOKIES)
+        assertFalse(client.followRedirects)
+        assertEquals(PageDownloads.CALL_TIMEOUT_MINUTES * 60_000, client.callTimeoutMillis.toLong())
+        answer = 302 to "elsewhere"
+        start("https://$host/export.csv")
+        assertTrue("a 302 to another app is no file", shelf().isEmpty())
+        answer = 200 to "flour,500\n"
+        start("https://$host/export.csv")
+        assertEquals("flour,500\n", shelf().single().readText())
+    }
+
+    @Test
+    fun testADownloadLeavesThePhoneRoom() {
+        free = PageDownloads.FREE_SPACE_FLOOR + 4
+        answer = 200 to "flour,500\n"
+        start("https://$host/export.csv")
+        downloads.clicked("data:text/plain,hello", "a.txt", host)
+        start("data:text/plain,hello")
+        assertTrue(shelf().isEmpty())
+        assertEquals("and the partial files went", 0, folder.listFiles()!!.size)
+    }
+
+    @Test
+    fun testAtMostThreeDownloadsAtOnce() {
+        held = java.util.concurrent.CountDownLatch(1)
+        repeat(PageDownloads.CONCURRENT + 1) { start("https://$host/export-$it.csv") }
+        held!!.countDown()
+        assertEquals(PageDownloads.CONCURRENT, shelf(PageDownloads.CONCURRENT + 1).size)
+    }
+
+    @Test
+    fun testWhatWaitsToBePairedStaysSmall() {
+        onScreen = false
+        downloads.clicked("data:text/plain,hidden", "a.txt", host)
+        onScreen = true
+        start("data:text/plain,hidden")
+        assertTrue("a report off screen is dropped", shelf().isEmpty())
+
+        repeat(PageDownloads.PENDING_CLICKS + 1) { downloads.clicked("data:text/plain,$it", "$it.txt", host) }
+        start("data:text/plain,0")
+        assertTrue("the oldest click went", shelf().isEmpty())
+        start("data:text/plain,${PageDownloads.PENDING_CLICKS}")
+        assertEquals("${PageDownloads.PENDING_CLICKS}.txt", shelf().single().name)
+
+        val first = "blob:https://$host/6c1f0b2e-1d2a-4c8e-9a51-0b7a3e5d9f10"
+        blob(first, "first")
+        blob("blob:https://$host/0b7a3e5d-9f10-4c8e-9a51-6c1f0b2e1d2a", "second")
+        start(first)
+        assertEquals("one blob read waits at a time", 1, shelf(2).size)
+    }
+
+    @Test
+    fun testOnlySoManyFilesWaitForTheSheet() {
+        repeat(PageDownloads.WAITING_FILES + 1) {
+            downloads.clicked("data:text/plain,$it", "$it.txt", host)
+            start("data:text/plain,$it")
+            shelf(minOf(it + 1, PageDownloads.WAITING_FILES))
+        }
+        assertEquals(PageDownloads.WAITING_FILES, shelf(PageDownloads.WAITING_FILES + 1).size)
+        assertEquals("the refused file left nothing behind", PageDownloads.WAITING_FILES, folder.listFiles()!!.size)
     }
 }

@@ -695,7 +695,7 @@ private fun PageDialog(edges: PageEdges, dialog: PageEdges.Dialog) {
             // Not at once: the page's own "tap twice here" can't land its second tap on Open.
             confirmButton = {
                 val shownAt = remember(dialog) { SystemClock.uptimeMillis() }
-                TextButton(onClick = { if (SystemClock.uptimeMillis() - shownAt >= OPEN_DELAY_MILLIS) edges.open(dialog) }) {
+                TextButton(onClick = { if (SystemClock.uptimeMillis() - shownAt >= PROMPT_DELAY_MILLIS) edges.open(dialog) }) {
                     Text(stringResource(R.string.page_open))
                 }
             },
@@ -730,8 +730,8 @@ private fun SourceRow(icon: Int, label: Int, onClick: () -> Unit) {
     )
 }
 
-/** How long "Open in another app?" ignores Open after it shows. */
-private const val OPEN_DELAY_MILLIS = 500L
+/** How long Ovenlight's own prompts ("Open in another app?", the capture prompt) ignore their go-ahead after they show. */
+internal const val PROMPT_DELAY_MILLIS = 500L
 
 /** A page's message, which can run long. */
 @Composable
@@ -744,7 +744,7 @@ private fun PageMessage(message: String) {
  * another app's overlay, and on API 31 and up other apps' overlays hide while it shows.
  */
 @Composable
-private fun GuardedFromOverlays() {
+internal fun GuardedFromOverlays() {
     val view = LocalView.current
     DisposableEffect(view) {
         val window = generateSequence(view.parent) { it.parent }.firstNotNullOfOrNull { (it as? DialogWindowProvider)?.window }

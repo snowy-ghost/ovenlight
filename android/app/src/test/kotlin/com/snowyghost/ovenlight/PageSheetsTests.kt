@@ -17,6 +17,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.Density
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.snowyghost.ovenlight.MediaCapturePolicy.MediaCaptureType
+import java.time.Duration
 import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Rule
@@ -25,6 +26,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowSystemClock
 import org.robolectric.annotation.GraphicsMode
 
 /** The download sheet and the capture prompt, in light, dark and at twice the text size. */
@@ -99,6 +101,9 @@ class PageSheetsTests {
         var prompt by mutableStateOf(PageCapture.Prompt(MediaCaptureType.Camera, null, DialogAnswer(false) { answers += it }))
         show { CapturePromptDialog(capturePromptTitle(prompt, "Recipe Box"), prompt.answer::invoke) }
         inEveryLook { assertShows("Allow Recipe Box to use the camera?", "Allow", "Don't allow") }
+        composeRule.onNodeWithText("Allow").performClick()
+        assertEquals("Allow does nothing at first, so a page's double tap can't land on it", emptyList<Boolean>(), answers)
+        ShadowSystemClock.advanceBy(Duration.ofMillis(PROMPT_DELAY_MILLIS))
         composeRule.onNodeWithText("Allow").performClick()
         assertEquals(listOf(true), answers)
 

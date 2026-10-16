@@ -90,7 +90,7 @@ class PageEdgesTests {
             val activity = composeRule.activity
             view = WebView(activity)
             WebViewSetup.configure(view)
-            val lifecycle = AppLifecycle(scope, SystemClock::elapsedRealtime, pausePolling = {}, closeNodes = {}, cameToFront = {})
+            val lifecycle = AppLifecycle(scope, SystemClock::elapsedRealtime, setAway = {}, closeNodes = {}, cameToFront = {})
             edges = PageEdges(app, view, activity, scope, locked, lifecycle, isShown = { shown }, home = { homes += 1; view.loadDataWithBaseURL(base, home, "text/html", "utf-8", base) })
             view.webViewClient = object : WebViewClient() {
                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean =

@@ -15,7 +15,6 @@ import android.webkit.WebViewClient
 import androidx.webkit.WebViewCompat
 import com.snowyghost.ovenlight.core.Core
 import java.net.URI
-import java.util.concurrent.TimeUnit
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.TimeSource
 import kotlinx.coroutines.CoroutineScope
@@ -71,10 +70,8 @@ class AppPage(
     val downloads = PageDownloads(
         app.id, app.host, DownloadShelf.folder(context), scope,
         mayStart = { shown && !pool.isLocked() }, isLocked = pool.isLocked,
-        client = {
-            TailnetCore.client(routeKey).cookieJar(ProfileCookieJar(WebViewCompat.getProfile(view).cookieManager))
-                .readTimeout(30, TimeUnit.SECONDS).build()
-        },
+        client = { PageDownloads.client(TailnetCore.client(routeKey), ProfileCookieJar(WebViewCompat.getProfile(view).cookieManager)) },
+        freeBytes = { DownloadShelf.freeBytes(this.context.applicationContext) },
         busy = { busy ->
             isDownloading = busy
             if (!busy && rendererGone) pool.replace(this)

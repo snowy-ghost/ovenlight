@@ -15,16 +15,32 @@ import java.net.Proxy
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 import kotlinx.coroutines.suspendCancellableCoroutine
+import okhttp3.Authenticator
 import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.Credentials
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
+import okhttp3.Route
 import java.net.NetworkInterface
 import java.util.concurrent.Executors
 import org.json.JSONArray
 import org.json.JSONObject
+
+/**
+ * The proxy's credential, for the proxy's own CONNECT challenge (OkHttp's preemptive one
+ * included) and nothing else. OkHttp also asks a proxy authenticator about a 407 that the origin
+ * sends inside the tunnel, and answering that would hand the secret to whatever server the
+ * route reaches. A CONNECT that already carried it was refused, so it isn't sent again.
+ */
+class ProxyAuth(private val routeKey: String, private val secret: String) : Authenticator {
+    override fun authenticate(route: Route?, response: Response): Request? {
+        val request = response.request
+        if (request.method != "CONNECT" || request.header("Proxy-Authorization") != null) return null
+        return request.newBuilder().header("Proxy-Authorization", Credentials.basic(routeKey, secret)).build()
+    }
+}
 
 /**
  * The Go core's Android side: it starts the core and its local proxy, answers its
@@ -138,12 +154,13 @@ object TailnetCore : Platform, TailnetClients {
         return { request -> client.fetch(request) }
     }
 
-    /** A client through the proxy with [routeKey], which answers its challenge up front. */
+    /**
+     * A client through the proxy with [routeKey], which answers its challenge up front. Every
+     * OkHttp client in Ovenlight is made here, so only [ProxyAuth] ever sends the secret.
+     */
     fun client(routeKey: String): OkHttpClient.Builder = http.newBuilder()
         .proxy(Proxy(Proxy.Type.HTTP, InetSocketAddress("127.0.0.1", proxyAddress.substringAfterLast(':').toInt())))
-        .proxyAuthenticator { _, response ->
-            response.request.newBuilder().header("Proxy-Authorization", Credentials.basic(routeKey, proxySecret)).build()
-        }
+        .proxyAuthenticator(ProxyAuth(routeKey, proxySecret))
 
     // Redirects are followed, as iOS's sessions follow them (an app's start page that sends
     // `/` to `/login` still names the app), but never from https to http.

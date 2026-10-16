@@ -6,11 +6,10 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.hardware.camera2.CameraManager
 import android.media.AudioManager
-import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
-import android.view.View
 import android.webkit.PermissionRequest
 import androidx.activity.ComponentActivity
 import androidx.activity.result.ActivityResultLauncher
@@ -22,9 +21,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.platform.LocalView
+import androidx.compose.runtime.remember
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.window.DialogWindowProvider
 import androidx.core.content.ContextCompat
 import androidx.webkit.JavaScriptReplyProxy
 import com.snowyghost.ovenlight.MediaCapturePolicy.MediaCaptureType
@@ -260,24 +258,13 @@ internal fun CapturePromptDialog(title: String, answer: (Boolean) -> Unit) {
         onDismissRequest = { answer(false) },
         title = {
             Text(title)
-            UntappableWindow()
+            GuardedFromOverlays()
         },
-        confirmButton = { TextButton(onClick = { answer(true) }) { Text(stringResource(R.string.capture_allow)) } },
+        // Not at once: the page's own "tap twice here" can't land its second tap on Allow.
+        confirmButton = {
+            val shownAt = remember { SystemClock.uptimeMillis() }
+            TextButton(onClick = { if (SystemClock.uptimeMillis() - shownAt >= PROMPT_DELAY_MILLIS) answer(true) }) { Text(stringResource(R.string.capture_allow)) }
+        },
         dismissButton = { TextButton(onClick = { answer(false) }) { Text(stringResource(R.string.capture_dont_allow)) } },
     )
-}
-
-/**
- * Keeps the dialog it's in from being tapjacked: touches through another app's overlay are
- * dropped, and on API 31 and up other apps' overlays hide while it shows.
- */
-@Composable
-private fun UntappableWindow() {
-    val view = LocalView.current
-    DisposableEffect(view) {
-        view.rootView.filterTouchesWhenObscured = true
-        val window = generateSequence(view) { it.parent as? View }.firstNotNullOfOrNull { (it as? DialogWindowProvider)?.window }
-        if (Build.VERSION.SDK_INT >= 31) window?.setHideOverlayWindows(true)
-        onDispose { if (Build.VERSION.SDK_INT >= 31) window?.setHideOverlayWindows(false) }
-    }
 }

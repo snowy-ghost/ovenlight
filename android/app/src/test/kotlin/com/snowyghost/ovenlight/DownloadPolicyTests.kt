@@ -68,4 +68,14 @@ class DownloadPolicyTests {
         // Not in the Swift test: Foundation reads "final version" as no extension, so the end is cut.
         assertEquals("a".repeat(200), DownloadPolicy.fileName("a".repeat(250) + ".final version"))
     }
+
+    /** Android only: breaks, spaces and blank letters a page could use to push the real extension out of sight. */
+    @Test
+    fun testANameCantHideItsRealExtension() {
+        assertEquals("report.pdf---.apk", DownloadPolicy.fileName("report.pdf\u2028\u2028\u2028.apk"))
+        assertEquals("a-b-c.apk", DownloadPolicy.fileName("a\u2029b\u3000c.apk"))
+        assertEquals("no-break-space-thin.apk", DownloadPolicy.fileName("no\u00A0break\u2009space\u202Fthin.apk"))
+        assertEquals("pdf-----.apk", DownloadPolicy.fileName("pdf\u2800\u3164\u115F\u1160\uFFA0.apk"))
+        assertEquals("an ordinary space stays", "Recipes export.csv", DownloadPolicy.fileName("Recipes export.csv"))
+    }
 }

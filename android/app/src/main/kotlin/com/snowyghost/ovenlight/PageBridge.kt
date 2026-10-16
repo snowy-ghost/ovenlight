@@ -35,13 +35,19 @@ class PageBridge(view: WebView, appURL: URI, private val capture: PageCapture, p
     }
 
     private fun receive(message: WebMessageCompat, fromHost: String, reply: JavaScriptReplyProxy) {
+        // Download reports count only while the page may start one; off screen or locked, a page
+        // sending them over and over costs nothing but the dropping.
         when (message.type) {
-            WebMessageCompat.TYPE_STRING -> when (val parsed = PageMessage.parse(message.data ?: return)) {
-                PageMessage.Capture -> capture.capturing(reply)
-                is PageMessage.Click -> downloads.clicked(parsed.href, parsed.name, fromHost)
-                null -> Unit
+            WebMessageCompat.TYPE_STRING -> {
+                val data = message.data ?: return
+                if (data.length > SMALL && !downloads.accepting) return
+                when (val parsed = PageMessage.parse(data)) {
+                    PageMessage.Capture -> capture.capturing(reply)
+                    is PageMessage.Click -> downloads.clicked(parsed.href, parsed.name, fromHost)
+                    null -> Unit
+                }
             }
-            WebMessageCompat.TYPE_ARRAY_BUFFER -> PageMessage.blob(message.arrayBuffer)?.let { downloads.blob(it, fromHost) }
+            WebMessageCompat.TYPE_ARRAY_BUFFER -> if (downloads.accepting) downloads.blobMessage(message.arrayBuffer, fromHost)
         }
     }
 
@@ -50,6 +56,9 @@ class PageBridge(view: WebView, appURL: URI, private val capture: PageCapture, p
 
         /** The name the bridge has in the page, which the page script takes away from it. */
         const val OBJECT = "__ovenlight"
+
+        /** Longer than any message but a download report. */
+        private const val SMALL = 64
 
         /** Sent to a frame that captures, to stop its tracks. */
         const val STOP = "stop"
@@ -60,6 +69,7 @@ class PageBridge(view: WebView, appURL: URI, private val capture: PageCapture, p
         fun script(context: Context): String = source ?: context.applicationContext.assets.open("page.js")
             .bufferedReader().use { it.readText() }
             .replace("__LIMIT__", PageDownloads.BLOB_LIMIT.toString())
+            .replace("__HREF_LIMIT__", PageDownloads.HREF_LIMIT.toString())
             .also { source = it }
 
         /** `https://host[:port]`, the one origin whose frames get the bridge. */
@@ -84,11 +94,11 @@ sealed interface PageMessage {
         private const val MAX_HEADER = 64 * 1024
 
         fun parse(text: String): PageMessage? {
-            if (text.length > PageDownloads.BLOB_LIMIT + MAX_HEADER) return null
+            if (text.length > PageDownloads.HREF_LIMIT + MAX_HEADER) return null
             val fields = runCatching { Json.parseToJsonElement(text) as? JsonObject }.getOrNull() ?: return null
             return when (fields.string("t")) {
                 "capture" -> Capture
-                "click" -> Click(fields.string("href") ?: return null, fields.string("name") ?: return null)
+                "click" -> Click(fields.string("href")?.takeIf { it.length <= PageDownloads.HREF_LIMIT } ?: return null, fields.string("name") ?: return null)
                 else -> null
             }
         }

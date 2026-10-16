@@ -9,7 +9,7 @@
   const bridge = window.__ovenlight;
   if (!bridge) return;
   delete window.__ovenlight;
-  const LIMIT = __LIMIT__;
+  const LIMIT = __LIMIT__, HREF_LIMIT = __HREF_LIMIT__;
   const send = message => bridge.postMessage(JSON.stringify(message));
 
   const tracks = new Set();
@@ -54,35 +54,38 @@
     return revokeObjectURL.call(URL, url);
   };
 
-  const report = a => {
+  // What a click names is read at once, since pages revoke a blob URL right after it, and sent
+  // only once the click's dispatch is over, if no handler cancelled it.
+  const report = (a, event) => {
     if (!(a instanceof HTMLAnchorElement) || !a.hasAttribute("download") || !a.href) return;
     const href = a.href, name = a.download;
-    if (!href.startsWith("blob:")) {
-      if (href.length <= LIMIT) send({ t: "click", href, name });
-      return;
-    }
-    // One message: the header's length (4 bytes, big-endian), the header, then the bytes.
-    const blob = blobs.get(href);
-    (blob ? Promise.resolve(blob) : fetch(href).then(response => response.blob()))
-      .then(blob => {
-        if (blob.size > LIMIT) return;
-        const head = new TextEncoder().encode(JSON.stringify({ href, name, type: blob.type }));
-        const size = new DataView(new ArrayBuffer(4));
-        size.setUint32(0, head.length);
-        return new Blob([size, head, blob]).arrayBuffer();
-      })
-      .then(bytes => bytes && bridge.postMessage(bytes), () => {});
+    const isBlob = href.startsWith("blob:"), blob = isBlob && blobs.get(href);
+    if (blob ? blob.size > LIMIT : href.length > HREF_LIMIT) return;
+    setTimeout(() => {
+      if (event.defaultPrevented) return;
+      if (!isBlob) return send({ t: "click", href, name });
+      // One message: the header's length (4 bytes, big-endian), the header, then the bytes.
+      (blob ? Promise.resolve(blob) : fetch(href).then(response => response.blob()))
+        .then(blob => {
+          if (blob.size > LIMIT) return;
+          const head = new TextEncoder().encode(JSON.stringify({ href, name, type: blob.type }));
+          const size = new DataView(new ArrayBuffer(4));
+          size.setUint32(0, head.length);
+          return new Blob([size, head, blob]).arrayBuffer();
+        })
+        .then(bytes => bytes && bridge.postMessage(bytes), () => {});
+    });
   };
   // From the path, so an anchor inside a shadow root counts too.
-  addEventListener("click", event => report(event.composedPath().find(node => node instanceof HTMLAnchorElement)), true);
+  addEventListener("click", event => report(event.composedPath().find(node => node instanceof HTMLAnchorElement), event), true);
   // A script's click on an anchor outside the document never passes through the document.
   const anchor = HTMLAnchorElement.prototype, click = anchor.click, dispatchEvent = EventTarget.prototype.dispatchEvent;
   anchor.click = function () {
-    if (!this.isConnected) report(this);
+    if (!this.isConnected) this.addEventListener("click", event => report(this, event), { capture: true, once: true });
     return click.call(this);
   };
   anchor.dispatchEvent = function (event) {
-    if (!this.isConnected && event.type === "click") report(this);
+    if (!this.isConnected && event.type === "click") report(this, event);
     return dispatchEvent.call(this, event);
   };
 })();

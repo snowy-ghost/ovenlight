@@ -9,6 +9,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.ParcelFileDescriptor
 import android.os.SystemClock
+import android.os.storage.StorageManager
 import android.text.format.Formatter
 import android.util.Log
 import android.webkit.CookieManager
@@ -49,10 +50,10 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
-import java.io.OutputStream
 import java.net.URI
 import java.util.Base64
 import java.util.UUID
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -90,6 +91,8 @@ class PageDownloads(
     private val isLocked: () -> Boolean,
     /** A client through the proxy on the app's route key, with the profile's cookies. */
     private val client: () -> OkHttpClient,
+    /** Bytes a download may still take where [folder] lives ([DownloadShelf.freeBytes]). */
+    private val freeBytes: () -> Long,
     /** Downloads are under way; the pool keeps such a page (see [AppPage.isDownloading]). */
     private val busy: (Boolean) -> Unit = {},
     private val now: () -> Long = SystemClock::elapsedRealtime,
@@ -104,6 +107,9 @@ class PageDownloads(
     private val reads = mutableMapOf<String, Read>()
     private val jobs = mutableSetOf<Job>()
 
+    /** Whether the page may start a download now; the bridge drops reports otherwise. */
+    val accepting: Boolean get() = mayStart()
+
     override fun onDownloadStart(url: String, userAgent: String?, contentDisposition: String?, mimetype: String?, contentLength: Long) {
         forgetStale()
         // Not deferred: a script's click would start one under the lock or another app.
@@ -112,10 +118,13 @@ class PageDownloads(
             "http", "https" -> {
                 val uri = runCatching { URI(url) }.getOrNull()
                 if (uri == null || !DownloadPolicy.allows(uri, from = null, appHost = appHost, locked = isLocked())) return log("refused a download from another site")
-                fetch(url, userAgent, contentDisposition, mimetype, clicks.remove(url)?.name)
+                fetch(url, userAgent, contentDisposition, mimetype, contentLength, clicks.remove(url)?.name)
             }
             "blob", "data" -> {
+                if (url.length > HREF_LIMIT && url.startsWith("data:", ignoreCase = true)) return log("refused a data URL over the limit")
+                started.remove(url)
                 started[url] = Started(mimetype.orEmpty(), now())
+                keepPendingSmall()
                 match(url)
             }
             else -> log("refused a ${url.substringBefore(':')} download")
@@ -125,15 +134,41 @@ class PageDownloads(
     /** The page script saw a click on an `<a download>`: its name, and for a data URL, the go-ahead. */
     fun clicked(href: String, name: String, fromHost: String) {
         forgetStale()
+        if (!mayStart() || href.length > HREF_LIMIT) return
+        clicks.remove(href)
         clicks[href] = Clicked(name, fromHost, now())
+        keepPendingSmall()
         if (href.startsWith("data:", ignoreCase = true)) match(href)
+    }
+
+    /** The page script's message with a blob's bytes, read at the click; it's taken apart off the main thread. */
+    fun blobMessage(message: ByteArray, fromHost: String) {
+        if (!mayStart()) return
+        scope.launch {
+            val blob = withContext(Dispatchers.Default) { PageMessage.blob(message) } ?: return@launch
+            blob(blob, fromHost)
+        }
     }
 
     /** A blob's bytes, which the page script read as its `<a download>` was clicked. */
     fun blob(blob: PageMessage.Blob, fromHost: String) {
         forgetStale()
+        if (!mayStart()) return
+        // One read waits at a time: a newer click replaces it.
+        reads.clear()
         reads[blob.href] = Read(blob, fromHost, now())
+        keepPendingSmall()
         match(blob.href)
+    }
+
+    /** What waits to be paired stays small, the oldest going first. */
+    private fun keepPendingSmall() {
+        fun bytes() = reads.values.sumOf { it.blob.bytes.size.toLong() } + clicks.keys.sumOf { it.length.toLong() } + started.keys.sumOf { it.length.toLong() }
+        while (clicks.size > PENDING_CLICKS) clicks.remove(clicks.keys.first())
+        while (started.size > PENDING_CLICKS) started.remove(started.keys.first())
+        while (bytes() > PENDING_BYTES && (clicks.isNotEmpty() || started.isNotEmpty())) {
+            if (clicks.isNotEmpty()) clicks.remove(clicks.keys.first()) else started.remove(started.keys.first())
+        }
     }
 
     /** The page is going: its downloads stop, and their partial files go. */
@@ -179,29 +214,38 @@ class PageDownloads(
         reads.values.removeAll { it.at < since }
     }
 
-    private fun fetch(url: String, userAgent: String?, disposition: String?, type: String?, name: String?) {
+    private fun fetch(url: String, userAgent: String?, disposition: String?, type: String?, length: Long, name: String?) {
+        if (jobs.size >= CONCURRENT) return log("refused a download: $CONCURRENT already under way")
         val client = client()
         track {
             val request = Request.Builder().url(url).apply { userAgent?.let { header("User-Agent", it) } }.build()
             val call = client.newCall(request)
             currentCoroutineContext()[Job]?.invokeOnCompletion { if (it != null) call.cancel() }
             call.execute().use { response ->
+                // WebView hands over the URL it was redirected to; another redirect now could lead
+                // anywhere the owner's node reaches, so it isn't followed.
+                if (response.code in 300..399) {
+                    log("a download redirected again, so it stops")
+                    return@track null
+                }
                 val sent = response.header("Content-Disposition") ?: disposition
                 if (DownloadPolicy.action(response.code, sent, canShow = false) == DownloadPolicy.ResponseAction.Show) {
                     log("a download answered ${response.code}")
                     return@track null
                 }
                 val sentType = response.header("Content-Type")?.substringBefore(';')?.trim() ?: type
-                write(name?.ifEmpty { null } ?: URLUtilCompat.guessFileName(url, sent, sentType)) { out -> response.body.byteStream().copyTo(out) }
+                val expected = response.body.contentLength().takeIf { it >= 0 } ?: length
+                write(name?.ifEmpty { null } ?: URLUtilCompat.guessFileName(url, sent, sentType), expected, response.body.byteStream())
             }
         }
     }
 
     /** An empty [name] names the file after its type. */
     private fun save(name: String, decode: () -> DataURL.Decoded?) {
+        if (jobs.size >= CONCURRENT) return log("refused a download: $CONCURRENT already under way")
         track {
             val decoded = decode() ?: return@track null
-            write(name.ifEmpty { guessedName(decoded.type) }) { it.write(decoded.bytes) }
+            write(name.ifEmpty { guessedName(decoded.type) }, decoded.bytes.size.toLong(), decoded.bytes.inputStream())
         }
     }
 
@@ -209,7 +253,10 @@ class PageDownloads(
     private fun track(work: suspend () -> File?) {
         val job = scope.launch {
             try {
-                withContext(Dispatchers.IO) { work()?.let { DownloadShelf.add(appID, it) } }
+                withContext(Dispatchers.IO) {
+                    val file = work() ?: return@withContext
+                    if (!DownloadShelf.add(appID, file)) log("refused a download: $WAITING_FILES files already wait")
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -226,13 +273,31 @@ class PageDownloads(
         }
     }
 
-    /** Writes a file in a folder of its own, keeping the page's name; an empty one is no file. */
-    private fun write(name: String, body: (OutputStream) -> Unit): File? {
+    /**
+     * Writes a file in a folder of its own, keeping the page's name; an empty one is no file. It
+     * stops, and the partial file goes, before the phone's free space would fall under the floor.
+     */
+    private fun write(name: String, expected: Long, input: InputStream): File? {
         val directory = File(folder, UUID.randomUUID().toString())
         if (!directory.mkdirs()) throw IOException("no folder for the download")
         val file = File(directory, DownloadPolicy.fileName(name))
         try {
-            file.outputStream().use(body)
+            if (expected > 0 && freeBytes() - expected < FREE_SPACE_FLOOR) throw IOException("not enough free space")
+            file.outputStream().use { out ->
+                val buffer = ByteArray(64 * 1024)
+                var sinceCheck = 0L
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read < 0) break
+                    out.write(buffer, 0, read)
+                    sinceCheck += read
+                    if (sinceCheck >= SPACE_CHECK_BYTES) {
+                        sinceCheck = 0
+                        if (freeBytes() < FREE_SPACE_FLOOR) throw IOException("the phone is nearly full")
+                    }
+                }
+            }
+            if (freeBytes() < FREE_SPACE_FLOOR) throw IOException("the phone is nearly full")
         } catch (e: Throwable) {
             directory.deleteRecursively()
             throw e
@@ -254,11 +319,32 @@ class PageDownloads(
     companion object {
         private const val TAG = "Ovenlight"
 
-        /** The largest blob or data URL that comes over the page bridge. */
+        // What one page can make Ovenlight hold, run or write: the largest blob over the bridge, the
+        // longest URL a click report or data download may carry, the reports and bytes waiting to
+        // be paired with WebView's start (and how long they wait), downloads at once, how long one
+        // may take, the free space a download must leave on the phone (checked every
+        // SPACE_CHECK_BYTES), and the files that may wait for an app's sheet.
         const val BLOB_LIMIT = 32 * 1024 * 1024
-
-        /** How long WebView's start and the page script's report wait for each other. */
+        const val HREF_LIMIT = 2 * 1024 * 1024
+        const val PENDING_CLICKS = 8
+        const val PENDING_BYTES = BLOB_LIMIT.toLong()
         const val PAIR_MILLIS = 5_000L
+        const val CONCURRENT = 3
+        const val CALL_TIMEOUT_MINUTES = 10L
+        const val FREE_SPACE_FLOOR = 256L * 1024 * 1024
+        const val SPACE_CHECK_BYTES = 1024L * 1024
+        const val WAITING_FILES = 10
+
+        /**
+         * The client a download is fetched again with: through the proxy on the app's route, the
+         * profile's cookies, no redirects, and a time limit.
+         */
+        fun client(proxied: OkHttpClient.Builder, cookies: CookieJar): OkHttpClient = proxied
+            .cookieJar(cookies)
+            .followRedirects(false)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .callTimeout(CALL_TIMEOUT_MINUTES, TimeUnit.MINUTES)
+            .build()
     }
 }
 
@@ -272,10 +358,20 @@ object DownloadShelf {
     private val files = MutableStateFlow<Map<UUID, List<Download>>>(emptyMap())
     val waiting: StateFlow<Map<UUID, List<Download>>> = files
 
-    /** Reads the file's type, so call it off the main thread. */
-    fun add(app: UUID, file: File) {
+    /**
+     * Reads the file's type, so call it off the main thread. False, and the file deleted, when
+     * [PageDownloads.WAITING_FILES] already wait for the app.
+     */
+    fun add(app: UUID, file: File): Boolean {
         val download = Download(file, DownloadFiles.openableType(DownloadFiles.head(file)))
-        files.update { it + (app to it[app].orEmpty() + download) }
+        var added = false
+        files.update {
+            val list = it[app].orEmpty()
+            added = list.size < PageDownloads.WAITING_FILES
+            if (added) it + (app to list + download) else it
+        }
+        if (!added) file.parentFile?.deleteRecursively()
+        return added
     }
 
     fun remove(app: UUID, download: Download) = files.update { map ->
@@ -284,6 +380,12 @@ object DownloadShelf {
     }
 
     fun folder(context: Context) = File(context.cacheDir, "Downloads")
+
+    /** What the phone can still give the downloads, counting caches it would clear. Off the main thread. */
+    fun freeBytes(context: Context): Long {
+        val storage = context.getSystemService(StorageManager::class.java)
+        return storage.getAllocatableBytes(storage.getUuidForPath(context.cacheDir))
+    }
 
     /** Last session's files: saved, shared, opened or left waiting. */
     fun emptyAtLaunch(context: Context) {
@@ -519,7 +621,8 @@ private fun open(uri: Uri, type: String) = Intent(Intent.ACTION_VIEW).setDataAnd
 internal fun DownloadSheetContent(name: String, size: String, canOpen: Boolean, onSave: () -> Unit, onShare: () -> Unit, onOpen: () -> Unit) {
     Column(Modifier.navigationBarsPadding().padding(bottom = 8.dp)) {
         ListItem(
-            headlineContent = { Text(name, maxLines = 3, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium) },
+            // One line, shortened in the middle, so the real extension always shows.
+            headlineContent = { Text(name, maxLines = 1, overflow = TextOverflow.MiddleEllipsis, style = MaterialTheme.typography.titleMedium) },
             supportingContent = { Text(size) },
             leadingContent = { Icon(painterResource(R.drawable.ic_description), contentDescription = null) },
             colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
