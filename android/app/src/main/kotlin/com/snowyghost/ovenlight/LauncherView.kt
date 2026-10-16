@@ -173,7 +173,7 @@ fun LauncherView(model: AppModel) {
             remove = { scope.launch { registry.remove(it) } },
             leave = { scope.launch { model.guests.leave(it) } },
             problemReport = { app -> MailDraft.problemReport(context, nodes, model.pool, app) },
-            openLink = { CustomTabs.open(context, URI(it)) },
+            openLink = { CustomTabs.open(context, URI(it), model.lifecycle) },
         ),
     )
 }

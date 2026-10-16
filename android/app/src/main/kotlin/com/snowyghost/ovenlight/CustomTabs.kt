@@ -19,8 +19,12 @@ import java.net.URI
 object CustomTabs {
     private var chosen: String? = null
 
-    /** Opens [url]; false when nothing on the phone can show it. */
-    fun open(context: Context, url: URI, toolbarColor: Int? = null): Boolean {
+    /**
+     * Opens [url]; false when nothing on the phone can show it. Ovenlight's own tab is an
+     * excursion (see AppLifecycle), which opening one begins, so a sign-in or a page read in it
+     * finds everything as it left it.
+     */
+    fun open(context: Context, url: URI, lifecycle: AppLifecycle, toolbarColor: Int? = null): Boolean {
         val uri = url.toString().toUri()
         val browser = browser(context)
         // With no browser to name, Android would hand Ovenlight's own App Link back to Ovenlight.
@@ -34,7 +38,10 @@ object CustomTabs {
             Intent(Intent.ACTION_VIEW, uri).addCategory(Intent.CATEGORY_BROWSABLE)
         }
         browser?.let(intent::setPackage)
-        if (systemCall("open a web page", false) { context.startActivity(intent); true }) return true
+        if (systemCall("open a web page", false) { context.startActivity(intent); true }) {
+            lifecycle.beginExcursion()
+            return true
+        }
         chosen = null
         return false
     }

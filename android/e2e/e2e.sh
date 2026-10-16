@@ -5,7 +5,7 @@
 # connector runs from this run's folder with its own HOME, config and state, logs in only to
 # the local Headscale, and stops by its recorded pid.
 #
-#   android/e2e/e2e.sh [gates | owner | signin [seconds] | screens | app | chrome | edges | downloads] [avd]
+#   android/e2e/e2e.sh [gates | owner | signin [seconds] | screens | app | chrome | edges | downloads | upload | return] [avd]
 #
 # gates runs Phase 1's checks G2 to G5 through the debug lab. owner signs the owner's node in
 # with a preauth key and waits for the launcher to show both test apps. signin goes through
@@ -23,6 +23,13 @@
 # downloads opens a Recipes page that downloads a cookie-gated file over http and a blob, and
 # checks each arrives in Ovenlight's sheet with the bytes the page meant; then, if the
 # emulator's camera answers, that locking stops the page's camera without discarding the page.
+# upload pushes a file into Download and a PNG into Pictures, picks each through the real
+# pickers (documents for a plain input, the photo picker from Ovenlight's sheet for an image
+# input), and checks the page got its name and size and the app's server its bytes; then that
+# canceling either picker answers the page, so the next tap opens one again.
+# return checks that a page keeps running through Ovenlight's own Custom Tabs, one the page
+# opened and Settings' privacy policy: the same page, its first WebSocket still open and
+# answering, and its timers never held up for more than Chromium's once a second out of sight.
 # Each writes what it saw to
 # android/e2e/out/: gates.txt, logs and screenshots.
 #
@@ -112,7 +119,7 @@ until_ok() {
 }
 
 [[ -x $HS ]] || fail "no headscale at $HS"
-[[ $SCENARIO =~ ^(gates|owner|signin|screens|app|chrome|edges|downloads)$ ]] || fail "unknown scenario $SCENARIO"
+[[ $SCENARIO =~ ^(gates|owner|signin|screens|app|chrome|edges|downloads|upload|return)$ ]] || fail "unknown scenario $SCENARIO"
 
 say "the test CA in $CA, made once, and a *.$BASE certificate for this run"
 if [[ ! -f $CA/ca.pem ]]; then
@@ -279,19 +286,25 @@ for m in re.finditer(r"(?<![\w-])(?:text|content-desc)=(?:\"([^\"]*)\"|\x27([^\x
 '
 }
 # The bounds, "x1 y1 x2 y2", of the first element whose text or description is exactly $2, or
-# with class=text whose class is $2 (android.widget.EditText, say).
+# with class=text whose class is $2 (android.widget.EditText, say), or with match=text whose text
+# or description matches the regular expression $2.
 bounds() {
   a exec-out uiautomator dump /dev/tty 2>/dev/null | tr '>' '\n' | python3 -c '
 import re, sys
 by, want = sys.argv[1], sys.argv[2]
 for line in sys.stdin:
-    hit = ("class=\"%s\"" % want in line) if by == "class" else re.search(r"(text|content-desc)=\"%s\"" % re.escape(want), line)
+    if by == "class":
+        hit = "class=\"%s\"" % want in line
+    elif by == "match":
+        hit = any(re.search(want, v) for v in re.findall(r"(?:text|content-desc)=\"([^\"]*)\"", line))
+    else:
+        hit = re.search(r"(text|content-desc)=\"%s\"" % re.escape(want), line)
     m = hit and re.search(r"bounds=\"\[(\d+),(\d+)\]\[(\d+),(\d+)\]\"", line)
     if m:
         print(*m.groups()); break
 ' "$1" "$2"
 }
-# Taps the middle of the first element found by bounds, by text (tap_text) or class (tap_class).
+# Taps the middle of the first element found by bounds, by text (tap_text), class (tap_class) or pattern (tap_matching).
 tap_bounds() {
   local box
   box=($(bounds "$1" "$2"))
@@ -300,6 +313,7 @@ tap_bounds() {
 }
 tap_text() { tap_bounds text "$1"; }
 tap_class() { tap_bounds class "$1"; }
+tap_matching() { tap_bounds match "$1"; }
 # The first app Ovenlight opens shows its pill with a one-time tip, in a popup of its own: closed here.
 close_tip() { if await_text ${1:-10} "Got it"; then tap_text "Got it"; sleep 1; fi; }
 # Waits up to $1 seconds until every one of the other arguments is on screen.
@@ -318,6 +332,43 @@ await_text() {
 
 night() { a shell cmd uimode night $1 >/dev/null; sleep 3; }
 locked() { screen_text | grep -qxE 'Unlock Ovenlight|Ovenlight is locked'; }
+
+# The activity in front, as the activity manager names it.
+front() { a shell dumpsys activity activities | LC_ALL=C grep -m1 -E 'topResumedActivity|mResumedActivity' || true; }
+# Waits up to $1 seconds for an activity other than Ovenlight in front, with the address $2 in its intent.
+await_outside() {
+  for i in $(seq 1 $1); do
+    # Read whole: a grep that stops at its first match would break adb's pipe under pipefail.
+    if [[ $(front) != *$PKG* && $(a shell dumpsys activity activities) == *"dat=$2"* ]]; then return 0; fi
+    sleep 1
+  done
+  return 1
+}
+# Backs out of whatever the browser shows (the Custom Tab, or a page of its own) until
+# Ovenlight is in front, then waits for the text $1; $2 says what for. A browser that keeps the
+# front is closed by bringing Ovenlight back, which clears what sits above it in its task.
+back_to() {
+  for i in 1 2 3; do
+    [[ $(front) == *$PKG* ]] && break
+    a shell input keyevent KEYCODE_BACK; sleep 2
+  done
+  [[ $(front) == *$PKG* ]] || a shell am start -n $PKG/.MainActivity >/dev/null
+  await_text 20 "$1" || fail "$2: Ovenlight didn't come back to the page: $(front) $(screen_text | tr '\n' '|')"
+}
+# Chrome's first run would stay in front of every tab: Chrome reads these flags as the debug
+# app, and cleanup takes them away again.
+chrome_without_first_run() {
+  [[ -n $(a shell pm path com.android.chrome 2>/dev/null) ]] || return 0
+  chrome_flags=1
+  a shell 'echo "_ --disable-fre --no-default-browser-check --no-first-run" > /data/local/tmp/chrome-command-line'
+  a shell am set-debug-app --persistent com.android.chrome >/dev/null
+  a shell am force-stop com.android.chrome
+}
+# Signs the owner in with the preauth key, and waits for the launcher.
+owner_launcher() {
+  a shell "am start -W -n $PKG/.MainActivity --es controlURL $CTRL --es authKey $KEY" >/dev/null
+  await_text 90 Recipes Pantry || fail "the launcher never showed both apps: $(screen_text | tr '\n' '|')"
+}
 
 if [[ $SCENARIO == app ]]; then
   say "app: the owner signs in, then opens Recipes"
@@ -449,36 +500,7 @@ if [[ $SCENARIO == edges ]]; then
 <form method="post" action="https://pantry.e2e.ts.net/"><input type="hidden" name="a" value="1"><button>Post to Pantry</button></form>
 </body></html>
 EOF
-  # The activity in front, as the activity manager names it.
-  front() { a shell dumpsys activity activities | LC_ALL=C grep -m1 -E 'topResumedActivity|mResumedActivity' || true; }
-  # Waits up to $1 seconds for an activity other than Ovenlight in front, with the address $2 in its intent.
-  await_outside() {
-    for i in $(seq 1 $1); do
-      # Read whole: a grep that stops at its first match would break adb's pipe under pipefail.
-      if [[ $(front) != *$PKG* && $(a shell dumpsys activity activities) == *"dat=$2"* ]]; then return 0; fi
-      sleep 1
-    done
-    return 1
-  }
-  # Back out of whatever the browser shows (the Custom Tab, or a page of its own) until
-  # Ovenlight is in front; one that keeps the front is closed by bringing Ovenlight back,
-  # which clears what sits above it in its task.
-  back_to_edges() {
-    for i in 1 2 3; do
-      [[ $(front) == *$PKG* ]] && break
-      a shell input keyevent KEYCODE_BACK; sleep 2
-    done
-    [[ $(front) == *$PKG* ]] || a shell am start -n $PKG/.MainActivity >/dev/null
-    await_text 20 "Recipe Box edges" || fail "$1: Ovenlight didn't come back to the page: $(front) $(screen_text | tr '\n' '|')"
-  }
-  # Chrome's first run would stay in front of every tab: Chrome reads these flags as the
-  # debug app, and cleanup takes them away again.
-  if [[ -n $(a shell pm path com.android.chrome 2>/dev/null) ]]; then
-    chrome_flags=1
-    a shell 'echo "_ --disable-fre --no-default-browser-check --no-first-run" > /data/local/tmp/chrome-command-line'
-    a shell am set-debug-app --persistent com.android.chrome >/dev/null
-    a shell am force-stop com.android.chrome
-  fi
+  chrome_without_first_run
   a shell "am start -W -n $PKG/.MainActivity --es controlURL $CTRL --es authKey $KEY" >/dev/null
   await_text 90 Recipes Pantry || fail "the launcher never showed both apps: $(screen_text | tr '\n' '|')"
   tap_text Recipes
@@ -490,7 +512,7 @@ EOF
   await_outside 20 "https://example.com/" || { shot edges-outside; fail "the outside link didn't open outside: $(front)"; }
   shot edges-custom-tab
   note "the outside link opened outside Ovenlight: $(front | sed 's/^ *//')"
-  back_to_edges "the outside link"
+  back_to "Recipe Box edges" "the outside link"
 
   tap_text "Mail Riley"
   await_text 10 "Open in another app?" "Recipes wants to open “mailto:riley@example.com”." ||
@@ -516,7 +538,7 @@ EOF
   tap_text "Post to Pantry"
   await_outside 20 "https://pantry.e2e.ts.net/" || { shot edges-post; fail "the POST to Pantry didn't open outside: $(front)"; }
   note "the POST to Pantry opened Pantry outside: $(front | sed 's/^ *//')"
-  back_to_edges "the POST"
+  back_to "Recipe Box edges" "the POST"
   shot edges-after-post
   note "and Recipes is back on its own page"
   say "PASSED"
@@ -644,6 +666,182 @@ EOF
     [[ $answer == "Camera error NotFoundError" || $answer == "Camera error NotReadableError" ]] || fail "the page didn't get the camera: $answer"
     note "the emulator's camera didn't answer ($answer); capture on lock not checked"
   fi
+  say "PASSED"
+  exit 0
+fi
+
+if [[ $SCENARIO == upload ]]; then
+  say "upload: Recipes takes a file through the documents picker and a photo through the photo picker"
+  # A file in Download and a photo in Pictures, as a person's own would be.
+  printf 'flour,500\nsugar,200\n' > $D/e2e-upload.txt
+  python3 -c '
+import struct, sys, zlib
+def chunk(kind, data):
+    return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xffffffff)
+rows = b"".join(b"\0" + b"\xc0\x39\x2b" * 16 for _ in range(16))
+sys.stdout.buffer.write(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 16, 16, 8, 2, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b""))
+' > $D/e2e-photo.png
+  a push $D/e2e-upload.txt /sdcard/Download/e2e-upload.txt >/dev/null
+  a push $D/e2e-photo.png /sdcard/Pictures/e2e-photo.png >/dev/null
+  # The pickers list what MediaStore knows, so both files are scanned in.
+  a shell content call --uri content://media --method scan_volume --arg external_primary >/dev/null 2>&1 || true
+  for f in Download/e2e-upload.txt Pictures/e2e-photo.png; do
+    a shell am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d file:///sdcard/$f >/dev/null 2>&1 || true
+  done
+  uploaded_cleanup() { a shell rm -f /sdcard/Download/e2e-upload.txt /sdcard/Pictures/e2e-photo.png >/dev/null 2>&1 || true; }
+  cat > $D/recipes/index.html <<'EOF'
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Uploads</title>
+<style>button { display: block; margin: 24px; padding: 16px; font-size: 20px; } input { display: none; }</style></head>
+<body><h1>Recipe Box uploads</h1><p id="state">Nothing picked</p>
+<button onclick="pick('any')">Pick any file</button>
+<button onclick="pick('photo')">Pick a photo</button>
+<input id="any" type="file"><input id="photo" type="file" accept="image/*">
+<script>
+const state = text => document.getElementById("state").textContent = text;
+// Each pick starts from "waiting", so every answer the page gets shows anew.
+function pick(id) { state(id + " waiting"); document.getElementById(id).click(); }
+for (const id of ["any", "photo"]) {
+  const input = document.getElementById(id);
+  input.addEventListener("change", async () => {
+    const file = input.files[0];
+    if (!file) return state(id + " empty");
+    const sent = await fetch("/upload", { method: "POST", headers: { "X-Name": encodeURIComponent(file.name) }, body: file });
+    state(id + " " + file.name + " " + file.size + (sent.ok ? " sent" : " refused " + sent.status));
+    input.value = "";
+  });
+  input.addEventListener("cancel", () => state(id + " canceled"));
+}
+</script></body></html>
+EOF
+  # The documents picker opens on Recent or on the last folder; Downloads is a step away otherwise.
+  pick_document() {
+    await_text 10 "$1" && { tap_text "$1"; return 0; }
+    tap_matching '^Show roots$' || return 1
+    sleep 2; tap_text Downloads || tap_text Download || return 1
+    await_text 10 "$1" && tap_text "$1"
+  }
+  page_state() { screen_text | grep -m1 -E '^(any|photo) ' || true; }
+  owner_launcher
+  tap_text Recipes
+  close_tip
+  await_text 40 "Recipe Box uploads" "Pick any file" || { shot upload-failed; fail "the uploads page never loaded: $(screen_text | tr '\n' '|')"; }
+
+  tap_text "Pick any file"
+  pick_document e2e-upload.txt || { shot upload-documents; fail "the documents picker never showed the file: $(front) $(screen_text | tr '\n' '|')"; }
+  await_text 30 "any e2e-upload.txt 20 sent" || { shot upload-failed; fail "the page didn't send the file: $(page_state)"; }
+  cmp -s $D/e2e-upload.txt $D/recipes/uploaded/e2e-upload.txt || fail "the server got other bytes for the file"
+  note "the documents picker's file reached the page (name and size) and the server (bytes)"
+
+  tap_text "Pick a photo"
+  await_text 10 "Take photo" "Choose photo" || fail "no camera-or-photo sheet for an image input: $(screen_text | tr '\n' '|')"
+  tap_text "Choose photo"
+  # The photo picker labels each photo "Photo taken on <date>"; its tab reads "Photos".
+  for i in $(seq 1 15); do tap_matching '^Photo taken' && break; sleep 1; done
+  photo=
+  for i in $(seq 1 30); do photo=$(screen_text | grep -m1 -E '^photo .* sent$' || true); [[ -n $photo ]] && break; sleep 1; done
+  [[ -n $photo ]] || { shot upload-failed; fail "the page didn't send the photo: $(page_state) $(front)"; }
+  size=$(wc -c < $D/e2e-photo.png | tr -d ' ')
+  name=$(sed -E 's/^photo (.*) [0-9]+ sent$/\1/' <<<"$photo")
+  [[ $photo == *" $size sent" ]] || fail "the photo's size: $photo, pushed $size bytes"
+  cmp -s $D/e2e-photo.png "$D/recipes/uploaded/$name" || fail "the server got other bytes for the photo ($name)"
+  note "the photo picker's photo reached the page (as $name, $size bytes) and the server"
+
+  say "upload: a canceled picker answers the page, so the next tap opens one again"
+  tap_text "Pick any file"
+  sleep 3; [[ $(front) != *$PKG* ]] || fail "no documents picker: $(front)"
+  a shell input keyevent KEYCODE_BACK
+  await_text 15 "any canceled" || fail "canceling the documents picker didn't answer the page: $(page_state)"
+  tap_text "Pick any file"
+  sleep 3; [[ $(front) != *$PKG* ]] || fail "a second tap opened no documents picker: $(front)"
+  a shell input keyevent KEYCODE_BACK
+  await_text 15 "any canceled" || fail "the second cancel didn't answer the page"
+  tap_text "Pick a photo"
+  await_text 10 "Choose photo" || fail "no sheet for the photo input"
+  tap_text "Choose photo"
+  sleep 3; [[ $(front) != *$PKG* ]] || fail "no photo picker: $(front)"
+  a shell input keyevent KEYCODE_BACK
+  await_text 15 "photo canceled" || fail "canceling the photo picker didn't answer the page: $(page_state)"
+  tap_text "Pick a photo"
+  await_text 10 "Take photo" "Choose photo" || fail "a second tap opened no sheet: $(screen_text | tr '\n' '|')"
+  a shell input keyevent KEYCODE_BACK
+  await_text 15 "photo canceled" || fail "closing the sheet didn't answer the page"
+  note "each cancel answered the page, and the next tap opened the picker or sheet again"
+  uploaded_cleanup
+  say "PASSED"
+  exit 0
+fi
+
+if [[ $SCENARIO == return ]]; then
+  say "return: a page on screen keeps running through Ovenlight's own Custom Tabs"
+  cat > $D/recipes/index.html <<'EOF'
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Return</title>
+<style>a, button, p { display: block; margin: 16px; font-size: 20px; } a, button { padding: 12px; }</style></head>
+<body><h1>Recipe Box return</h1>
+<p id="load"></p><p id="ws">socket connecting</p><p id="echo">no echo</p><p id="gap">longest pause 0</p>
+<a href="https://example.com/">Outside link</a>
+<button onclick="ping()">Ping</button><button onclick="longest = 0; show()">Reset pause</button>
+<script>
+const text = (id, value) => document.getElementById(id).textContent = value;
+text("load", "load " + String(Math.random()).slice(2, 8));
+let opens = 0, echoes = 0, last = Date.now(), longest = 0;
+const show = () => text("gap", "longest pause " + Math.round(longest / 1000));
+setInterval(() => { const now = Date.now(); longest = Math.max(longest, now - last); last = now; show(); }, 200);
+const ws = new WebSocket("wss://recipes.e2e.ts.net/ws");
+ws.onopen = () => text("ws", "socket open " + ++opens);
+ws.onclose = () => text("ws", "socket closed");
+ws.onmessage = () => text("echo", "echo " + ++echoes);
+function ping() { ws.send("ping"); }
+</script></body></html>
+EOF
+  load_id() { screen_text | grep -m1 -E '^load [0-9]+$' || true; }
+  pause_secs() { screen_text | sed -n -E 's/^longest pause ([0-9]+)$/\1/p' | head -1; }
+  # The same page, its socket the first and still open, answering, and its timers not held up.
+  same_page() { # what
+    await_text 20 "socket open 1" || fail "$1: the socket isn't the page's first, still open: $(screen_text | tr '\n' '|')"
+    [[ $(load_id) == "$loaded" ]] || fail "$1: the page reloaded ($(load_id), was $loaded)"
+    local echoes_before=$(screen_text | grep -m1 -E '^(no echo|echo [0-9]+)$' || true)
+    tap_text Ping
+    for i in $(seq 1 10); do [[ $(screen_text | grep -m1 -E '^(no echo|echo [0-9]+)$' || true) != "$echoes_before" ]] && break; sleep 1; done
+    [[ $(screen_text | grep -m1 -E '^(no echo|echo [0-9]+)$' || true) != "$echoes_before" ]] || fail "$1: the socket didn't answer a ping"
+    local gap=$(pause_secs)
+    # Out of sight Chromium runs a page's timers once a second; Ovenlight pausing them would
+    # show the whole time away here.
+    (( ${gap:-99} <= 3 )) || fail "$1: the page's timers stopped for $gap s"
+    note "$1: the same page, its socket open and answering, its timers held up at most $gap s"
+  }
+  chrome_without_first_run
+  owner_launcher
+  tap_text Recipes
+  close_tip
+  await_text 40 "Recipe Box return" "socket open 1" || { shot return-failed; fail "the page never opened its socket: $(screen_text | tr '\n' '|')"; }
+  loaded=$(load_id)
+
+  tap_text "Reset pause"
+  tap_text "Outside link"
+  await_outside 20 "https://example.com/" || fail "the outside link didn't open outside: $(front)"
+  sleep 10
+  back_to "Recipe Box return" "the page's Custom Tab"
+  same_page "after the page's Custom Tab"
+
+  # Settings' Custom Tab (the privacy policy; its sign-in page shows only while signed out),
+  # with the page kept in the pool behind the launcher.
+  tap_text "Reset pause"
+  a shell input keyevent KEYCODE_BACK
+  await_text 10 Pantry || fail "Back didn't close the app: $(screen_text | tr '\n' '|')"
+  tap_text More && sleep 1 && tap_text Settings
+  await_text 10 "Require screen lock" || fail "no Settings: $(screen_text | tr '\n' '|')"
+  for i in 1 2 3 4 5; do screen_text | grep -qxF "Privacy policy" && break; a shell input swipe 540 1800 540 600 300; sleep 1; done
+  tap_text "Privacy policy" || fail "no Privacy policy in Settings: $(screen_text | tr '\n' '|')"
+  await_outside 20 "https://ovenlight.app/privacy" || fail "the privacy policy didn't open outside: $(front)"
+  sleep 10
+  back_to "Privacy policy" "Settings' Custom Tab"
+  a shell input keyevent KEYCODE_BACK
+  await_text 10 Recipes || fail "Back didn't close Settings: $(screen_text | tr '\n' '|')"
+  tap_text Recipes
+  await_text 20 "Recipe Box return" || fail "Recipes didn't reopen: $(screen_text | tr '\n' '|')"
+  same_page "after Settings' Custom Tab"
   say "PASSED"
   exit 0
 fi
