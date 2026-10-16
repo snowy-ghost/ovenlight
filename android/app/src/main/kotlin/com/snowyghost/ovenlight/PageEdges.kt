@@ -93,15 +93,18 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import java.io.File
+import java.io.IOException
 import java.net.URI
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Where an app's page meets the rest of the phone (the navigation and UI-delegate halves of
@@ -480,7 +483,27 @@ class PageEdges(
         scope.launch {
             val state = activity.lifecycle.currentStateFlow.first { it.isAtLeast(Lifecycle.State.STARTED) || it == Lifecycle.State.DESTROYED }
             if (state != Lifecycle.State.DESTROYED) isLocked.first { !it }
+            withContext(Dispatchers.IO) { picked.forEach { ready(activity, it) } }
             answer(picked)
+        }
+    }
+
+    /**
+     * Opens a picked file until it opens, for up to two seconds. Right after the photo picker
+     * returns, the media provider can fail the first open of its URI (EFAULT, while it
+     * prepares the picker's path), and WebView, which doesn't try again, then gives the page
+     * no file at all.
+     */
+    private suspend fun ready(activity: ComponentActivity, uri: Uri) {
+        repeat(10) {
+            try {
+                activity.contentResolver.openAssetFileDescriptor(uri, "r")?.close()
+                return
+            } catch (_: IOException) {
+                delay(200)
+            } catch (_: SecurityException) {
+                return
+            }
         }
     }
 
