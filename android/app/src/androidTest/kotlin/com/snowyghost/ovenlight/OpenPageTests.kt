@@ -38,6 +38,9 @@ class OpenPageTests {
     private lateinit var app: WebApp
     private lateinit var page: AppPage
 
+    /** The shared model's lock delay, kept long here so the trips out don't lock on return. */
+    private var lockAfter = 0
+
     /** Unlocks as a fingerprint would. */
     private val fingerprint = object : Authenticator {
         override suspend fun authenticate() = Authenticator.Result.Success
@@ -64,6 +67,8 @@ class OpenPageTests {
     fun setUp() {
         runBlocking { withTimeout(30_000) { WebViewSetup.state.first { it == WebViewSetup.State.Ready } } }
         runBlocking { model.lock.unlock(fingerprint) }
+        lockAfter = model.lock.lockAfterSeconds
+        model.lock.lockAfterSeconds = 300
         scenario = ActivityScenario.launch(MainActivity::class.java)
         app = onMain { model.registry.add(URI("https://lock-check.example.invalid/")) }
         onMain { model.router.open(app) }
@@ -81,6 +86,7 @@ class OpenPageTests {
         // The registry drops the app's views, which WebView takes only on the main thread.
         runBlocking(Dispatchers.Main) { model.registry.remove(app.id) }
         scenario.close()
+        model.lock.lockAfterSeconds = lockAfter
     }
 
     // Helpers

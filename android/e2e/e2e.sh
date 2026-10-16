@@ -286,19 +286,25 @@ for m in re.finditer(r"(?<![\w-])(?:text|content-desc)=(?:\"([^\"]*)\"|\x27([^\x
 '
 }
 # The bounds, "x1 y1 x2 y2", of the first element whose text or description is exactly $2, or
-# with class=text whose class is $2 (android.widget.EditText, say).
+# with class=text whose class is $2 (android.widget.EditText, say), or with match=text whose text
+# or description matches the regular expression $2.
 bounds() {
   a exec-out uiautomator dump /dev/tty 2>/dev/null | tr '>' '\n' | python3 -c '
 import re, sys
 by, want = sys.argv[1], sys.argv[2]
 for line in sys.stdin:
-    hit = ("class=\"%s\"" % want in line) if by == "class" else re.search(r"(text|content-desc)=\"%s\"" % re.escape(want), line)
+    if by == "class":
+        hit = "class=\"%s\"" % want in line
+    elif by == "match":
+        hit = any(re.search(want, v) for v in re.findall(r"(?:text|content-desc)=\"([^\"]*)\"", line))
+    else:
+        hit = re.search(r"(text|content-desc)=\"%s\"" % re.escape(want), line)
     m = hit and re.search(r"bounds=\"\[(\d+),(\d+)\]\[(\d+),(\d+)\]\"", line)
     if m:
         print(*m.groups()); break
 ' "$1" "$2"
 }
-# Taps the middle of the first element found by bounds, by text (tap_text) or class (tap_class).
+# Taps the middle of the first element found by bounds, by text (tap_text), class (tap_class) or pattern (tap_matching).
 tap_bounds() {
   local box
   box=($(bounds "$1" "$2"))
@@ -307,6 +313,7 @@ tap_bounds() {
 }
 tap_text() { tap_bounds text "$1"; }
 tap_class() { tap_bounds class "$1"; }
+tap_matching() { tap_bounds match "$1"; }
 # The first app Ovenlight opens shows its pill with a one-time tip, in a popup of its own: closed here.
 close_tip() { if await_text ${1:-10} "Got it"; then tap_text "Got it"; sleep 1; fi; }
 # Waits up to $1 seconds until every one of the other arguments is on screen.
@@ -687,11 +694,13 @@ sys.stdout.buffer.write(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBB
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Uploads</title>
 <style>button { display: block; margin: 24px; padding: 16px; font-size: 20px; } input { display: none; }</style></head>
 <body><h1>Recipe Box uploads</h1><p id="state">Nothing picked</p>
-<button onclick="document.getElementById('any').click()">Pick any file</button>
-<button onclick="document.getElementById('photo').click()">Pick a photo</button>
+<button onclick="pick('any')">Pick any file</button>
+<button onclick="pick('photo')">Pick a photo</button>
 <input id="any" type="file"><input id="photo" type="file" accept="image/*">
 <script>
 const state = text => document.getElementById("state").textContent = text;
+// Each pick starts from "waiting", so every answer the page gets shows anew.
+function pick(id) { state(id + " waiting"); document.getElementById(id).click(); }
 for (const id of ["any", "photo"]) {
   const input = document.getElementById(id);
   input.addEventListener("change", async () => {
@@ -705,21 +714,6 @@ for (const id of ["any", "photo"]) {
 }
 </script></body></html>
 EOF
-  # Taps the first element whose description or text matches the regular expression $1.
-  tap_matching() {
-    local spot
-    spot=$(a exec-out uiautomator dump /dev/tty 2>/dev/null | tr '>' '\n' | python3 -c '
-import re, sys
-want = re.compile(sys.argv[1])
-for line in sys.stdin:
-    m = re.search(r"(?:text|content-desc)=\"([^\"]*)\"", line)
-    b = re.search(r"bounds=\"\[(\d+),(\d+)\]\[(\d+),(\d+)\]\"", line)
-    if m and b and want.search(m.group(1)):
-        x1, y1, x2, y2 = map(int, b.groups()); print((x1 + x2) // 2, (y1 + y2) // 2); break
-' "$1")
-    [[ -n $spot ]] || return 1
-    a shell input tap $spot
-  }
   # The documents picker opens on Recent or on the last folder; Downloads is a step away otherwise.
   pick_document() {
     await_text 10 "$1" && { tap_text "$1"; return 0; }
@@ -742,7 +736,8 @@ for line in sys.stdin:
   tap_text "Pick a photo"
   await_text 10 "Take photo" "Choose photo" || fail "no camera-or-photo sheet for an image input: $(screen_text | tr '\n' '|')"
   tap_text "Choose photo"
-  for i in $(seq 1 15); do tap_matching '^Photo' && break; sleep 1; done
+  # The photo picker labels each photo "Photo taken on <date>"; its tab reads "Photos".
+  for i in $(seq 1 15); do tap_matching '^Photo taken' && break; sleep 1; done
   photo=
   for i in $(seq 1 30); do photo=$(screen_text | grep -m1 -E '^photo .* sent$' || true); [[ -n $photo ]] && break; sleep 1; done
   [[ -n $photo ]] || { shot upload-failed; fail "the page didn't send the photo: $(page_state) $(front)"; }

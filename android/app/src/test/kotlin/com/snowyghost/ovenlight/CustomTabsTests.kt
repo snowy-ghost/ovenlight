@@ -5,6 +5,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.net.URI
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -18,7 +19,25 @@ import org.robolectric.Shadows.shadowOf
 @RunWith(AndroidJUnit4::class)
 class CustomTabsTests {
     private val context = Robolectric.buildActivity(ComponentActivity::class.java).setup().get()
-    private val lifecycle = AppLifecycle(CoroutineScope(Job()), { 0L }, setAway = {}, closeNodes = {}, cameToFront = {})
+    private val job = Job()
+    private var away = false
+    private val lifecycle = AppLifecycle(CoroutineScope(job), { 0L }, setAway = { away = it }, closeNodes = {}, cameToFront = {})
+
+    @After
+    fun tearDown() = job.cancel()
+
+    /** Opening Ovenlight's own tab begins an excursion, so the stop that follows isn't leaving; a tab that didn't open begins none. */
+    @Test
+    fun testATabThatOpensIsAnExcursion() {
+        assertTrue(CustomTabs.open(context, URI("https://ovenlight.app/privacy"), lifecycle))
+        lifecycle.activityStopped()
+        assertFalse("an excursion keeps things running", away)
+        lifecycle.activityStarted()
+
+        assertFalse(CustomTabs.open(context, URI("https://ovenlight.app/join"), lifecycle))
+        lifecycle.activityStopped()
+        assertTrue("no tab, so stopping is leaving", away)
+    }
 
     @Test
     fun testWithNoBrowserTheJoinPageNeverReachesOvenlight() {
