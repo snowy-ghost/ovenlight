@@ -1,9 +1,10 @@
 package com.snowyghost.ovenlight
 
 import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
 import android.content.pm.PackageManager
-import androidx.browser.customtabs.CustomTabColorSchemeParams
+import androidx.activity.ComponentActivity
 import androidx.browser.customtabs.CustomTabsClient
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.core.net.toUri
@@ -23,21 +24,19 @@ object CustomTabs {
      * excursion (see AppLifecycle), which opening one begins, so a sign-in or a page read in it
      * finds everything as it left it.
      */
-    fun open(context: Context, url: URI, lifecycle: AppLifecycle, toolbarColor: Int? = null): Boolean {
+    fun open(context: Context, url: URI, lifecycle: AppLifecycle): Boolean {
         val uri = url.toString().toUri()
         val browser = browser(context)
         // With no browser to name, Android would hand Ovenlight's own App Link back to Ovenlight.
         if (browser == null && NavigationPolicy.isOvenlightLink(url)) return false
         val tabs = browser != null && CustomTabsClient.getPackageName(context, listOf(browser), true) == browser
         val intent = if (tabs) {
-            val builder = CustomTabsIntent.Builder().setShowTitle(true).setShareState(CustomTabsIntent.SHARE_STATE_OFF)
-            toolbarColor?.let { builder.setDefaultColorSchemeParams(CustomTabColorSchemeParams.Builder().setToolbarColor(it).build()) }
-            builder.build().intent.setData(uri)
+            CustomTabsIntent.Builder().setShowTitle(true).setShareState(CustomTabsIntent.SHARE_STATE_OFF).build().intent.setData(uri)
         } else {
             Intent(Intent.ACTION_VIEW, uri).addCategory(Intent.CATEGORY_BROWSABLE)
         }
         browser?.let(intent::setPackage)
-        if (systemCall("open a web page", false) { context.startActivity(intent); true }) {
+        if (context.startOrFalse(intent)) {
             lifecycle.beginExcursion()
             return true
         }
@@ -76,4 +75,14 @@ internal inline fun <T> systemCall(what: String, fallback: T, call: () -> T): T 
 } catch (e: RuntimeException) {
     OvenlightLog.i("couldn't $what: ${e.javaClass.simpleName}")
     fallback
+}
+
+/** Starts another app's screen; false when nothing takes it (see [systemCall]). */
+internal fun Context.startOrFalse(intent: Intent): Boolean = systemCall("start ${intent.action}", false) { startActivity(intent); true }
+
+/** The activity under a context: a page's context holds it while the page is on screen. */
+internal tailrec fun Context.componentActivity(): ComponentActivity? = when (this) {
+    is ComponentActivity -> this
+    is ContextWrapper -> baseContext.componentActivity()
+    else -> null
 }

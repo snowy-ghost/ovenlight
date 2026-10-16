@@ -1,9 +1,7 @@
 package com.snowyghost.ovenlight
 
 import android.annotation.SuppressLint
-import android.app.Activity
 import android.content.Context
-import android.content.ContextWrapper
 import android.graphics.Bitmap
 import android.graphics.Rect
 import android.os.Handler
@@ -651,7 +649,7 @@ private fun WatchPage(view: PageWebView, controller: ChromeController) {
 /** A snapshot of the view as the screen shows it, through PixelCopy, or drawn in software when that fails. */
 private suspend fun snapshot(view: View): Bitmap? {
     if (view.width == 0 || view.height == 0) return null
-    val window = view.context.activity()?.window
+    val window = view.context.componentActivity()?.window
     if (window != null) {
         val bitmap = createBitmap(view.width, view.height)
         val at = IntArray(2).also(view::getLocationInWindow)
@@ -670,12 +668,6 @@ private suspend fun snapshot(view: View): Bitmap? {
         bitmap.recycle()
     }
     return runCatching { view.drawToBitmap() }.getOrNull()
-}
-
-private tailrec fun Context.activity(): Activity? = when (this) {
-    is Activity -> this
-    is ContextWrapper -> baseContext.activity()
-    else -> null
 }
 
 /** The page's script result, a JSON value as text, or null when the view goes first. */

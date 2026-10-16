@@ -10,8 +10,6 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.webkit.PermissionRequest
-import androidx.activity.ComponentActivity
-import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
@@ -210,19 +208,13 @@ object CaptureMonitor {
  * went meanwhile.
  */
 object RuntimePermissions {
-    private var next = 0
-
     fun request(context: Context, permissions: List<String>, done: (Boolean) -> Unit) {
         val missing = permissions.filter { ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED }
         if (missing.isEmpty()) return done(true)
-        val activity = generateSequence(context) { (it as? android.content.ContextWrapper)?.baseContext }.firstNotNullOfOrNull { it as? ComponentActivity }
-            ?: return done(false)
-        var launcher: ActivityResultLauncher<Array<String>>? = null
-        launcher = activity.activityResultRegistry.register("ovenlight.permissions.${next++}", ActivityResultContracts.RequestMultiplePermissions()) { result ->
-            launcher?.unregister()
+        val activity = context.componentActivity() ?: return done(false)
+        activity.launchOnce(ActivityResultContracts.RequestMultiplePermissions(), missing.toTypedArray(), failed = { done(false) }) { result ->
             done(missing.all { result[it] == true })
         }
-        launcher.launch(missing.toTypedArray())
     }
 }
 

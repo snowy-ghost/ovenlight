@@ -1,8 +1,6 @@
 package com.snowyghost.ovenlight
 
 import android.app.admin.DevicePolicyManager
-import android.content.ActivityNotFoundException
-import android.content.Context
 import android.content.Intent
 import android.icu.text.ListFormatter
 import android.provider.Settings as SystemSettings
@@ -153,7 +151,7 @@ fun SettingsView(model: AppModel, onClose: () -> Unit) {
             lockAfter = seconds
         },
         // Straight to choosing a screen lock, or the security settings where that isn't offered.
-        setScreenLock = { context.open(Intent(DevicePolicyManager.ACTION_SET_NEW_PASSWORD)) || context.open(Intent(SystemSettings.ACTION_SECURITY_SETTINGS)) },
+        setScreenLock = { context.startOrFalse(Intent(DevicePolicyManager.ACTION_SET_NEW_PASSWORD)) || context.startOrFalse(Intent(SystemSettings.ACTION_SECURITY_SETTINGS)) },
         leave = { id -> model.scope.launch { model.guests.leave(id) } },
         useMyOwnComputers = {
             nodes.enableOwner()
@@ -171,14 +169,6 @@ fun SettingsView(model: AppModel, onClose: () -> Unit) {
         notices = { withContext(Dispatchers.IO) { Acknowledgements.notices { context.assets.open(it) } } },
     )
     SettingsScreen(state, onClose)
-}
-
-/** Starts another app's screen; false when no app handles it. */
-private fun Context.open(intent: Intent): Boolean = try {
-    startActivity(intent)
-    true
-} catch (_: ActivityNotFoundException) {
-    false
 }
 
 /** Settings, and Acknowledgements over it, which Back returns from. */

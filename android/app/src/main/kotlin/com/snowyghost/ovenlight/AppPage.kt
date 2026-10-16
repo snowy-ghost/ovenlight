@@ -119,16 +119,13 @@ class AppPage(
         // The profile goes on before anything else touches the view.
         WebViewCompat.setProfile(view, profileName)
         WebViewSetup.configure(view)
-        if (BuildConfig.DEBUG) WebView.setWebContentsDebuggingEnabled(true)
         if (node != null) Core.setRoute(routeKey, node.id) else Core.clearRoute(routeKey)
         edges = PageEdges(
-            app, view, this.context, scope, OvenlightApp.lock.isLocked, OvenlightApp.model.lifecycle, isShown = { shown },
+            app, view, this.context, scope, OvenlightApp.lock.isLocked, OvenlightApp.model.lifecycle, capture, isShown = { shown },
             home = { if (routeIsCurrent() && nodeMayCarry && !destroyed) view.loadUrl(app.startURL.toString()) },
         )
         view.webViewClient = Client()
         view.webChromeClient = edges.chrome
-        // Camera and microphone requests go to the capture handler, through the edges' one client.
-        edges.capture = capture
         view.setDownloadListener(downloads)
         bridge = PageBridge(view, app.startURL, capture, downloads, scope)
         view.onPause()
