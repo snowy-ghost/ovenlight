@@ -45,6 +45,7 @@ class WebViewPool(
 
     init {
         DownloadShelf.emptyAtLaunch(context)
+        CaptureFileProvider.emptyAtLaunch(context)
         nodes.onLoggingOut = { node -> discard { it.node === node } }
         nodes.onOwnerSuffixChanged = ::discardStaleRoutes
     }

@@ -4,7 +4,6 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.MutableContextWrapper
 import android.graphics.Bitmap
-import android.util.Log
 import android.webkit.HttpAuthHandler
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebResourceError
@@ -245,7 +244,7 @@ class AppPage(
     }
 
     private fun giveUp() {
-        Log.i(TAG, "${app.host}: unreachable")
+        OvenlightLog.i("${app.host}: unreachable")
         mutableGate.value = mutableGate.value.next(AppLoadGate.Event.GaveUp)
         // A page already on screen keeps it; the person's Reload checks the path again.
         if (loaded.value) {
@@ -269,7 +268,7 @@ class AppPage(
      */
     private fun routeIsCurrent(): Boolean {
         if (Routing.mayLoad(node, nodes.node(app))) return true
-        Log.i(TAG, "${app.host}: route changed, making a new view")
+        OvenlightLog.i("${app.host}: route changed, making a new view")
         pool.replace(this)
         return false
     }
@@ -288,7 +287,7 @@ class AppPage(
         }
         val wait = AppLoadGate.appDownRetries[appDownLoads]
         appDownLoads += 1
-        Log.i(TAG, "${app.host}: the app is down, trying again in $wait")
+        OvenlightLog.i("${app.host}: the app is down, trying again in $wait")
         gateJob?.cancel()
         gateJob = scope.launch {
             delay(wait)
@@ -305,7 +304,7 @@ class AppPage(
         }
         if (code in retryableThroughNode && failedLoads < MAX_FAILED_LOADS) {
             failedLoads += 1
-            Log.i(TAG, "${app.host}: error $code, checking the path again")
+            OvenlightLog.i("${app.host}: error $code, checking the path again")
             mutableGate.value = mutableGate.value.next(AppLoadGate.Event.LoadFailed)
             return openGate()
         }
@@ -390,7 +389,7 @@ class AppPage(
          * starts over in a new view; off screen the pool drops it, and the next open starts over.
          */
         override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
-            Log.w(TAG, "${app.host}: the page's renderer went (crashed: ${detail.didCrash()})")
+            OvenlightLog.w("${app.host}: the page's renderer went (crashed: ${detail.didCrash()})")
             // Downloads need no renderer, and replacing the view would end them and their route.
             if (isDownloading && !shown) rendererGone = true else pool.replace(this@AppPage)
             return true
@@ -398,7 +397,6 @@ class AppPage(
     }
 
     private companion object {
-        const val TAG = "Ovenlight"
         const val MAX_FAILED_LOADS = 2
 
         // WebView's codes for a path through the proxy that didn't connect: -11 for a tunnel the

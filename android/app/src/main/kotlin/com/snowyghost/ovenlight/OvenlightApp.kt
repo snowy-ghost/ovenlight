@@ -4,7 +4,6 @@ import android.app.Application
 import android.content.Context
 import android.icu.text.Normalizer2
 import android.os.SystemClock
-import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -91,14 +90,14 @@ class AppModel(context: Context) {
     val router = Router(isLocked = { lock.holdsLinks })
     val nodes = NodeManager(
         TailnetCore, preferences, MembershipStore(ovenlight), nodesDirectory, scope, Dispatchers.IO, SystemClock::elapsedRealtime,
-        log = { Log.i(TAG, it) }, debugBuild = BuildConfig.DEBUG,
+        log = { OvenlightLog.i(it) }, debugBuild = BuildConfig.DEBUG,
     )
     val pool = WebViewPool(context, nodes, scope, isLocked = { lock.isLocked.value })
     val registry = AppRegistry(
         ovenlight, session = nodes::fetch, webData = WebProfiles(context, discard = pool::discard),
         iconPNG = { withContext(Dispatchers.Default) { IconDecoder.png(it) } }, scope = scope,
     )
-    val guests = GuestManager(nodes, registry, router, scope, SystemClock::elapsedRealtime, log = { Log.i(TAG, it) })
+    val guests = GuestManager(nodes, registry, router, scope, SystemClock::elapsedRealtime, log = { OvenlightLog.i(it) })
         .also { pool.guests = it }
     /** The router's sheet showing in a Custom Tab, kept with the process so a recreated activity returns from it. */
     var openTab: RootSheet? = null
@@ -156,10 +155,6 @@ class AppModel(context: Context) {
         // to the front instead.
         nodes.rediscover()
         registry.refreshAllMissingIcons()
-    }
-
-    private companion object {
-        const val TAG = "Ovenlight"
     }
 }
 

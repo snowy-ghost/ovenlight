@@ -9,7 +9,6 @@ import android.media.AudioManager
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
-import android.util.Log
 import android.webkit.PermissionRequest
 import androidx.activity.ComponentActivity
 import androidx.activity.result.ActivityResultLauncher
@@ -133,7 +132,7 @@ class PageCapture(
         scope.launch {
             delay(CHECK_AFTER_MILLIS)
             if (!isOnScreen() && stillCapturing()) {
-                Log.w(TAG, "${app.host}: still capturing after the stop, so its view goes")
+                OvenlightLog.w("${app.host}: still capturing after the stop, so its view goes")
                 destroy()
             }
         }
@@ -157,7 +156,6 @@ class PageCapture(
         host?.takeIf { Discovery.normalizedHost(it) != Discovery.normalizedHost(app.host) }
 
     companion object {
-        private const val TAG = "Ovenlight"
         const val CHECK_AFTER_MILLIS = 500L
 
         fun typeOf(resources: Set<String>): MediaCaptureType? {

@@ -6,7 +6,6 @@ import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
-import android.util.Log
 import android.webkit.WebView
 import androidx.webkit.WebMessagePortCompat
 import androidx.webkit.WebMessageCompat
@@ -56,7 +55,7 @@ class PageBridge(
 
     init {
         WebViewCompat.addDocumentStartJavaScript(view, script(view.context), setOf("*"))
-        if (origin == null) Log.w(TAG, "${appURL.host}: no origin for the page bridge")
+        if (origin == null) OvenlightLog.w("${appURL.host}: no origin for the page bridge")
     }
 
     /** A new document in the main frame: the page script there gets a channel of its own. */
@@ -132,8 +131,6 @@ class PageBridge(
     }
 
     companion object {
-        private const val TAG = "Ovenlight"
-
         /** Ovenlight's offer of a port, the page script's answer, and the word that stops its tracks. */
         const val OFFER = "ovenlight-offer"
         const val ANSWER = "ovenlight-answer"

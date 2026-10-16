@@ -11,7 +11,6 @@ import android.net.Uri
 import android.os.ParcelFileDescriptor
 import android.os.SystemClock
 import android.text.format.Formatter
-import android.util.Log
 import android.webkit.CookieManager
 import android.webkit.DownloadListener
 import android.webkit.MimeTypeMap
@@ -366,12 +365,10 @@ class PageDownloads(
         "Download" + (MimeTypeMap.getSingleton().getExtensionFromMimeType(type.lowercase())?.let { ".$it" } ?: "")
 
     private fun log(line: String) {
-        Log.i(TAG, "$appHost: $line")
+        OvenlightLog.i("$appHost: $line")
     }
 
     companion object {
-        private const val TAG = "Ovenlight"
-
         // What one page can make Ovenlight hold, run or write: the largest blob over the bridge, the
         // longest URL a click report or data download may carry, the reports and bytes waiting to
         // be paired with WebView's start (and how long they wait), downloads at once, how long one

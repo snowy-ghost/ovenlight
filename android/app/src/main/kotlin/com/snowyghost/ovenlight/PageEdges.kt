@@ -9,9 +9,9 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.SystemClock
-import android.util.Log
 import android.view.View
 import android.view.ViewGroup
+import android.webkit.ConsoleMessage
 import android.webkit.GeolocationPermissions
 import android.webkit.JsPromptResult
 import android.webkit.JsResult
@@ -188,7 +188,7 @@ class PageEdges(
         return when (val decision = NavigationPolicy.decide(url, app.host, request.isForMainFrame, request.hasGesture())) {
             NavigationPolicy.Decision.Allow -> false
             NavigationPolicy.Decision.Refuse -> {
-                Log.i(TAG, "${app.host}: refused a ${url.scheme ?: "schemeless"} link")
+                OvenlightLog.i("${app.host}: refused a ${url.scheme ?: "schemeless"} link")
                 true
             }
             is NavigationPolicy.Decision.OpenExternally -> {
@@ -250,7 +250,7 @@ class PageEdges(
         // then would stop the way back. The end of that window checks again.
         val back = returning
         if (back != null && back.target == url && now - back.at < RETURN_MILLIS) return
-        Log.i(TAG, "${app.host}: stopped a page that skipped the navigation policy")
+        OvenlightLog.i("${app.host}: stopped a page that skipped the navigation policy")
         view.stopLoading()
         if (!showsAppPage()) goBack(url, now)
         val last = stopped
@@ -265,7 +265,7 @@ class PageEdges(
         while (now - returns.first() > LOOP_MILLIS) returns.removeFirst()
         returnCheck?.cancel()
         if (returns.size > MAX_RETURNS) {
-            Log.i(TAG, "${app.host}: the page keeps leaving the app; leaving it blank")
+            OvenlightLog.i("${app.host}: the page keeps leaving the app; leaving it blank")
             returning = null
             view.loadUrl("about:blank")
             return
@@ -288,7 +288,7 @@ class PageEdges(
         if (!mayAct) return
         val scheme = url.scheme?.lowercase()
         if (url.toString().length > NavigationPolicy.maxHandOffLength) {
-            Log.i(TAG, "${app.host}: refused a $scheme link too long to hand on")
+            OvenlightLog.i("${app.host}: refused a $scheme link too long to hand on")
             return
         }
         if (scheme == "http" || scheme == "https") {
@@ -297,7 +297,7 @@ class PageEdges(
             return
         }
         val intent = handOff(url) ?: run {
-            Log.i(TAG, "${app.host}: refused a $scheme link to another app")
+            OvenlightLog.i("${app.host}: refused a $scheme link to another app")
             return
         }
         if (NavigationPolicy.asksBeforeOpening(url)) show(Dialog.OpenElsewhere(NavigationPolicy.target(url), intent)) else start(intent)
@@ -548,6 +548,10 @@ class PageEdges(
         generateSequence(context) { (it as? ContextWrapper)?.baseContext }.firstNotNullOfOrNull { it as? ComponentActivity }
 
     private inner class Chrome : WebChromeClient() {
+        // Unanswered, WebView writes every console message, with its page's address, to the
+        // system log. Release builds answer it with nothing.
+        override fun onConsoleMessage(consoleMessage: ConsoleMessage): Boolean = !BuildConfig.DEBUG
+
         override fun onJsAlert(view: WebView, url: String?, message: String?, result: JsResult): Boolean {
             fromPage { quiet -> Dialog.Alert(cut(message), quiet, DialogAnswer(Unit) { result.confirm() }) }
             return true
@@ -601,8 +605,6 @@ class PageEdges(
     }
 
     companion object {
-        private const val TAG = "Ovenlight"
-
         /** A page's dialog text past this many characters is cut: a page can pass megabytes. */
         private const val MAX_DIALOG_TEXT = 4_000
 
@@ -705,18 +707,16 @@ object FileChoice {
 /** Where the camera writes a photo or video for a page, in `cacheDir/Captures`. */
 class CaptureFileProvider : FileProvider() {
     companion object {
-        private var swept = false
-
         fun authority(context: Context) = "${context.packageName}.captures"
 
-        /** A new file; the first one in each process clears the last process's, which no page can still hold. */
-        fun newFile(context: Context, extension: String): File {
-            val folder = File(context.cacheDir, "Captures").apply { mkdirs() }
-            if (!swept) {
-                swept = true
-                folder.listFiles()?.forEach(File::delete)
-            }
-            return File.createTempFile("capture-", ".$extension", folder)
+        private fun folder(context: Context) = File(context.cacheDir, "Captures")
+
+        fun newFile(context: Context, extension: String): File =
+            File.createTempFile("capture-", ".$extension", folder(context).apply { mkdirs() })
+
+        /** Clears the last process's captures, which no page can still hold, as the download shelf does. */
+        fun emptyAtLaunch(context: Context) {
+            folder(context).listFiles()?.forEach(File::delete)
         }
     }
 }

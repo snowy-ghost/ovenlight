@@ -3,7 +3,6 @@ package com.snowyghost.ovenlight
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.util.Log
 import androidx.browser.customtabs.CustomTabColorSchemeParams
 import androidx.browser.customtabs.CustomTabsClient
 import androidx.browser.customtabs.CustomTabsIntent
@@ -75,6 +74,6 @@ object CustomTabs {
 internal inline fun <T> systemCall(what: String, fallback: T, call: () -> T): T = try {
     call()
 } catch (e: RuntimeException) {
-    Log.i("Ovenlight", "couldn't $what: ${e.javaClass.simpleName}")
+    OvenlightLog.i("couldn't $what: ${e.javaClass.simpleName}")
     fallback
 }
