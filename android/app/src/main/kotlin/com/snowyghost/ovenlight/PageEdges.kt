@@ -407,7 +407,7 @@ class PageEdges(
         if (!mayAct || activity == null) return answer.dropped()
         val multiple = params.mode == WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE
         val mime = { ext: String -> MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) }
-        when (val kind = FileChoice.kind(params.acceptTypes?.toList().orEmpty(), params.isCaptureEnabled, mime)) {
+        when (val kind = FileChoice.kind(params.acceptTypes?.toList().orEmpty(), params.isCaptureEnabled, mime, filesForMedia = Build.VERSION.SDK_INT < 30)) {
             is FileChoice.Kind.Camera -> capture(activity, kind.video, answer)
             is FileChoice.Kind.Media -> photos(activity, kind, multiple, answer)
             is FileChoice.Kind.Documents -> documents(activity, kind, multiple, answer)
@@ -672,7 +672,7 @@ object FileChoice {
         /**
          * An image input without `capture`: Ovenlight's sheet offers the camera and the photo
          * picker, as WebKit's menu does, and [documents] too when the input takes more than
-         * photos and videos.
+         * photos and videos, or before Android 11 ([kind]).
          */
         data class Choice(val media: Media, val documents: Documents?) : Kind()
     }
@@ -680,9 +680,12 @@ object FileChoice {
     /**
      * [accept] is WebView's list (types, wildcards and `.ext` names); an empty one, or one with
      * a name [mimeType] doesn't know, takes any file. The camera goes only where a photo or
-     * video would do.
+     * video would do. [filesForMedia] offers files for every photo or video input, beside the
+     * photo picker for images and in its place for video: before Android 11 the photo picker is
+     * Play services' own, a module it downloads on first use, and where that can't download,
+     * files are the way in.
      */
-    fun kind(accept: List<String>, capture: Boolean, mimeType: (String) -> String?): Kind {
+    fun kind(accept: List<String>, capture: Boolean, mimeType: (String) -> String?, filesForMedia: Boolean = false): Kind {
         val tokens = accept.flatMap { it.split(',') }.map { it.trimmingWhitespace().lowercase() }.filter { it.isNotEmpty() }
         val types = tokens.map { if (it.startsWith(".")) mimeType(it.drop(1)) else it }
         val any = types.isEmpty() || types.any { it == null || it == "*/*" }
@@ -696,8 +699,8 @@ object FileChoice {
         )
         val documents = Kind.Documents(if (any) listOf("*/*") else known.distinct())
         return when {
-            media.images -> Kind.Choice(media, if (onlyMedia) null else documents)
-            onlyMedia -> media
+            media.images -> Kind.Choice(media, if (onlyMedia && !filesForMedia) null else documents)
+            onlyMedia && !filesForMedia -> media
             else -> documents
         }
     }

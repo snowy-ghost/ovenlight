@@ -6,7 +6,8 @@ import org.junit.Test
 class FileChoiceTests {
     private val types = mapOf("pdf" to "application/pdf", "png" to "image/png", "jpg" to "image/jpeg", "mov" to "video/quicktime")
 
-    private fun kind(vararg accept: String, capture: Boolean = false) = FileChoice.kind(accept.toList(), capture) { types[it] }
+    private fun kind(vararg accept: String, capture: Boolean = false, filesForMedia: Boolean = false) =
+        FileChoice.kind(accept.toList(), capture, { types[it] }, filesForMedia)
 
     private fun choice(media: FileChoice.Kind.Media, documents: List<String>? = null) =
         FileChoice.Kind.Choice(media, documents?.let { FileChoice.Kind.Documents(it) })
@@ -28,6 +29,15 @@ class FileChoiceTests {
         )
         assertEquals("a name nobody knows takes any file", choice(FileChoice.Kind.Media(images = true, videos = false, single = null), listOf("*/*")), kind("image/*", ".heic2"))
         assertEquals(choice(FileChoice.Kind.Media(images = true, videos = false, single = null), listOf("*/*")), kind("image/*", "*/*"))
+    }
+
+    /** Before Android 11 the photo picker is a module Play services may not have yet. */
+    @Test
+    fun testMediaInputsOfferFilesBeforeAndroid11() {
+        assertEquals(choice(FileChoice.Kind.Media(images = true, videos = false, single = null), listOf("image/*")), kind("image/*", filesForMedia = true))
+        assertEquals(choice(FileChoice.Kind.Media(images = true, videos = false, single = "image/png"), listOf("image/png")), kind(".png", filesForMedia = true))
+        assertEquals(FileChoice.Kind.Documents(listOf("video/*")), kind("video/*", filesForMedia = true))
+        assertEquals(FileChoice.Kind.Camera(video = false), kind("image/*", capture = true, filesForMedia = true))
     }
 
     @Test
