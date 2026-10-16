@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
 import android.net.Uri
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -53,5 +54,28 @@ class RecentsTests {
         Thread.sleep(2_000)
         assertEquals("activities", listOf(fromLink), live())
         assertEquals("cards", 1, tasks.appTasks.size)
+    }
+
+    /**
+     * Recents restores a card into its own task, past singleTask (after a reboot, a link's card
+     * beside the icon's task). Its Ovenlight gives way to the running one: still one activity,
+     * in one card. Here the card is one Ovenlight adds itself, started into its own task as
+     * Recents starts one (Android 10 sends that start to the running Ovenlight instead).
+     */
+    @Test
+    fun testACardRestoredBesideOvenlightGivesWayToIt() {
+        tasks.appTasks.forEach { it.finishAndRemoveTask() }
+        context.startActivity(context.packageManager.getLaunchIntentForPackage(context.packageName)!!.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        waitFor("Ovenlight from the icon") { resumed() is MainActivity }
+        val running = resumed()!!
+        val size = tasks.appTaskThumbnailSize
+        val card = onMain {
+            tasks.addAppTask(running, Intent(context, MainActivity::class.java), null, Bitmap.createBitmap(size.width, size.height, Bitmap.Config.ARGB_8888))
+        }
+        tasks.appTasks.single { it.taskInfo?.taskId == card }.startActivity(context, Intent(context, MainActivity::class.java), null)
+        waitFor("the running one in front") { resumed() === running }
+        Thread.sleep(2_000)
+        assertEquals("activities", listOf(running), live())
+        assertEquals("cards with Ovenlight in them", 1, tasks.appTasks.count { it.taskInfo?.isRunning == true })
     }
 }

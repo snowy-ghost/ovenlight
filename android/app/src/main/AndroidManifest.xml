@@ -109,13 +109,11 @@
         <!-- The one activity. singleTask, so links arrive in onNewIntent and bringing it
              back closes a tab above it. It handles rotation, size, density, keyboard, UI
              mode, text size and bold text changes itself, so pages survive them. No task
-             affinity, so another app can't put its own screen into Ovenlight's task. Without
-             one, Recents can't match a task a link started to the icon's, so a task whose
-             activity the system finished (an update, Force stop) leaves Recents rather than
-             start a second Ovenlight from its card. Back never finishes it (MainActivity). -->
+             affinity, so another app can't put its own screen into Ovenlight's task. Back
+             never finishes it, and a card Recents restores beside it never starts a second
+             one (MainActivity). -->
         <activity
             android:name=".MainActivity"
-            android:autoRemoveFromRecents="true"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation|density|uiMode|fontScale|fontWeightAdjustment"
             android:exported="true"
             android:launchMode="singleTask"

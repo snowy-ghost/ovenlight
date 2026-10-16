@@ -1,5 +1,6 @@
 package com.snowyghost.ovenlight
 
+import android.app.ActivityManager
 import android.app.KeyguardManager
 import android.content.Intent
 import android.content.res.Configuration
@@ -51,6 +52,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        if (givesWayToAnotherOvenlight()) return finishAndRemoveTask()
         unlockPrompt = UnlockPrompt(this, confirmedAfterRestart = { lifecycleScope.launch { lock.unlock(screenLockEntered) } })
         // Collected while stopped too: the tab is in front then, and Ovenlight comes back over it.
         // A tab waits for the unlock, as iOS's sheets wait under the lock window.
@@ -69,6 +71,25 @@ class MainActivity : ComponentActivity() {
         val handled = savedInstanceState?.getBoolean(HANDLED_LAUNCH) ?: false
         if (!handled && intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY == 0) receive(intent)
         setContent { Root(OvenlightApp.model, onUnlock = { lifecycleScope.launch { lock.unlock(unlockPrompt) } }) }
+    }
+
+    /**
+     * One Ovenlight at a time, whatever started this one. singleTask keeps to that for every
+     * start but Recents', which starts a card's Ovenlight in the card's own task, even beside a
+     * running one (a link's card that outlived a reboot, say, beside the icon's task), and the
+     * two would share pages and a lifecycle. So Ovenlight's other cards go, and when one of them
+     * is running, this one goes instead and brings it to the front, so two never draw the same
+     * pages.
+     */
+    private fun givesWayToAnotherOvenlight(): Boolean {
+        // A card can go while this runs (swiped away, say), and its calls then throw: it counts as gone.
+        val others = getSystemService(ActivityManager::class.java).appTasks.mapNotNull { task ->
+            runCatching { task.taskInfo }.getOrNull()
+                ?.takeIf { it.taskId != taskId && it.baseIntent.component?.className == MainActivity::class.java.name }?.let { task to it }
+        }
+        val running = others.firstOrNull { (_, info) -> info.isRunning }?.first
+        others.forEach { (task, _) -> if (task !== running) runCatching { task.finishAndRemoveTask() } }
+        return running != null && runCatching { running.moveToFront() }.isSuccess
     }
 
     /**
