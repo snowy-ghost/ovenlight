@@ -520,9 +520,85 @@ class PageEdgesTests {
         load("<div style='position:fixed;inset:0' onclick='document.documentElement.requestFullscreen()'>Go</div>")
         tap()
         waitFor("full screen") { edges.fullscreen.value != null }
+        // A page could draw anything there: the notice names the app and the way out.
+        composeRule.onNodeWithText("Recipe Box is full screen").assertExists()
+        composeRule.onNodeWithText("Swipe down or press Back to exit").assertExists()
         composeRule.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
         waitFor("full screen to end") { edges.fullscreen.value == null }
         waitFor("the page to know") { evaluate("document.fullscreenElement === null").answer() == "true" }
+    }
+
+    // What a page can do to Ovenlight
+
+    /** An address of megabytes reaches no intent, and Ovenlight keeps running. */
+    @Test
+    fun testAnOversizedAddressLeavesOvenlightRunning() {
+        load("")
+        evaluate("location.href = 'https://example.com/?' + 'a'.repeat(1500000)")
+        waitFor("the policy") { seen.any { it.first.startsWith("https://example.com/?aaaa") } }
+        Thread.sleep(1_000)
+        assertTrue("nothing started", started.intents.isEmpty())
+        // Unwatched, as a real start would go: still nothing, and no crash.
+        instrumentation.removeMonitor(started)
+        seen.clear()
+        loadLink("intent://x#Intent;scheme=nothing;S.a=" + "b".repeat(1_500_000) + ";end")
+        tap()
+        waitFor("the tap") { seen.any { it.first.startsWith("intent:") } }
+        Thread.sleep(2_000)
+        assertNull(edges.dialog.value)
+        assertEquals(Lifecycle.State.RESUMED, onMain { composeRule.activity.lifecycle.currentState })
+        assertEquals("ready", title())
+    }
+
+    @Test
+    fun testAPagesHugeAlertIsCut() {
+        load("")
+        val result = evaluate("alert('x'.repeat(5e6)); 'after'")
+        waitFor("the alert") { edges.dialog.value is PageEdges.Dialog.Alert }
+        assertEquals(4_001, (edges.dialog.value as PageEdges.Dialog.Alert).message.length)
+        composeRule.onNodeWithText("OK").performClick()
+        assertEquals("\"after\"", result.answer())
+    }
+
+    /** Addresses java.net.URI refuses as written, which Chromium writes for an app's own pages. */
+    @Test
+    fun testTheAppsOwnOddAddressesStayInTheApp() {
+        for (suffix in listOf("?q={%22a%22:1}", "?a|b", "?x^y", "a[0]")) {
+            load("")
+            seen.clear()
+            evaluate("location.href = '$base$suffix'")
+            // Through the proxy with no route it fails to load, but it stays the app's page.
+            waitFor("the navigation to $suffix") { onMain { view.url.orEmpty() } != base && onMain { view.progress } == 100 }
+            Thread.sleep(1_000)
+            val showing = onMain { view.url.orEmpty() }
+            assertTrue("$suffix: $showing", showing.startsWith(base) && showing != base)
+            assertTrue("$suffix: allowed if asked: $seen", seen.none { it.second })
+            assertEquals("$suffix: never sent back", 0, homes)
+        }
+    }
+
+    /** Chrome's rule: past three dialogs in five seconds, the page's dialogs can be stopped until it loads again. */
+    @Test
+    fun testADialogLoopEnds() {
+        load("<script>function loop() { for (let i = 0; i < 50; i++) alert('again ' + i); document.title = 'done'; }</script>")
+        val result = evaluate("loop()")
+        for (i in 0 until 3) {
+            waitFor("dialog $i") { (edges.dialog.value as? PageEdges.Dialog.Alert)?.message == "again $i" }
+            composeRule.onNodeWithText("Don't let this app show more dialogs").assertDoesNotExist()
+            composeRule.onNodeWithText("OK").performClick()
+        }
+        waitFor("dialog 3") { (edges.dialog.value as? PageEdges.Dialog.Alert)?.message == "again 3" }
+        composeRule.onNodeWithText("Don't let this app show more dialogs").performClick()
+        composeRule.onNodeWithText("OK").performClick()
+        result.answer(10_000)
+        waitFor("the loop's end") { title() == "done" }
+        assertNull(edges.dialog.value)
+
+        // Loaded again, the page may ask again.
+        load("")
+        evaluate("alert('back')")
+        waitFor("a dialog again") { edges.dialog.value is PageEdges.Dialog.Alert }
+        composeRule.onNodeWithText("OK").performClick()
     }
 
     /** setGeolocationEnabled(false) already fails it before the prompt; the prompt's answer is no too. */

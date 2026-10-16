@@ -3,6 +3,7 @@ package com.snowyghost.ovenlight
 import java.net.URI
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -16,6 +17,25 @@ class NavigationPolicyTests {
     @Test
     fun testSameHostStaysInApp() {
         assertEquals(NavigationPolicy.Decision.Allow, decide("https://alex-mac.example.ts.net:8443/cards"))
+    }
+
+    /** Addresses Chromium writes that java.net.URI refuses as written: read through OkHttp, they stay in the app. */
+    @Test
+    fun testChromiumsAddressesStayInTheApp() {
+        for (suffix in listOf("/?q={%22a%22:1}", "/?a|b", "/?x^y", "/a[0]", "/?q=\"x\"", "/p#a#b")) {
+            val text = "https://alex-mac.example.ts.net$suffix"
+            val url = NavigationPolicy.pageURI(text)
+            assertNotNull(text, url)
+            assertEquals(text, NavigationPolicy.Decision.Allow, NavigationPolicy.decide(url!!, host, isMainFrame = true, tapped = false))
+        }
+        assertEquals(
+            "another site's stays another site's",
+            NavigationPolicy.Decision.OpenExternally(NavigationPolicy.pageURI("https://forms.example.com/?a|b")!!),
+            NavigationPolicy.decide(NavigationPolicy.pageURI("https://forms.example.com/?a|b")!!, host, isMainFrame = true, tapped = false),
+        )
+        assertEquals("forms.example.com", NavigationPolicy.pageURI("https://forms.example.com/?a|b")?.host)
+        assertEquals(URI("blob:https://alex-mac.example.ts.net/6f1c"), NavigationPolicy.pageURI("blob:https://alex-mac.example.ts.net/6f1c"))
+        assertNull("anything else unreadable is refused", NavigationPolicy.pageURI("mailto:a b|c"))
     }
 
     @Test

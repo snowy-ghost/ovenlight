@@ -15,6 +15,7 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
 /**
  * One web app the user can open. Each app gets its own WebView profile, so cookies,
@@ -302,6 +303,20 @@ object NavigationPolicy {
     }
 
     private val uriScheme = Regex("^[A-Za-z][A-Za-z0-9+.-]*:")
+
+    /**
+     * The longest address Ovenlight hands to another app or a browser, in characters (about
+     * 64 KB). A page can make one of megabytes, which no intent carries.
+     */
+    const val maxHandOffLength = 64 * 1024
+
+    /**
+     * A page's address as java.net.URI, read as Chromium writes it. An http(s) address goes
+     * through OkHttp's HttpUrl, which encodes what java.net.URI refuses (`{`, `"`, `|`, `^`,
+     * `[` in a path) and names the same place; anything else is read as written, and is
+     * refused if it can't be.
+     */
+    fun pageURI(text: String): URI? = text.toHttpUrlOrNull()?.toUri() ?: uri(text)
 
     /** The link as the confirmation names it, cut short. */
     fun target(url: URI): String {

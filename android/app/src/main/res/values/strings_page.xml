@@ -8,6 +8,11 @@
     <!-- The app's name, then the link, already quoted. -->
     <string name="page_open_elsewhere_body">%1$s wants to open %2$s.</string>
     <string name="page_prompt_field">Answer</string>
+    <!-- On a page's dialog after several in a row. -->
+    <string name="page_quiet_dialogs">Don\'t let this app show more dialogs</string>
+    <!-- As a page goes full screen: the app's name, then the way out. -->
+    <string name="page_fullscreen_notice">%1$s is full screen</string>
+    <string name="page_fullscreen_exit">Swipe down or press Back to exit</string>
     <!-- An image input's sheet. -->
     <string name="page_take_photo">Take photo</string>
     <string name="page_choose_photo">Choose photo</string>

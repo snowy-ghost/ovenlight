@@ -13,10 +13,10 @@ import android.util.Log
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.GeolocationPermissions
-import android.webkit.PermissionRequest
 import android.webkit.JsPromptResult
 import android.webkit.JsResult
 import android.webkit.MimeTypeMap
+import android.webkit.PermissionRequest
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -28,27 +28,42 @@ import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.areSystemBarsVisible
+import androidx.compose.foundation.layout.displayCutoutPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -56,11 +71,17 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.DialogWindowProvider
@@ -109,15 +130,18 @@ class PageEdges(
         /** Taken away unanswered: answers with its fallback, unless it was answered. */
         abstract fun dropped()
 
-        class Alert(val message: String, val answer: DialogAnswer<Unit>) : Dialog() {
+        /** A page's alert, confirm or prompt; past a few in a row it offers to stop them ([quietDialogs]). */
+        sealed class FromPage(val message: String, val offersQuiet: Boolean) : Dialog()
+
+        class Alert(message: String, offersQuiet: Boolean, val answer: DialogAnswer<Unit>) : FromPage(message, offersQuiet) {
             override fun dropped() = answer.dropped()
         }
 
-        class Confirm(val message: String, val answer: DialogAnswer<Boolean>) : Dialog() {
+        class Confirm(message: String, offersQuiet: Boolean, val answer: DialogAnswer<Boolean>) : FromPage(message, offersQuiet) {
             override fun dropped() = answer.dropped()
         }
 
-        class Prompt(val message: String, val defaultText: String, val answer: DialogAnswer<String?>) : Dialog() {
+        class Prompt(message: String, offersQuiet: Boolean, val defaultText: String, val answer: DialogAnswer<String?>) : FromPage(message, offersQuiet) {
             override fun dropped() = answer.dropped()
         }
 
@@ -158,7 +182,7 @@ class PageEdges(
 
     /** The page's client's shouldOverrideUrlLoading: true stops the navigation. */
     fun shouldOverrideUrlLoading(request: WebResourceRequest): Boolean {
-        val url = uri(request.url.toString()) ?: return true
+        val url = NavigationPolicy.pageURI(request.url.toString()) ?: return true
         return when (val decision = NavigationPolicy.decide(url, app.host, request.isForMainFrame, request.hasGesture())) {
             NavigationPolicy.Decision.Allow -> false
             NavigationPolicy.Decision.Refuse -> {
@@ -172,15 +196,22 @@ class PageEdges(
         }
     }
 
-    /** A main-frame address as the policy judges one the page went to by itself; one java.net.URI can't read is refused. */
+    /** A main-frame address as the policy judges one the page went to by itself; one that can't be read is refused. */
     private fun judge(url: String): NavigationPolicy.Decision =
-        uri(url)?.let { NavigationPolicy.decide(it, app.host, isMainFrame = true, tapped = false) } ?: NavigationPolicy.Decision.Refuse
+        NavigationPolicy.pageURI(url)?.let { NavigationPolicy.decide(it, app.host, isMainFrame = true, tapped = false) } ?: NavigationPolicy.Decision.Refuse
 
     /** What the view shows (not what a callback names) is an app's own page. */
     private fun showsAppPage(): Boolean = view.url?.let(::judge) == NavigationPolicy.Decision.Allow
 
     /** The page's client's onPageStarted, which comes as a main-frame navigation starts. */
-    fun pageStarted(url: String?) = skipped(url)
+    fun pageStarted(url: String?) {
+        // A page of the app loading again may show dialogs again.
+        if (url != null && judge(url) == NavigationPolicy.Decision.Allow) {
+            quiet = false
+            dialogTimes.clear()
+        }
+        skipped(url)
+    }
 
     /** The page's client's onPageFinished, which comes once one has committed, error pages included. */
     fun pageFinished(url: String?) {
@@ -261,6 +292,10 @@ class PageEdges(
     fun openExternally(url: URI) {
         if (!mayAct) return
         val scheme = url.scheme?.lowercase()
+        if (url.toString().length > NavigationPolicy.maxHandOffLength) {
+            Log.i(TAG, "${app.host}: refused a $scheme link too long to hand on")
+            return
+        }
         if (scheme == "http" || scheme == "https") {
             val page = if (NavigationPolicy.isOvenlightLink(url)) NavigationPolicy.joinPage(url) else url
             if (CustomTabs.open(context, page)) lifecycle.beginExcursion()
@@ -281,20 +316,17 @@ class PageEdges(
             "intent" -> pageIntent(url.toString(), context.packageName) ?: return null
             else -> Intent(Intent.ACTION_VIEW, url.toString().toUri()).addCategory(Intent.CATEGORY_BROWSABLE)
         }
-        val own = context.packageManager.queryIntentActivities(intent, 0).any { it.activityInfo.packageName == context.packageName }
+        // Unanswerable counts as Ovenlight's own: refused.
+        val own = systemCall("look up a link's app", true) {
+            context.packageManager.queryIntentActivities(intent, 0).any { it.activityInfo.packageName == context.packageName }
+        }
         return if (own) null else intent
     }
 
     /** Another app opens only from the page on screen, unlocked; it takes the person out of Ovenlight. */
     private fun start(intent: Intent) {
         if (!mayAct) return
-        try {
-            context.startActivity(intent)
-        } catch (_: ActivityNotFoundException) {
-            Log.i(TAG, "${app.host}: no app opens that link")
-        } catch (_: SecurityException) {
-            Log.i(TAG, "${app.host}: the app that link names isn't open to others")
-        }
+        systemCall("open another app", Unit) { context.startActivity(intent) }
     }
 
     // Dialogs
@@ -303,6 +335,30 @@ class PageEdges(
         if (!mayAct) return dialog.dropped()
         mutableDialog.value?.dropped()
         mutableDialog.value = dialog
+    }
+
+    /** When the page's recent dialogs showed, for Chrome's rule on dialog loops. */
+    private val dialogTimes = ArrayDeque<Long>()
+
+    /** The person stopped this page's dialogs: each is answered with its fallback at once, until the page next loads. */
+    private var quiet = false
+
+    /**
+     * A page's alert, confirm or prompt. Past [DIALOG_LOOP_COUNT] within [DIALOG_LOOP_MILLIS],
+     * each offers "Don't let this app show more dialogs", as Chrome does, so a page that
+     * asks in a loop can't trap the person.
+     */
+    private fun fromPage(make: (offersQuiet: Boolean) -> Dialog.FromPage) {
+        val now = SystemClock.elapsedRealtime()
+        while (dialogTimes.isNotEmpty() && now - dialogTimes.first() > DIALOG_LOOP_MILLIS) dialogTimes.removeFirst()
+        val dialog = make(dialogTimes.size >= DIALOG_LOOP_COUNT)
+        dialogTimes.addLast(now)
+        if (quiet) return dialog.dropped()
+        show(dialog)
+    }
+
+    fun quietDialogs() {
+        quiet = true
     }
 
     /** The dialog closed: answered, dismissed or let go, it answers once. */
@@ -467,17 +523,19 @@ class PageEdges(
 
     private inner class Chrome : WebChromeClient() {
         override fun onJsAlert(view: WebView, url: String?, message: String?, result: JsResult): Boolean {
-            show(Dialog.Alert(message.orEmpty(), DialogAnswer(Unit) { result.confirm() }))
+            fromPage { quiet -> Dialog.Alert(cut(message), quiet, DialogAnswer(Unit) { result.confirm() }) }
             return true
         }
 
         override fun onJsConfirm(view: WebView, url: String?, message: String?, result: JsResult): Boolean {
-            show(Dialog.Confirm(message.orEmpty(), DialogAnswer(false) { if (it) result.confirm() else result.cancel() }))
+            fromPage { quiet -> Dialog.Confirm(cut(message), quiet, DialogAnswer(false) { if (it) result.confirm() else result.cancel() }) }
             return true
         }
 
         override fun onJsPrompt(view: WebView, url: String?, message: String?, defaultValue: String?, result: JsPromptResult): Boolean {
-            show(Dialog.Prompt(message.orEmpty(), defaultValue.orEmpty(), DialogAnswer<String?>(null) { if (it != null) result.confirm(it) else result.cancel() }))
+            fromPage { quiet ->
+                Dialog.Prompt(cut(message), quiet, cut(defaultValue), DialogAnswer<String?>(null) { if (it != null) result.confirm(it) else result.cancel() })
+            }
             return true
         }
 
@@ -518,6 +576,21 @@ class PageEdges(
 
     companion object {
         private const val TAG = "Ovenlight"
+
+        /** A page's dialog text past this many characters is cut: a page can pass megabytes. */
+        private const val MAX_DIALOG_TEXT = 4_000
+
+        /** Chrome's rule: past three dialogs within five seconds, the page's dialogs can be stopped. */
+        private const val DIALOG_LOOP_COUNT = 3
+        private const val DIALOG_LOOP_MILLIS = 5_000L
+
+        /** A page's text as its dialog shows it, cut at [MAX_DIALOG_TEXT] without splitting a character. */
+        internal fun cut(text: String?): String {
+            val value = text.orEmpty()
+            if (value.length <= MAX_DIALOG_TEXT) return value
+            val end = if (value[MAX_DIALOG_TEXT - 1].isHighSurrogate()) MAX_DIALOG_TEXT - 1 else MAX_DIALOG_TEXT
+            return value.substring(0, end) + "\u2026"
+        }
 
         /** How long the way back from a stopped page may take before a new one is stopped again. */
         private const val RETURN_MILLIS = 3_000L
@@ -630,39 +703,80 @@ fun PageEdgesLayer(edges: PageEdges) {
     val dialog by edges.dialog.collectAsState()
     val fullscreen by edges.fullscreen.collectAsState()
     DisposableEffect(edges) { onDispose(edges::takenAway) }
-    fullscreen?.let { key(it) { FullscreenView(it, edges::exitFullscreen) } }
+    fullscreen?.let { key(it) { FullscreenView(it, edges.appName, edges::exitFullscreen) } }
     dialog?.let { key(it) { PageDialog(edges, it) } }
 }
 
+/**
+ * The page's full screen, with the system bars hidden. A page could draw anything there (a
+ * fake lock or system screen), so for its first seconds a notice names the app and the way
+ * out, as Chrome's does. Back exits, and so does a swipe that brings the bars back.
+ */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun FullscreenView(screen: PageEdges.Fullscreen, exit: () -> Unit) {
+private fun FullscreenView(screen: PageEdges.Fullscreen, appName: String, exit: () -> Unit) {
     val window = LocalActivity.current?.window
     DisposableEffect(window) {
         val bars = window?.let { WindowCompat.getInsetsController(it, it.decorView) }
-        bars?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        // Not transient: bars a swipe brings back stay, and that ends full screen below.
+        bars?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_DEFAULT
         bars?.hide(WindowInsetsCompat.Type.systemBars())
         onDispose { bars?.show(WindowInsetsCompat.Type.systemBars()) }
     }
+    val barsVisible = WindowInsets.areSystemBarsVisible
+    var barsWentAway by remember { mutableStateOf(false) }
+    LaunchedEffect(barsVisible) {
+        if (!barsVisible) barsWentAway = true else if (barsWentAway) exit()
+    }
     BackHandler(onBack = exit)
-    AndroidView(
-        factory = { screen.view.also { (it.parent as? ViewGroup)?.removeView(it) } },
-        modifier = Modifier.fillMaxSize().background(Color.Black),
-    )
+    var notice by remember { mutableStateOf(true) }
+    LaunchedEffect(Unit) {
+        delay(FULLSCREEN_NOTICE_MILLIS)
+        notice = false
+    }
+    Box(Modifier.fillMaxSize().background(Color.Black)) {
+        AndroidView(
+            factory = { screen.view.also { (it.parent as? ViewGroup)?.removeView(it) } },
+            modifier = Modifier.fillMaxSize(),
+        )
+        AnimatedVisibility(
+            notice, Modifier.align(Alignment.TopCenter).displayCutoutPadding().padding(top = 24.dp, start = 16.dp, end = 16.dp),
+            enter = fadeIn(), exit = fadeOut(),
+        ) {
+            Column(
+                Modifier.background(Color.Black.copy(alpha = 0.8f), RoundedCornerShape(16.dp)).padding(horizontal = 20.dp, vertical = 12.dp)
+                    .semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite },
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(stringResource(R.string.page_fullscreen_notice, appName), color = Color.White, style = MaterialTheme.typography.titleSmall, textAlign = TextAlign.Center)
+                Text(stringResource(R.string.page_fullscreen_exit), color = Color.White, style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center)
+            }
+        }
+    }
 }
+
+/** How long full screen's notice shows, as Chrome's does. */
+private const val FULLSCREEN_NOTICE_MILLIS = 4_000L
 
 @Composable
 private fun PageDialog(edges: PageEdges, dialog: PageEdges.Dialog) {
     // Whatever takes it away answers it with its fallback, once.
     DisposableEffect(dialog) { onDispose(dialog::dropped) }
-    val dismiss = { edges.dismiss(dialog) }
+    // Closed any way the person closes it, a page's dialog stops the rest if they chose so.
+    var stopMore by remember(dialog) { mutableStateOf(false) }
+    val dismiss = {
+        if (stopMore) edges.quietDialogs()
+        edges.dismiss(dialog)
+    }
     val title: @Composable () -> Unit = { Text(edges.appName) }
+    val quiet: @Composable () -> Unit = { if ((dialog as? PageEdges.Dialog.FromPage)?.offersQuiet == true) QuietChoice(stopMore) { stopMore = it } }
     when (dialog) {
         is PageEdges.Dialog.Alert -> AlertDialog(
-            onDismissRequest = dismiss, title = title, text = { PageMessage(dialog.message) },
+            onDismissRequest = dismiss, title = title, text = { PageMessage(dialog.message, quiet) },
             confirmButton = { TextButton(onClick = { dialog.answer(Unit); dismiss() }) { Text(stringResource(R.string.page_ok)) } },
         )
         is PageEdges.Dialog.Confirm -> AlertDialog(
-            onDismissRequest = dismiss, title = title, text = { PageMessage(dialog.message) },
+            onDismissRequest = dismiss, title = title, text = { PageMessage(dialog.message, quiet) },
             confirmButton = { TextButton(onClick = { dialog.answer(true); dismiss() }) { Text(stringResource(R.string.page_ok)) } },
             dismissButton = { TextButton(onClick = { dialog.answer(false); dismiss() }) { Text(stringResource(R.string.page_cancel)) } },
         )
@@ -671,13 +785,13 @@ private fun PageDialog(edges: PageEdges, dialog: PageEdges.Dialog) {
             AlertDialog(
                 onDismissRequest = dismiss, title = title,
                 text = {
-                    Column {
-                        PageMessage(dialog.message)
+                    PageMessage(dialog.message) {
                         OutlinedTextField(
                             value = text, onValueChange = { text = it }, singleLine = true,
                             label = { Text(stringResource(R.string.page_prompt_field)) },
                             modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
                         )
+                        quiet()
                     }
                 },
                 confirmButton = { TextButton(onClick = { dialog.answer(text); dismiss() }) { Text(stringResource(R.string.page_ok)) } },
@@ -735,8 +849,24 @@ internal const val PROMPT_DELAY_MILLIS = 500L
 
 /** A page's message, which can run long. */
 @Composable
-private fun PageMessage(message: String) {
-    if (message.isNotEmpty()) Text(message, Modifier.verticalScroll(rememberScrollState()))
+private fun PageMessage(message: String, below: @Composable () -> Unit = {}) {
+    Column {
+        // Scrolls in what's left once what goes below it has its room.
+        if (message.isNotEmpty()) Text(message, Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()))
+        below()
+    }
+}
+
+/** Chrome's way out of a page's dialog loop. */
+@Composable
+private fun QuietChoice(checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().padding(top = 8.dp).heightIn(min = 48.dp).toggleable(checked, role = Role.Checkbox, onValueChange = onChange),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Checkbox(checked = checked, onCheckedChange = null)
+        Text(stringResource(R.string.page_quiet_dialogs), Modifier.padding(start = 12.dp), style = MaterialTheme.typography.bodyMedium)
+    }
 }
 
 /**

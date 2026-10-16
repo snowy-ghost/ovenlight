@@ -51,6 +51,7 @@ rm -f "$OUT"/*.png "$OUT"/*.log "$OUT/gates.txt"
 pids=
 connector_pid=
 emulator_port=
+chrome_flags=
 
 say() { printf '== %s\n' "$*"; printf '%s\n' "$*" >> "$OUT/gates.txt"; }
 note() { printf '   %s\n' "$*"; printf '   %s\n' "$*" >> "$OUT/gates.txt"; }
@@ -85,6 +86,11 @@ cleanup() {
   cp $D/*.log $OUT/ 2>/dev/null || true
   if [[ -n $emulator_port ]]; then
     a logcat -d > $OUT/logcat.log 2>/dev/null || true
+    # As edges leaves Chrome, so the AVD is as it was.
+    if [[ -n ${chrome_flags:-} ]]; then
+      a shell rm -f /data/local/tmp/chrome-command-line >/dev/null 2>&1 || true
+      a shell am clear-debug-app >/dev/null 2>&1 || true
+    fi
     a uninstall $PKG >/dev/null 2>&1 || true
     a reverse --remove-all >/dev/null 2>&1 || true
     $ROOT/android/scripts/avds.sh stop $emulator_port || true
@@ -454,10 +460,25 @@ EOF
     done
     return 1
   }
+  # Back out of whatever the browser shows (the Custom Tab, or a page of its own) until
+  # Ovenlight is in front; one that keeps the front is closed by bringing Ovenlight back,
+  # which clears what sits above it in its task.
   back_to_edges() {
-    a shell input keyevent KEYCODE_BACK
-    await_text 20 "Recipe Box edges" || fail "$1: Ovenlight didn't come back to the page: $(screen_text | tr '\n' '|')"
+    for i in 1 2 3; do
+      [[ $(front) == *$PKG* ]] && break
+      a shell input keyevent KEYCODE_BACK; sleep 2
+    done
+    [[ $(front) == *$PKG* ]] || a shell am start -n $PKG/.MainActivity >/dev/null
+    await_text 20 "Recipe Box edges" || fail "$1: Ovenlight didn't come back to the page: $(front) $(screen_text | tr '\n' '|')"
   }
+  # Chrome's first run would stay in front of every tab: Chrome reads these flags as the
+  # debug app, and cleanup takes them away again.
+  if [[ -n $(a shell pm path com.android.chrome 2>/dev/null) ]]; then
+    chrome_flags=1
+    a shell 'echo "_ --disable-fre --no-default-browser-check --no-first-run" > /data/local/tmp/chrome-command-line'
+    a shell am set-debug-app --persistent com.android.chrome >/dev/null
+    a shell am force-stop com.android.chrome
+  fi
   a shell "am start -W -n $PKG/.MainActivity --es controlURL $CTRL --es authKey $KEY" >/dev/null
   await_text 90 Recipes Pantry || fail "the launcher never showed both apps: $(screen_text | tr '\n' '|')"
   tap_text Recipes

@@ -1,9 +1,9 @@
 package com.snowyghost.ovenlight
 
-import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.util.Log
 import androidx.browser.customtabs.CustomTabColorSchemeParams
 import androidx.browser.customtabs.CustomTabsClient
 import androidx.browser.customtabs.CustomTabsIntent
@@ -34,13 +34,9 @@ object CustomTabs {
             Intent(Intent.ACTION_VIEW, uri).addCategory(Intent.CATEGORY_BROWSABLE)
         }
         browser?.let(intent::setPackage)
-        return try {
-            context.startActivity(intent)
-            true
-        } catch (_: ActivityNotFoundException) {
-            chosen = null
-            false
-        }
+        if (systemCall("open a web page", false) { context.startActivity(intent); true }) return true
+        chosen = null
+        return false
     }
 
     /** The browser pages open in: the default one if it offers Custom Tabs, else any that does, else the default. */
@@ -61,4 +57,17 @@ object CustomTabs {
 
     private fun installed(context: Context, packageName: String): Boolean =
         runCatching { context.packageManager.getPackageInfo(packageName, 0) }.isSuccess
+}
+
+/**
+ * A call that hands a page's address to the system: starting an activity, or asking which
+ * ones take an intent. Any of them throws for an intent too big for a binder transaction
+ * (TransactionTooLargeException, wrapped in a RuntimeException), as well as for no app or an
+ * app closed to others, so each goes through here and comes back [fallback] instead.
+ */
+internal inline fun <T> systemCall(what: String, fallback: T, call: () -> T): T = try {
+    call()
+} catch (e: RuntimeException) {
+    Log.i("Ovenlight", "couldn't $what: ${e.javaClass.simpleName}")
+    fallback
 }
