@@ -9,11 +9,13 @@
 #
 # gates runs Phase 1's checks G2 to G5 through the debug lab. owner signs the owner's node in
 # with a preauth key and waits for the launcher to show both test apps. signin goes through
-# the launcher's Connect card and the sign-in page in a Custom Tab, approves the phone after
-# [seconds] (default 30), and checks that it ends connected. screens signs in as owner does,
-# takes the launcher, Settings and lock screenshots in light and dark, and checks the lock: at
-# Immediately, Home and back through the icon or Recents asks for it, and a canceled prompt
-# doesn't come back by itself. app opens Recipes from the launcher and waits for its page.
+# the launcher's Connect card and the sign-in page in Chrome's Custom Tab, approves the phone
+# after [seconds] (default 90: Android freezes an app about a minute after it goes out of
+# sight), and checks that Ovenlight comes back over the tab by itself, connected. screens
+# signs in as owner does, takes the launcher, Settings and lock screenshots in light and
+# dark, and checks the lock: at Immediately, Home and back through the icon or Recents asks
+# for it, and a canceled prompt doesn't come back by itself. app opens Recipes from the
+# launcher and waits for its page.
 # chrome opens Recipes, closes the pill's one-time tip, brings the pill back with its handle,
 # opens the app menu and writes feedback, locks and unlocks with the note still there, sends
 # it, and checks that the connector got it, screenshot and all, with no pill or handle in the
@@ -42,7 +44,7 @@
 set -Eeuo pipefail
 
 SCENARIO=${1:-gates}
-SIGNIN_WAIT=30
+SIGNIN_WAIT=90
 [[ $SCENARIO == signin && ${2:-} =~ ^[0-9]+$ ]] && { SIGNIN_WAIT=$2; shift; }
 AVD_ARG=${2:-}
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -895,6 +897,7 @@ fi
 
 if [[ $SCENARIO == signin ]]; then
   say "signin: Use my own computers, then Connect, then the sign-in page in a Custom Tab"
+  chrome_without_first_run
   a shell "am start -W -n $PKG/.MainActivity --es controlURL $CTRL" >/dev/null
   await_text 30 "Use my own computers" || fail "no welcome: $(screen_text | tr '\n' '|')"
   tap_text "Use my own computers"
@@ -913,16 +916,11 @@ if [[ $SCENARIO == signin ]]; then
   note "the sign-in page opened in a Custom Tab; approving in $SIGNIN_WAIT s"
   sleep $SIGNIN_WAIT
   $HS -c $D/headscale.yaml nodes register --user owner --key "$reg" >/dev/null || fail "headscale couldn't register the phone"
-  # Ovenlight comes back over the tab once the node connects, if Android lets it learn that
-  # while away; otherwise closing the tab brings it back to check.
-  if await_text 20 Recipes Pantry; then
-    note "Ovenlight came back over the tab by itself"
-  else
-    note "still behind the tab after 20 s; closing it"
-    a shell input keyevent KEYCODE_BACK
-    await_text 40 Recipes Pantry || { shot signin-failed; fail "not connected after closing the tab: $(screen_text | tr '\n' '|')"; }
-    note "connected after the tab closed"
-  fi
+  # Ovenlight comes back over the tab by itself once the node connects, as on iOS.
+  for i in $(seq 1 30); do [[ $(front) == *$PKG* ]] && break; sleep 1; done
+  [[ $(front) == *$PKG* ]] || { shot signin-failed; fail "still behind the tab 30 s after the approval: $(front)"; }
+  await_text 40 Recipes Pantry || { shot signin-failed; fail "back over the tab, but not connected: $(screen_text | tr '\n' '|')"; }
+  note "Ovenlight came back over the tab by itself, connected"
   shot signin-connected
   say "PASSED"
   exit 0
