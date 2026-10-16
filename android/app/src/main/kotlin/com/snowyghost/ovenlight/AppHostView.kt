@@ -13,20 +13,15 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -58,7 +53,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import kotlinx.coroutines.delay
@@ -231,7 +225,7 @@ private fun LaunchPlaceholder(app: WebApp, icon: Bitmap?, tint: Color?) {
 /** Can't Reach, or a page that couldn't load: Try again, and the way back to the apps. */
 @Composable
 private fun LoadErrorView(title: String, message: String, retry: () -> Unit, close: () -> Unit) {
-    CenteredScroll(contentPadding = 32.dp) {
+    CenteredScroll(Modifier.background(MaterialTheme.colorScheme.background), contentPadding = 32.dp) {
         Icon(painterResource(R.drawable.ic_warning), contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(40.dp))
         Text(title, Modifier.padding(top = 16.dp), style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center)
         Text(message, Modifier.padding(top = 8.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
@@ -243,7 +237,7 @@ private fun LoadErrorView(title: String, message: String, retry: () -> Unit, clo
 /** The owner's sign-in or device approval, or a failure, with the way back to the apps. A guest sees only a failure. */
 @Composable
 private fun NodeActionCard(app: WebApp, action: NodeActionOverlay.Action, deviceName: String, connect: () -> Unit, retry: () -> Unit, close: () -> Unit) {
-    CenteredScroll {
+    CenteredScroll(Modifier.background(MaterialTheme.colorScheme.background)) {
         ElevatedCard(Modifier.padding(24.dp).widthIn(max = 480.dp)) {
             Column(Modifier.padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 when (action) {
@@ -267,21 +261,5 @@ private fun NodeActionCard(app: WebApp, action: NodeActionOverlay.Action, device
                 TextButton(onClick = close, Modifier.padding(top = 8.dp)) { Text(stringResource(R.string.app_back_to_apps)) }
             }
         }
-    }
-}
-
-/**
- * A state over the app on its background, centered in the safe area, that scrolls only when the
- * largest text sizes don't fit.
- */
-@Composable
-private fun CenteredScroll(contentPadding: Dp = 0.dp, content: @Composable ColumnScope.() -> Unit) {
-    BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).safeDrawingPadding()) {
-        Column(
-            Modifier.verticalScroll(rememberScrollState()).heightIn(min = maxHeight).fillMaxWidth().padding(contentPadding),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-            content = content,
-        )
     }
 }

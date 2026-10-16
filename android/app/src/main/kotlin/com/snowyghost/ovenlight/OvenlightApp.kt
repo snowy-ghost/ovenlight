@@ -388,8 +388,9 @@ private fun ScreenLayer(model: AppModel) {
     val shownState = rememberScreenShown(screen != null)
     rememberTransition(shownState, label = "screen").AnimatedVisibility(
         visible = { it },
-        enter = slideInHorizontally(screenTween()) { it } + fadeIn(screenTween()),
-        exit = slideOutHorizontally(screenTween()) { it } + fadeOut(screenTween()),
+        // No fade: as Android's own screens do, the screen slides over what Back reveals.
+        enter = slideInHorizontally(screenTween()) { it },
+        exit = slideOutHorizontally(screenTween()) { it },
     ) {
         val shown = screen ?: last ?: return@AnimatedVisibility
         val close = { if (router.sheet.value?.id == shown.id) router.sheet.value = null }

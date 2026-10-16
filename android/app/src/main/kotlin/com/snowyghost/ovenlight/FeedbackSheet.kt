@@ -127,6 +127,7 @@ fun FeedbackSheet(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false, dismissOnBackPress = !sending),
     ) {
+        FullScreenDialogBars()
         val title = stringResource(R.string.feedback_title)
         val background = LocalOvenColors.current.groupedBackground
         Scaffold(

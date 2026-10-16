@@ -82,7 +82,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.compose.ui.window.DialogWindowProvider
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
@@ -920,7 +919,7 @@ private fun QuietChoice(checked: Boolean, onChange: (Boolean) -> Unit) {
 internal fun GuardedFromOverlays() {
     val view = LocalView.current
     DisposableEffect(view) {
-        val window = generateSequence(view.parent) { it.parent }.firstNotNullOfOrNull { (it as? DialogWindowProvider)?.window }
+        val window = view.dialogWindow()
         window?.decorView?.filterTouchesWhenObscured = true
         if (Build.VERSION.SDK_INT >= 31) window?.setHideOverlayWindows(true)
         onDispose { if (Build.VERSION.SDK_INT >= 31) window?.setHideOverlayWindows(false) }
