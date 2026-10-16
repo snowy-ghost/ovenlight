@@ -233,7 +233,8 @@ private fun LockWindowContent(
     shown: MutableTransitionState<Boolean>, locked: Boolean, authenticating: Boolean, error: String?, onUnlock: () -> Unit,
 ) {
     FullScreenDialogBars()
-    GuardedFromOverlays()
+    // Not guarded from overlays as Ovenlight's prompts are: a tap on Unlock only opens the
+    // system's prompt, and the guard would drop every tap under a screen-dimming app.
     // As the activity's window: no scrim behind the navigation bar, and no dialog animation
     // or dim, so it shows at once and fades over the content alone.
     val view = LocalView.current
