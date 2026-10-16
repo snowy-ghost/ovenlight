@@ -205,9 +205,9 @@ class PageScriptTests {
                 ".getHighEntropyValues(['model', 'platformVersion']).then(h => window.hints = JSON.stringify(h), " +
                 "e => window.hints = 'failed') : (window.hints = 'none')",
         )
-        until(what = "the client hints") { eval("window.hints") != "\"pending\"" }
+        until(what = "the client hints") { eval("window.hints") != "pending" }
         val model = eval("window.hints === 'none' ? '' : (JSON.parse(window.hints).model || '')")
-        assertEquals("no model in the client hints", "\"\"", model)
+        assertEquals("no model in the client hints: ${eval("window.hints")}", "", model)
     }
 
     @Test
