@@ -290,7 +290,7 @@ class PageEdges(
         }
         if (scheme == "http" || scheme == "https") {
             val page = if (NavigationPolicy.isOvenlightLink(url)) NavigationPolicy.joinPage(url) else url
-            if (CustomTabs.open(context, page)) lifecycle.beginExcursion()
+            CustomTabs.open(context, page, lifecycle)
             return
         }
         val intent = handOff(url) ?: run {

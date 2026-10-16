@@ -110,9 +110,7 @@ class MainActivity : ComponentActivity() {
         if (model.openTab != null || locked || !started) return
         model.openTab = sheet
         model.router.sheetAppeared()
-        if (CustomTabs.open(this, url)) {
-            model.lifecycle.beginExcursion()
-        } else {
+        if (!CustomTabs.open(this, url, model.lifecycle)) {
             model.openTab = null
             model.router.sheet.value = null
             model.router.sheetDismissed()

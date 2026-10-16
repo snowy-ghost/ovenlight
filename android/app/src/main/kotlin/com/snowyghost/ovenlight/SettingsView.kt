@@ -167,15 +167,10 @@ fun SettingsView(model: AppModel, onClose: () -> Unit) {
             onClose()
         },
         contactUs = { MailDraft.contactUs(version).send(context) },
-        privacyPolicy = { openPrivacyPolicy(context) },
+        privacyPolicy = { CustomTabs.open(context, AppLinks.privacyPolicy, model.lifecycle) },
         notices = { withContext(Dispatchers.IO) { Acknowledgements.notices { context.assets.open(it) } } },
     )
     SettingsScreen(state, onClose)
-}
-
-/** The privacy policy, in the browser until this branch has CustomTabs.open, which design.md asks for. */
-private fun openPrivacyPolicy(context: Context) {
-    CustomTabs.open(context, AppLinks.privacyPolicy)
 }
 
 /** Starts another app's screen; false when no app handles it. */
