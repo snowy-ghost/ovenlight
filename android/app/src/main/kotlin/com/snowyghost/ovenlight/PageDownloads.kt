@@ -452,6 +452,13 @@ object DownloadShelf {
     /** Last session's files: saved, shared, opened or left waiting. */
     fun emptyAtLaunch(context: Context) {
         folder(context).deleteRecursively()
+        // Save holds a file's write grant only until it has written; a process that died before
+        // that left one behind, which no Save waits for now.
+        for (grant in context.contentResolver.persistedUriPermissions) {
+            val flags = (if (grant.isReadPermission) Intent.FLAG_GRANT_READ_URI_PERMISSION else 0) or
+                (if (grant.isWritePermission) Intent.FLAG_GRANT_WRITE_URI_PERMISSION else 0)
+            runCatching { context.contentResolver.releasePersistableUriPermission(grant.uri, flags) }
+        }
     }
 }
 
