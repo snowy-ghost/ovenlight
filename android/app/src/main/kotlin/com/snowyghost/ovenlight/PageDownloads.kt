@@ -40,6 +40,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
+import androidx.lifecycle.Lifecycle
 import androidx.webkit.URLUtilCompat
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -60,6 +61,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -622,15 +624,17 @@ private fun DownloadSheet(model: AppModel, app: WebApp, download: DownloadShelf.
             canOpen = canOpen,
             onSave = {
                 done {
-                    SaveDocument.launch(context, download.file, type, model.scope, model.lifecycle)
+                    SaveDocument.launch(context, download.file, type, model)
                 }
             },
-            // The Sharesheet and Open take the person to another app, so they are leaving.
+            // The Sharesheet and Open take the person to another app, so they are leaving. Each
+            // runs in a task of its own, never under Ovenlight's card, where Recents would bring
+            // the file back without the unlock; the chooser closes as the person leaves it.
             onShare = {
                 done {
-                    val send = Intent(Intent.ACTION_SEND).setType(type).putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    val send = Intent(Intent.ACTION_SEND).setType(type).putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
                     send.clipData = ClipData.newRawUri(download.file.name, uri)
-                    context.startActivity(Intent.createChooser(send, null))
+                    context.startActivity(Intent.createChooser(send, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 }
             },
             onOpen = {
@@ -647,27 +651,37 @@ private fun DownloadSheet(model: AppModel, app: WebApp, download: DownloadShelf.
 /**
  * Save, through the system's create-document picker. Registered on the activity outside
  * composition, so the picker's answer reaches the file it was opened for even after the sheet
- * has gone, or the lock came meanwhile.
+ * has gone, or the lock came meanwhile; then the file is written after the unlock.
  */
 private object SaveDocument {
-    fun launch(context: Context, file: File, type: String, scope: CoroutineScope, lifecycle: AppLifecycle) {
+    fun launch(context: Context, file: File, type: String, model: AppModel) {
         val activity = context.componentActivity() ?: return
         val failed = activity.getString(R.string.download_save_failed, file.name)
         // The picker hands its answer back: an excursion, not leaving.
-        lifecycle.beginExcursion()
-        activity.launchOnce(ActivityResultContracts.CreateDocument(type), file.name, failed = lifecycle::excursionEnded) { target ->
+        model.lifecycle.beginExcursion()
+        activity.launchOnce(ActivityResultContracts.CreateDocument(type), file.name, failed = model.lifecycle::excursionEnded) { target ->
             target ?: return@launchOnce
-            scope.launch {
+            // The picker's grant ends with this activity, which may go before the unlock; a
+            // persisted one lasts until the file is written.
+            val resolver = activity.applicationContext.contentResolver
+            val write = Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            runCatching { resolver.takePersistableUriPermission(target, write) }
+            model.scope.launch {
+                // A return from the picker may lock first, as Ovenlight starts again.
+                activity.lifecycle.currentStateFlow.first { it.isAtLeast(Lifecycle.State.STARTED) || it == Lifecycle.State.DESTROYED }
+                model.lock.isLocked.first { !it }
                 val saved = withContext(Dispatchers.IO) {
-                    runCatching { activity.contentResolver.openOutputStream(target)?.use { out -> file.inputStream().use { it.copyTo(out) } } != null }.getOrDefault(false)
+                    runCatching { resolver.openOutputStream(target)?.use { out -> file.inputStream().use { it.copyTo(out) } } != null }.getOrDefault(false)
                 }
-                if (!saved) Toast.makeText(activity, failed, Toast.LENGTH_LONG).show()
+                runCatching { resolver.releasePersistableUriPermission(target, write) }
+                if (!saved) Toast.makeText(activity.applicationContext, failed, Toast.LENGTH_LONG).show()
             }
         }
     }
 }
 
-private fun open(uri: Uri, type: String) = Intent(Intent.ACTION_VIEW).setDataAndType(uri, type).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+private fun open(uri: Uri, type: String) =
+    Intent(Intent.ACTION_VIEW).setDataAndType(uri, type).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
 
 @Composable
 internal fun DownloadSheetContent(name: String, size: String, canOpen: Boolean, onSave: () -> Unit, onShare: () -> Unit, onOpen: () -> Unit) {

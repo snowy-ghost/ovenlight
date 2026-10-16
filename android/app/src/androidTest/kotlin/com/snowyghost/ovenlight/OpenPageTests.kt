@@ -1,8 +1,10 @@
 package com.snowyghost.ovenlight
 
 import android.accessibilityservice.AccessibilityServiceInfo
+import android.graphics.Rect
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityWindowInfo
 import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -50,7 +52,8 @@ class OpenPageTests {
         <input id=field aria-label='Page field' style='font-size:24px;width:80%'>
         <input id=when type=date value='2026-03-05' aria-label='Page date' style='font-size:24px;width:80%;margin-top:24px'>
         <input id=tint type=color value='#336699' aria-label='Page color' style='display:block;width:120px;height:60px;margin-top:24px'>
-        <select id=pick aria-label='Page choice' style='position:fixed;left:10%;width:80%;top:55%;height:96px;font-size:32px'>
+        <closed-date id=inner style='display:block;margin-top:24px'></closed-date>
+        <select id=pick aria-label='Page choice' style='position:fixed;left:10%;width:80%;top:70%;height:96px;font-size:32px'>
           <option>Alpha option</option><option>Beta option</option><option>Gamma option</option>
         </select>
         <script>
@@ -59,6 +62,15 @@ class OpenPageTests {
           window.ticks = 0;
           addEventListener('keydown', () => { window.keys++; }, true);
           setInterval(() => { window.ticks++; }, 100);
+          // Out of every script's reach but the page's own, as a web component's input can be.
+          customElements.define('closed-date', class extends HTMLElement {
+            constructor() {
+              super();
+              window.closedDate = Object.assign(document.createElement('input'), { type: 'date', value: '2026-03-05' });
+              window.closedDate.style.cssText = 'font-size:24px;width:100%';
+              this.attachShadow({ mode: 'closed' }).append(window.closedDate);
+            }
+          });
         </script>
     """.trimIndent()
 
@@ -115,21 +127,22 @@ class OpenPageTests {
         instrumentation.waitForIdleSync()
     }
 
-    /**
-     * What the screen showed while the system's prompt, which came with the lock, was closed
-     * with Back. The prompt hides the windows under it, and Back may close a picker above it
-     * first, so the screen is read before each Back and once the prompt is gone.
-     */
-    private fun screenThroughThePrompt(): List<String> {
-        val seen = screen().toMutableList()
-        repeat(3) {
-            if (!model.lock.isAuthenticating.value) return@repeat
-            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
-            Thread.sleep(1_000)
-            seen += screen()
-        }
-        assertFalse("the prompt didn't close", model.lock.isAuthenticating.value)
-        return seen
+    /** Leaves Ovenlight and comes back past the delay, to the lock and the system's prompt. */
+    private fun leaveAndComeBackLocked() {
+        model.lock.lockAfterSeconds = 0
+        scenario.moveToState(Lifecycle.State.CREATED)
+        Thread.sleep(500)
+        scenario.moveToState(Lifecycle.State.RESUMED)
+        waitFor("the lock") { model.lock.isLocked.value }
+        model.lock.lockAfterSeconds = 300
+    }
+
+    /** Closes the system's prompt with Back, once it shows: before, Back would go to the lock screen and leave. */
+    private fun closeThePrompt() {
+        if (!model.lock.isAuthenticating.value) return
+        waitFor("the prompt") { find("Unlock Ovenlight") != null }
+        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+        waitFor("the prompt to close") { !model.lock.isAuthenticating.value }
     }
 
     /** The text, descriptions and classes of every window on screen, as TalkBack reads them. */
@@ -146,6 +159,33 @@ class OpenPageTests {
             for (i in 0 until node.childCount) walk(node.getChild(i))
         }
         ui.windows.forEach { walk(it.root) }
+        return seen
+    }
+
+    /** The middle of what on screen shows or describes itself as [label], in any window but the page's. */
+    private fun find(label: String): Pair<Float, Float>? {
+        screen()
+        fun walk(node: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
+            if (node == null || node.className == "android.webkit.WebView") return null
+            if (node.text?.toString() == label || node.contentDescription?.toString() == label) return node
+            return (0 until node.childCount).firstNotNullOfOrNull { walk(node.getChild(it)) }
+        }
+        val node = instrumentation.uiAutomation.windows.firstNotNullOfOrNull { walk(it.root) } ?: return null
+        val box = Rect().also(node::getBoundsInScreen)
+        return box.exactCenterX() to box.exactCenterY()
+    }
+
+    /** The topmost of Ovenlight's windows. */
+    private fun topWindow(): List<String> {
+        screen()
+        val top = instrumentation.uiAutomation.windows.filter { it.type == AccessibilityWindowInfo.TYPE_APPLICATION }.maxBy { it.layer }
+        val seen = mutableListOf<String>()
+        fun walk(node: AccessibilityNodeInfo?) {
+            node ?: return
+            listOfNotNull(node.text, node.contentDescription).forEach { seen += it.toString() }
+            for (i in 0 until node.childCount) walk(node.getChild(i))
+        }
+        walk(top.root)
         return seen
     }
 
@@ -200,59 +240,52 @@ class OpenPageTests {
         waitFor("a key in the page") { number("window.keys") > 0 }
     }
 
-    @Test
-    fun testAnOpenSelectNeverShowsOverTheLock() {
-        tap(element("pick"))
-        waitFor("the select's list") { screen().contains("Beta option") }
-        lock()
-        val locked = screen()
-        for (mark in pageMarks) assertFalse("$mark over the lock: $locked", locked.contains(mark))
-        unlock()
-        assertEquals("the choice didn't change", "\"Alpha option\"", evaluate("document.getElementById('pick').value"))
-    }
+    /**
+     * A picker, the choice made in it before the lock, and what takes that choice. A select's list
+     * closes as its page leaves the window; the pickers stay open.
+     */
+    private class Picker(val opens: String, val value: String, val was: String, val choice: String?, val takes: String, val chosen: String, val staysOpen: Boolean = true)
 
-    /** WebView's date picker is a window of its own, which leaving composition doesn't close. */
+    /**
+     * WebView's select lists and pickers are windows of their own, which leaving composition
+     * doesn't close, and nothing reaches one a closed shadow root holds. Whatever a page left
+     * open stays under the lock window, on both ways in: the lock is the topmost window, and a tap
+     * where the picker's Set was changes nothing. After the unlock the picker is still open, as on
+     * iOS, and the same tap does set it, so the tap above was in the right place.
+     */
     @Test
-    fun testAnOpenDatePickerNeverShowsOverTheLock() {
-        tap(element("when"))
-        waitFor("the date picker") { screen().any { it.contains("DatePicker") } }
-        lock()
-        val locked = screen()
-        assertFalse("a date picker over the lock: $locked", locked.any { it.contains("DatePicker") })
-        unlock()
-        assertEquals("the date didn't change", "\"2026-03-05\"", evaluate("document.getElementById('when').value"))
-    }
-
-    /** Leaving with the picker open and coming back locked: Android shows an activity's dialogs again as it returns. */
-    @Test
-    fun testADatePickerLeftOpenIsGoneWhenOvenlightComesBackLocked() {
-        tap(element("when"))
-        waitFor("the date picker") { screen().any { it.contains("DatePicker") } }
-        model.lock.lockAfterSeconds = 0
-        scenario.moveToState(Lifecycle.State.CREATED)
-        Thread.sleep(500)
-        scenario.moveToState(Lifecycle.State.RESUMED)
-        waitFor("the lock") { model.lock.isLocked.value }
-        val seen = screenThroughThePrompt()
-        assertFalse("a date picker over the lock: $seen", seen.any { it.contains("DatePicker") })
-        unlock()
-        assertEquals("the date didn't change", "\"2026-03-05\"", evaluate("document.getElementById('when').value"))
-    }
-
-    /** The color picker too, which a blur doesn't close. */
-    @Test
-    fun testAColorPickerLeftOpenIsGoneWhenOvenlightComesBackLocked() {
-        tap(element("tint"))
-        waitFor("the color picker") { screen().any { it.contains("Select color") } }
-        model.lock.lockAfterSeconds = 0
-        scenario.moveToState(Lifecycle.State.CREATED)
-        Thread.sleep(500)
-        scenario.moveToState(Lifecycle.State.RESUMED)
-        waitFor("the lock") { model.lock.isLocked.value }
-        val seen = screenThroughThePrompt()
-        assertFalse("a color picker over the lock: $seen", seen.any { it.contains("Select color") })
-        unlock()
-        assertEquals("the color didn't change", "\"#336699\"", evaluate("document.getElementById('tint').value"))
+    fun testAPickerLeftOpenStaysUnderTheLock() {
+        val pickers = listOf(
+            Picker("pick", "document.getElementById('pick').value", "Alpha option", null, "Beta option", "Beta option", staysOpen = false),
+            Picker("when", "document.getElementById('when').value", "2026-03-05", "10 March 2026", "SET", "2026-03-10"),
+            Picker("inner", "window.closedDate.value", "2026-03-05", "10 March 2026", "SET", "2026-03-10"),
+            Picker("tint", "document.getElementById('tint').value", "#336699", "Red", "Set", "#ff0000"),
+        )
+        for (comingBack in listOf(false, true)) for (picker in pickers) {
+            val way = if (comingBack) "coming back locked" else "locked in place"
+            evaluate("${picker.value} = '${picker.was}'")
+            tap(element(picker.opens))
+            waitFor("${picker.opens}'s picker") { find(picker.takes) != null }
+            picker.choice?.let { tap(find(it) ?: error("no ${picker.choice}")) }
+            val takes = find(picker.takes) ?: error("no ${picker.takes}")
+            if (comingBack) leaveAndComeBackLocked() else lock()
+            closeThePrompt()
+            val top = topWindow()
+            assertTrue("${picker.opens}, $way: the lock isn't the topmost window: $top", "Ovenlight is locked" in top)
+            val reachable = screen()
+            assertFalse("${picker.opens}, $way: its picker within TalkBack's reach: $reachable", picker.takes in reachable)
+            tap(takes)
+            Thread.sleep(500)
+            // The tap may have pressed the lock screen's own Unlock.
+            closeThePrompt()
+            unlock()
+            assertEquals("${picker.opens}, $way: set under the lock", "\"${picker.was}\"", evaluate(picker.value))
+            if (!picker.staysOpen) continue
+            waitFor("${picker.opens}'s picker after the unlock, $way") { find(picker.takes) != null }
+            tap(takes)
+            waitFor("${picker.opens}, $way: set after the unlock") { evaluate(picker.value) == "\"${picker.chosen}\"" }
+            waitFor("${picker.opens}'s picker to close") { find(picker.takes) == null }
+        }
     }
 
     // A trip out and back
