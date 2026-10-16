@@ -265,7 +265,8 @@ object NavigationPolicy {
      * Ovenlight's own links: its scheme, and every address its App Link takes (the join page,
      * in any letter case and on any port). A page never hands one to Ovenlight, since it could
      * pick the invite: the scheme is refused everywhere, and the join page opens only in a
-     * named browser (CustomTabs), never through a hand-off Ovenlight's App Link could catch.
+     * named browser (CustomTabs) at [joinPage], never through a hand-off Ovenlight's App Link
+     * could catch.
      */
     fun isOvenlightLink(url: URI): Boolean {
         val scheme = url.scheme?.lowercase()
@@ -273,6 +274,15 @@ object NavigationPolicy {
         if (scheme != "http" && scheme != "https") return false
         return Discovery.normalizedHost(url.host ?: "") == InviteLink.joinPage.host && url.path?.lowercase() in InviteLink.universalPaths
     }
+
+    /**
+     * The join page as the site serves it without a redirect, keeping the query and the
+     * invite in the fragment. The site redirects its other forms to it, and a browser may hand
+     * a redirect to the App Link that takes it, which is Ovenlight; a tab's first page from
+     * Ovenlight stays in the browser.
+     */
+    fun joinPage(url: URI): URI =
+        URI(InviteLink.joinPage.toString() + (url.rawQuery?.let { "?$it" } ?: "") + (url.rawFragment?.let { "#$it" } ?: ""))
 
     /** What an `intent:` link may hand another app: no data, or data that is neither the phone's files nor Ovenlight's own link. */
     fun mayCarry(data: URI?): Boolean {

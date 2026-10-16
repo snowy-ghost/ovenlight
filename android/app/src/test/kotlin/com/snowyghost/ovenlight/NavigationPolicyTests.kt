@@ -125,6 +125,16 @@ class NavigationPolicyTests {
         assertEquals("a frame still shows the web page", NavigationPolicy.Decision.Allow, decide("https://ovenlight.app/join", mainFrame = false))
     }
 
+    /** Every form of the join page opens as the one the site serves without a redirect. */
+    @Test
+    fun testTheJoinPageOpensWithoutARedirect() {
+        for (link in listOf("https://ovenlight.app/join.html#v=1&key=k", "http://ovenlight.app/join#v=1&key=k", "HTTPS://OVENLIGHT.APP:8443/Join/#v=1&key=k")) {
+            assertEquals(link, URI("https://ovenlight.app/join#v=1&key=k"), NavigationPolicy.joinPage(URI(link)))
+        }
+        assertEquals(URI("https://ovenlight.app/join?ref=a%20b"), NavigationPolicy.joinPage(URI("https://ovenlight.app/join/?ref=a%20b")))
+        assertEquals(URI("https://ovenlight.app/join"), NavigationPolicy.joinPage(URI("https://ovenlight.app/join.html")))
+    }
+
     /** What an intent: link may hand on: nothing of the phone's, nothing of Ovenlight's. */
     @Test
     fun testWhatAnIntentMayCarry() {

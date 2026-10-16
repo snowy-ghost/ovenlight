@@ -261,7 +261,8 @@ class PageEdgesTests {
     /** As iOS opens it in Safari; a named browser means Ovenlight's App Link can't catch it. */
     @Test
     fun testTheJoinPageOpensInABrowser() {
-        loadLink("https://ovenlight.app/join#v=1&key=k")
+        // As the site serves it, so no redirect could hand it to Ovenlight's App Link.
+        loadLink("https://ovenlight.app/join.html#v=1&key=k")
         tap()
         tapped("https://ovenlight.app/join")
         waitFor("the browser") { started.intents.isNotEmpty() }

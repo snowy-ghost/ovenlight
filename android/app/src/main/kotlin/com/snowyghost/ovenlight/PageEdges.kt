@@ -258,7 +258,8 @@ class PageEdges(
         if (!mayAct) return
         val scheme = url.scheme?.lowercase()
         if (scheme == "http" || scheme == "https") {
-            if (CustomTabs.open(context, url)) lifecycle.beginExcursion()
+            val page = if (NavigationPolicy.isOvenlightLink(url)) NavigationPolicy.joinPage(url) else url
+            if (CustomTabs.open(context, page)) lifecycle.beginExcursion()
             return
         }
         val intent = handOff(url) ?: run {
