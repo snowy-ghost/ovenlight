@@ -181,6 +181,15 @@ class PageDownloadsTests {
         assertEquals(0, folder.listFiles()!!.size)
     }
 
+    /** Android only: the page's report of an `<a download>` click can come after WebView's start, over the port. */
+    @Test
+    fun testAnHttpDownloadTakesTheNameOfAClickReportedJustAfter() {
+        downloads.onDownloadStart("https://$host/export.csv", "agent", null, "text/csv", 0)
+        Thread.sleep(120)
+        downloads.clicked("https://$host/export.csv", "Recipes export.csv", host)
+        assertEquals(listOf("Recipes export.csv"), shelf().map { it.name })
+    }
+
     /** Android only: the app's own address with characters java.net.URI refuses, as Chromium writes them, still downloads. */
     @Test
     fun testAnAppsOwnOddAddressStillDownloads() {

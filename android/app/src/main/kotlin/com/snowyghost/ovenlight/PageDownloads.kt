@@ -111,6 +111,9 @@ class PageDownloads(
     private val reads = mutableMapOf<String, Read>()
     private val jobs = mutableSetOf<Job>()
 
+    /** http downloads waiting for the click report that names them. */
+    private val naming = mutableSetOf<Job>()
+
     /** The refetches under way, which [cancel] ends at once: a blocked read never sees its job end. */
     private val calls: MutableSet<Call> = ConcurrentHashMap.newKeySet()
 
@@ -129,7 +132,26 @@ class PageDownloads(
                 // As Chromium writes it: java.net.URI refuses some of an app's own addresses.
                 val uri = NavigationPolicy.pageURI(url)
                 if (uri == null || !DownloadPolicy.allows(uri, from = null, appHost = appHost, locked = isLocked())) return log("refused a download from another site")
-                fetch(url, userAgent, contentDisposition, mimetype, contentLength, clicks.remove(url)?.name)
+                clicks.remove(url)?.let { return fetch(url, userAgent, contentDisposition, mimetype, contentLength, it.name) }
+                // The page's report of an `<a download>` click comes over a message port, which keeps
+                // no order with this start: its name may still be on the way.
+                val wait = scope.launch {
+                    var name: String? = null
+                    for (wait in 1..CLICK_WAITS) {
+                        name = clicks.remove(url)?.name
+                        if (name != null) break
+                        delay(CLICK_WAIT_MILLIS)
+                    }
+                    fetch(url, userAgent, contentDisposition, mimetype, contentLength, name)
+                }
+                naming += wait
+                busy(true)
+                wait.invokeOnCompletion {
+                    scope.launch {
+                        naming -= wait
+                        busy(jobs.isNotEmpty() || naming.isNotEmpty())
+                    }
+                }
             }
             "blob", "data" -> {
                 if (url.length > HREF_LIMIT && url.startsWith("data:", ignoreCase = true)) return log("refused a data URL over the limit")
@@ -189,6 +211,7 @@ class PageDownloads(
 
     /** The page is going: its downloads stop, and their partial files go. */
     fun cancel() {
+        naming.toList().forEach { it.cancel() }
         jobs.toList().forEach { it.cancel() }
         calls.forEach { it.cancel() }
         started.clear()
@@ -294,7 +317,7 @@ class PageDownloads(
         job.invokeOnCompletion {
             scope.launch {
                 jobs -= job
-                busy(jobs.isNotEmpty())
+                busy(jobs.isNotEmpty() || naming.isNotEmpty())
             }
         }
     }
@@ -354,6 +377,10 @@ class PageDownloads(
         const val BLOB_LIMIT = 32 * 1024 * 1024
         const val HREF_LIMIT = 2 * 1024 * 1024
         const val PENDING_CLICKS = 8
+
+        /** An http download waits up to 10 times 50 ms for the click report that names it. */
+        const val CLICK_WAITS = 10
+        const val CLICK_WAIT_MILLIS = 50L
         const val PENDING_BYTES = BLOB_LIMIT.toLong()
         const val PAIR_MILLIS = 5_000L
         const val CONCURRENT = 3
