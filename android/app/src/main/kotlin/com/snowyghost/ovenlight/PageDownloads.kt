@@ -616,12 +616,13 @@ private fun DownloadSheet(model: AppModel, app: WebApp, download: DownloadShelf.
                     SaveDocument.launch(context, download.file, type, model)
                 }
             },
-            // The Sharesheet and Open take the person to another app, so they are leaving.
+            // The Sharesheet and Open take the person to another app, so they are leaving. Each
+            // runs in a task of its own, never under Ovenlight's card, where Recents would bring
+            // the file back without the unlock; the chooser closes as the person leaves it.
             onShare = {
                 done {
-                    val send = Intent(Intent.ACTION_SEND).setType(type).putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    val send = Intent(Intent.ACTION_SEND).setType(type).putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
                     send.clipData = ClipData.newRawUri(download.file.name, uri)
-                    // In a task of its own, so it closes as the person leaves it rather than wait in Ovenlight's.
                     context.startActivity(Intent.createChooser(send, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 }
             },
@@ -662,7 +663,8 @@ private object SaveDocument {
     }
 }
 
-private fun open(uri: Uri, type: String) = Intent(Intent.ACTION_VIEW).setDataAndType(uri, type).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+private fun open(uri: Uri, type: String) =
+    Intent(Intent.ACTION_VIEW).setDataAndType(uri, type).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
 
 @Composable
 internal fun DownloadSheetContent(name: String, size: String, canOpen: Boolean, onSave: () -> Unit, onShare: () -> Unit, onOpen: () -> Unit) {

@@ -19,8 +19,8 @@
 # it, and checks that the connector got it, screenshot and all, with no pill or handle in the
 # screenshot.
 # downloads opens a Recipes page that downloads a cookie-gated file over http and a blob, and
-# checks each arrives in Ovenlight's sheet with the bytes the page meant; then, if the
-# emulator's camera answers, that locking stops the page's camera without discarding the page.
+# checks each arrives in Ovenlight's sheet with the bytes the page meant, and that Share (and
+# Open, where a viewer exists) leave Ovenlight's task; then, if the emulator's camera answers, that locking stops the page's camera without discarding the page.
 # upload pushes a file into Download and a PNG into Pictures, picks each through the real
 # pickers (documents for a plain input, the photo picker from Ovenlight's sheet for an image
 # input), and checks the page got its name and size and the app's server its bytes; then that
@@ -554,7 +554,25 @@ EOF
   got=$(downloaded note.txt)
   [[ $got == "blob from the page" ]] || fail "the blob download's bytes: $got"
   note "the blob arrived, though the page revoked its URL right after the click"
-  a shell input keyevent KEYCODE_BACK; sleep 2
+  # Share and Open run in tasks of their own, so Recents never shows the file under Ovenlight's card.
+  top_task() { a shell dumpsys activity activities | grep -m1 topResumedActivity | grep -o ' t[0-9]*}'; }
+  own=$(top_task)
+  tap_text Share; sleep 3
+  [[ $(top_task) != "$own" ]] || fail "the Sharesheet runs in Ovenlight's task"
+  note "the Sharesheet runs in a task of its own"
+  a shell input keyevent KEYCODE_BACK
+  await_text 10 "Download blob" || fail "not back on the page after the Sharesheet: $(screen_text | tr '\n' '|')"
+  tap_text "Download blob"
+  await_text 30 "note.txt" Save Share || { shot downloads-failed; fail "no sheet for the blob again: $(screen_text | tr '\n' '|')"; }
+  if screen_text | grep -qxF Open; then
+    tap_text Open; sleep 3
+    [[ $(top_task) != "$own" ]] || fail "Open's viewer runs in Ovenlight's task"
+    note "Open's viewer runs in a task of its own"
+    a shell input keyevent KEYCODE_BACK
+    await_text 10 "Download blob" || fail "not back on the page after Open: $(screen_text | tr '\n' '|')"
+  else
+    a shell input keyevent KEYCODE_BACK; sleep 2
+  fi
 
   say "capture: the camera stops on lock, and the page stays"
   tap_text "Start camera"
