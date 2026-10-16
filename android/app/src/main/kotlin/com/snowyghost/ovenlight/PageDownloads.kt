@@ -631,7 +631,7 @@ private fun DownloadSheet(model: AppModel, app: WebApp, download: DownloadShelf.
             canOpen = canOpen,
             onSave = {
                 done {
-                    SaveDocument.launch(context, download.file, type, model)
+                    SaveDocument.launch(context, download.file, model)
                 }
             },
             // The Sharesheet and Open take the person to another app, so they are leaving. Each
@@ -661,9 +661,12 @@ private fun DownloadSheet(model: AppModel, app: WebApp, download: DownloadShelf.
  * has gone, or the lock came meanwhile; then the file is written after the unlock.
  */
 private object SaveDocument {
-    fun launch(context: Context, file: File, type: String, model: AppModel) {
+    fun launch(context: Context, file: File, model: AppModel) {
         val activity = context.componentActivity() ?: return
         val failed = activity.getString(R.string.download_save_failed, file.name)
+        // The type its name says, which the picker leaves the name alone for: a type sniffed from
+        // the bytes would turn report.csv into report.csv.txt.
+        val type = MimeTypeMap.getSingleton().getMimeTypeFromExtension(file.extension.lowercase()) ?: DownloadFiles.ANY
         // The picker hands its answer back: an excursion, not leaving.
         model.lifecycle.beginExcursion()
         activity.launchOnce(ActivityResultContracts.CreateDocument(type), file.name, failed = model.lifecycle::excursionEnded) { target ->

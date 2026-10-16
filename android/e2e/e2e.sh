@@ -20,8 +20,9 @@
 # screenshot.
 # downloads opens a Recipes page that downloads a cookie-gated file over http and a blob, and
 # checks each arrives in Ovenlight's sheet with the bytes the page meant, that Share (and Open,
-# where a viewer exists) leave Ovenlight's task, and that Save writes the file; then, if the
-# emulator's camera answers, that locking stops the page's camera without discarding the page.
+# where a viewer exists) leave Ovenlight's task, and that Save writes each under its own name;
+# then, if the emulator's camera answers, that locking stops the page's camera without
+# discarding the page.
 # upload pushes a file into Download and a PNG into Pictures, picks each through the real
 # pickers (documents for a plain input, the photo picker from Ovenlight's sheet for an image
 # input), and checks the page got its name and size and the app's server its bytes; then that
@@ -575,24 +576,31 @@ EOF
   else
     a shell input keyevent KEYCODE_BACK; sleep 2
   fi
-  # Save writes the file where the documents picker says, under the name it gives.
-  tap_text "Download blob"
-  await_text 30 "note.txt" Save Share || { shot downloads-failed; fail "no sheet for the blob to save: $(screen_text | tr '\n' '|')"; }
-  tap_text Save
-  for i in $(seq 1 15); do [[ $(front) == *documentsui* ]] && break; sleep 1; done
-  [[ $(front) == *documentsui* ]] || fail "Save didn't open the documents picker: $(front)"
-  sleep 2; tap_matching '^(SAVE|Save)$' || { shot downloads-save; fail "no Save in the documents picker: $(screen_text | tr '\n' '|')"; }
-  # The picker makes the file empty; Ovenlight writes it once back in front.
-  saved= got=
-  for i in $(seq 1 15); do
-    saved=$(a shell "find /sdcard/ -name 'note*.txt' -newer /sdcard/Download/e2e-start 2>/dev/null" | tr -d '\r' | head -1)
-    [[ -n $saved ]] && got=$(a shell cat "'$saved'" | tr -d '\r')
-    [[ $got == "blob from the page" ]] && break; sleep 1
-  done
-  [[ $got == "blob from the page" ]] || { shot downloads-save; fail "Save wrote nothing or other bytes: ${saved:-no file} '$got'"; }
-  note "Save wrote the blob where the documents picker said"
-  a shell rm -f "'$saved'" /sdcard/Download/e2e-start >/dev/null 2>&1 || true
-  await_text 10 "Download blob" || fail "not back on the page after Save: $(screen_text | tr '\n' '|')"
+  # Save writes the file where the documents picker says, under the page's name: a text file
+  # that isn't .txt keeps its own extension.
+  saved_as() {
+    tap_text "$1"
+    await_text 30 "$2" Save Share || { shot downloads-failed; fail "no sheet for $2 to save: $(screen_text | tr '\n' '|')"; }
+    tap_text Save
+    for i in $(seq 1 15); do [[ $(front) == *documentsui* ]] && break; sleep 1; done
+    [[ $(front) == *documentsui* ]] || fail "Save didn't open the documents picker: $(front)"
+    sleep 2; tap_matching '^(SAVE|Save)$' || { shot downloads-save; fail "no Save in the documents picker: $(screen_text | tr '\n' '|')"; }
+    # The picker makes the file empty; Ovenlight writes it once back in front.
+    local saved= got=
+    for i in $(seq 1 15); do
+      saved=$(a shell "find /sdcard/ -path '*/Android' -prune -o -type f -newer /sdcard/Download/e2e-start -print 2>/dev/null" | tr -d '\r' | head -1)
+      [[ -n $saved ]] && got=$(a shell cat "'$saved'" | tr -d '\r')
+      [[ $got == "$3" ]] && break; sleep 1
+    done
+    [[ $got == "$3" ]] || { shot downloads-save; fail "Save wrote nothing or other bytes: ${saved:-no file} '$got'"; }
+    [[ ${saved##*/} == "$2" ]] || fail "Save named $2 ${saved##*/}"
+    a shell rm -f "'$saved'" >/dev/null 2>&1 || true
+    await_text 10 "$1" || fail "not back on the page after Save: $(screen_text | tr '\n' '|')"
+  }
+  saved_as "Download blob" note.txt "blob from the page"
+  saved_as "Download file" "Recipes export.csv" $'name,amount\nflour,500'
+  note "Save wrote the blob and the CSV where the documents picker said, under their own names"
+  a shell rm -f /sdcard/Download/e2e-start >/dev/null 2>&1 || true
 
   say "capture: the camera stops on lock, and the page stays"
   tap_text "Start camera"
