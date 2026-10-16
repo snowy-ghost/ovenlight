@@ -141,9 +141,11 @@ class HomeGridLayout(width: Double, labelHeight: Double, largeText: Boolean) {
     val tileHeight: Double
 
     init {
-        // Four across in portrait (three with large text), as many as fit in landscape.
+        // Four across in portrait (three with large text), as many as fit in landscape. Large text
+        // gets two when three would leave a name less than 100 dp: under 344 dp wide, as at the
+        // largest display sizes.
         val usable = width - 2 * sideMargin(width)
-        columns = if (largeText) max(3, (usable / 140).toInt()) else max(4, (usable / 92).toInt())
+        columns = if (largeText) max(if (usable >= 300) 3 else 2, (usable / 140).toInt()) else max(4, (usable / 92).toInt())
         iconSize = if (largeText) 72.0 else if (width >= 400) 64.0 else 60.0
         tileHeight = iconSize + labelGap + labelHeight
     }

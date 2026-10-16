@@ -8,6 +8,7 @@ import android.graphics.Paint
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
@@ -16,6 +17,7 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.accessibility.enableAccessibilityChecks
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -66,7 +68,10 @@ class FeedbackSheetTests {
 
     private fun screenshot(): Bitmap = Bitmap.createBitmap(90, 160, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.rgb(200, 120, 60)) }
 
-    private fun show(app: WebApp, image: Bitmap? = null) {
+    /** Whether the sheet is composed: the lock takes it away, and its draft brings it back. */
+    private var showing by mutableStateOf(true)
+
+    private fun show(app: WebApp, image: Bitmap? = null, draft: FeedbackDraft = FeedbackDraft(image, URI("https://recipe-box.tail1.ts.net/soup"))) {
         composeRule.setContent {
             val configuration = Configuration(LocalConfiguration.current).apply {
                 uiMode = (uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or
@@ -74,12 +79,17 @@ class FeedbackSheetTests {
                 fontScale = look.fontScale
             }
             CompositionLocalProvider(LocalConfiguration provides configuration, LocalDensity provides Density(LocalDensity.current.density, look.fontScale)) {
+                // The app's scope, which outlives the sheet.
+                val scope = rememberCoroutineScope()
                 OvenlightTheme {
-                    FeedbackSheet(
-                        app, image, URI("https://recipe-box.tail1.ts.net/soup"), density = 1f,
-                        send = { payload -> sent += payload; answer.await() },
-                        onDismiss = { dismissed += 1 },
-                    )
+                    if (showing) {
+                        FeedbackSheet(
+                            app, draft, density = 1f,
+                            send = { payload -> sent += payload; answer.await() },
+                            onDismiss = { dismissed += 1 },
+                            scope = scope,
+                        )
+                    }
                 }
             }
         }
@@ -179,6 +189,36 @@ class FeedbackSheetTests {
         composeRule.waitUntil { sent.size == 2 }
         // The failure clears while it sends again.
         text(ConnectionCopy.feedbackTooMany).assertDoesNotExist()
+    }
+
+    @Test
+    fun testTheDraftOutlastsTheSheet() {
+        show(guide, screenshot())
+        field.performTextInput("Half a note")
+        text("Include screenshot").performScrollTo().performClick()
+        showing = false
+        composeRule.waitForIdle()
+        field.assertDoesNotExist()
+        showing = true
+        composeRule.waitForIdle()
+        field.assertTextContains("Half a note")
+        text("Include screenshot").performScrollTo().assertIsOff()
+
+        // Taken away while it sends, it comes back saying it was sent, and closes.
+        sendButton.performClick()
+        composeRule.waitUntil { sent.isNotEmpty() }
+        showing = false
+        composeRule.waitForIdle()
+        answer.complete(FeedbackResult.Sent)
+        composeRule.mainClock.advanceTimeBy(2_000)
+        assertEquals("nothing closes while it's away", 0, dismissed)
+        showing = true
+        composeRule.mainClock.advanceTimeBy(200)
+        text(ConnectionCopy.feedbackSent).assertIsDisplayed()
+        composeRule.mainClock.advanceTimeBy(1_500)
+        composeRule.waitForIdle()
+        assertEquals(1, dismissed)
+        assertEquals("sent once", 1, sent.size)
     }
 
     @Test

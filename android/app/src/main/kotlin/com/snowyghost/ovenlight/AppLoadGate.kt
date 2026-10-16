@@ -121,7 +121,7 @@ object ConnectionCopy {
     const val joinWithInvite = "Join with invite"
     const val invitePrompt = "Paste the invite link you were sent, or scan its code."
     const val feedbackSent = "Feedback sent"
-    fun feedbackSentDetail(to: String?) = to?.let { "$it will see it." } ?: "It's in your feedback in People & Sharing."
+    fun feedbackSentDetail(to: String?) = to?.let { "$it will see it." } ?: "It's in your feedback in People & sharing."
     const val feedbackFailed = "Couldn't send feedback"
     const val feedbackTooMany = "That's a lot of feedback for one hour. Try again later."
     const val feedbackNetwork = "Ovenlight couldn't reach the app's computer. Try again in a moment."

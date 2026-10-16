@@ -23,7 +23,6 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.foundation.text.input.TextFieldState
-import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -42,6 +41,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -69,32 +69,46 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import java.net.URI
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
+ * Send feedback while it's open: what the screen showed ([screenshot], in the screen's pixels)
+ * and where, with the note, the screenshot choice, a send under way and its outcome. The app's
+ * page holds it ([AppPage.feedback]), so the lock, which takes the screen apart, doesn't lose it.
+ */
+@Stable
+class FeedbackDraft(val screenshot: Bitmap?, val pageURL: URI?) {
+    val note = TextFieldState()
+    var includeScreenshot by mutableStateOf(true)
+    var sending by mutableStateOf(false)
+    var result by mutableStateOf<FeedbackResult?>(null)
+}
+
+/**
  * Send feedback from the app menu, as a full-screen dialog: a note and, unless left out, what
- * the screen showed. [screenshot] is in the screen's pixels, [density] of them to a dp. [send]
- * posts the payload (FeedbackSender in the app); once it's sent the dialog says so and closes
- * after 1.4 s, and a failure shows under the note.
+ * the screen showed, [density] of its pixels to a dp. [send] posts the payload (FeedbackSender
+ * in the app) in [scope], which outlives the dialog so a lock mid-send still records how it went;
+ * once it's sent the dialog says so and closes after 1.4 s, and a failure shows under the note.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FeedbackSheet(
     app: WebApp,
-    screenshot: Bitmap?,
-    pageURL: URI?,
+    draft: FeedbackDraft,
     density: Float,
     send: suspend (FeedbackPayload) -> FeedbackResult,
     onDismiss: () -> Unit,
+    scope: CoroutineScope = rememberCoroutineScope(),
 ) {
-    val note = rememberTextFieldState()
-    var includeScreenshot by remember { mutableStateOf(true) }
-    var sending by remember { mutableStateOf(false) }
-    var result by remember { mutableStateOf<FeedbackResult?>(null) }
-    val scope = rememberCoroutineScope()
+    val note = draft.note
+    val screenshot = draft.screenshot
+    val includeScreenshot = draft.includeScreenshot
+    val result = draft.result
+    val sending = draft.sending
     val haptics = LocalHapticFeedback.current
     val tooLong = stringResource(R.string.feedback_note_too_long)
     val canSend = !sending && result != FeedbackResult.Sent &&
@@ -102,22 +116,25 @@ fun FeedbackSheet(
 
     fun submit() = scope.launch {
         // Taken at once, so a second tap while the PNG is made sends nothing more.
-        sending = true
+        draft.sending = true
         val png = if (includeScreenshot && screenshot != null) withContext(Dispatchers.Default) { FeedbackPayload.png(screenshot, density) } else null
         val payload = try {
-            FeedbackPayload.make(note.text.toString(), pageURL, png)
+            FeedbackPayload.make(note.text.toString(), draft.pageURL, png)
         } catch (problem: FeedbackPayload.Problem) {
-            sending = false
-            result = FeedbackResult.Failed(if (problem == FeedbackPayload.Problem.NoteTooLong) tooLong else ConnectionCopy.feedbackFailed)
+            draft.sending = false
+            draft.result = FeedbackResult.Failed(if (problem == FeedbackPayload.Problem.NoteTooLong) tooLong else ConnectionCopy.feedbackFailed)
             haptics.performHapticFeedback(HapticFeedbackType.Reject)
             return@launch
         }
-        result = null
+        draft.result = null
         val outcome = send(payload)
-        sending = false
-        result = outcome
+        draft.sending = false
+        draft.result = outcome
         haptics.performHapticFeedback(if (outcome == FeedbackResult.Sent) HapticFeedbackType.Confirm else HapticFeedbackType.Reject)
-        if (outcome == FeedbackResult.Sent) {
+    }
+    // Here rather than after the send, so a sheet the lock took away while it said so closes too.
+    LaunchedEffect(result) {
+        if (result == FeedbackResult.Sent) {
             delay(1_400)
             onDismiss()
         }
@@ -156,7 +173,7 @@ fun FeedbackSheet(
             },
         ) { bars ->
             Box(Modifier.fillMaxSize().padding(bars)) {
-                FeedbackForm(app, screenshot, note, includeScreenshot, { includeScreenshot = it }, result)
+                FeedbackForm(app, screenshot, note, includeScreenshot, { draft.includeScreenshot = it }, result)
                 AnimatedVisibility(result == FeedbackResult.Sent, enter = fadeIn(), exit = fadeOut()) { FeedbackSent(app) }
             }
         }
@@ -200,10 +217,10 @@ private fun FeedbackForm(
                     )
                 }
             },
-            modifier = Modifier.fillMaxWidth().widthIn(max = 640.dp).focusRequester(focus),
+            modifier = Modifier.widthIn(max = 640.dp).fillMaxWidth().focusRequester(focus),
         )
         if (screenshot != null) {
-            Surface(color = LocalOvenColors.current.groupedRow, shape = RoundedCornerShape(28.dp), modifier = Modifier.fillMaxWidth().widthIn(max = 640.dp)) {
+            Surface(color = LocalOvenColors.current.groupedRow, shape = RoundedCornerShape(28.dp), modifier = Modifier.widthIn(max = 640.dp).fillMaxWidth()) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     ListItem(
                         headlineContent = { Text(stringResource(R.string.feedback_include_screenshot)) },
