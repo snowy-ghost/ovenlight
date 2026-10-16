@@ -5,7 +5,7 @@
 # connector runs from this run's folder with its own HOME, config and state, logs in only to
 # the local Headscale, and stops by its recorded pid.
 #
-#   android/e2e/e2e.sh [gates | owner | signin [seconds] | screens | app | chrome] [avd]
+#   android/e2e/e2e.sh [gates | owner | signin [seconds] | screens | app | chrome | edges] [avd]
 #
 # gates runs Phase 1's checks G2 to G5 through the debug lab. owner signs the owner's node in
 # with a preauth key and waits for the launcher to show both test apps. signin goes through
@@ -16,7 +16,11 @@
 # doesn't come back by itself. app opens Recipes from the launcher and waits for its page.
 # chrome opens Recipes, closes the pill's one-time tip, brings the pill back with its handle,
 # opens the app menu and sends feedback, and checks that the connector got it, screenshot
-# and all, with no pill or handle in the screenshot. Each writes what it saw to
+# and all, with no pill or handle in the screenshot.
+# edges gives Recipes a page of links and checks where each goes: an outside link opens in a
+# Custom Tab, mailto: asks first and Cancel opens nothing, an intent: for Ovenlight does
+# nothing, and a POST to Pantry goes back and opens Pantry outside.
+# Each writes what it saw to
 # android/e2e/out/: gates.txt, logs and screenshots.
 #
 # Needs Headscale v0.29.4 (docs/development.md#local-headscale) and the fixed AVD set
@@ -99,7 +103,7 @@ until_ok() {
 }
 
 [[ -x $HS ]] || fail "no headscale at $HS"
-[[ $SCENARIO =~ ^(gates|owner|signin|screens|app|chrome)$ ]] || fail "unknown scenario $SCENARIO"
+[[ $SCENARIO =~ ^(gates|owner|signin|screens|app|chrome|edges)$ ]] || fail "unknown scenario $SCENARIO"
 
 say "the test CA in $CA, made once, and a *.$BASE certificate for this run"
 if [[ ! -f $CA/ca.pem ]]; then
@@ -419,6 +423,78 @@ assert column == {(255, 255, 255)}, "the screenshot shows more than the page und
 print("feedback: %s, %dx%d PNG, no chrome in it" % (item["note"], w, h))
 PY
   note "the connector has the note, the page and a $size PNG with no pill or handle in it"
+  say "PASSED"
+  exit 0
+fi
+
+if [[ $SCENARIO == edges ]]; then
+  say "edges: the owner signs in, then Recipes with a page of links"
+  # Recipes' start page for this run; app.py serves the folder as it is on disk.
+  cat > $D/recipes/index.html <<'EOF'
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Edges</title><style>body { padding-top: 48px; } a, button { display: block; margin: 12px; padding: 16px; font-size: 22px; }</style></head>
+<body><h1>Recipe Box edges</h1>
+<a href="https://example.com/">Outside link</a>
+<a href="mailto:riley@example.com">Mail Riley</a>
+<a href="intent://join?v=1&amp;key=k#Intent;scheme=ovenlight;end">Ovenlight intent</a>
+<form method="post" action="https://pantry.e2e.ts.net/"><input type="hidden" name="a" value="1"><button>Post to Pantry</button></form>
+</body></html>
+EOF
+  # The activity in front, as the activity manager names it.
+  front() { a shell dumpsys activity activities | LC_ALL=C grep -m1 -E 'topResumedActivity|mResumedActivity' || true; }
+  # Waits up to $1 seconds for an activity other than Ovenlight in front, with the address $2 in its intent.
+  await_outside() {
+    for i in $(seq 1 $1); do
+      # Read whole: a grep that stops at its first match would break adb's pipe under pipefail.
+      if [[ $(front) != *$PKG* && $(a shell dumpsys activity activities) == *"dat=$2"* ]]; then return 0; fi
+      sleep 1
+    done
+    return 1
+  }
+  back_to_edges() {
+    a shell input keyevent KEYCODE_BACK
+    await_text 20 "Recipe Box edges" || fail "$1: Ovenlight didn't come back to the page: $(screen_text | tr '\n' '|')"
+  }
+  a shell "am start -W -n $PKG/.MainActivity --es controlURL $CTRL --es authKey $KEY" >/dev/null
+  await_text 90 Recipes Pantry || fail "the launcher never showed both apps: $(screen_text | tr '\n' '|')"
+  tap_text Recipes
+  await_text 40 "Recipe Box edges" "Outside link" || { shot edges-failed; fail "the page of links never loaded: $(screen_text | tr '\n' '|')"; }
+  shot edges-page
+
+  tap_text "Outside link"
+  await_outside 20 "https://example.com/" || { shot edges-outside; fail "the outside link didn't open outside: $(front)"; }
+  shot edges-custom-tab
+  note "the outside link opened outside Ovenlight: $(front | sed 's/^ *//')"
+  back_to_edges "the outside link"
+
+  tap_text "Mail Riley"
+  await_text 10 "Open in another app?" "Recipes wants to open “mailto:riley@example.com”." ||
+    { shot edges-mail; fail "mailto: didn't ask first: $(screen_text | tr '\n' '|')"; }
+  shot edges-mail-asks
+  [[ $(front) == *$PKG* ]] || fail "something opened before the answer: $(front)"
+  tap_text Cancel; sleep 2
+  ! screen_text | grep -qxF "Open in another app?" || fail "Cancel didn't close the question"
+  [[ $(front) == *$PKG* ]] || fail "Cancel opened something: $(front)"
+  note "mailto: asked first, and Cancel opened nothing"
+
+  tapped_at=$(a shell "date '+%m-%d %H:%M:%S.000'" | tr -d '\r')
+  tap_text "Ovenlight intent"; sleep 3
+  [[ $(a logcat -d -T "$tapped_at" -s Ovenlight 2>/dev/null) == *"refused a intent link to another app"* ]] ||
+    fail "the tap on the intent: link never reached the policy"
+  ! screen_text | grep -qxF "Open in another app?" || fail "an intent: for Ovenlight asked to open"
+  [[ $(front) == *$PKG* ]] || fail "an intent: for Ovenlight opened something: $(front)"
+  screen_text | grep -qxF "Recipe Box edges" || fail "an intent: for Ovenlight left the page: $(screen_text | tr '\n' '|')"
+  note "an intent: for Ovenlight did nothing"
+
+  # The connector refuses another site's POST (fromThisSite in connector/proxy.go); the page
+  # it answers with commits, and Ovenlight goes back from it.
+  tap_text "Post to Pantry"
+  await_outside 20 "https://pantry.e2e.ts.net/" || { shot edges-post; fail "the POST to Pantry didn't open outside: $(front)"; }
+  note "the POST to Pantry opened Pantry outside: $(front | sed 's/^ *//')"
+  back_to_edges "the POST"
+  shot edges-after-post
+  note "and Recipes is back on its own page"
   say "PASSED"
   exit 0
 fi

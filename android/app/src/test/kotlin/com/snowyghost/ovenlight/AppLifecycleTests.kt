@@ -151,4 +151,34 @@ class AppLifecycleTests {
         advanceTimeBy(61_000)
         assertEquals("it waits out the rest", 1, r.closes)
     }
+
+    /** A picker drawn over Ovenlight never stops it, so its excursion ends with its result, not a return. */
+    @Test
+    fun testAnExcursionThatNeverStoppedTheActivityEndsWithItsResult() = runTest {
+        val r = Recorder()
+        val life = lifecycle(r)
+        life.activityStarted()
+        runCurrent()
+        life.beginExcursion()
+        life.excursionEnded()
+        advanceTimeBy(10 * 60_000)
+        life.activityStopped()
+        advanceTimeBy(59_000)
+        assertEquals("leaving later waits its minute, as any leaving does", 0, r.closes)
+        advanceTimeBy(2_000)
+        assertEquals(1, r.closes)
+    }
+
+    @Test
+    fun testAResultWhileStoppedLeavesTheExcursionToTheReturn() = runTest {
+        val r = Recorder()
+        val life = lifecycle(r)
+        life.beginExcursion()
+        life.activityStopped()
+        advanceTimeBy(60_000)
+        life.excursionEnded()
+        advanceTimeBy(3 * 60_000)
+        assertEquals("still inside its five minutes", 0, r.closes)
+        assertFalse(r.paused)
+    }
 }

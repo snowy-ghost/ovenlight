@@ -1,0 +1,653 @@
+package com.snowyghost.ovenlight
+
+import android.Manifest
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.ContextWrapper
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
+import android.os.SystemClock
+import android.util.Log
+import android.view.View
+import android.view.ViewGroup
+import android.webkit.GeolocationPermissions
+import android.webkit.JsPromptResult
+import android.webkit.JsResult
+import android.webkit.MimeTypeMap
+import android.webkit.ValueCallback
+import android.webkit.WebChromeClient
+import android.webkit.WebResourceRequest
+import android.webkit.WebView
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalActivity
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContract
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.DialogWindowProvider
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
+import androidx.core.net.toUri
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.webkit.Navigation
+import androidx.webkit.NavigationListener
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
+import java.io.File
+import java.net.URI
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+
+/**
+ * Where an app's page meets the rest of the phone (the navigation and UI-delegate halves of
+ * iOS's WebCoordinator): links that leave the app, other apps, a POST to another site, the
+ * page's alert, confirm and prompt, its file input, fullscreen video and geolocation. Nothing
+ * leaves while the page is off screen or Ovenlight is locked, since a page's script can fake a
+ * tap and its dialog would show under the app's name over something else. Main thread only.
+ */
+class PageEdges(
+    private val app: WebApp,
+    private val view: WebView,
+    /** The page's context, whose base is the activity while the page is on screen. */
+    private val context: Context,
+    private val scope: CoroutineScope,
+    private val isLocked: StateFlow<Boolean>,
+    private val lifecycle: AppLifecycle,
+    private val isShown: () -> Boolean,
+    /** Loads the app's start page again, through the same checks as its first load. */
+    private val home: () -> Unit,
+) {
+    val appName: String get() = app.name
+
+    /** A dialog the page or Ovenlight shows over the page, one at a time. */
+    sealed class Dialog {
+        /** Taken away unanswered: answers with its fallback, unless it was answered. */
+        abstract fun dropped()
+
+        class Alert(val message: String, val answer: DialogAnswer<Unit>) : Dialog() {
+            override fun dropped() = answer.dropped()
+        }
+
+        class Confirm(val message: String, val answer: DialogAnswer<Boolean>) : Dialog() {
+            override fun dropped() = answer.dropped()
+        }
+
+        class Prompt(val message: String, val defaultText: String, val answer: DialogAnswer<String?>) : Dialog() {
+            override fun dropped() = answer.dropped()
+        }
+
+        /** "Open in another app?", naming the link as [NavigationPolicy.target] cuts it. */
+        class OpenElsewhere(val target: String, val intent: Intent) : Dialog() {
+            override fun dropped() = Unit
+        }
+    }
+
+    private val mutableDialog = MutableStateFlow<Dialog?>(null)
+    val dialog: StateFlow<Dialog?> = mutableDialog
+
+    /** A video the page put in full screen, drawn above the app until Back or the page ends it. */
+    class Fullscreen(val view: View, val callback: WebChromeClient.CustomViewCallback)
+
+    private val mutableFullscreen = MutableStateFlow<Fullscreen?>(null)
+    val fullscreen: StateFlow<Fullscreen?> = mutableFullscreen
+
+    val chrome: WebChromeClient = Chrome()
+
+    /** Where present, the listener sees each navigation commit; otherwise onPageStarted and onPageFinished do. */
+    private val listens = WebViewFeature.isFeatureSupported(WebViewFeature.NAVIGATION_LISTENER)
+
+    init {
+        // The same check as [listens], where lint can see it.
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.NAVIGATION_LISTENER)) {
+            WebViewCompat.addNavigationListener(
+                view, ContextCompat.getMainExecutor(context),
+                object : NavigationListener {
+                    override fun onNavigationCompleted(navigation: Navigation) {
+                        if (navigation.didCommit() && !navigation.isSameDocument) skipped(navigation.url)
+                    }
+                },
+            )
+        }
+    }
+
+    /**
+     * The page is on screen, unlocked, and Ovenlight is in front: its script keeps running
+     * while Ovenlight is away (in a picker, its own Custom Tab or another app), and the lock
+     * settles only on the return.
+     */
+    private val mayAct: Boolean
+        get() = isShown() && !isLocked.value && activity()?.lifecycle?.currentState?.isAtLeast(Lifecycle.State.RESUMED) == true
+
+    // Navigation
+
+    /** The page's client's shouldOverrideUrlLoading: true stops the navigation. */
+    fun shouldOverrideUrlLoading(request: WebResourceRequest): Boolean {
+        val url = uri(request.url.toString()) ?: return true
+        return when (val decision = NavigationPolicy.decide(url, app.host, request.isForMainFrame, request.hasGesture())) {
+            NavigationPolicy.Decision.Allow -> false
+            NavigationPolicy.Decision.Refuse -> {
+                Log.i(TAG, "${app.host}: refused a ${url.scheme ?: "schemeless"} link")
+                true
+            }
+            is NavigationPolicy.Decision.OpenExternally -> {
+                openExternally(decision.url)
+                true
+            }
+        }
+    }
+
+    /** What the view shows (not what a callback names) is an app's own page. */
+    private fun showsAppPage(): Boolean =
+        view.url?.let(::uri)?.let { NavigationPolicy.decide(it, app.host, isMainFrame = true, tapped = false) } == NavigationPolicy.Decision.Allow
+
+    /** The page's client's onPageStarted, which comes as a main-frame navigation starts. */
+    fun pageStarted(url: String?) {
+        if (!listens) skipped(url)
+    }
+
+    /** The page's client's onPageFinished, which comes once one has committed, error pages included. */
+    fun pageFinished(url: String?) {
+        if (!listens) skipped(url)
+        val back = returning ?: return
+        // The way back's own page, which a callback can name only once it has finished.
+        val arrived = url?.let(::uri)?.let { NavigationPolicy.decide(it, app.host, isMainFrame = true, tapped = false) } == NavigationPolicy.Decision.Allow
+        if (!arrived || !showsAppPage()) return
+        returning = null
+        // Back never returns to the page that was stopped.
+        if (back.home) view.clearHistory()
+    }
+
+    /**
+     * The address a stopped navigation opened outside, and when: one navigation reaches here
+     * from more than one callback, and opens once.
+     */
+    private var stopped: Pair<URI, Long>? = null
+
+    /** The view is on its way back to the app's page, by a step back or by loading it again ([home]). */
+    private class Return(val home: Boolean, val at: Long)
+
+    private var returning: Return? = null
+
+    /**
+     * shouldOverrideUrlLoading never sees a POST, nor a page's own move to a blob: URL, so a
+     * POST to another site, or a blob of another origin, gets this far. WebView reports it as it starts, as it fails and
+     * as its page commits, in no fixed order, often naming it again while the way back loads.
+     * So it stops, the view goes back if it shows that page by then, and the address opens
+     * outside once, as iOS does, though here the request has already gone.
+     */
+    private fun skipped(url: String?) {
+        val target = url?.let(::uri) ?: return
+        val decision = NavigationPolicy.decide(target, app.host, isMainFrame = true, tapped = false)
+        if (decision == NavigationPolicy.Decision.Allow) return
+        val now = SystemClock.elapsedRealtime()
+        // The way back is loading; stopping now would stop it.
+        if (returning?.let { now - it.at < RETURN_MILLIS } == true) return
+        Log.i(TAG, "${app.host}: stopped a page from ${target.scheme ?: "nowhere"} that skipped the navigation policy")
+        view.stopLoading()
+        if (!showsAppPage()) {
+            // By index, not goBack, which skips pages the person never touched (Chromium's
+            // history intervention), as a script's POST leaves the one before it. Where WebView
+            // won't step back at all, the app starts again from its own page.
+            val step = view.canGoBackOrForward(-1)
+            returning = Return(home = !step, at = now)
+            if (step) view.goBackOrForward(-1) else home()
+        }
+        val last = stopped
+        if (decision is NavigationPolicy.Decision.OpenExternally && (last == null || last.first != decision.url || now - last.second > RETURN_MILLIS)) {
+            stopped = decision.url to now
+            openExternally(decision.url)
+        }
+    }
+
+    /** Web pages open in a Custom Tab, an excursion; the dialer opens at once; every other app is asked about first. */
+    fun openExternally(url: URI) {
+        if (!mayAct) return
+        val scheme = url.scheme?.lowercase()
+        if (scheme == "http" || scheme == "https") {
+            if (CustomTabs.open(context, url)) lifecycle.beginExcursion()
+            return
+        }
+        val intent = handOff(url) ?: run {
+            Log.i(TAG, "${app.host}: refused a $scheme link to another app")
+            return
+        }
+        if (NavigationPolicy.asksBeforeOpening(url)) show(Dialog.OpenElsewhere(NavigationPolicy.target(url), intent)) else start(intent)
+    }
+
+    /** The intent that hands [url] to another app, or null when it would reach Ovenlight itself. */
+    private fun handOff(url: URI): Intent? {
+        val intent = when (url.scheme?.lowercase()) {
+            "tel" -> Intent(Intent.ACTION_DIAL, url.toString().toUri())
+            in NavigationPolicy.composes -> Intent(Intent.ACTION_SENDTO, url.toString().toUri())
+            "intent" -> pageIntent(url.toString(), context.packageName) ?: return null
+            else -> Intent(Intent.ACTION_VIEW, url.toString().toUri()).addCategory(Intent.CATEGORY_BROWSABLE)
+        }
+        val own = context.packageManager.queryIntentActivities(intent, 0).any { it.activityInfo.packageName == context.packageName }
+        return if (own) null else intent
+    }
+
+    /** Another app opens only from the page on screen, unlocked; it takes the person out of Ovenlight. */
+    private fun start(intent: Intent) {
+        if (!mayAct) return
+        try {
+            context.startActivity(intent)
+        } catch (_: ActivityNotFoundException) {
+            Log.i(TAG, "${app.host}: no app opens that link")
+        } catch (_: SecurityException) {
+            Log.i(TAG, "${app.host}: the app that link names isn't open to others")
+        }
+    }
+
+    // Dialogs
+
+    private fun show(dialog: Dialog) {
+        if (!mayAct) return dialog.dropped()
+        mutableDialog.value?.dropped()
+        mutableDialog.value = dialog
+    }
+
+    /** The dialog closed: answered, dismissed or let go, it answers once. */
+    fun dismiss(dialog: Dialog) {
+        if (mutableDialog.value === dialog) mutableDialog.value = null
+        dialog.dropped()
+    }
+
+    /** "Open" in "Open in another app?". */
+    fun open(dialog: Dialog.OpenElsewhere) {
+        dismiss(dialog)
+        start(dialog.intent)
+    }
+
+    /** The page left the screen (closed, covered, locked) or went: its dialog is answered and full screen ends. A file pick under way stays. */
+    fun takenAway() {
+        mutableDialog.value?.let(::dismiss)
+        exitFullscreen()
+    }
+
+    fun exitFullscreen() {
+        val screen = mutableFullscreen.value ?: return
+        mutableFullscreen.value = null
+        screen.callback.onCustomViewHidden()
+    }
+
+    // The file input
+
+    /**
+     * The photo picker for images and video, documents otherwise, and the camera when the
+     * input asks for capture. Each is an excursion, and its result reaches the page once
+     * Ovenlight is in front and unlocked. The page's callback is answered exactly once.
+     */
+    private fun chooseFiles(callback: ValueCallback<Array<Uri>>, params: WebChromeClient.FileChooserParams) {
+        val answer = DialogAnswer<Array<Uri>?>(null) { callback.onReceiveValue(it) }
+        val activity = activity()
+        if (!mayAct || activity == null) return answer.dropped()
+        val multiple = params.mode == WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE
+        val mime = { ext: String -> MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) }
+        when (val kind = FileChoice.kind(params.acceptTypes?.toList().orEmpty(), params.isCaptureEnabled, mime)) {
+            is FileChoice.Kind.Camera -> capture(activity, kind.video, answer)
+            is FileChoice.Kind.Media -> {
+                val type = when {
+                    kind.single != null -> ActivityResultContracts.PickVisualMedia.SingleMimeType(kind.single)
+                    kind.images && kind.videos -> ActivityResultContracts.PickVisualMedia.ImageAndVideo
+                    kind.videos -> ActivityResultContracts.PickVisualMedia.VideoOnly
+                    else -> ActivityResultContracts.PickVisualMedia.ImageOnly
+                }
+                val request = PickVisualMediaRequest.Builder().setMediaType(type).build()
+                if (multiple) {
+                    pick(activity, ActivityResultContracts.PickMultipleVisualMedia(), request, answer) { it.toTypedArray().ifEmpty { null } }
+                } else {
+                    pick(activity, ActivityResultContracts.PickVisualMedia(), request, answer) { it?.let { uri -> arrayOf(uri) } }
+                }
+            }
+            is FileChoice.Kind.Documents -> {
+                val types = kind.types.toTypedArray()
+                if (multiple) {
+                    pick(activity, ActivityResultContracts.OpenMultipleDocuments(), types, answer) { it.toTypedArray().ifEmpty { null } }
+                } else {
+                    pick(activity, ActivityResultContracts.OpenDocument(), types, answer) { it?.let { uri -> arrayOf(uri) } }
+                }
+            }
+        }
+    }
+
+    /**
+     * Ovenlight declares the camera permission (for pages and the invite scanner), so the
+     * camera app takes a picture for it only once that is granted. The permission's own
+     * prompt is drawn over Ovenlight and isn't an excursion.
+     */
+    private fun capture(activity: ComponentActivity, video: Boolean, answer: DialogAnswer<Array<Uri>?>) {
+        val take = {
+            val file = CaptureFileProvider.newFile(activity, if (video) "mp4" else "jpg")
+            val uri = FileProvider.getUriForFile(activity, CaptureFileProvider.authority(activity), file)
+            val contract = if (video) ActivityResultContracts.CaptureVideo() else ActivityResultContracts.TakePicture()
+            pick(activity, contract, uri, answer) { taken -> if (taken && file.length() > 0) arrayOf(uri) else null.also { file.delete() } }
+        }
+        if (ContextCompat.checkSelfPermission(activity, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) return take()
+        startForResult(activity, ActivityResultContracts.RequestPermission(), Manifest.permission.CAMERA, excursion = false, failed = answer::dropped) { granted ->
+            // The person just answered Ovenlight's own question; the result can come before the resume.
+            if (granted && !isLocked.value) take() else answer.dropped()
+        }
+    }
+
+    private fun <I, O> pick(
+        activity: ComponentActivity, contract: ActivityResultContract<I, O>, input: I,
+        answer: DialogAnswer<Array<Uri>?>, files: (O) -> Array<Uri>?,
+    ) = startForResult(activity, contract, input, excursion = true, failed = answer::dropped) { result ->
+        lifecycle.excursionEnded()
+        val picked = files(result) ?: return@startForResult answer.dropped()
+        // After the unlock: a return from a picker may lock first.
+        scope.launch {
+            val state = activity.lifecycle.currentStateFlow.first { it.isAtLeast(Lifecycle.State.STARTED) || it == Lifecycle.State.DESTROYED }
+            if (state != Lifecycle.State.DESTROYED) isLocked.first { !it }
+            answer(picked)
+        }
+    }
+
+    /**
+     * Registered on the activity's own registry without a lifecycle, so the result arrives
+     * even while the lock is up or the page is off screen, and unregistered once it has. An
+     * activity made again meanwhile (a change it doesn't handle itself) never gets this
+     * result, so its end answers the page with nothing, which lets the page ask again.
+     */
+    private fun <I, O> startForResult(
+        activity: ComponentActivity, contract: ActivityResultContract<I, O>, input: I,
+        excursion: Boolean, failed: () -> Unit, done: (O) -> Unit,
+    ) {
+        launches += 1
+        var launcher: ActivityResultLauncher<I>? = null
+        var ended: LifecycleEventObserver? = null
+        val finish = {
+            launcher?.unregister()
+            ended?.let(activity.lifecycle::removeObserver)
+        }
+        launcher = activity.activityResultRegistry.register("page-$launches", contract) { result ->
+            finish()
+            done(result)
+        }
+        ended = LifecycleEventObserver { _, event ->
+            if (event != Lifecycle.Event.ON_DESTROY) return@LifecycleEventObserver
+            finish()
+            if (excursion) lifecycle.excursionEnded()
+            failed()
+        }
+        activity.lifecycle.addObserver(ended)
+        if (excursion) lifecycle.beginExcursion()
+        try {
+            launcher.launch(input)
+        } catch (_: ActivityNotFoundException) {
+            finish()
+            if (excursion) lifecycle.excursionEnded()
+            failed()
+        }
+    }
+
+    private fun activity(): ComponentActivity? =
+        generateSequence(context) { (it as? ContextWrapper)?.baseContext }.firstNotNullOfOrNull { it as? ComponentActivity }
+
+    private inner class Chrome : WebChromeClient() {
+        override fun onJsAlert(view: WebView, url: String?, message: String?, result: JsResult): Boolean {
+            show(Dialog.Alert(message.orEmpty(), DialogAnswer(Unit) { result.confirm() }))
+            return true
+        }
+
+        override fun onJsConfirm(view: WebView, url: String?, message: String?, result: JsResult): Boolean {
+            show(Dialog.Confirm(message.orEmpty(), DialogAnswer(false) { if (it) result.confirm() else result.cancel() }))
+            return true
+        }
+
+        override fun onJsPrompt(view: WebView, url: String?, message: String?, defaultValue: String?, result: JsPromptResult): Boolean {
+            show(Dialog.Prompt(message.orEmpty(), defaultValue.orEmpty(), DialogAnswer<String?>(null) { if (it != null) result.confirm(it) else result.cancel() }))
+            return true
+        }
+
+        /** The page leaves at once, as in WKWebView, which shows no such question. */
+        override fun onJsBeforeUnload(view: WebView, url: String?, message: String?, result: JsResult): Boolean {
+            result.confirm()
+            return true
+        }
+
+        override fun onShowFileChooser(view: WebView, callback: ValueCallback<Array<Uri>>, params: FileChooserParams): Boolean {
+            chooseFiles(callback, params)
+            return true
+        }
+
+        override fun onShowCustomView(view: View, callback: CustomViewCallback) {
+            if (!mayAct) return callback.onCustomViewHidden()
+            exitFullscreen()
+            mutableFullscreen.value = Fullscreen(view, callback)
+        }
+
+        override fun onHideCustomView() {
+            mutableFullscreen.value = null
+        }
+
+        /** Ovenlight never gives a page the phone's location, as on iOS (docs/building-apps.md). */
+        override fun onGeolocationPermissionsShowPrompt(origin: String?, callback: GeolocationPermissions.Callback?) {
+            callback?.invoke(origin, false, false)
+        }
+    }
+
+    companion object {
+        private const val TAG = "Ovenlight"
+
+        /** How long the way back from a stopped page may take before a new one is stopped again. */
+        private const val RETURN_MILLIS = 3_000L
+
+        /** Each launch's own key in the activity's registry, across every page. */
+        private var launches = 0
+
+        /**
+         * An `intent:` link as another app may receive it, or null. Parsed without
+         * URI_ALLOW_UNSAFE; only a view of something goes ahead; never one for Ovenlight's own
+         * package, nor one carrying the phone's files or Ovenlight's own link. Its component
+         * and selector go, so the system picks what handles it, as a browser does, and so do
+         * its flags and every extra that names an address (`S.browser_fallback_url` among
+         * them, which is never followed).
+         */
+        fun pageIntent(text: String, ownPackage: String): Intent? {
+            // A malformed link throws URISyntaxException, or a number format error for a bad extra.
+            val intent = runCatching { Intent.parseUri(text, Intent.URI_INTENT_SCHEME) }.getOrNull() ?: return null
+            if (intent.action != Intent.ACTION_VIEW || intent.`package`.equals(ownPackage, ignoreCase = true)) return null
+            val data = intent.data?.let { uri(it.toString()) ?: return null }
+            if (!NavigationPolicy.mayCarry(data)) return null
+            intent.component = null
+            intent.selector = null
+            intent.flags = 0
+            intent.clipData = null
+            intent.removeExtra("browser_fallback_url")
+            intent.extras?.let { extras ->
+                for (key in extras.keySet().toList()) {
+                    @Suppress("DEPRECATION") // The extras an intent: link can carry are plain values.
+                    val value = extras.get(key)
+                    if (value is CharSequence && NavigationPolicy.carriesURI(value.toString())) intent.removeExtra(key)
+                }
+            }
+            intent.addCategory(Intent.CATEGORY_BROWSABLE)
+            return intent
+        }
+    }
+}
+
+/** Which picker a page's file input opens, from its `accept` and `capture`. */
+object FileChoice {
+    sealed class Kind {
+        data class Camera(val video: Boolean) : Kind()
+
+        /** The photo picker: [single] when the input names exactly one type. */
+        data class Media(val images: Boolean, val videos: Boolean, val single: String?) : Kind()
+        data class Documents(val types: List<String>) : Kind()
+    }
+
+    /**
+     * [accept] is WebView's list (types, wildcards and `.ext` names); an empty one, or one with
+     * a name [mimeType] doesn't know, takes any file. The camera goes only where a photo or
+     * video would do.
+     */
+    fun kind(accept: List<String>, capture: Boolean, mimeType: (String) -> String?): Kind {
+        val tokens = accept.flatMap { it.split(',') }.map { it.trimmingWhitespace().lowercase() }.filter { it.isNotEmpty() }
+        val types = tokens.map { if (it.startsWith(".")) mimeType(it.drop(1)) else it }
+        val any = types.isEmpty() || types.any { it == null || it == "*/*" }
+        val known = types.filterNotNull()
+        val media = !any && known.all { it.startsWith("image/") || it.startsWith("video/") }
+        if (capture && (any || media)) return Kind.Camera(video = media && known.all { it.startsWith("video/") })
+        if (media) {
+            return Kind.Media(
+                images = known.any { it.startsWith("image/") }, videos = known.any { it.startsWith("video/") },
+                single = known.distinct().singleOrNull()?.takeUnless { it.endsWith("/*") },
+            )
+        }
+        return Kind.Documents(if (any) listOf("*/*") else known.distinct())
+    }
+}
+
+/** Where the camera writes a photo or video for a page, in `cacheDir/Captures`. */
+class CaptureFileProvider : FileProvider() {
+    companion object {
+        private var swept = false
+
+        fun authority(context: Context) = "${context.packageName}.captures"
+
+        /** A new file; the first one in each process clears the last process's, which no page can still hold. */
+        fun newFile(context: Context, extension: String): File {
+            val folder = File(context.cacheDir, "Captures").apply { mkdirs() }
+            if (!swept) {
+                swept = true
+                folder.listFiles()?.forEach(File::delete)
+            }
+            return File.createTempFile("capture-", ".$extension", folder)
+        }
+    }
+}
+
+/**
+ * The page's dialogs and its fullscreen video, over the app. Goes last in the app's screen, so
+ * full screen covers the chrome and its Back comes first. Leaving composition (the app
+ * closing, the lock) answers any dialog and ends full screen.
+ */
+@Composable
+fun PageEdgesLayer(edges: PageEdges) {
+    val dialog by edges.dialog.collectAsState()
+    val fullscreen by edges.fullscreen.collectAsState()
+    DisposableEffect(edges) { onDispose(edges::takenAway) }
+    fullscreen?.let { key(it) { FullscreenView(it, edges::exitFullscreen) } }
+    dialog?.let { key(it) { PageDialog(edges, it) } }
+}
+
+@Composable
+private fun FullscreenView(screen: PageEdges.Fullscreen, exit: () -> Unit) {
+    val window = LocalActivity.current?.window
+    DisposableEffect(window) {
+        val bars = window?.let { WindowCompat.getInsetsController(it, it.decorView) }
+        bars?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        bars?.hide(WindowInsetsCompat.Type.systemBars())
+        onDispose { bars?.show(WindowInsetsCompat.Type.systemBars()) }
+    }
+    BackHandler(onBack = exit)
+    AndroidView(
+        factory = { screen.view.also { (it.parent as? ViewGroup)?.removeView(it) } },
+        modifier = Modifier.fillMaxSize().background(Color.Black),
+    )
+}
+
+@Composable
+private fun PageDialog(edges: PageEdges, dialog: PageEdges.Dialog) {
+    // Whatever takes it away answers it with its fallback, once.
+    DisposableEffect(dialog) { onDispose(dialog::dropped) }
+    val dismiss = { edges.dismiss(dialog) }
+    val title: @Composable () -> Unit = { Text(edges.appName) }
+    when (dialog) {
+        is PageEdges.Dialog.Alert -> AlertDialog(
+            onDismissRequest = dismiss, title = title, text = { PageMessage(dialog.message) },
+            confirmButton = { TextButton(onClick = { dialog.answer(Unit); dismiss() }) { Text(stringResource(R.string.page_ok)) } },
+        )
+        is PageEdges.Dialog.Confirm -> AlertDialog(
+            onDismissRequest = dismiss, title = title, text = { PageMessage(dialog.message) },
+            confirmButton = { TextButton(onClick = { dialog.answer(true); dismiss() }) { Text(stringResource(R.string.page_ok)) } },
+            dismissButton = { TextButton(onClick = { dialog.answer(false); dismiss() }) { Text(stringResource(R.string.page_cancel)) } },
+        )
+        is PageEdges.Dialog.Prompt -> {
+            var text by rememberSaveable(dialog) { mutableStateOf(dialog.defaultText) }
+            AlertDialog(
+                onDismissRequest = dismiss, title = title,
+                text = {
+                    Column {
+                        PageMessage(dialog.message)
+                        OutlinedTextField(
+                            value = text, onValueChange = { text = it }, singleLine = true,
+                            label = { Text(stringResource(R.string.page_prompt_field)) },
+                            modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                        )
+                    }
+                },
+                confirmButton = { TextButton(onClick = { dialog.answer(text); dismiss() }) { Text(stringResource(R.string.page_ok)) } },
+                dismissButton = { TextButton(onClick = { dialog.answer(null); dismiss() }) { Text(stringResource(R.string.page_cancel)) } },
+            )
+        }
+        is PageEdges.Dialog.OpenElsewhere -> AlertDialog(
+            onDismissRequest = dismiss,
+            title = { Text(stringResource(R.string.page_open_elsewhere_title)) },
+            text = {
+                GuardedFromOverlays()
+                Text(stringResource(R.string.page_open_elsewhere_body, edges.appName, dialog.target))
+            },
+            confirmButton = { TextButton(onClick = { edges.open(dialog) }) { Text(stringResource(R.string.page_open)) } },
+            dismissButton = { TextButton(onClick = dismiss) { Text(stringResource(R.string.page_cancel)) } },
+        )
+    }
+}
+
+/** A page's message, which can run long. */
+@Composable
+private fun PageMessage(message: String) {
+    if (message.isNotEmpty()) Text(message, Modifier.verticalScroll(rememberScrollState()))
+}
+
+/**
+ * Ovenlight's own prompt can't be tapjacked: its window drops touches that pass through
+ * another app's overlay, and on API 31 and up other apps' overlays hide while it shows.
+ */
+@Composable
+private fun GuardedFromOverlays() {
+    val view = LocalView.current
+    DisposableEffect(view) {
+        val window = generateSequence(view.parent) { it.parent }.firstNotNullOfOrNull { (it as? DialogWindowProvider)?.window }
+        window?.decorView?.filterTouchesWhenObscured = true
+        if (Build.VERSION.SDK_INT >= 31) window?.setHideOverlayWindows(true)
+        onDispose { if (Build.VERSION.SDK_INT >= 31) window?.setHideOverlayWindows(false) }
+    }
+}

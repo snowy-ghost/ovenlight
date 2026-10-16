@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Where an app's page meets the phone: its dialogs, and links to other apps. -->
+    <string name="page_ok">OK</string>
+    <string name="page_cancel">Cancel</string>
+    <string name="page_open">Open</string>
+    <string name="page_open_elsewhere_title">Open in another app?</string>
+    <!-- The app's name, then the link, already quoted. -->
+    <string name="page_open_elsewhere_body">%1$s wants to open %2$s.</string>
+    <string name="page_prompt_field">Answer</string>
+</resources>

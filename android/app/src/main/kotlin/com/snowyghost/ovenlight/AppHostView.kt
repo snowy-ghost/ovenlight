@@ -172,6 +172,8 @@ private fun AppPageView(model: AppModel, page: AppPage, onClose: () -> Unit) {
             }
         }
         AppChromeHost(model, page, icon, onClose)
+        // Last, so full screen covers everything else and its Back comes first.
+        PageEdgesLayer(page.edges)
     }
     if (cantReach) {
         AlertDialog(

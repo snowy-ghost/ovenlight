@@ -7,7 +7,6 @@ import android.graphics.Bitmap
 import android.util.Log
 import android.webkit.HttpAuthHandler
 import android.webkit.RenderProcessGoneDetail
-import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
@@ -15,7 +14,6 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.webkit.WebViewCompat
 import com.snowyghost.ovenlight.core.Core
-import java.net.URI
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.TimeSource
 import kotlinx.coroutines.CoroutineScope
@@ -46,6 +44,9 @@ class AppPage(
     /** Off screen it holds the application's context; on screen, the activity's (see [attach]). */
     val context = MutableContextWrapper(context.applicationContext)
     val view = PageWebView(this.context)
+
+    /** Links out, other apps, the page's dialogs, file input and full screen; made once the profile is on. */
+    val edges: PageEdges
 
     private val mutableGate = MutableStateFlow(AppLoadGate.Waiting)
     val gate: StateFlow<AppLoadGate> = mutableGate
@@ -84,8 +85,12 @@ class AppPage(
         WebViewSetup.configure(view)
         if (BuildConfig.DEBUG) WebView.setWebContentsDebuggingEnabled(true)
         if (node != null) Core.setRoute(routeKey, node.id) else Core.clearRoute(routeKey)
+        edges = PageEdges(
+            app, view, this.context, scope, OvenlightApp.lock.isLocked, OvenlightApp.model.lifecycle, isShown = { shown },
+            home = { if (routeIsCurrent() && nodeMayCarry && !destroyed) view.loadUrl(app.startURL.toString()) },
+        )
         view.webViewClient = Client()
-        view.webChromeClient = WebChromeClient()
+        view.webChromeClient = edges.chrome
         view.onPause()
     }
 
@@ -108,6 +113,7 @@ class AppPage(
 
     internal fun offScreen() {
         shown = false
+        edges.takenAway()
         view.onPause()
     }
 
@@ -274,6 +280,7 @@ class AppPage(
     /** The pool dropped this page: its route goes nowhere, its view stops and goes. */
     internal fun destroy() {
         destroyed = true
+        edges.takenAway()
         gateJob?.cancel()
         Core.clearRoute(routeKey)
         view.stopLoading()
@@ -287,26 +294,17 @@ class AppPage(
     @SuppressLint("MissingOnRenderProcessGone")
     private inner class Client : WebViewClient() {
         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-            val url = runCatching { URI(request.url.toString()) }.getOrNull() ?: return true
             if (request.isForMainFrame) tapped = request.hasGesture()
-            return when (val decision = NavigationPolicy.decide(url, app.host, request.isForMainFrame, request.hasGesture())) {
-                NavigationPolicy.Decision.Allow -> false
-                NavigationPolicy.Decision.Refuse -> {
-                    Log.i(TAG, "${app.host}: refused a ${url.scheme ?: "schemeless"} link")
-                    true
-                }
-                is NavigationPolicy.Decision.OpenExternally -> {
-                    if (shown && decision.url.scheme in setOf("http", "https")) CustomTabs.open(context, decision.url)
-                    true
-                }
-            }
+            return edges.shouldOverrideUrlLoading(request)
         }
 
         override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
             navigationFailed = false
+            edges.pageStarted(url)
         }
 
         override fun onPageFinished(view: WebView, url: String?) {
+            edges.pageFinished(url)
             if (navigationFailed || url == null || url == "about:blank" || destroyed) return
             if (!loaded.value && clearHistoryOnLoad) {
                 // The app-down page never counts, and Back never returns to it.

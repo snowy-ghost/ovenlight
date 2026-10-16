@@ -104,7 +104,7 @@ data class InviteLink(
         val joinPage: URI = URI("https://ovenlight.app/join")
 
         /** Paths of the App Link: the site serves the page with and without `.html`, and a trailing slash still reaches it. */
-        private val universalPaths = setOf("/join", "/join/", "/join.html")
+        internal val universalPaths = setOf("/join", "/join/", "/join.html")
 
         // Up to white space as iOS's ICU regex reads \s, the same on the JVM and Android.
         private val linkInText = Regex(

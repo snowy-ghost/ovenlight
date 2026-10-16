@@ -249,13 +249,49 @@ object NavigationPolicy {
     val systemConfirms = setOf("tel")
 
     /**
-     * Schemes a page never opens: an `intent:` or `android-app:` link can start any exported
-     * activity with extras of the page's choosing, and `file:` and `content:` would read the
-     * phone's own files. iOS has none of them.
+     * Schemes a page never opens: an `android-app:` link can start any exported activity with
+     * extras of the page's choosing, and `file:` and `content:` would read the phone's own
+     * files. iOS has none of them. An `intent:` link is another app, asked about first, once
+     * PageEdges has taken out everything that could aim it elsewhere.
      */
-    val androidRefuses = setOf("intent", "android-app", "file", "content")
+    val androidRefuses = setOf("android-app", "file", "content")
+
+    /** Mail and messages, which another app composes (`ACTION_SENDTO`). */
+    val composes = setOf("mailto", "sms", "smsto", "mms", "mmsto")
 
     fun asksBeforeOpening(url: URI): Boolean = url.scheme?.lowercase() !in systemConfirms
+
+    /**
+     * Ovenlight's own links: its scheme, and every address its App Link takes (the join page,
+     * in any letter case and on any port). A page never hands one to Ovenlight, since it could
+     * pick the invite; Android would open the https form in Ovenlight itself whenever no
+     * browser takes it.
+     */
+    fun isOvenlightLink(url: URI): Boolean {
+        val scheme = url.scheme?.lowercase()
+        if (scheme == InviteLink.scheme) return true
+        if (scheme != "http" && scheme != "https") return false
+        return Discovery.normalizedHost(url.host ?: "") == InviteLink.joinPage.host && url.path?.lowercase() in InviteLink.universalPaths
+    }
+
+    /** What an `intent:` link may hand another app: no data, or data that is neither the phone's files nor Ovenlight's own link. */
+    fun mayCarry(data: URI?): Boolean {
+        if (data == null) return true
+        val scheme = data.scheme?.lowercase() ?: return false
+        return scheme != "intent" && scheme !in androidRefuses && !isOvenlightLink(data)
+    }
+
+    /**
+     * An intent extra that names an address, which another app might load or read (a
+     * `browser_fallback_url`, an output path): anything starting with a scheme or `//`.
+     * Plain text that happens to look like one goes too, which costs nothing.
+     */
+    fun carriesURI(value: String): Boolean {
+        val text = value.trimmingWhitespace()
+        return text.startsWith("//") || uriScheme.containsMatchIn(text)
+    }
+
+    private val uriScheme = Regex("^[A-Za-z][A-Za-z0-9+.-]*:")
 
     /** The link as the confirmation names it, cut short. */
     fun target(url: URI): String {
@@ -270,13 +306,14 @@ object NavigationPolicy {
             "http", "https" -> when {
                 !isMainFrame -> Decision.Allow
                 Discovery.normalizedHost(url.host ?: "") == Discovery.normalizedHost(appHost) -> Decision.Allow
+                isOvenlightLink(url) -> Decision.Refuse
                 else -> Decision.OpenExternally(url)
             }
             // A frame of another site can make one too: the page shows only the app's own.
             "blob" -> if (!isMainFrame || blobHost(url) == Discovery.normalizedHost(appHost)) Decision.Allow else Decision.Refuse
             "about", "data", "javascript" -> Decision.Allow
             // Never Ovenlight's own scheme: a page could hand it an invite of its choosing.
-            else -> if (tapped && isMainFrame && scheme != InviteLink.scheme && scheme !in androidRefuses) {
+            else -> if (tapped && isMainFrame && !isOvenlightLink(url) && scheme !in androidRefuses) {
                 Decision.OpenExternally(url)
             } else {
                 Decision.Refuse

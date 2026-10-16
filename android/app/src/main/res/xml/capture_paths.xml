@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Photos and videos the camera takes for a page's file input, and nothing else. -->
+<paths>
+    <cache-path name="captures" path="Captures/" />
+</paths>

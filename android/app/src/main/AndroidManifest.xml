@@ -82,6 +82,17 @@
                 tools:node="remove" />
         </provider>
 
+        <!-- The camera writes a page's photo or video here, for its file input. -->
+        <provider
+            android:name=".CaptureFileProvider"
+            android:authorities="${applicationId}.captures"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/capture_paths" />
+        </provider>
+
         <!-- The one activity. singleTask, so links arrive in onNewIntent and bringing it
              back closes a tab above it. It handles rotation, size, density, keyboard and
              UI mode changes itself, so pages survive them. -->

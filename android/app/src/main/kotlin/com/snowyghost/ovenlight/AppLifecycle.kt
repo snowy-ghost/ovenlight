@@ -38,6 +38,14 @@ class AppLifecycle(
         excursionStartedAt = now()
     }
 
+    /**
+     * A trip out handed its result back. One that never stopped the activity (a picker drawn
+     * over it) ends here, since no return will; one that stopped it ends with that return.
+     */
+    fun excursionEnded() {
+        if (away == null && leftAt == null) excursionStartedAt = null
+    }
+
     /** The activity is in front again, which ends any excursion. */
     fun activityStarted() {
         away?.cancel()
