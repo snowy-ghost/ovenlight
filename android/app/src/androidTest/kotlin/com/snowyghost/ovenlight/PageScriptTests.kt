@@ -208,6 +208,15 @@ class PageScriptTests {
     }
 
     @Test
+    fun testSpeechRecognitionIsHidden() {
+        open()
+        val names = "['SpeechRecognition', 'webkitSpeechRecognition', 'SpeechGrammarList', 'webkitSpeechGrammarList']"
+        assertEquals("[]", eval("JSON.stringify($names.filter(n => n in window))"))
+        waitFor("the frame loads") { eval("document.querySelector('iframe').contentDocument.readyState") == "complete" }
+        assertEquals("in the app's own frames too", "[]", eval("JSON.stringify($names.filter(n => n in document.querySelector('iframe').contentWindow))"))
+    }
+
+    @Test
     fun testAnAnchorsDownloadNameIsKept() {
         open()
         eval("document.getElementById('file').click()")

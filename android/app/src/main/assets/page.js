@@ -1,5 +1,6 @@
 // Ovenlight's page script, added at document start to every frame of an app's pages
-// (PageBridge.kt). It hides service workers, which iOS doesn't run either; keeps the tracks
+// (PageBridge.kt). It hides service workers and speech recognition, which iOS doesn't run
+// either (WebView's would hand the microphone to Google's recognizer); keeps the tracks
 // getUserMedia hands out, so Ovenlight can stop them on lock and on close; and reports clicks
 // on <a download>, with the name they give, and a blob's bytes, read at the click since pages
 // often revoke a blob URL right after it.
@@ -10,6 +11,7 @@
 // each one. Nothing a page sends grants anything: Ovenlight checks each download and stream.
 (() => {
   delete Navigator.prototype.serviceWorker;
+  for (const name of ["SpeechRecognition", "webkitSpeechRecognition", "SpeechGrammarList", "webkitSpeechGrammarList"]) delete window[name];
   const LIMIT = __LIMIT__, HREF_LIMIT = __HREF_LIMIT__, HEADER_LIMIT = __HEADER_LIMIT__;
 
   // The built-ins a report passes through, taken now, before any page script runs, and called
