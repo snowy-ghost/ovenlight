@@ -18,7 +18,7 @@ import (
 	"sync"
 	"time"
 
-	_ "golang.org/x/mobile/bind" // keeps x/mobile in the module graph, for gomobile and the notices
+	_ "golang.org/x/mobile/bind/java" // linked by gomobile's glue anyway, and imported here so the notices list x/mobile
 	"tailscale.com/envknob"
 	"tailscale.com/logtail"
 	"tailscale.com/net/netmon"
