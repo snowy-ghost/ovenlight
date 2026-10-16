@@ -19,8 +19,9 @@
 # it, and checks that the connector got it, screenshot and all, with no pill or handle in the
 # screenshot.
 # downloads opens a Recipes page that downloads a cookie-gated file over http and a blob, and
-# checks each arrives in Ovenlight's sheet with the bytes the page meant, and that Share (and
-# Open, where a viewer exists) leave Ovenlight's task; then, if the emulator's camera answers, that locking stops the page's camera without discarding the page.
+# checks each arrives in Ovenlight's sheet with the bytes the page meant, that Share (and Open,
+# where a viewer exists) leave Ovenlight's task, and that Save writes the file; then, if the
+# emulator's camera answers, that locking stops the page's camera without discarding the page.
 # upload pushes a file into Download and a PNG into Pictures, picks each through the real
 # pickers (documents for a plain input, the photo picker from Ovenlight's sheet for an image
 # input), and checks the page got its name and size and the app's server its bytes; then that
@@ -537,6 +538,7 @@ EOF
   # The page's HttpOnly session cookie, which only the profile's cookie jar can carry.
   await_text 40 "Signed in" "Download file" || { shot downloads-failed; fail "the page never signed in: $(screen_text | tr '\n' '|')"; }
   downloaded() { a shell run-as $PKG sh -c "'cat cache/Downloads/*/\"$1\"'" 2>/dev/null | tr -d '\r'; }
+  a shell touch /sdcard/Download/e2e-start
 
   tap_text "Download file"
   await_text 30 "Recipes export.csv" Save Share || { shot downloads-failed; fail "no sheet for the http download: $(screen_text | tr '\n' '|')"; }
@@ -573,6 +575,24 @@ EOF
   else
     a shell input keyevent KEYCODE_BACK; sleep 2
   fi
+  # Save writes the file where the documents picker says, under the name it gives.
+  tap_text "Download blob"
+  await_text 30 "note.txt" Save Share || { shot downloads-failed; fail "no sheet for the blob to save: $(screen_text | tr '\n' '|')"; }
+  tap_text Save
+  for i in $(seq 1 15); do [[ $(front) == *documentsui* ]] && break; sleep 1; done
+  [[ $(front) == *documentsui* ]] || fail "Save didn't open the documents picker: $(front)"
+  sleep 2; tap_matching '^(SAVE|Save)$' || { shot downloads-save; fail "no Save in the documents picker: $(screen_text | tr '\n' '|')"; }
+  # The picker makes the file empty; Ovenlight writes it once back in front.
+  saved= got=
+  for i in $(seq 1 15); do
+    saved=$(a shell "find /sdcard/ -name 'note*.txt' -newer /sdcard/Download/e2e-start 2>/dev/null" | tr -d '\r' | head -1)
+    [[ -n $saved ]] && got=$(a shell cat "'$saved'" | tr -d '\r')
+    [[ $got == "blob from the page" ]] && break; sleep 1
+  done
+  [[ $got == "blob from the page" ]] || { shot downloads-save; fail "Save wrote nothing or other bytes: ${saved:-no file} '$got'"; }
+  note "Save wrote the blob where the documents picker said"
+  a shell rm -f "'$saved'" /sdcard/Download/e2e-start >/dev/null 2>&1 || true
+  await_text 10 "Download blob" || fail "not back on the page after Save: $(screen_text | tr '\n' '|')"
 
   say "capture: the camera stops on lock, and the page stays"
   tap_text "Start camera"

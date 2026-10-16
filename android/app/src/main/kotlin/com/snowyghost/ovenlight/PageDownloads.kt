@@ -650,14 +650,20 @@ private object SaveDocument {
         model.lifecycle.beginExcursion()
         activity.launchOnce(ActivityResultContracts.CreateDocument(type), file.name, failed = model.lifecycle::excursionEnded) { target ->
             target ?: return@launchOnce
+            // The picker's grant ends with this activity, which may go before the unlock; a
+            // persisted one lasts until the file is written.
+            val resolver = activity.applicationContext.contentResolver
+            val write = Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            runCatching { resolver.takePersistableUriPermission(target, write) }
             model.scope.launch {
                 // A return from the picker may lock first, as Ovenlight starts again.
                 activity.lifecycle.currentStateFlow.first { it.isAtLeast(Lifecycle.State.STARTED) || it == Lifecycle.State.DESTROYED }
                 model.lock.isLocked.first { !it }
                 val saved = withContext(Dispatchers.IO) {
-                    runCatching { activity.contentResolver.openOutputStream(target)?.use { out -> file.inputStream().use { it.copyTo(out) } } != null }.getOrDefault(false)
+                    runCatching { resolver.openOutputStream(target)?.use { out -> file.inputStream().use { it.copyTo(out) } } != null }.getOrDefault(false)
                 }
-                if (!saved) Toast.makeText(activity, failed, Toast.LENGTH_LONG).show()
+                runCatching { resolver.releasePersistableUriPermission(target, write) }
+                if (!saved) Toast.makeText(activity.applicationContext, failed, Toast.LENGTH_LONG).show()
             }
         }
     }
