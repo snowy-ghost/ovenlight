@@ -144,7 +144,7 @@ class PageDownloadsTests {
         val client = PageDownloads.client(OkHttpClient.Builder(), CookieJar.NO_COOKIES)
         assertFalse(client.followRedirects)
         assertEquals("no limit on a download that keeps arriving", 0, client.callTimeoutMillis)
-        assertEquals(PageDownloads.READ_TIMEOUT_SECONDS * 1000, client.readTimeoutMillis.toLong())
+        assertEquals("the headers may take minutes", PageDownloads.HEADERS_WAIT_MINUTES * 60_000, client.readTimeoutMillis.toLong())
         answer = 302 to "elsewhere"
         start("https://$host/export.csv")
         assertTrue("a 302 to another app is no file", shelf().isEmpty())

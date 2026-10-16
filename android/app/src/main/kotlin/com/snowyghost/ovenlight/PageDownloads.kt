@@ -279,6 +279,8 @@ class PageDownloads(
                     log("a download answered ${response.code}")
                     return@track null
                 }
+                // From the headers on, 30 seconds with nothing arriving ends it.
+                response.body.source().timeout().timeout(READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
                 val sentType = response.header("Content-Type")?.substringBefore(';')?.trim() ?: type
                 val expected = response.body.contentLength().takeIf { it >= 0 } ?: length
                 write(name?.ifEmpty { null } ?: URLUtilCompat.guessFileName(url, sent, sentType), expected, response.body.byteStream())
@@ -385,19 +387,23 @@ class PageDownloads(
         const val PAIR_MILLIS = 5_000L
         const val CONCURRENT = 3
         const val READ_TIMEOUT_SECONDS = 30L
+        const val HEADERS_WAIT_MINUTES = 10L
         const val FREE_SPACE_FLOOR = 256L * 1024 * 1024
         const val SPACE_CHECK_BYTES = 1024L * 1024
         const val WAITING_FILES = 10
 
         /**
          * The client a download is fetched again with: through the proxy on the app's route, the
-         * profile's cookies and no redirects. A download stops when nothing arrives for 30
-         * seconds, never for taking long: a large file on a slow link can take an hour.
+         * profile's cookies and no redirects. Its server may take minutes to start answering (an
+         * export the app builds first, which WebView already waited for once), so the headers
+         * get [HEADERS_WAIT_MINUTES]; after them a download stops when nothing arrives for
+         * [READ_TIMEOUT_SECONDS] (set in fetch), never for taking long: a large file on a slow
+         * link can take an hour.
          */
         fun client(proxied: OkHttpClient.Builder, cookies: CookieJar): OkHttpClient = proxied
             .cookieJar(cookies)
             .followRedirects(false)
-            .readTimeout(READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .readTimeout(HEADERS_WAIT_MINUTES, TimeUnit.MINUTES)
             .callTimeout(0, TimeUnit.SECONDS)
             .build()
     }
