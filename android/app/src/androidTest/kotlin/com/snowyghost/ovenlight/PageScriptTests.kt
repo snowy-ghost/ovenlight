@@ -122,7 +122,8 @@ class PageScriptTests {
             PageBridge(view, app.startURL, capture, downloads)
             view.loadDataWithBaseURL(base, html, "text/html", "utf-8", null)
         }
-        until(what = "the page loads") { eval("document.readyState") == "complete" }
+        // The view's first document, about:blank, is complete at once: wait for this one.
+        until(what = "the page loads") { eval("location.href + ' ' + document.readyState") == "$base complete" }
     }
 
     private fun shelf(): List<File> = DownloadShelf.waiting.value[app.id].orEmpty().map { it.file }
