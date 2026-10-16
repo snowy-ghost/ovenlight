@@ -58,12 +58,6 @@ class WebViewPoolTests {
         onMain { scope.cancel() }
     }
 
-    private fun <T> onMain(block: () -> T): T {
-        var result: Result<T>? = null
-        InstrumentationRegistry.getInstrumentation().runOnMainSync { result = runCatching(block) }
-        return result!!.getOrThrow()
-    }
-
     private val funnel = WebApp(name = "Funnel", startURL = URI("https://funnel.tail0000.ts.net/"))
     private val own = WebApp(name = "Foo", startURL = URI("https://foo.taila.ts.net/"))
     private val direct = WebApp(name = "Site", startURL = URI("https://site.example.invalid/"))

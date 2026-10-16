@@ -8,7 +8,6 @@ import android.graphics.Bitmap
 import android.net.Uri
 import android.os.SystemClock
 import android.provider.MediaStore
-import android.view.MotionEvent
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -42,7 +41,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
-import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -122,22 +120,6 @@ class PageEdgesTests {
 
     // Helpers
 
-    private fun <T> onMain(block: () -> T): T {
-        var value: T? = null
-        instrumentation.runOnMainSync { value = block() }
-        @Suppress("UNCHECKED_CAST")
-        return value as T
-    }
-
-    private fun waitFor(what: String, millis: Long = 10_000, condition: () -> Boolean) {
-        val deadline = SystemClock.uptimeMillis() + millis
-        while (SystemClock.uptimeMillis() < deadline) {
-            if (condition()) return
-            Thread.sleep(100)
-        }
-        fail("timed out waiting for $what")
-    }
-
     private fun title() = onMain { view.title.orEmpty() }
 
     /** Loads a page of the app's own origin and waits for it. */
@@ -152,15 +134,12 @@ class PageEdgesTests {
         load("<a href=\"$href\" style='display:block;position:fixed;inset:0;font-size:40px'>Go</a>")
 
     /** A real tap in the middle of the page, which WebView counts as a user gesture. */
-    private fun tap() {
-        val (x, y) = onMain {
+    private fun tap() = tap(
+        onMain {
             val at = IntArray(2).also(view::getLocationOnScreen)
             (at[0] + view.width / 2f) to (at[1] + view.height / 2f)
-        }
-        val down = SystemClock.uptimeMillis()
-        instrumentation.sendPointerSync(MotionEvent.obtain(down, down, MotionEvent.ACTION_DOWN, x, y, 0))
-        instrumentation.sendPointerSync(MotionEvent.obtain(down, down + 50, MotionEvent.ACTION_UP, x, y, 0))
-    }
+        },
+    )
 
     /** Runs a script; its result arrives in the queue once the page's dialogs are answered. */
     private fun evaluate(script: String): ArrayBlockingQueue<String> {
