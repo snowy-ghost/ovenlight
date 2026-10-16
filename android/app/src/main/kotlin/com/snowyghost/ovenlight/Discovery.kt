@@ -130,32 +130,33 @@ object Discovery {
         val answered: Map<String, Boolean> = emptyMap(),
     )
 
-    /**
-     * Fetches every candidate's manifest concurrently. [firstAnswer] runs as the first host
-     * answers, which proves the path, without waiting for a computer that drops the probe.
-     */
+    /** Fetches every candidate's manifest concurrently, through [probeEach]. */
     suspend fun probe(hosts: List<String>, fetch: Fetch?, firstAnswer: () -> Unit = {}): Outcome {
         if (fetch == null || hosts.isEmpty()) return Outcome()
-        return coroutineScope {
-            val results = Channel<Triple<String, ByteArray?, Boolean>>(hosts.size)
-            for (host in hosts) {
-                launch {
-                    val response = uri("https://$host${OvenlightManifest.path}")?.let { fetchOrNull(fetch, it) }
-                    results.send(Triple(host, response?.takeIf { it.status == 200 }?.body, response != null))
-                }
-            }
-            val apps = mutableListOf<DiscoveredApp>()
-            var reachable = false
-            val answered = mutableMapOf<String, Boolean>()
-            repeat(hosts.size) {
-                val (host, data, didAnswer) = results.receive()
-                if (didAnswer && !reachable) firstAnswer()
-                reachable = reachable || didAnswer
-                answered[host] = didAnswer
-                data?.let(OvenlightManifest::parse)?.let { apps += DiscoveredApp(host, it) }
-            }
-            Outcome(apps.sortedBy { it.host }, reachable, answered)
+        val responses = probeEach(hosts, firstAnswer) { host -> uri("https://$host${OvenlightManifest.path}")?.let { fetchOrNull(fetch, it) } }
+        val apps = responses.mapNotNull { (host, response) ->
+            response?.takeIf { it.status == 200 }?.body?.let(OvenlightManifest::parse)?.let { DiscoveredApp(host, it) }
         }
+        val answered = responses.mapValues { it.value != null }
+        return Outcome(apps.sortedBy { it.host }, answered.containsValue(true), answered)
+    }
+
+    /**
+     * Asks every host at once, each host's answer null when none came. [firstAnswer] runs as the
+     * first host answers, which proves the path, without waiting for a computer that drops the probe.
+     */
+    suspend fun <T : Any> probeEach(hosts: List<String>, firstAnswer: () -> Unit, ask: suspend (String) -> T?): Map<String, T?> = coroutineScope {
+        val results = Channel<Pair<String, T?>>(hosts.size)
+        for (host in hosts) launch { results.send(host to ask(host)) }
+        val answers = mutableMapOf<String, T?>()
+        var reached = false
+        repeat(hosts.size) {
+            val (host, answer) = results.receive()
+            if (answer != null && !reached) firstAnswer()
+            reached = reached || answer != null
+            answers[host] = answer
+        }
+        answers
     }
 }
 

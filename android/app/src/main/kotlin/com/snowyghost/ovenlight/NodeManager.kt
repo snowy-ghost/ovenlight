@@ -9,7 +9,6 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -820,25 +819,12 @@ class NodeManager(
 object GuestProbe {
     data class Outcome(val base: Discovery.Outcome = Discovery.Outcome(), val notInvited: Set<String> = emptySet())
 
-    /** [firstAnswer] as in [Discovery.probe]. */
+    /** [firstAnswer] as in [Discovery.probeEach]. */
     suspend fun probe(hosts: List<String>, fetch: Fetch?, firstAnswer: () -> Unit = {}): Outcome {
         if (fetch == null || hosts.isEmpty()) return Outcome()
-        return coroutineScope {
-            val results = Channel<Pair<String, Reach>>(hosts.size)
-            for (host in hosts) launch { results.send(host to whoami(host, fetch)) }
-            var reachable = false
-            val answered = mutableMapOf<String, Boolean>()
-            val notInvited = mutableSetOf<String>()
-            repeat(hosts.size) {
-                val (host, reach) = results.receive()
-                val didAnswer = reach != Reach.Unreachable
-                if (didAnswer && !reachable) firstAnswer()
-                reachable = reachable || didAnswer
-                answered[host] = didAnswer
-                if (reach == Reach.NotInvited) notInvited += host
-            }
-            Outcome(Discovery.Outcome(reachable = reachable, answered = answered), notInvited)
-        }
+        val reaches = Discovery.probeEach(hosts, firstAnswer) { host -> whoami(host, fetch).takeIf { it != Reach.Unreachable } }
+        val answered = reaches.mapValues { it.value != null }
+        return Outcome(Discovery.Outcome(reachable = answered.containsValue(true), answered = answered), reaches.filterValues { it == Reach.NotInvited }.keys)
     }
 
     /**
