@@ -384,20 +384,21 @@ class PageDownloads(
         const val PENDING_BYTES = BLOB_LIMIT.toLong()
         const val PAIR_MILLIS = 5_000L
         const val CONCURRENT = 3
-        const val CALL_TIMEOUT_MINUTES = 10L
+        const val READ_TIMEOUT_SECONDS = 30L
         const val FREE_SPACE_FLOOR = 256L * 1024 * 1024
         const val SPACE_CHECK_BYTES = 1024L * 1024
         const val WAITING_FILES = 10
 
         /**
          * The client a download is fetched again with: through the proxy on the app's route, the
-         * profile's cookies, no redirects, and a time limit.
+         * profile's cookies and no redirects. A download stops when nothing arrives for 30
+         * seconds, never for taking long: a large file on a slow link can take an hour.
          */
         fun client(proxied: OkHttpClient.Builder, cookies: CookieJar): OkHttpClient = proxied
             .cookieJar(cookies)
             .followRedirects(false)
-            .readTimeout(30, TimeUnit.SECONDS)
-            .callTimeout(CALL_TIMEOUT_MINUTES, TimeUnit.MINUTES)
+            .readTimeout(READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .callTimeout(0, TimeUnit.SECONDS)
             .build()
     }
 }

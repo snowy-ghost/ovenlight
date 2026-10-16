@@ -143,7 +143,8 @@ class PageDownloadsTests {
     fun testARefetchFollowsNoRedirect() {
         val client = PageDownloads.client(OkHttpClient.Builder(), CookieJar.NO_COOKIES)
         assertFalse(client.followRedirects)
-        assertEquals(PageDownloads.CALL_TIMEOUT_MINUTES * 60_000, client.callTimeoutMillis.toLong())
+        assertEquals("no limit on a download that keeps arriving", 0, client.callTimeoutMillis)
+        assertEquals(PageDownloads.READ_TIMEOUT_SECONDS * 1000, client.readTimeoutMillis.toLong())
         answer = 302 to "elsewhere"
         start("https://$host/export.csv")
         assertTrue("a 302 to another app is no file", shelf().isEmpty())
