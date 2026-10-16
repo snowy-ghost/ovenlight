@@ -52,12 +52,6 @@ var (
 
 var discardLogger = log.New(io.Discard, "", 0)
 
-// exit ends the process. Tests replace it.
-var exit = func(err error) {
-	logLine("core: " + err.Error())
-	os.Exit(1)
-}
-
 // Init sets up the interface getter, logging and the proxy. Call it once, before
 // any web view or node exists.
 func Init(p Platform, debugBuild bool) error {
@@ -75,7 +69,10 @@ func Init(p Platform, debugBuild bool) error {
 		if debug {
 			logf = func(format string, args ...any) { logLine(fmt.Sprintf(format, args...)) }
 		}
-		theProxy, err = startProxy(openNode, logf, exit)
+		theProxy, err = startProxy(openNode, logf, func(err error) {
+			logLine("core: " + err.Error())
+			os.Exit(1)
+		})
 	})
 	return err
 }

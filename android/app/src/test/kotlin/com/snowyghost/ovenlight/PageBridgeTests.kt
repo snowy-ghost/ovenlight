@@ -1,6 +1,8 @@
 package com.snowyghost.ovenlight
 
-import java.io.File
+import android.content.Context
+import androidx.test.core.app.ApplicationProvider
+import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.net.URI
 import java.nio.ByteBuffer
 import org.junit.Assert.assertArrayEquals
@@ -8,8 +10,10 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
 
 /** What the page script may send, and the script itself as the app ships it. */
+@RunWith(AndroidJUnit4::class)
 class PageBridgeTests {
     @Test
     fun testReadsOnlyTheMessagesThePageScriptSends() {
@@ -49,8 +53,7 @@ class PageBridgeTests {
 
     @Test
     fun testThePageScriptGetsItsLimitsAndWords() {
-        val dirs = System.getProperty("ovenlight.assetDirs")!!.split(File.pathSeparator)
-        val script = dirs.map { File(it, "page.js") }.first { it.isFile }.readText()
+        val script = ApplicationProvider.getApplicationContext<Context>().assets.open("page.js").bufferedReader().use { it.readText() }
         assertTrue(script.contains("const LIMIT = __LIMIT__, HREF_LIMIT = __HREF_LIMIT__, HEADER_LIMIT = __HEADER_LIMIT__;"))
         assertTrue(script.contains("const OFFER = \"__OFFER__\", ANSWER = \"__ANSWER__\", STOP = \"__STOP__\""))
         assertTrue("no binding left in any frame", !script.contains("__ovenlight"))

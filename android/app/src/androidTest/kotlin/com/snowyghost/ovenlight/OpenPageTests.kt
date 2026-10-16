@@ -1,9 +1,7 @@
 package com.snowyghost.ovenlight
 
 import android.accessibilityservice.AccessibilityServiceInfo
-import android.os.SystemClock
 import android.view.KeyEvent
-import android.view.MotionEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ActivityScenario
@@ -20,7 +18,6 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
-import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -93,21 +90,6 @@ class OpenPageTests {
 
     // Helpers
 
-    private fun <T> onMain(block: () -> T): T {
-        var result: Result<T>? = null
-        instrumentation.runOnMainSync { result = runCatching(block) }
-        return result!!.getOrThrow()
-    }
-
-    private fun waitFor(what: String, millis: Long = 15_000, condition: () -> Boolean) {
-        val deadline = SystemClock.uptimeMillis() + millis
-        while (SystemClock.uptimeMillis() < deadline) {
-            if (condition()) return
-            Thread.sleep(100)
-        }
-        fail("timed out waiting for $what")
-    }
-
     private fun evaluate(script: String): String? {
         val result = ArrayBlockingQueue<String>(1)
         onMain { page.view.evaluateJavascript(script) { result.offer(it) } }
@@ -158,13 +140,6 @@ class OpenPageTests {
             val scale = page.view.resources.displayMetrics.density
             (at[0] + box[0] * scale) to (at[1] + box[1] * scale)
         }
-    }
-
-    private fun tap(at: Pair<Float, Float>) {
-        val (x, y) = at
-        val down = SystemClock.uptimeMillis()
-        instrumentation.sendPointerSync(MotionEvent.obtain(down, down, MotionEvent.ACTION_DOWN, x, y, 0))
-        instrumentation.sendPointerSync(MotionEvent.obtain(down, down + 50, MotionEvent.ACTION_UP, x, y, 0))
     }
 
     // The lock

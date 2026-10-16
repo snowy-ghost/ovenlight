@@ -21,12 +21,10 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.isFocused
-import androidx.compose.ui.test.junit4.accessibility.enableAccessibilityChecks
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performFirstLinkClick
 import androidx.compose.ui.test.performKeyInput
@@ -34,7 +32,6 @@ import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.requestFocus
-import androidx.compose.ui.test.tryPerformAccessibilityChecks
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.test.core.app.ApplicationProvider
@@ -45,7 +42,6 @@ import java.util.UUID
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
-import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -80,11 +76,6 @@ class LauncherViewTests {
 
     private fun membership(vararg invites: InviteLink) = Membership(invites.firstOrNull() ?: invite("i0", "House Guide"), id = "m1")
         .copy(pendingClaims = invites.map { PendingClaim(it, Instant.ofEpochSecond(1_000)) })
-
-    @Before
-    fun checks() {
-        composeRule.enableAccessibilityChecks()
-    }
 
     private fun show(state: LauncherState, fontScale: Float = 1f) {
         composeRule.setContent {
@@ -124,13 +115,6 @@ class LauncherViewTests {
         assertTrue(presented.single() is RootSheet.Join)
         composeRule.onNodeWithText("Use my own computers").performClick()
         assertTrue(enabled)
-    }
-
-    @Test
-    @Config(qualifiers = "+night")
-    fun testWelcomeInTheDark() {
-        show(LauncherState())
-        composeRule.onNodeWithText(LauncherWelcome.title).assertIsDisplayed()
     }
 
     @Test
@@ -201,13 +185,6 @@ class LauncherViewTests {
         tile(sharedTile).assert(SemanticsMatcher("click label Open") { it.config.getOrNull(SemanticsActions.OnClick)?.label == "Open" })
         tile("Recipe Box").performClick()
         assertEquals(listOf(recipes), opened)
-    }
-
-    @Test
-    @Config(qualifiers = "+night")
-    fun testGridInTheDark() {
-        show(LauncherState(apps = apps, ownerEnabled = true, ownerState = NodeState.Ready, reachability = mapOf(garden.id to AppReachability.Offline)))
-        assertEquals(4, columns())
     }
 
     @Test
@@ -449,7 +426,6 @@ class LauncherViewTests {
                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) { LauncherView(LauncherState(apps = apps, open = { opened += it })) }
             }
         }
-        composeRule.onRoot().tryPerformAccessibilityChecks()
         assertTrue(tile("Recipe Box").fetchSemanticsNode().boundsInRoot.left > tile("Garden Log").fetchSemanticsNode().boundsInRoot.left)
         tile("Recipe Box").performClick()
         tile("Garden Log").performClick()

@@ -1,28 +1,21 @@
 package com.snowyghost.ovenlight
 
 import android.content.Context
-import android.content.res.Configuration
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.Snapshot
-import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.junit4.accessibility.enableAccessibilityChecks
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.unit.Density
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.net.URI
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
-import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -38,17 +31,10 @@ class AppChromeTests {
     @get:Rule
     val composeRule = createComposeRule()
 
-    @Before
-    fun checks() {
-        composeRule.enableAccessibilityChecks()
-    }
-
     private val recipes = WebApp(name = "Recipe Box", startURL = URI("https://recipe-box.tail1.ts.net/"), discovered = true)
     private val guide = WebApp(name = "House Guide", startURL = URI("https://house-guide.tail2.ts.net/"), membershipID = "m1", sharedBy = "Riley")
 
-    private enum class Look(val dark: Boolean, val fontScale: Float) { Light(false, 1f), Dark(true, 1f), LargeText(false, 2f) }
-
-    private var look by mutableStateOf(Look.Light)
+    private val look = mutableStateOf(Look.Light)
     private var loaded by mutableStateOf(false)
     private val done = mutableListOf<String>()
 
@@ -67,26 +53,12 @@ class AppChromeTests {
 
     private fun show(app: WebApp, controller: ChromeController, actions: AppChromeActions = actions(), touchExploration: Boolean = false) {
         composeRule.setContent {
-            val configuration = Configuration(LocalConfiguration.current).apply {
-                uiMode = (uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or
-                    (if (look.dark) Configuration.UI_MODE_NIGHT_YES else Configuration.UI_MODE_NIGHT_NO)
-                fontScale = look.fontScale
-            }
-            CompositionLocalProvider(LocalConfiguration provides configuration, LocalDensity provides Density(LocalDensity.current.density, look.fontScale)) {
-                OvenlightTheme { AppChrome(app, icon = null, isLoaded = loaded, actions = actions, controller = controller, touchExploration = touchExploration) }
-            }
+            Looked(look.value) { AppChrome(app, icon = null, isLoaded = loaded, actions = actions, controller = controller, touchExploration = touchExploration) }
         }
     }
 
-    /** Runs [check] in each look, then the accessibility checks on everything showing. */
-    private fun inEveryLook(check: () -> Unit) {
-        for (each in Look.entries) {
-            look = each
-            composeRule.waitForIdle()
-            check()
-            composeRule.checkAccessibility()
-        }
-    }
+    /** Runs [check] in each look, then the label checks on everything showing. */
+    private fun inEveryLook(check: () -> Unit) = composeRule.inEveryLook(look) { check(); composeRule.checkAccessibility() }
 
     private fun node(description: String) = composeRule.onNodeWithContentDescription(description)
 

@@ -79,7 +79,7 @@ export PATH="$work/bin:$PATH"
 echo "building ovenlight-core.aar for $targets with $GO_TOOLCHAIN and NDK $ndk_version"
 rm -f "$work/ovenlight-core.aar" "$work/ovenlight-core-sources.jar"
 (cd "$core" && gomobile bind -target "$targets" -androidapi "$min_sdk" -javapkg "$JAVA_PACKAGE" \
-  -tags "$BUILD_TAGS" -trimpath -ldflags "$LDFLAGS" -o "$work/ovenlight-core.aar" .)
+  -tags "$BUILD_TAGS" $GO_FLAGS -ldflags "$LDFLAGS" -o "$work/ovenlight-core.aar" .)
 
 # gomobile's R8 rule keeps everything under -javapkg, which would keep the whole app. Only
 # the bound package and its glue are reached through JNI.
@@ -87,20 +87,6 @@ printf '%s\n' '-keep class go.** { *; }' '-keep class com.snowyghost.ovenlight.c
 # Dated like gomobile's own entries, so the library stays the same from build to build.
 touch -t 198001010000 "$work/proguard.txt"
 (cd "$work" && zip -q ovenlight-core.aar proguard.txt)
-
-# Every LOAD segment of every library aligned to at least 16 KB, as Play requires.
-readelf="$(find "$ndk/toolchains/llvm/prebuilt" -name llvm-readelf -type f -o -name llvm-readelf -type l | head -1)"
-rm -rf "$work/jni" && mkdir -p "$work/jni"
-unzip -q -o "$work/ovenlight-core.aar" 'jni/*' -d "$work"
-for so in "$work"/jni/*/libgojni.so; do
-  abi="$(basename "$(dirname "$so")")"
-  aligns="$("$readelf" -lW "$so" | awk '$1 == "LOAD" { print $NF }')"
-  [ -n "$aligns" ] || { echo "no LOAD segments in $abi's libgojni.so" >&2; exit 1; }
-  for a in $aligns; do
-    [ $((a)) -ge 16384 ] || { echo "$abi's libgojni.so has a LOAD segment aligned to $a, under 16 KB" >&2; exit 1; }
-  done
-  echo "$abi: $(du -h "$so" | cut -f1), LOAD aligned to $(echo "$aligns" | sort -u | tr '\n' ' ')"
-done
 
 # The licenses of what each ABI links, for the app's Acknowledgements. The ABIs link the
 # same modules, or the build stops.

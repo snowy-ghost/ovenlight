@@ -1,20 +1,14 @@
 package com.snowyghost.ovenlight
 
 import android.Manifest
-import android.content.res.Configuration
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.junit4.accessibility.enableAccessibilityChecks
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.unit.Density
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.snowyghost.ovenlight.MediaCapturePolicy.MediaCaptureType
 import java.time.Duration
@@ -38,37 +32,16 @@ class PageSheetsTests {
     val composeRule = createComposeRule()
 
     @Before
-    fun enableChecks() {
-        composeRule.enableAccessibilityChecks()
+    fun grantOverlayHiding() {
         // The manifest's normal permission, which Robolectric doesn't grant by itself.
         shadowOf(RuntimeEnvironment.getApplication()).grantPermissions(Manifest.permission.HIDE_OVERLAY_WINDOWS)
     }
 
-    private enum class Look(val dark: Boolean, val fontScale: Float) { Light(false, 1f), Dark(true, 1f), LargeText(false, 2f) }
+    private val look = mutableStateOf(Look.Light)
 
-    private var look by mutableStateOf(Look.Light)
+    private fun show(content: @Composable () -> Unit) = composeRule.setContent { Looked(look.value, content) }
 
-    private fun show(content: @Composable () -> Unit) {
-        composeRule.setContent {
-            val configuration = Configuration(LocalConfiguration.current).apply {
-                uiMode = (uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or
-                    (if (look.dark) Configuration.UI_MODE_NIGHT_YES else Configuration.UI_MODE_NIGHT_NO)
-                fontScale = look.fontScale
-            }
-            CompositionLocalProvider(LocalConfiguration provides configuration, LocalDensity provides Density(LocalDensity.current.density, look.fontScale)) {
-                OvenlightTheme { content() }
-            }
-        }
-    }
-
-    private fun inEveryLook(check: () -> Unit) {
-        for (each in Look.entries) {
-            look = each
-            composeRule.waitForIdle()
-            check()
-            composeRule.checkAccessibility()
-        }
-    }
+    private fun inEveryLook(check: () -> Unit) = composeRule.inEveryLook(look) { check(); composeRule.checkAccessibility() }
 
     private fun assertShows(vararg texts: String) = texts.forEach {
         composeRule.onNodeWithText(it).assertIsDisplayed()

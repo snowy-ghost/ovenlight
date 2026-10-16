@@ -2,21 +2,22 @@ package com.snowyghost.ovenlight
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.io.File
-import java.nio.file.Files
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
-import org.junit.After
 import okhttp3.CookieJar
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 
 /**
@@ -26,9 +27,12 @@ import org.junit.runner.RunWith
  */
 @RunWith(AndroidJUnit4::class)
 class PageDownloadsTests {
+    @get:Rule
+    val temp = TemporaryFolder()
+    private val folder: File get() = temp.root
+
     private val app = UUID.randomUUID()
     private val host = "recipes.tail0000.ts.net"
-    private val folder: File = Files.createTempDirectory("downloads").toFile()
     private var clock = 1_000_000L
     private var onScreen = true
     private var locked = false
@@ -44,15 +48,17 @@ class PageDownloadsTests {
             .apply { if (code in 300..399) header("Location", "https://pantry.tail0000.ts.net/secret") }
             .header("Content-Disposition", "attachment; filename=\"export.csv\"").body(body.toResponseBody()).build()
     }.build()
-    private val downloads = PageDownloads(
-        app, host, folder, scope, mayStart = { onScreen && !locked }, isLocked = { locked },
-        client = { server }, freeBytes = { free }, now = { clock },
-    )
+    // Made in the test, once the folder is.
+    private val downloads by lazy {
+        PageDownloads(
+            app, host, folder, scope, mayStart = { onScreen && !locked }, isLocked = { locked },
+            client = { server }, freeBytes = { free }, now = { clock },
+        )
+    }
 
     @After
     fun cleanUp() {
         scope.cancel()
-        folder.deleteRecursively()
     }
 
     /** The files on the shelf for the app, once [count] have arrived (or after 2 seconds), in the order they finished. */

@@ -9,7 +9,6 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.test.platform.app.InstrumentationRegistry
 import androidx.webkit.WebMessageCompat
 import androidx.webkit.WebViewCompat
 import java.io.File
@@ -27,7 +26,9 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 
 /**
@@ -37,10 +38,12 @@ import org.junit.runner.RunWith
  */
 @RunWith(AndroidJUnit4::class)
 class PageScriptTests {
+    @get:Rule
+    val temp = TemporaryFolder()
+
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private val base = "https://recipes.example.test/"
     private val app = WebApp(name = "Recipe Box", startURL = URI(base))
-    private val folder = File(context.cacheDir, "test-downloads-${app.id}")
     private val scope = MainScope()
     private lateinit var view: WebView
     private lateinit var capture: PageCapture
@@ -95,17 +98,11 @@ class PageScriptTests {
         </script>
     """.trimIndent()
 
-    private fun <T> main(block: () -> T): T {
-        var result: Result<T>? = null
-        InstrumentationRegistry.getInstrumentation().runOnMainSync { result = runCatching(block) }
-        return result!!.getOrThrow()
-    }
-
     /** The script's value, as a string (JSON-decoded when it is one). */
     private fun eval(js: String): String? {
         val done = CountDownLatch(1)
         var value: String? = null
-        main { view.evaluateJavascript(js) { value = it; done.countDown() } }
+        onMain { view.evaluateJavascript(js) { value = it; done.countDown() } }
         assertTrue("no answer from $js", done.await(10, TimeUnit.SECONDS))
         return when (val decoded = JSONTokener(value ?: "null").nextValue()) {
             is String -> decoded
@@ -114,17 +111,9 @@ class PageScriptTests {
         }
     }
 
-    private fun until(seconds: Int = 10, what: String, condition: () -> Boolean) {
-        repeat(seconds * 10) {
-            if (condition()) return
-            Thread.sleep(100)
-        }
-        throw AssertionError("timed out: $what")
-    }
-
     /** Loads [html] at the app's origin, or [url] (served below), and waits for the page script's answer. */
     private fun open(html: String = page, beforeBridge: String? = null, until: String = "complete", url: String? = null, answered: Boolean = true) {
-        main {
+        onMain {
             view = WebView(context)
             WebViewSetup.configure(view)
             view.webViewClient = object : WebViewClient() {
@@ -159,7 +148,7 @@ class PageScriptTests {
                 app, ownersHosts = { emptySet() }, isLocked = { false }, isOnScreen = { onScreen }, scope = scope,
                 permissions = { needed, done -> asked += needed; done(true) }, stillCapturing = { false }, destroy = {},
             )
-            downloads = PageDownloads(app.id, app.host, folder, scope, mayStart = { true }, isLocked = { false }, client = { refetch }, freeBytes = { DownloadShelf.freeBytes(context) })
+            downloads = PageDownloads(app.id, app.host, temp.root, scope, mayStart = { true }, isLocked = { false }, client = { refetch }, freeBytes = { DownloadShelf.freeBytes(context) })
             view.webChromeClient = object : WebChromeClient() {
                 override fun onPermissionRequest(request: PermissionRequest) = capture.onPermissionRequest(request)
             }
@@ -175,8 +164,8 @@ class PageScriptTests {
             if (url != null) view.loadUrl(url) else view.loadDataWithBaseURL(base, html, "text/html", "utf-8", null)
         }
         // The view's first document, about:blank, is complete at once: wait for this one.
-        until(what = "the page loads") { eval("location.href + ' ' + document.readyState") == "${url ?: base} $until" }
-        if (answered) until(what = "the page script's answer") { answers > 0 }
+        waitFor("the page loads") { eval("location.href + ' ' + document.readyState") == "${url ?: base} $until" }
+        if (answered) waitFor("the page script's answer") { answers > 0 }
     }
 
     private fun shelf(): List<File> = DownloadShelf.waiting.value[app.id].orEmpty().map { it.file }
@@ -184,11 +173,10 @@ class PageScriptTests {
     @After
     fun close() {
         bodyHeld.countDown()
-        main {
+        onMain {
             if (::view.isInitialized) view.destroy()
             scope.cancel()
         }
-        folder.deleteRecursively()
     }
 
     @Test
@@ -205,7 +193,7 @@ class PageScriptTests {
                 ".getHighEntropyValues(['model', 'platformVersion']).then(h => window.hints = JSON.stringify(h), " +
                 "e => window.hints = 'failed') : (window.hints = 'none')",
         )
-        until(what = "the client hints") { eval("window.hints") != "pending" }
+        waitFor("the client hints") { eval("window.hints") != "pending" }
         val hints = eval("window.hints")
         assertEquals("no model in the client hints: $hints", "", eval("JSON.parse(window.hints).model"))
         assertEquals("Android 10 in the client hints: $hints", "10.0.0", eval("JSON.parse(window.hints).platformVersion"))
@@ -215,7 +203,7 @@ class PageScriptTests {
     fun testServiceWorkersAreHidden() {
         open()
         assertEquals("false", eval("String('serviceWorker' in navigator)"))
-        until(what = "the frame loads") { eval("document.querySelector('iframe').contentDocument.readyState") == "complete" }
+        waitFor("the frame loads") { eval("document.querySelector('iframe').contentDocument.readyState") == "complete" }
         assertEquals("in the app's own frames too", "false", eval("String('serviceWorker' in document.querySelector('iframe').contentWindow.navigator)"))
     }
 
@@ -223,7 +211,7 @@ class PageScriptTests {
     fun testAnAnchorsDownloadNameIsKept() {
         open()
         eval("document.getElementById('file').click()")
-        until(what = "the refetched file") { shelf().isNotEmpty() }
+        waitFor("the refetched file") { shelf().isNotEmpty() }
         val file = shelf().single()
         assertEquals("the page's name, not the server's", "Recipes export.csv", file.name)
         assertEquals("flour,500\n", file.readText())
@@ -234,7 +222,7 @@ class PageScriptTests {
     fun testABlobDownloadArrivesThoughThePageRevokedIt() {
         open()
         eval("blobDownload()")
-        until(what = "the blob's file") { shelf().isNotEmpty() }
+        waitFor("the blob's file") { shelf().isNotEmpty() }
         val file = shelf().single()
         assertEquals("note.txt", file.name)
         assertEquals("hello", file.readText())
@@ -243,11 +231,11 @@ class PageScriptTests {
     @Test
     fun testADataDownloadNeedsTheClick() {
         open()
-        main { downloads.onDownloadStart("data:text/plain,nobody%20clicked", "agent", null, "text/plain", 0) }
+        onMain { downloads.onDownloadStart("data:text/plain,nobody%20clicked", "agent", null, "text/plain", 0) }
         Thread.sleep(1_000)
         assertTrue("no click, no file", shelf().isEmpty())
         eval("document.getElementById('data').click()")
-        until(what = "the clicked data URL's file") { shelf().isNotEmpty() }
+        waitFor("the clicked data URL's file") { shelf().isNotEmpty() }
         assertEquals("from a click", shelf().single().readText())
     }
 
@@ -256,23 +244,24 @@ class PageScriptTests {
         onScreen = false
         open()
         eval("navigator.mediaDevices.getUserMedia({ audio: true }).then(() => window.result = 'granted', e => window.result = e.name)")
-        until(what = "getUserMedia's answer") { eval("window.result") != null }
+        waitFor("getUserMedia's answer") { eval("window.result") != null }
         assertEquals("NotAllowedError", eval("window.result"))
         assertTrue("not even Android's permission is asked", asked.isEmpty())
         assertNull(capture.prompt.value)
     }
 
+    /** A stand-in camera, set before the page script wraps getUserMedia. */
+    private val fakeCamera = "MediaDevices.prototype.getUserMedia = function () { const c = document.createElement('canvas'); c.getContext('2d'); return Promise.resolve(c.captureStream()); };"
+
     @Test
     fun testTheStopMessageEndsTheTracks() {
-        // A stand-in camera, set before the page script wraps getUserMedia.
-        val fake = "MediaDevices.prototype.getUserMedia = function () { const c = document.createElement('canvas'); c.getContext('2d'); return Promise.resolve(c.captureStream()); };"
-        open(beforeBridge = fake)
+        open(beforeBridge = fakeCamera)
         eval("navigator.mediaDevices.getUserMedia({ video: true }).then(s => { window.track = s.getVideoTracks()[0]; window.copy = window.track.clone(); })")
-        until(what = "the fake track") { eval("window.copy && window.copy.readyState") == "live" }
+        waitFor("the fake track") { eval("window.copy && window.copy.readyState") == "live" }
         // The page's report that it captures crosses to Ovenlight on its own.
         Thread.sleep(500)
-        main { capture.stop() }
-        until(what = "the tracks to end") { eval("window.track.readyState + ',' + window.copy.readyState") == "ended,ended" }
+        onMain { capture.stop() }
+        waitFor("the tracks to end") { eval("window.track.readyState + ',' + window.copy.readyState") == "ended,ended" }
     }
 
     /** Nothing over the bridge's caps: each message within them, as Java measures it. */
@@ -309,14 +298,14 @@ class PageScriptTests {
             """.trimIndent(),
         )
         eval("document.getElementById('data').click(); document.getElementById('blob').click(); 'clicked'")
-        until(what = "both reports") { heard.size >= 2 }
+        waitFor("both reports") { heard.size >= 2 }
         Thread.sleep(1_000)
         assertHeardWithinCaps()
         synchronized(heard) {
             assertTrue(heard.toString(), """{"t":"click","href":"data:text/plain,poisoned","name":"d.txt"}""" in heard)
             assertEquals("the blob's message, intact: 4 + its header + 2 bytes", 1, heard.count { it is Int })
         }
-        until(what = "the blob's file") { shelf().any { it.name == "b.txt" } }
+        waitFor("the blob's file") { shelf().any { it.name == "b.txt" } }
         assertEquals("hi", shelf().single { it.name == "b.txt" }.readText())
     }
 
@@ -328,7 +317,7 @@ class PageScriptTests {
         Thread.sleep(1_500)
         assertTrue("heard ${heard.size}", heard.isEmpty())
         eval("document.getElementById('data').download = 'd.txt'; document.getElementById('data').click(); 'clicked'")
-        until(what = "the report") { heard.isNotEmpty() }
+        waitFor("the report") { heard.isNotEmpty() }
         assertEquals("""{"t":"click","href":"data:text/plain,from%20a%20click","name":"d.txt"}""", heard.single())
     }
 
@@ -346,7 +335,7 @@ class PageScriptTests {
             </script>
             """.trimIndent(),
         )
-        until(what = "the frames load") { eval("document.getElementById('srcdoc').contentDocument.readyState") == "complete" }
+        waitFor("the frames load") { eval("document.getElementById('srcdoc').contentDocument.readyState") == "complete" }
         val hidden = listOf("blank", "srcdoc", "made").associateWith { id ->
             eval("String(!('serviceWorker' in document.getElementById('$id').contentWindow.navigator))")
         }
@@ -358,9 +347,9 @@ class PageScriptTests {
     @Test
     fun testAFrameSentToAboutBlankGetsThePageScript() {
         open()
-        until(what = "the frame loads") { eval("frames[0].document.readyState") == "complete" }
+        waitFor("the frame loads") { eval("frames[0].document.readyState") == "complete" }
         eval("frames[0].location = 'about:blank'; 'sent'")
-        until(what = "about:blank") { eval("frames[0].location.href") == "about:blank" }
+        waitFor("about:blank") { eval("frames[0].location.href") == "about:blank" }
         assertEquals("false", eval("String('serviceWorker' in frames[0].navigator)"))
     }
 
@@ -399,7 +388,7 @@ class PageScriptTests {
             "const a = document.getElementById('data'); a.download = 'n'.repeat(1 << 20);" +
                 "for (let i = 0; i < 20; i++) a.click(); 'clicked'",
         )
-        until(what = "some reports") { heard.isNotEmpty() }
+        waitFor("some reports") { heard.isNotEmpty() }
         Thread.sleep(1_500)
         synchronized(heard) {
             assertTrue("heard ${heard.size}", heard.size in 1..19)
@@ -449,7 +438,7 @@ class PageScriptTests {
     fun testASlowDocumentStillGetsItsChannel() {
         open(url = "${base}slow.html")
         eval("document.getElementById('data').click(); 'clicked'")
-        until(what = "the report") { heard.isNotEmpty() }
+        waitFor("the report") { heard.isNotEmpty() }
         assertEquals("""{"t":"click","href":"data:text/plain,from%20a%20click","name":"d.txt"}""", heard.single())
     }
 
@@ -459,10 +448,10 @@ class PageScriptTests {
         open(url = "${base}stalled.html", until = "loading", answered = false)
         Thread.sleep(1_000)
         assertEquals(0, answers)
-        main { view.loadDataWithBaseURL(base, page, "text/html", "utf-8", null) }
-        until(what = "the new document's answer") { answers >= 1 && eval("document.title + ' ' + document.readyState") == "page complete" }
+        onMain { view.loadDataWithBaseURL(base, page, "text/html", "utf-8", null) }
+        waitFor("the new document's answer") { answers >= 1 && eval("document.title + ' ' + document.readyState") == "page complete" }
         eval("document.getElementById('data').click(); 'clicked'")
-        until(what = "the report") { heard.isNotEmpty() }
+        waitFor("the report") { heard.isNotEmpty() }
         Thread.sleep(500)
         assertEquals("once, on the channel the new document holds", 1, heard.size)
     }
@@ -470,26 +459,25 @@ class PageScriptTests {
     @Test
     fun testAFramesDownloadsGoThroughTheMainFrame() {
         open()
-        until(what = "the frame loads") { eval("frames[0].document.readyState") == "complete" }
+        waitFor("the frame loads") { eval("frames[0].document.readyState") == "complete" }
         eval("frames[0].document.getElementById('data').click(); 'clicked'")
-        until(what = "the frame's data file") { shelf().any { it.name == "framed.txt" } }
+        waitFor("the frame's data file") { shelf().any { it.name == "framed.txt" } }
         assertEquals("from a frame", shelf().single { it.name == "framed.txt" }.readText())
         eval("frames[0].blobDownload(); 'clicked'")
-        until(what = "the frame's blob file") { shelf().any { it.name == "framed-note.txt" } }
+        waitFor("the frame's blob file") { shelf().any { it.name == "framed-note.txt" } }
         assertEquals("framed blob", shelf().single { it.name == "framed-note.txt" }.readText())
     }
 
     @Test
     fun testTheStopReachesAFramesTracks() {
-        val fake = "MediaDevices.prototype.getUserMedia = function () { const c = document.createElement('canvas'); c.getContext('2d'); return Promise.resolve(c.captureStream()); };"
-        open(beforeBridge = fake)
-        until(what = "the frame loads") { eval("frames[0].document.readyState") == "complete" }
+        open(beforeBridge = fakeCamera)
+        waitFor("the frame loads") { eval("frames[0].document.readyState") == "complete" }
         eval("frames[0].navigator.mediaDevices.getUserMedia({ video: true }).then(s => { window.track = s.getVideoTracks()[0]; }); 'asked'")
-        until(what = "the frame's fake track") { eval("window.track && window.track.readyState") == "live" }
+        waitFor("the frame's fake track") { eval("window.track && window.track.readyState") == "live" }
         // The frame's report that it captures goes up through the main frame on its own.
         Thread.sleep(500)
-        main { capture.stop() }
-        until(what = "the frame's track to end") { eval("window.track.readyState") == "ended" }
+        onMain { capture.stop() }
+        waitFor("the frame's track to end") { eval("window.track.readyState") == "ended" }
     }
 
     /** Records any message a page's own listeners see that carries a port or the offer. */
@@ -504,8 +492,8 @@ class PageScriptTests {
     /** Offers again, as for a new document, and waits for the page script's answer. */
     private fun offerAgain() {
         val before = answers
-        main { bridge.documentStarted() }
-        until(what = "the answer to the new offer") { answers > before }
+        onMain { bridge.documentStarted() }
+        waitFor("the answer to the new offer") { answers > before }
     }
 
     @Test
@@ -526,7 +514,7 @@ class PageScriptTests {
         open("<!doctype html><meta charset=\"utf-8\"><title>page</title>")
         // From a task, where document.open() works: it takes every listener off the window.
         eval("setTimeout(() => { document.open(); $watcher document.write('<title>opened</title>'); document.close(); }); 'scheduled'")
-        until(what = "the document to open") { eval("document.title") == "opened" }
+        waitFor("the document to open") { eval("document.title") == "opened" }
         offerAgain()
         assertEquals("[]", eval("JSON.stringify(window.seen)"))
     }

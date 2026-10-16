@@ -2,7 +2,6 @@ package com.snowyghost.ovenlight
 
 import java.io.File
 import java.net.URI
-import java.nio.file.Files
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -12,12 +11,13 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
-import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 
 private const val ownerSelf = """"Self":{"HostName":"phone","DNSName":"pixel-ab12.tailabc123.ts.net.","OS":"android","Online":true,"UserID":1},"""
 private const val laptop = """"k1":{"HostName":"laptop","DNSName":"laptop.tailabc123.ts.net.","OS":"macOS","Online":true,"UserID":1}"""
@@ -25,12 +25,9 @@ private const val laptop = """"k1":{"HostName":"laptop","DNSName":"laptop.tailab
 // Android only: iOS doesn't unit test its managers, and the plan asks for these.
 @OptIn(ExperimentalCoroutinesApi::class)
 class NodeManagerTests {
-    private val folder: File = Files.createTempDirectory("nodes").toFile()
-
-    @After
-    fun cleanUp() {
-        folder.deleteRecursively()
-    }
+    @get:Rule
+    val temp = TemporaryFolder()
+    private val folder: File get() = temp.root
 
     private fun TestScope.manager(clients: FakeClients, preferences: KeyValueStore = MemoryStore()): NodeManager {
         val dispatcher = StandardTestDispatcher(testScheduler)

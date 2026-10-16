@@ -8,7 +8,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
 import java.net.URI
-import java.nio.file.Files
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
@@ -25,6 +24,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 
 /** The pool's tests from iOS, on a device: they need real web views. Nodes are faked. */
@@ -33,8 +33,10 @@ class WebViewPoolTests {
     @get:Rule
     val composeRule = createComposeRule()
 
+    @get:Rule
+    val temp = TemporaryFolder()
+
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
-    private val folder: File = Files.createTempDirectory("pool").toFile()
     private val scope = MainScope()
     private lateinit var nodes: NodeManager
     private lateinit var pool: WebViewPool
@@ -44,7 +46,7 @@ class WebViewPoolTests {
         runBlocking { withTimeout(30_000) { WebViewSetup.state.first { it == WebViewSetup.State.Ready } } }
         onMain {
             nodes = NodeManager(
-                FakeClients(), MemoryStore(), MembershipStore(File(folder, "Ovenlight")), File(folder, "tailscale"),
+                FakeClients(), MemoryStore(), MembershipStore(File(temp.root, "Ovenlight")), File(temp.root, "tailscale"),
                 scope, Dispatchers.IO, System::currentTimeMillis, {},
             )
             pool = WebViewPool(context, nodes, scope, isLocked = { false })
@@ -54,13 +56,6 @@ class WebViewPoolTests {
     @After
     fun tearDown() {
         onMain { scope.cancel() }
-        folder.deleteRecursively()
-    }
-
-    private fun <T> onMain(block: () -> T): T {
-        var result: Result<T>? = null
-        InstrumentationRegistry.getInstrumentation().runOnMainSync { result = runCatching(block) }
-        return result!!.getOrThrow()
     }
 
     private val funnel = WebApp(name = "Funnel", startURL = URI("https://funnel.tail0000.ts.net/"))

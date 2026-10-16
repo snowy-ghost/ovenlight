@@ -7,7 +7,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.net.URI
-import java.nio.file.Files
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -21,7 +20,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import org.robolectric.annotation.GraphicsMode
 
@@ -39,73 +40,61 @@ internal fun offlineRegistry(dir: File) = AppRegistry(
     scope = CoroutineScope(Dispatchers.Unconfined),
 )
 
-/** Runs [test] in a new temporary directory, deleted after. */
-internal fun <T> inTemporaryDirectory(test: (File) -> T): T {
-    val dir = Files.createTempDirectory("ovenlight").toFile()
-    try {
-        return test(dir)
-    } finally {
-        dir.deleteRecursively()
-    }
-}
-
 class AppRegistryTests {
-    private fun makeRegistry(dir: File) = offlineRegistry(dir)
+    @get:Rule
+    val temp = TemporaryFolder()
+    private val dir: File get() = temp.root
 
     @Test
-    fun testStartsEmptyAndPersistsChanges() = inTemporaryDirectory { dir ->
-        val first = makeRegistry(dir)
+    fun testStartsEmptyAndPersistsChanges() {
+        val first = offlineRegistry(dir)
         assertEquals(emptyList<WebApp>(), first.apps)
         val app = first.add(URI("https://notes.example.com/"))
         first.rename(app.id, "Notes")
 
-        val second = makeRegistry(dir)
+        val second = offlineRegistry(dir)
         assertEquals(listOf("Notes"), second.apps.map { it.name })
         assertEquals(app.dataStoreID, second.apps[0].dataStoreID)
     }
 
     @Test
-    fun testDiscoveredAppsPersistAndRemovedOnesStayRemoved() = inTemporaryDirectory { dir ->
-        runTest {
-            val coach = DiscoveredApp(
-                "interview-coach.tailabc123.ts.net",
-                OvenlightManifest(name = "Interview Coach", icon = "/icon-512.png", version = 1),
-            )
+    fun testDiscoveredAppsPersistAndRemovedOnesStayRemoved() = runTest {
+        val coach = DiscoveredApp(
+            "interview-coach.tailabc123.ts.net",
+            OvenlightManifest(name = "Interview Coach", icon = "/icon-512.png", version = 1),
+        )
 
-            val registry = makeRegistry(dir)
-            registry.mergeDiscovered(listOf(coach))
-            assertEquals(listOf("Interview Coach"), registry.apps.map { it.name })
-            assertTrue(registry.apps[0].discovered)
-            registry.remove(registry.apps[0].id)
-            registry.mergeDiscovered(listOf(coach))
-            assertEquals(emptyList<WebApp>(), registry.apps)
+        val registry = offlineRegistry(dir)
+        registry.mergeDiscovered(listOf(coach))
+        assertEquals(listOf("Interview Coach"), registry.apps.map { it.name })
+        assertTrue(registry.apps[0].discovered)
+        registry.remove(registry.apps[0].id)
+        registry.mergeDiscovered(listOf(coach))
+        assertEquals(emptyList<WebApp>(), registry.apps)
 
-            val reopened = makeRegistry(dir)
-            reopened.mergeDiscovered(listOf(coach))
-            assertEquals("a removed app must not come back after relaunch", emptyList<WebApp>(), reopened.apps)
-            reopened.add(URI("https://interview-coach.tailabc123.ts.net/"))
-            assertEquals("adding it by hand brings it back", 1, reopened.apps.size)
-        }
+        val reopened = offlineRegistry(dir)
+        reopened.mergeDiscovered(listOf(coach))
+        assertEquals("a removed app must not come back after relaunch", emptyList<WebApp>(), reopened.apps)
+        reopened.add(URI("https://interview-coach.tailabc123.ts.net/"))
+        assertEquals("adding it by hand brings it back", 1, reopened.apps.size)
     }
 
     @Test
-    fun testRemovedHostsAreSavedEvenWhenTheAppsCantBe() = inTemporaryDirectory { dir ->
-        runTest {
-            val registry = makeRegistry(dir)
-            val app = registry.add(URI("https://notes.tailabc123.ts.net/"))
-            val file = File(dir, "apps.json")
-            assertTrue(file.delete())
-            assertTrue(file.mkdir()) // nothing can be written there
+    fun testRemovedHostsAreSavedEvenWhenTheAppsCantBe() = runTest {
+        val registry = offlineRegistry(dir)
+        val app = registry.add(URI("https://notes.tailabc123.ts.net/"))
+        val file = File(dir, "apps.json")
+        assertTrue(file.delete())
+        assertTrue(file.mkdir()) // nothing can be written there
 
-            registry.remove(app.id)
-            val dismissed = ovenlightJSON.decodeFromString<List<String>>(File(dir, "dismissed-hosts.json").readText())
-            assertEquals(listOf("notes.tailabc123.ts.net"), dismissed)
-        }
+        registry.remove(app.id)
+        val dismissed = ovenlightJSON.decodeFromString<List<String>>(File(dir, "dismissed-hosts.json").readText())
+        assertEquals(listOf("notes.tailabc123.ts.net"), dismissed)
     }
 
     @Test
-    fun testAMissingFileIsEmptyAndSaves() = inTemporaryDirectory { dir ->
-        val registry = makeRegistry(dir)
+    fun testAMissingFileIsEmptyAndSaves() {
+        val registry = offlineRegistry(dir)
         assertFalse(registry.loadFailed)
         registry.add(URI("https://notes.example.com/"))
         assertTrue(File(dir, "apps.json").exists())
@@ -114,20 +103,20 @@ class AppRegistryTests {
     }
 
     @Test
-    fun testAnUnreadableFileIsNeverSavedOverOrSwept() = inTemporaryDirectory { dir ->
+    fun testAnUnreadableFileIsNeverSavedOverOrSwept() {
         val file = File(dir, "apps.json")
         val corrupt = "{\"truncated".toByteArray()
         file.writeBytes(corrupt)
 
-        val registry = makeRegistry(dir)
+        val registry = offlineRegistry(dir)
         assertTrue(registry.loadFailed)
         assertEquals("every store would look unused", emptyList<UUID>(), registry.unusedDataStores(listOf(UUID.randomUUID())))
         registry.add(URI("https://notes.example.com/"))
         assertArrayEquals("nothing is saved over the file", corrupt, file.readBytes())
 
         // Once the file reads, the reload replaces the guesswork.
-        inTemporaryDirectory { other ->
-            val saved = makeRegistry(other)
+        temp.newFolder().let { other ->
+            val saved = offlineRegistry(other)
             saved.add(URI("https://coach.example.com/"))
             file.writeText(ovenlightJSON.encodeToString(ListSerializer(WebApp.serializer()), saved.apps))
             registry.reloadIfFailed()
@@ -137,7 +126,7 @@ class AppRegistryTests {
     }
 
     @Test
-    fun testDecodesEachAppOnItsOwnAndFillsInWhatsMissing() = inTemporaryDirectory { dir ->
+    fun testDecodesEachAppOnItsOwnAndFillsInWhatsMissing() {
         val json = """
         [{"id": "${UUID.randomUUID()}", "startURL": "https://coach.tailabc123.ts.net/", "dataStoreID": "${UUID.randomUUID()}",
           "name": "Coach", "themeColorHex": 7, "futureField": {"a": 1}},
@@ -145,7 +134,7 @@ class AppRegistryTests {
          "not an app"]
         """
         File(dir, "apps.json").writeText(json)
-        val registry = makeRegistry(dir)
+        val registry = offlineRegistry(dir)
         assertFalse(registry.loadFailed)
         assertEquals(listOf("Coach"), registry.apps.map { it.name })
         assertEquals(null, registry.apps[0].themeColorHex)
@@ -159,7 +148,7 @@ class AppRegistryTests {
         assertEquals("the two it read, then the two it didn't, as they were", 4, saved.size)
         assertEquals("No ID", ((saved[2] as? JsonObject)?.get("name") as? JsonPrimitive)?.content)
         assertEquals(JsonPrimitive("not an app"), saved[3])
-        val reopened = makeRegistry(dir)
+        val reopened = offlineRegistry(dir)
         assertEquals(listOf("Coach", "notes.example.com"), reopened.apps.map { it.name })
         assertFalse(reopened.readInFull)
     }
@@ -169,6 +158,9 @@ class AppRegistryTests {
 @RunWith(AndroidJUnit4::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class AppRegistryIconTests {
+    @get:Rule
+    val temp = TemporaryFolder()
+
     private fun png(width: Int, height: Int): ByteArray {
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.rgb(255, 128, 0)) }
         return ByteArrayOutputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it); it.toByteArray() }
@@ -178,20 +170,15 @@ class AppRegistryIconTests {
 
     @Test
     fun testIconsAreDecodedSmall() {
-        val dir = Files.createTempDirectory("icons").toFile()
-        try {
-            val png = png(2048, 1024)
-            assertEquals("what a save writes", listOf(288, 144), size(IconDecoder.png(png)?.let { BitmapFactory.decodeByteArray(it, 0, it.size) }))
-            assertNull("over 4096 pixels a side, refused before decoding", IconDecoder.png(png(4097, 8)))
-            assertNull("over 4096 pixels high, refused too", IconDecoder.png(png(8, 4097)))
+        val png = png(2048, 1024)
+        assertEquals("what a save writes", listOf(288, 144), size(IconDecoder.png(png)?.let { BitmapFactory.decodeByteArray(it, 0, it.size) }))
+        assertNull("over 4096 pixels a side, refused before decoding", IconDecoder.png(png(4097, 8)))
+        assertNull("over 4096 pixels high, refused too", IconDecoder.png(png(8, 4097)))
 
-            // One an earlier build saved as the server sent it.
-            val registry = offlineRegistry(dir)
-            val app = WebApp(name = "Coach", startURL = URI("https://coach.tailabc123.ts.net/"), iconFile = "coach.png")
-            File(registry.iconsDirectory, "coach.png").writeBytes(png)
-            assertEquals(listOf(288, 144), size(IconDecoder.load(registry.iconFile(app))))
-        } finally {
-            dir.deleteRecursively()
-        }
+        // One an earlier build saved as the server sent it.
+        val registry = offlineRegistry(temp.root)
+        val app = WebApp(name = "Coach", startURL = URI("https://coach.tailabc123.ts.net/"), iconFile = "coach.png")
+        File(registry.iconsDirectory, "coach.png").writeBytes(png)
+        assertEquals(listOf(288, 144), size(IconDecoder.load(registry.iconFile(app))))
     }
 }

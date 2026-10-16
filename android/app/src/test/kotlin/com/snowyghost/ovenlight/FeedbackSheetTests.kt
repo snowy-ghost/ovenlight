@@ -1,17 +1,13 @@
 package com.snowyghost.ovenlight
 
-import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -19,24 +15,20 @@ import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasSetTextAction
-import androidx.compose.ui.test.junit4.accessibility.enableAccessibilityChecks
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
-import androidx.compose.ui.unit.Density
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.net.URI
 import java.util.Base64
 import kotlinx.coroutines.CompletableDeferred
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
-import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -51,17 +43,10 @@ class FeedbackSheetTests {
     @get:Rule
     val composeRule = createComposeRule()
 
-    @Before
-    fun checks() {
-        composeRule.enableAccessibilityChecks()
-    }
-
     private val recipes = WebApp(name = "Recipe Box", startURL = URI("https://recipe-box.tail1.ts.net/"), discovered = true)
     private val guide = WebApp(name = "House Guide", startURL = URI("https://house-guide.tail2.ts.net/"), membershipID = "m1", sharedBy = "Riley")
 
-    private enum class Look(val dark: Boolean, val fontScale: Float) { Light(false, 1f), Dark(true, 1f), LargeText(false, 2f) }
-
-    private var look by mutableStateOf(Look.Light)
+    private val look = mutableStateOf(Look.Light)
     private var dismissed = 0
     private val sent = mutableListOf<FeedbackPayload>()
     private var answer = CompletableDeferred<FeedbackResult>()
@@ -73,36 +58,22 @@ class FeedbackSheetTests {
 
     private fun show(app: WebApp, image: Bitmap? = null, draft: FeedbackDraft = FeedbackDraft(image, URI("https://recipe-box.tail1.ts.net/soup"))) {
         composeRule.setContent {
-            val configuration = Configuration(LocalConfiguration.current).apply {
-                uiMode = (uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or
-                    (if (look.dark) Configuration.UI_MODE_NIGHT_YES else Configuration.UI_MODE_NIGHT_NO)
-                fontScale = look.fontScale
-            }
-            CompositionLocalProvider(LocalConfiguration provides configuration, LocalDensity provides Density(LocalDensity.current.density, look.fontScale)) {
-                // The app's scope, which outlives the sheet.
-                val scope = rememberCoroutineScope()
-                OvenlightTheme {
-                    if (showing) {
-                        FeedbackSheet(
-                            app, draft, density = 1f,
-                            send = { payload -> sent += payload; answer.await() },
-                            onDismiss = { dismissed += 1 },
-                            scope = scope,
-                        )
-                    }
+            // The app's scope, which outlives the sheet.
+            val scope = rememberCoroutineScope()
+            Looked(look.value) {
+                if (showing) {
+                    FeedbackSheet(
+                        app, draft, density = 1f,
+                        send = { payload -> sent += payload; answer.await() },
+                        onDismiss = { dismissed += 1 },
+                        scope = scope,
+                    )
                 }
             }
         }
     }
 
-    private fun inEveryLook(check: () -> Unit) {
-        for (each in Look.entries) {
-            look = each
-            composeRule.waitForIdle()
-            check()
-            composeRule.checkAccessibility()
-        }
-    }
+    private fun inEveryLook(check: () -> Unit) = composeRule.inEveryLook(look) { check(); composeRule.checkAccessibility() }
 
     private fun text(text: String) = composeRule.onNodeWithText(text)
     private val sendButton get() = text("Send")
@@ -161,7 +132,7 @@ class FeedbackSheetTests {
         composeRule.waitForIdle()
         sendButton.performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) { sent.isNotEmpty() }
-        val png = Base64.getDecoder().decode(required(sent.single().screenshotPngBase64))
+        val png = Base64.getDecoder().decode(sent.single().screenshotPngBase64!!)
         assertEquals("a PNG", listOf(0x89, 0x50, 0x4E, 0x47), png.take(4).map { it.toInt() and 0xFF })
         assertEquals("", sent.single().note)
 
@@ -241,15 +212,10 @@ class FeedbackSheetTests {
             paint.color = Color.HSVToColor(floatArrayOf(360f * y / 800, 1f, 1f))
             canvas.drawRect(3f * (y % 7), 3f * y, 1200f, 3f * (y + 1), paint)
         }
-        val full = required(FeedbackPayload.png(image, density = 3f, limit = Int.MAX_VALUE))
-        val limited = required(FeedbackPayload.png(image, density = 3f, limit = full.size - 1))
+        val full = FeedbackPayload.png(image, density = 3f, limit = Int.MAX_VALUE)!!
+        val limited = FeedbackPayload.png(image, density = 3f, limit = full.size - 1)!!
         assertTrue(limited.size < full.size)
         assertNull("nothing fits", FeedbackPayload.png(image, density = 3f, limit = 10))
         assertFalse("the snapshot itself is kept", image.isRecycled)
-    }
-
-    private fun <T : Any> required(value: T?): T {
-        assertNotNull(value)
-        return value!!
     }
 }

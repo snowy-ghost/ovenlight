@@ -2,7 +2,6 @@ package com.snowyghost.ovenlight
 
 import java.io.File
 import java.net.URI
-import java.nio.file.Files
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -11,7 +10,9 @@ import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 
 class MembershipStoreLoadTests {
     private val invite = InviteLink(
@@ -19,17 +20,12 @@ class MembershipStoreLoadTests {
         app = "echo-board", invite = "inv1", host = "echo-board.taildef456.ts.net", name = "Echo Board", to = "Sam",
     )
 
-    private fun inTemporaryDirectory(test: (File) -> Unit) {
-        val dir = Files.createTempDirectory("memberships").toFile()
-        try {
-            test(dir)
-        } finally {
-            dir.deleteRecursively()
-        }
-    }
+    @get:Rule
+    val temp = TemporaryFolder()
+    private val dir: File get() = temp.root
 
     @Test
-    fun testAnUnreadableFileIsNeverSavedOver() = inTemporaryDirectory { dir ->
+    fun testAnUnreadableFileIsNeverSavedOver() {
         val file = File(dir, "memberships.json")
         val corrupt = "[{".toByteArray()
         file.writeBytes(corrupt)
@@ -49,7 +45,7 @@ class MembershipStoreLoadTests {
 
     /** Android only: bytes that aren't UTF-8 are a file it can't read, as iOS's decoder finds, not text to save back altered. */
     @Test
-    fun testAFileThatIsntUTF8IsNeverSavedOver() = inTemporaryDirectory { dir ->
+    fun testAFileThatIsntUTF8IsNeverSavedOver() {
         val file = File(dir, "memberships.json")
         val damaged = byteArrayOf('['.code.toByte(), '"'.code.toByte(), 0xC3.toByte(), '"'.code.toByte(), ']'.code.toByte())
         file.writeBytes(damaged)
@@ -60,7 +56,7 @@ class MembershipStoreLoadTests {
     }
 
     @Test
-    fun testAMembershipItCantReadIsKeptAndHoldsBackCleanup() = inTemporaryDirectory { dir ->
+    fun testAMembershipItCantReadIsKeptAndHoldsBackCleanup() {
         val file = File(dir, "memberships.json")
         file.writeText("""[{"id":"future","controlURL":"https://c.example","networkDomain":"tail1.ts.net","joined":"yes","hostName":"ovenlight-x"}]""")
 
