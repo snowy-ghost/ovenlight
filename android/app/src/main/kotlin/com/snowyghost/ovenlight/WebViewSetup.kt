@@ -9,6 +9,7 @@ import androidx.core.content.edit
 import androidx.webkit.ProfileStore
 import androidx.webkit.ProxyConfig
 import androidx.webkit.ProxyController
+import androidx.webkit.UserAgentMetadata
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
@@ -47,6 +48,8 @@ object WebViewSetup {
         WebViewFeature.WEB_MESSAGE_PORT_SET_MESSAGE_CALLBACK,
         WebViewFeature.WEB_MESSAGE_PORT_CLOSE,
         WebViewFeature.WEB_MESSAGE_ARRAY_BUFFER,
+        // The client hints' model and Android version (configure).
+        WebViewFeature.USER_AGENT_METADATA,
     )
     private const val DEFAULT_WEBVIEW_PACKAGE = "com.google.android.webview"
 
@@ -93,6 +96,16 @@ object WebViewSetup {
             useWideViewPort = true
             loadWithOverviewMode = true
             userAgentString = WebViewPool.userAgentName(after = WebSettings.getDefaultUserAgent(view.context))
+        }
+        // Client hints say the same: no model and Android 10. Left alone, WebView gives an agent
+        // that contains its default (Android 17's is already reduced) the phone's full metadata.
+        // A required feature: without it the update screen shows and no app loads.
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.USER_AGENT_METADATA)) {
+            WebSettingsCompat.setUserAgentMetadata(
+                view.settings,
+                UserAgentMetadata.Builder(WebSettingsCompat.getUserAgentMetadata(view.settings))
+                    .setModel("").setPlatformVersion("10.0.0").build(),
+            )
         }
         if (WebViewFeature.isFeatureSupported(WebViewFeature.ALGORITHMIC_DARKENING)) {
             WebSettingsCompat.setAlgorithmicDarkeningAllowed(view.settings, false)

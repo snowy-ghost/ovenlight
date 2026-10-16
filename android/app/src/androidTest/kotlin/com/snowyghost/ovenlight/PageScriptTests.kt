@@ -206,8 +206,9 @@ class PageScriptTests {
                 "e => window.hints = 'failed') : (window.hints = 'none')",
         )
         until(what = "the client hints") { eval("window.hints") != "pending" }
-        val model = eval("window.hints === 'none' ? '' : (JSON.parse(window.hints).model || '')")
-        assertEquals("no model in the client hints: ${eval("window.hints")}", "", model)
+        val hints = eval("window.hints")
+        assertEquals("no model in the client hints: $hints", "", eval("JSON.parse(window.hints).model"))
+        assertEquals("Android 10 in the client hints: $hints", "10.0.0", eval("JSON.parse(window.hints).platformVersion"))
     }
 
     @Test
