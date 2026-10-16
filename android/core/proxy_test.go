@@ -15,6 +15,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"tailscale.com/ipn/ipnstate"
 )
 
 type fakeNode struct {
@@ -22,6 +24,7 @@ type fakeNode struct {
 	sfx    string
 	peers  map[string]netip.Addr
 	target string // where every dial really goes: the test's echo server
+	eps    []netip.Prefix
 
 	mu    sync.Mutex
 	dials []netip.AddrPort
@@ -41,6 +44,7 @@ func (f *fakeNode) isPeer(_ context.Context, ip netip.Addr) bool {
 	}
 	return false
 }
+func (f *fakeNode) endpoints() []netip.Prefix { return f.eps }
 func (f *fakeNode) dial(ctx context.Context, a netip.AddrPort) (net.Conn, error) {
 	f.mu.Lock()
 	f.dials = append(f.dials, a)
@@ -624,5 +628,35 @@ func TestThePhonesNetworksFollowNetworkChanges(t *testing.T) {
 		if nets = phoneNetworks(); fmt.Sprint(nets.own) != "[2607:fb90:1234:5678::/64]" {
 			t.Errorf("%s replaced the last list: %v", unreadable, nets.own)
 		}
+	}
+}
+
+func TestRefusesTheRoutersPublicAddress(t *testing.T) {
+	n := &Node{id: "netchecked"}
+	n.rememberPeers(&ipnstate.Status{Self: &ipnstate.PeerStatus{Addrs: []string{
+		"192.168.1.20:41641", "81.2.69.160:41641", "[::ffff:81.2.69.160]:3478", "[2a02:1810:4d00:1234::7]:41641", "nonsense",
+	}}})
+	if got := fmt.Sprint(n.endpoints()); got != "[192.168.1.20/32 81.2.69.160/32 81.2.69.160/32 2a02:1810:4d00:1234::7/128]" {
+		t.Errorf("endpoints: %s", got)
+	}
+	h, own, _ := newHarness(t)
+	own.eps = n.endpoints()
+	h.p.phone = func() phoneNets { return phoneNets{nat64: netip.MustParsePrefix("2001:67c:2b0:db32::/96")} }
+	for _, target := range []string{
+		"81.2.69.160:443", "[::ffff:81.2.69.160]:443", "[64:ff9b::5102:45a0]:443", "[2001:67c:2b0:db32::5102:45a0]:443",
+		"[2a02:1810:4d00:1234::7]:443",
+	} {
+		if code := h.status(t, "app-recipes", target); code != 502 {
+			t.Errorf("%s: got %d, want 502", target, code)
+		}
+	}
+	for _, target := range []string{"81.2.69.161:443", "[64:ff9b::5102:45a1]:443", "93.184.215.14:443", "[2a02:1810:4d00:1234::8]:443"} {
+		if code := h.status(t, "app-recipes", target); code != 200 {
+			t.Errorf("%s: got %d, want 200", target, code)
+		}
+	}
+	// Only the route's own node counts: another node's endpoints may be from another network.
+	if code := h.status(t, "app-house", "81.2.69.160:443"); code != 200 {
+		t.Errorf("another node's endpoint: got %d, want 200", code)
 	}
 }

@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -30,6 +31,9 @@ type upstream interface {
 	peerAddr(ctx context.Context, host string) (netip.Addr, bool)
 	// isPeer reports whether ip is one of the node's peers' tailnet addresses.
 	isPeer(ctx context.Context, ip netip.Addr) bool
+	// endpoints are where the node last found itself reachable from outside, as
+	// host prefixes: the phone's own addresses and its router's public ones.
+	endpoints() []netip.Prefix
 	// dial connects to an IP literal through the node: netstack for peers, the
 	// default network for anything else.
 	dial(ctx context.Context, addr netip.AddrPort) (net.Conn, error)
@@ -402,13 +406,17 @@ var wellKnownNAT64 = netip.MustParsePrefix("64:ff9b::/96")
 // address is checked and dialed as IPv4. A NAT64 address, under the well-known
 // prefix or the network's own, is checked both as itself and by the IPv4
 // address inside it. Nothing inside a network the phone is on passes, so its own
-// public addresses and its neighbors' global IPv6 addresses are refused too.
+// public addresses and its neighbors' global IPv6 addresses are refused too, and
+// neither does an endpoint of the route's node, so the home's public IPv4 behind
+// NAT, where many routers answer, is refused. isPeer has just refreshed the
+// node's status, and the node is running.
 func (p *proxy) allowed(ctx context.Context, n upstream, ip netip.Addr, port uint16) (netip.AddrPort, error) {
 	ip = ip.Unmap().WithZone("")
 	if n.isPeer(ctx, ip) {
 		return netip.AddrPortFrom(ip, port), nil
 	}
 	nets := p.phone()
+	nets.own = append(slices.Clip(nets.own), n.endpoints()...)
 	check := []netip.Addr{ip}
 	for _, prefix := range []netip.Prefix{wellKnownNAT64, nets.nat64} {
 		if prefix.IsValid() && prefix.Contains(ip) {
