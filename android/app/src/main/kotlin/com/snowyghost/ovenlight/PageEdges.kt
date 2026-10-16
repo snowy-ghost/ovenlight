@@ -750,12 +750,19 @@ private fun FullscreenView(screen: PageEdges.Fullscreen, appName: String, exit: 
         bars?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_DEFAULT
         bars?.hide(WindowInsetsCompat.Type.systemBars())
         // Read from the window itself, which knows whether the bars show however they came
-        // back. Not systemBars(), whose caption bar never shows on a phone.
+        // back. Not systemBars(), whose caption bar never shows on a phone. Before Android 11
+        // the insets keep the bars' size while they're hidden (edge to edge lays out stable),
+        // so there the window's own flags say it.
         var barsWentAway = false
         val check = object : Runnable {
             override fun run() {
-                val visible = decor?.let(ViewCompat::getRootWindowInsets)?.let {
-                    it.isVisible(WindowInsetsCompat.Type.statusBars()) || it.isVisible(WindowInsetsCompat.Type.navigationBars())
+                val visible = if (Build.VERSION.SDK_INT < 30) {
+                    @Suppress("DEPRECATION")
+                    decor?.systemUiVisibility?.let { it and (View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION) == 0 }
+                } else {
+                    decor?.let(ViewCompat::getRootWindowInsets)?.let {
+                        it.isVisible(WindowInsetsCompat.Type.statusBars()) || it.isVisible(WindowInsetsCompat.Type.navigationBars())
+                    }
                 }
                 if (visible == false) barsWentAway = true else if (visible == true && barsWentAway) return currentExit()
                 decor?.postDelayed(this, BARS_CHECK_MILLIS)
