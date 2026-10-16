@@ -44,7 +44,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.Request
-import org.json.JSONObject
 
 /**
  * Debug builds' launch extras and lab, the counterparts of iOS's launch arguments. The lab
@@ -52,8 +51,8 @@ import org.json.JSONObject
  * Phase 1 gates run from adb:
  *
  *   --es lab start [--es labId lab] [--es controlURL <url>] [--es authKey <key>]
- *   --es lab login | waitup | status | close | restart       [--es labId lab]
- *   --es lab probe --es labUrl <https url> [--es labKey node-lab]
+ *   --es lab waitup | close | restart       [--es labId lab]
+ *   --es lab probe --es labUrl <https url> [--es labId lab]
  *   --es lab open --es labProfile A --es labUrl <url> [--es labId lab]
  *   --es lab page --es labProfile A --es labBase https://lab.e2e.ts.net/   (assets/lab.html)
  *   --es lab eval --es labJs <script>        logs the result of the open view's script
@@ -139,30 +138,10 @@ object DebugLaunch {
                 nodes[id] = node
                 log("start $id: backend running in ${SystemClock.elapsedRealtime() - t0} ms")
             }
-            "login" -> {
-                val node = node(id)
-                withContext(Dispatchers.IO) { node.loginInteractive() }
-                repeat(30) {
-                    val st = JSONObject(withContext(Dispatchers.IO) { node.statusJSON() })
-                    val url = st.optString("AuthURL")
-                    if (url.isNotEmpty()) {
-                        log("login $id: ${st.optString("BackendState")}, sign-in link from ${url.toHttpHost()}")
-                        return
-                    }
-                    kotlinx.coroutines.delay(500)
-                }
-                log("login $id: no sign-in link")
-            }
             "waitup" -> {
                 val t0 = SystemClock.elapsedRealtime()
                 withContext(Dispatchers.IO) { node(id).waitUp(60_000) }
                 log("waitup $id: Running in ${SystemClock.elapsedRealtime() - t0} ms")
-            }
-            "status" -> {
-                val st = JSONObject(withContext(Dispatchers.IO) { node(id).statusJSON() })
-                val peers = st.optJSONObject("Peer")?.length() ?: 0
-                val suffix = st.optJSONObject("CurrentTailnet")?.optString("MagicDNSSuffix").orEmpty()
-                log("status $id: ${st.optString("BackendState")}, $peers peers, suffix $suffix, self ${st.optJSONObject("Self")?.optString("DNSName")}")
             }
             "close" -> {
                 withContext(Dispatchers.IO) { nodes.remove(id)?.close() }
@@ -183,7 +162,7 @@ object DebugLaunch {
             }
             "probe" -> {
                 val url = intent.getStringExtra("labUrl") ?: return log("probe: no labUrl")
-                val key = intent.getStringExtra("labKey") ?: "node-$id"
+                val key = "node-$id"
                 val t0 = SystemClock.elapsedRealtime()
                 val code = withContext(Dispatchers.IO) { client(key).newCall(Request.Builder().url(url).build()).execute().use { it.code } }
                 log("probe $key ${url.toHttpHost()}: HTTP $code in ${SystemClock.elapsedRealtime() - t0} ms")

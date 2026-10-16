@@ -45,16 +45,14 @@ class AppRegistryTests {
     val temp = TemporaryFolder()
     private val dir: File get() = temp.root
 
-    private fun makeRegistry(dir: File) = offlineRegistry(dir)
-
     @Test
     fun testStartsEmptyAndPersistsChanges() {
-        val first = makeRegistry(dir)
+        val first = offlineRegistry(dir)
         assertEquals(emptyList<WebApp>(), first.apps)
         val app = first.add(URI("https://notes.example.com/"))
         first.rename(app.id, "Notes")
 
-        val second = makeRegistry(dir)
+        val second = offlineRegistry(dir)
         assertEquals(listOf("Notes"), second.apps.map { it.name })
         assertEquals(app.dataStoreID, second.apps[0].dataStoreID)
     }
@@ -66,7 +64,7 @@ class AppRegistryTests {
             OvenlightManifest(name = "Interview Coach", icon = "/icon-512.png", version = 1),
         )
 
-        val registry = makeRegistry(dir)
+        val registry = offlineRegistry(dir)
         registry.mergeDiscovered(listOf(coach))
         assertEquals(listOf("Interview Coach"), registry.apps.map { it.name })
         assertTrue(registry.apps[0].discovered)
@@ -74,7 +72,7 @@ class AppRegistryTests {
         registry.mergeDiscovered(listOf(coach))
         assertEquals(emptyList<WebApp>(), registry.apps)
 
-        val reopened = makeRegistry(dir)
+        val reopened = offlineRegistry(dir)
         reopened.mergeDiscovered(listOf(coach))
         assertEquals("a removed app must not come back after relaunch", emptyList<WebApp>(), reopened.apps)
         reopened.add(URI("https://interview-coach.tailabc123.ts.net/"))
@@ -83,7 +81,7 @@ class AppRegistryTests {
 
     @Test
     fun testRemovedHostsAreSavedEvenWhenTheAppsCantBe() = runTest {
-        val registry = makeRegistry(dir)
+        val registry = offlineRegistry(dir)
         val app = registry.add(URI("https://notes.tailabc123.ts.net/"))
         val file = File(dir, "apps.json")
         assertTrue(file.delete())
@@ -96,7 +94,7 @@ class AppRegistryTests {
 
     @Test
     fun testAMissingFileIsEmptyAndSaves() {
-        val registry = makeRegistry(dir)
+        val registry = offlineRegistry(dir)
         assertFalse(registry.loadFailed)
         registry.add(URI("https://notes.example.com/"))
         assertTrue(File(dir, "apps.json").exists())
@@ -110,7 +108,7 @@ class AppRegistryTests {
         val corrupt = "{\"truncated".toByteArray()
         file.writeBytes(corrupt)
 
-        val registry = makeRegistry(dir)
+        val registry = offlineRegistry(dir)
         assertTrue(registry.loadFailed)
         assertEquals("every store would look unused", emptyList<UUID>(), registry.unusedDataStores(listOf(UUID.randomUUID())))
         registry.add(URI("https://notes.example.com/"))
@@ -118,7 +116,7 @@ class AppRegistryTests {
 
         // Once the file reads, the reload replaces the guesswork.
         temp.newFolder().let { other ->
-            val saved = makeRegistry(other)
+            val saved = offlineRegistry(other)
             saved.add(URI("https://coach.example.com/"))
             file.writeText(ovenlightJSON.encodeToString(ListSerializer(WebApp.serializer()), saved.apps))
             registry.reloadIfFailed()
@@ -136,7 +134,7 @@ class AppRegistryTests {
          "not an app"]
         """
         File(dir, "apps.json").writeText(json)
-        val registry = makeRegistry(dir)
+        val registry = offlineRegistry(dir)
         assertFalse(registry.loadFailed)
         assertEquals(listOf("Coach"), registry.apps.map { it.name })
         assertEquals(null, registry.apps[0].themeColorHex)
@@ -150,7 +148,7 @@ class AppRegistryTests {
         assertEquals("the two it read, then the two it didn't, as they were", 4, saved.size)
         assertEquals("No ID", ((saved[2] as? JsonObject)?.get("name") as? JsonPrimitive)?.content)
         assertEquals(JsonPrimitive("not an app"), saved[3])
-        val reopened = makeRegistry(dir)
+        val reopened = offlineRegistry(dir)
         assertEquals(listOf("Coach", "notes.example.com"), reopened.apps.map { it.name })
         assertFalse(reopened.readInFull)
     }

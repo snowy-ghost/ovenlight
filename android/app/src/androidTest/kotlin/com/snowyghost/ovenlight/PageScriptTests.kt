@@ -250,11 +250,12 @@ class PageScriptTests {
         assertNull(capture.prompt.value)
     }
 
+    /** A stand-in camera, set before the page script wraps getUserMedia. */
+    private val fakeCamera = "MediaDevices.prototype.getUserMedia = function () { const c = document.createElement('canvas'); c.getContext('2d'); return Promise.resolve(c.captureStream()); };"
+
     @Test
     fun testTheStopMessageEndsTheTracks() {
-        // A stand-in camera, set before the page script wraps getUserMedia.
-        val fake = "MediaDevices.prototype.getUserMedia = function () { const c = document.createElement('canvas'); c.getContext('2d'); return Promise.resolve(c.captureStream()); };"
-        open(beforeBridge = fake)
+        open(beforeBridge = fakeCamera)
         eval("navigator.mediaDevices.getUserMedia({ video: true }).then(s => { window.track = s.getVideoTracks()[0]; window.copy = window.track.clone(); })")
         waitFor("the fake track") { eval("window.copy && window.copy.readyState") == "live" }
         // The page's report that it captures crosses to Ovenlight on its own.
@@ -469,8 +470,7 @@ class PageScriptTests {
 
     @Test
     fun testTheStopReachesAFramesTracks() {
-        val fake = "MediaDevices.prototype.getUserMedia = function () { const c = document.createElement('canvas'); c.getContext('2d'); return Promise.resolve(c.captureStream()); };"
-        open(beforeBridge = fake)
+        open(beforeBridge = fakeCamera)
         waitFor("the frame loads") { eval("frames[0].document.readyState") == "complete" }
         eval("frames[0].navigator.mediaDevices.getUserMedia({ video: true }).then(s => { window.track = s.getVideoTracks()[0]; }); 'asked'")
         waitFor("the frame's fake track") { eval("window.track && window.track.readyState") == "live" }

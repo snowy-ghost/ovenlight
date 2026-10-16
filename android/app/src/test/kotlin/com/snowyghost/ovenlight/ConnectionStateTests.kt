@@ -1,7 +1,6 @@
 package com.snowyghost.ovenlight
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -35,9 +34,6 @@ class ConnectionStateTests {
             ConnectionCopy.reportProblem, ConnectionCopy.leaveApps("Riley"), ConnectionCopy.leaveTitle("Riley"),
             ConnectionCopy.leaveDetail("Riley"), LauncherWelcome.title, LauncherWelcome.message,
         )
-        for (text in copy) {
-            assertFalse(text, text.lowercase().contains("tailscale"))
-            assertFalse(text, text.lowercase().contains("tailnet"))
-        }
+        copy.forEach(CopyRules::assertNeutral)
     }
 }

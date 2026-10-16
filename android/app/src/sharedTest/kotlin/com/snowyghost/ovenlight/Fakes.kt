@@ -27,14 +27,12 @@ class MemoryStore : KeyValueStore {
 
 /** A node that reports whatever status the test sets. */
 class FakeNode(val id: String, private val clients: FakeClients) : TailnetNode {
-    var started = false
     var closed = false
     var loggedOut = false
     override fun start() {
         check(!closed) { "node closed" }
         clients.onStart()
         clients.startError?.let { throw Exception(it) }
-        started = true
     }
     override fun waitUp(timeoutMillis: Long) {
         clients.upError?.let { throw Exception(it) }
