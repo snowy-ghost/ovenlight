@@ -2,17 +2,12 @@ package com.snowyghost.ovenlight
 
 import android.content.ActivityNotFoundException
 import android.content.Intent
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -25,11 +20,7 @@ import androidx.core.net.toUri
 fun WebViewUpdateScreen(webViewPackage: String) {
     val context = LocalContext.current
     Surface(Modifier.fillMaxSize()) {
-        Column(
-            Modifier.safeDrawingPadding().padding(32.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
+        CenteredScroll(contentPadding = 32.dp, spacing = 16.dp) {
             Text(stringResource(R.string.webview_update_title), style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
             Text(stringResource(R.string.webview_update_body), style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center)
             Button(onClick = {

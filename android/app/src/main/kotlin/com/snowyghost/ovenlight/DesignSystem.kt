@@ -62,6 +62,21 @@ import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.view.View
+import android.view.Window
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.window.DialogWindowProvider
+import androidx.core.view.WindowCompat
 
 /**
  * Ovenlight's brand, as iOS's asset catalog has it: the ember accent on warm paper, and
@@ -399,5 +414,44 @@ enum class AppReachability {
             if (route != Routing.Route.TailnetNode || nodeState != NodeState.Ready || answers == null) return null
             return if (answers[Discovery.normalizedHost(host)] == true) null else Offline
         }
+    }
+}
+
+/**
+ * A full-screen state centered in the safe area, that scrolls only when the largest text sizes
+ * don't fit. [modifier] reaches behind the bars, for a background.
+ */
+@Composable
+fun CenteredScroll(modifier: Modifier = Modifier, contentPadding: Dp = 0.dp, spacing: Dp = 0.dp, content: @Composable ColumnScope.() -> Unit) {
+    BoxWithConstraints(modifier.fillMaxSize().safeDrawingPadding()) {
+        Column(
+            Modifier.verticalScroll(rememberScrollState()).heightIn(min = maxHeight).fillMaxWidth().padding(contentPadding),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(spacing, Alignment.CenterVertically),
+            content = content,
+        )
+    }
+}
+
+/** The window of the dialog this composable is in, if it's in one. */
+fun View.dialogWindow(): Window? = generateSequence(parent) { it.parent }.firstNotNullOfOrNull { (it as? DialogWindowProvider)?.window }
+
+/**
+ * For a full-screen dialog that draws behind the bars (`decorFitsSystemWindows = false`): its
+ * window sets the bars' icons for the theme, as the activity's does, or light mode would get
+ * white icons on cream.
+ */
+@Composable
+fun FullScreenDialogBars() {
+    val view = LocalView.current
+    val dark = isSystemInDarkTheme()
+    DisposableEffect(view, dark) {
+        view.dialogWindow()?.let { window ->
+            WindowCompat.getInsetsController(window, window.decorView).apply {
+                isAppearanceLightStatusBars = !dark
+                isAppearanceLightNavigationBars = !dark
+            }
+        }
+        onDispose {}
     }
 }

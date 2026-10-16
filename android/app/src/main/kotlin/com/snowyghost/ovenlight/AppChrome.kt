@@ -21,6 +21,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.FiniteAnimationSpec
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.SeekableTransitionState
 import androidx.compose.animation.core.Spring
@@ -396,13 +397,13 @@ fun Modifier.backShrink(progress: () -> Float): Modifier = graphicsLayer {
 }
 
 /**
- * Whether a screen is shown, as a transition Back can scrub: shows and hides with [shown], and
- * [ScreenBack] seeks it while a back gesture moves.
+ * Whether a screen is shown, as a transition Back can scrub: shows and hides with [shown] along
+ * [screenCurve], and [ScreenBack] seeks it while a back gesture moves.
  */
 @Composable
 fun rememberScreenShown(shown: Boolean): SeekableTransitionState<Boolean> {
     val state = remember { SeekableTransitionState(shown) }
-    LaunchedEffect(shown) { state.animateTo(shown) }
+    LaunchedEffect(shown) { state.animateTo(shown, screenCurve) }
     return state
 }
 
@@ -410,7 +411,7 @@ fun rememberScreenShown(shown: Boolean): SeekableTransitionState<Boolean> {
  * Back on a screen while it's [shown], with the predictive back preview Navigation gives its
  * screens: the gesture runs the screen's own exit as it moves, letting go calls [back] (which
  * hides it, finishing that exit), and a cancelled gesture brings it back. A screen closed some
- * other way mid-gesture also cancels it, and then finishes going. The screen moves on [screenTween].
+ * other way mid-gesture also cancels it, and then finishes going.
  */
 @Composable
 fun ScreenBack(state: SeekableTransitionState<Boolean>, shown: Boolean, back: () -> Unit) {
@@ -421,17 +422,22 @@ fun ScreenBack(state: SeekableTransitionState<Boolean>, shown: Boolean, back: ()
             events.collect { state.seekTo(it.progress, targetState = false) }
             back()
         } catch (cancelled: CancellationException) {
-            scope.launch { state.animateTo(stillShown) }
+            scope.launch { state.animateTo(stillShown, screenCurve) }
             throw cancelled
         }
     }
 }
 
+private const val SCREEN_MILLIS = 350
+
 /**
- * How screens slide and fade: a tween, so a back gesture scrubbing one moves it in step with the
- * finger. A spring would run most of its way at the start of the gesture.
+ * How a screen slides: linear in its transition, so a back gesture scrubbing it keeps the
+ * screen under the finger. Opening, closing and letting go run that transition along
+ * [screenCurve] instead.
  */
-fun <T> screenTween(): FiniteAnimationSpec<T> = tween(350, easing = FastOutSlowInEasing)
+fun <T> screenTween(): FiniteAnimationSpec<T> = tween(SCREEN_MILLIS, easing = LinearEasing)
+
+private val screenCurve: FiniteAnimationSpec<Float> = tween(SCREEN_MILLIS, easing = FastOutSlowInEasing)
 
 /** Whether TalkBack (or another touch exploration service) is on, kept current. */
 @Composable

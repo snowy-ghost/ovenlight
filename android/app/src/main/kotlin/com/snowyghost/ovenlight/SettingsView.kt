@@ -194,7 +194,8 @@ fun SettingsScreen(state: SettingsState, onClose: () -> Unit) {
             if (targetState) {
                 slideInHorizontally(screenTween()) { it } togetherWith slideOutHorizontally(screenTween()) { -it / 3 }
             } else {
-                slideInHorizontally(screenTween()) { -it / 3 } togetherWith slideOutHorizontally(screenTween()) { it }
+                // Back slides Acknowledgements away over Settings, as Android's own screens do.
+                (slideInHorizontally(screenTween()) { -it / 3 } togetherWith slideOutHorizontally(screenTween()) { it }).apply { targetContentZIndex = -1f }
             }
         },
     ) { showing ->
