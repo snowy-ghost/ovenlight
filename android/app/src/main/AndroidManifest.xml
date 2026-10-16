@@ -106,12 +106,14 @@
 
         <!-- The one activity. singleTask, so links arrive in onNewIntent and bringing it
              back closes a tab above it. It handles rotation, size, density, keyboard and
-             UI mode changes itself, so pages survive them. -->
+             UI mode changes itself, so pages survive them. No task affinity, so another app
+             can't put its own screen into Ovenlight's task. -->
         <activity
             android:name=".MainActivity"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation|density|uiMode"
             android:exported="true"
             android:launchMode="singleTask"
+            android:taskAffinity=""
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
