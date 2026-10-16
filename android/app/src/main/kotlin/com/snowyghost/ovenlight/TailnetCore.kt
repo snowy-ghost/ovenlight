@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.LinkProperties
 import android.net.Network
+import android.os.Build
 import android.util.Log
 import com.snowyghost.ovenlight.core.Core
 import com.snowyghost.ovenlight.core.Platform
@@ -65,7 +66,7 @@ object TailnetCore : Platform, TailnetClients {
         connectivity = context.getSystemService(ConnectivityManager::class.java)
         connectivity.registerDefaultNetworkCallback(object : ConnectivityManager.NetworkCallback() {
             override fun onLinkPropertiesChanged(network: Network, properties: LinkProperties) = reports.execute { report(properties) }
-            override fun onLost(network: Network) = reports.execute { Core.networkChanged("", "") }
+            override fun onLost(network: Network) = reports.execute { Core.networkChanged("", "", "") }
         })
     }
 
@@ -76,7 +77,7 @@ object TailnetCore : Platform, TailnetClients {
     fun reportNetwork() {
         reports.execute {
             val properties = connectivity.activeNetwork?.let(connectivity::getLinkProperties)
-            if (properties == null) Core.networkChanged("", "") else report(properties)
+            if (properties == null) Core.networkChanged("", "", "") else report(properties)
         }
     }
 
@@ -85,8 +86,12 @@ object TailnetCore : Platform, TailnetClients {
     private fun report(properties: LinkProperties) {
         val defaults = properties.routes.filter { it.isDefaultRoute && it.gateway != null }
         val gateway = (defaults.firstOrNull { it.gateway is Inet4Address } ?: defaults.firstOrNull())?.gateway
-        Core.networkChanged(properties.interfaceName.orEmpty(), gateway?.hostAddress.orEmpty())
+        Core.networkChanged(properties.interfaceName.orEmpty(), gateway?.hostAddress.orEmpty(), nat64Prefix(properties))
     }
+
+    /** The network's own NAT64 prefix, as "2001:db8:64::/96", which Android reports from API 30. */
+    internal fun nat64Prefix(properties: LinkProperties): String =
+        if (Build.VERSION.SDK_INT >= 30) properties.nat64Prefix?.toString().orEmpty() else ""
 
     /**
      * Never throws: Go calls it on its own threads, where gobind leaves an exception pending

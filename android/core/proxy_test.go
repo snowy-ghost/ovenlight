@@ -103,6 +103,7 @@ func newHarness(t *testing.T) (*harness, *fakeNode, *fakeNode) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { p.srv.Close() })
+	p.phone = func() phoneNets { return phoneNets{} }
 	p.lookup = func(_ context.Context, host string) ([]netip.Addr, error) {
 		h.lookups.Add(1)
 		switch host {
@@ -327,6 +328,66 @@ func TestRefusesThePhoneItsNetworkAndOtherTailnets(t *testing.T) {
 	}
 }
 
+func TestRefusesThePhonesOwnNetworks(t *testing.T) {
+	h, own, _ := newHarness(t)
+	h.p.phone = func() phoneNets {
+		return phoneNets{
+			own: []netip.Prefix{
+				netip.MustParsePrefix("192.168.1.20/24"),           // Wi-Fi
+				netip.MustParsePrefix("2a02:1810:4d00:1234::7/64"), // Wi-Fi's global IPv6
+				netip.MustParsePrefix("172.58.10.20/32"),           // a carrier's public IPv4
+				netip.MustParsePrefix("2607:fb90:1234:5678::2/64"), // the carrier's IPv6
+				netip.MustParsePrefix("100.64.0.0/10"),             // another VPN's tailnet
+				netip.MustParsePrefix("fd7a:115c:a1e0::/48"),
+			},
+			nat64: netip.MustParsePrefix("2001:67c:2b0:db32::/96"),
+		}
+	}
+	lookup := h.p.lookup
+	h.p.lookup = func(ctx context.Context, host string) ([]netip.Addr, error) {
+		if host == "neighbor.example.com" {
+			return []netip.Addr{netip.MustParseAddr("2a02:1810:4d00:1234::99")}, nil
+		}
+		return lookup(ctx, host)
+	}
+	for _, target := range []string{
+		"[2a02:1810:4d00:1234::99]:443", "[2a02:1810:4d00:1234::99%25wlan0]:443", "neighbor.example.com:443",
+		"[2a02:1810:4d00:1234::7]:443", "[2607:fb90:1234:5678::2]:443", "[2607:fb90:1234:5678::1]:443",
+		"172.58.10.20:443", "[::ffff:172.58.10.20]:443", "[64:ff9b::ac3a:a14]:443",
+		"[2001:67c:2b0:db32::c0a8:101]:443", "[2001:67c:2b0:db32::7f00:1]:443", "[2001:67c:2b0:db32::ac3a:a14]:443",
+	} {
+		if code := h.status(t, "app-recipes", target); code != 502 {
+			t.Errorf("%s: got %d, want 502", target, code)
+		}
+	}
+	for _, target := range []string{
+		"[2001:67c:2b0:db32::5db8:d70e]:443", "[64:ff9b::5db8:d70e]:443", "[2606:4700::1111]:443",
+		"93.184.215.14:443", "172.58.10.21:443", "cdn.example.com:443",
+		"100.101.102.103:443", "[fd7a:115c:a1e0::5]:443", "recipe-box.tailabc123.ts.net:443",
+	} {
+		if code := h.status(t, "app-recipes", target); code != 200 {
+			t.Errorf("%s: got %d, want 200", target, code)
+		}
+	}
+	if got := own.lastDial(); got != netip.MustParseAddrPort("100.101.102.103:443") {
+		t.Errorf("the peer was dialed at %v", got)
+	}
+}
+
+func TestTheNetworksNAT64Prefix(t *testing.T) {
+	// The form Android writes, and the form a JVM writes, as Robolectric's tests see it.
+	for _, s := range []string{"2001:67c:2b0:db32::/96", "2001:67c:2b0:db32:0:0:0:0/96"} {
+		if p := parseNAT64(s); p != netip.MustParsePrefix("2001:67c:2b0:db32::/96") {
+			t.Errorf("%s: %v", s, p)
+		}
+	}
+	for _, bad := range []string{"", "nonsense", "2001:db8::/64", "2001:db8::/128", "10.0.0.0/8", "::ffff:0:0/96"} {
+		if p := parseNAT64(bad); p.IsValid() {
+			t.Errorf("%q was taken as %v", bad, p)
+		}
+	}
+}
+
 func TestBytesSentWithTheConnectArrive(t *testing.T) {
 	h, _, _ := newHarness(t)
 	target := "recipe-box.tailabc123.ts.net:443"
@@ -530,5 +591,38 @@ func TestInterfacesFromThePlatform(t *testing.T) {
 	platform = fakePlatform{json: "not json"}
 	if _, err := interfaces(); err == nil {
 		t.Error("bad JSON was accepted")
+	}
+}
+
+func TestThePhonesNetworksFollowNetworkChanges(t *testing.T) {
+	old := platform
+	defer func() {
+		platform = old
+		NetworkChanged("", "", "")
+	}()
+	platform = fakePlatform{json: `[
+		{"name":"lo","addrs":[{"ip":"127.0.0.1","prefixLen":8}]},
+		{"name":"wlan0","addrs":[{"ip":"192.168.1.20","prefixLen":24},{"ip":"2a02:1810:4d00:1234::7","prefixLen":64},{"ip":"fe80::1%wlan0","prefixLen":64},{"ip":"::ffff:81.2.69.160","prefixLen":200}]}
+	]`}
+	NetworkChanged("wlan0", "192.168.1.1", "2001:67c:2b0:db32::/96")
+	nets := phoneNetworks()
+	if fmt.Sprint(nets.own) != "[127.0.0.0/8 192.168.1.0/24 2a02:1810:4d00:1234::/64 fe80::/64 81.2.69.160/32]" {
+		t.Errorf("Wi-Fi: %v", nets.own)
+	}
+	if nets.nat64 != netip.MustParsePrefix("2001:67c:2b0:db32::/96") {
+		t.Errorf("Wi-Fi's NAT64 prefix: %v", nets.nat64)
+	}
+	platform = fakePlatform{json: `[{"name":"rmnet_data0","addrs":[{"ip":"2607:fb90:1234:5678::2","prefixLen":64}]}]`}
+	NetworkChanged("rmnet_data0", "", "")
+	nets = phoneNetworks()
+	if fmt.Sprint(nets.own) != "[2607:fb90:1234:5678::/64]" || nets.nat64.IsValid() {
+		t.Errorf("cellular: %v %v", nets.own, nets.nat64)
+	}
+	for _, unreadable := range []string{"not json", "[]"} {
+		platform = fakePlatform{json: unreadable}
+		NetworkChanged("rmnet_data0", "", "")
+		if nets = phoneNetworks(); fmt.Sprint(nets.own) != "[2607:fb90:1234:5678::/64]" {
+			t.Errorf("%s replaced the last list: %v", unreadable, nets.own)
+		}
 	}
 }

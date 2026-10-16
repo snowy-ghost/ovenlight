@@ -60,6 +60,7 @@ type proxy struct {
 	// node returns the membership's open node, or nil when it has none.
 	node   func(membershipID string) upstream
 	lookup func(ctx context.Context, host string) ([]netip.Addr, error)
+	phone  func() phoneNets
 	logf   func(format string, args ...any) // debug builds only; nil in release
 
 	mu      sync.Mutex
@@ -98,6 +99,7 @@ func startProxy(node func(string) upstream, logf func(string, ...any), fatal fun
 		lookup: func(ctx context.Context, host string) ([]netip.Addr, error) {
 			return net.DefaultResolver.LookupNetIP(ctx, "ip", host)
 		},
+		phone:   phoneNetworks,
 		logf:    logf,
 		routes:  map[string]string{},
 		known:   map[string]bool{},
@@ -352,7 +354,7 @@ func (p *proxy) resolve(ctx context.Context, n upstream, target string) (netip.A
 	}
 	host = strings.TrimRight(lowerASCII(host), ".")
 	if ip, err := netip.ParseAddr(host); err == nil {
-		return allowed(ctx, n, ip, uint16(port))
+		return p.allowed(ctx, n, ip, uint16(port))
 	}
 	if isTailnetName(host, n.suffix(ctx)) {
 		if ip, ok := n.peerAddr(ctx, host); ok {
@@ -365,7 +367,7 @@ func (p *proxy) resolve(ctx context.Context, n upstream, target string) (netip.A
 		return netip.AddrPort{}, err
 	}
 	for _, ip := range ips {
-		if a, err := allowed(ctx, n, ip, uint16(port)); err == nil {
+		if a, err := p.allowed(ctx, n, ip, uint16(port)); err == nil {
 			return a, nil
 		}
 	}
@@ -388,23 +390,41 @@ func lowerASCII(s string) string {
 	return string(b)
 }
 
-var nat64 = netip.MustParsePrefix("64:ff9b::/96")
+// phoneNets is what the proxy learns of the phone's own networks.
+type phoneNets struct {
+	own   []netip.Prefix // each interface's address and prefix
+	nat64 netip.Prefix   // the default network's own NAT64 prefix, if it has one
+}
+
+var wellKnownNAT64 = netip.MustParsePrefix("64:ff9b::/96")
 
 // allowed returns the address to dial for ip, or errRefused. An IPv4-mapped
-// address is checked and dialed as IPv4, and a NAT64 address is checked by the
-// IPv4 address inside it.
-func allowed(ctx context.Context, n upstream, ip netip.Addr, port uint16) (netip.AddrPort, error) {
+// address is checked and dialed as IPv4. A NAT64 address, under the well-known
+// prefix or the network's own, is checked both as itself and by the IPv4
+// address inside it. Nothing inside a network the phone is on passes, so its own
+// public addresses and its neighbors' global IPv6 addresses are refused too.
+func (p *proxy) allowed(ctx context.Context, n upstream, ip netip.Addr, port uint16) (netip.AddrPort, error) {
 	ip = ip.Unmap().WithZone("")
 	if n.isPeer(ctx, ip) {
 		return netip.AddrPortFrom(ip, port), nil
 	}
-	check := ip
-	if nat64.Contains(ip) {
-		b := ip.As16()
-		check = netip.AddrFrom4([4]byte{b[12], b[13], b[14], b[15]})
+	nets := p.phone()
+	check := []netip.Addr{ip}
+	for _, prefix := range []netip.Prefix{wellKnownNAT64, nets.nat64} {
+		if prefix.IsValid() && prefix.Contains(ip) {
+			b := ip.As16()
+			check = append(check, netip.AddrFrom4([4]byte(b[12:])))
+		}
 	}
-	if !internet(check) {
-		return netip.AddrPort{}, errRefused
+	for _, a := range check {
+		if !internet(a) {
+			return netip.AddrPort{}, errRefused
+		}
+		for _, own := range nets.own {
+			if own.Contains(a) {
+				return netip.AddrPort{}, errRefused
+			}
+		}
 	}
 	return netip.AddrPortFrom(ip, port), nil
 }
