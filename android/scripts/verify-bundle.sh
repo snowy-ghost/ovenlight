@@ -1,5 +1,5 @@
 #!/bin/bash
-# Checks a release bundle before it goes to Play (play.md §2 and §4): the SDK level, the
+# Checks a release bundle against what Play and the plan require: the SDK level, the
 # Go core's three ABIs aligned to 16 KB pages, the license notices, no advertising ID or
 # media permissions, the camera and microphone not required, and WebView metrics off.
 # ship-play runs it as VERIFY_CMD, against the exact file it then uploads.
@@ -13,18 +13,7 @@ android="$(cd "$(dirname "$0")/.." && pwd)"
 sdk="${ANDROID_HOME:?set ANDROID_HOME}"
 prop() { sed -n "s/^$1=//p" "$android/gradle.properties"; }
 
-# bundletool at the version AGP pins (gradle/verification-metadata.xml), checked against
-# the release's digest.
-BUNDLETOOL_VERSION=1.18.3
-BUNDLETOOL_SHA256=a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37fdfd6d91028e29
-jar="$android/../build/tools/bundletool-all-$BUNDLETOOL_VERSION.jar"
-if [ ! -f "$jar" ]; then
-  mkdir -p "$(dirname "$jar")"
-  curl -fsSL -o "$jar.part" "https://github.com/google/bundletool/releases/download/$BUNDLETOOL_VERSION/bundletool-all-$BUNDLETOOL_VERSION.jar"
-  echo "$BUNDLETOOL_SHA256  $jar.part" | shasum -a 256 -c --quiet
-  mv "$jar.part" "$jar"
-fi
-bundletool() { java -jar "$jar" "$@"; }
+bundletool() { "$android/scripts/bundletool.sh" "$@"; }
 
 work="$(mktemp -d)"
 trap 'rm -r "$work"' EXIT
