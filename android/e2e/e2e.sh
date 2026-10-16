@@ -188,10 +188,9 @@ mkdir -p $D/recipes $D/pantry
 cat > $D/recipes/index.html <<'EOF'
 <!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>loading</title><link rel="stylesheet" href="https://pantry.e2e.ts.net/style.css" onload="out.css = 'ok'; show()" onerror="out.css = 'error'; show()"></head>
+<title>loading</title><script>var out = {};</script><link rel="stylesheet" href="https://pantry.e2e.ts.net/style.css" onload="out.css = 'ok'; show()" onerror="out.css = 'error'; show()"></head>
 <body><h1>Recipe Box</h1><img src="https://pantry.e2e.ts.net/dot.svg" width="20" onload="out.img = 'ok'; show()" onerror="out.img = 'error'; show()"><p id="out"></p>
 <script>
-var out = {};
 function show() { if (!document.getElementById("out")) return; document.title = JSON.stringify(out); document.getElementById("out").textContent = document.title; }
 const ws = new WebSocket("wss://recipes.e2e.ts.net/ws");
 ws.onopen = () => ws.send("ping");
@@ -462,6 +461,7 @@ EOF
   a shell "am start -W -n $PKG/.MainActivity --es controlURL $CTRL --es authKey $KEY" >/dev/null
   await_text 90 Recipes Pantry || fail "the launcher never showed both apps: $(screen_text | tr '\n' '|')"
   tap_text Recipes
+  close_tip
   await_text 40 "Recipe Box edges" "Outside link" || { shot edges-failed; fail "the page of links never loaded: $(screen_text | tr '\n' '|')"; }
   shot edges-page
 
@@ -535,6 +535,7 @@ EOF
   a shell "am start -W -n $PKG/.MainActivity --es controlURL $CTRL --es authKey $KEY" >/dev/null
   await_text 90 Recipes Pantry || fail "the launcher never showed both apps: $(screen_text | tr '\n' '|')"
   tap_text Recipes
+  close_tip
   # The page's HttpOnly session cookie, which only the profile's cookie jar can carry.
   await_text 40 "Signed in" "Download file" || { shot downloads-failed; fail "the page never signed in: $(screen_text | tr '\n' '|')"; }
   downloaded() { a shell run-as $PKG sh -c "'cat cache/Downloads/*/\"$1\"'" 2>/dev/null | tr -d '\r'; }
