@@ -11,7 +11,7 @@
     <string name="chrome_lock">Lock Ovenlight</string>
 
     <string name="chrome_tip_title">Your apps are up here</string>
-    <string name="chrome_tip_body">This bar tucks away while you use an app. Tap the handle at the top of the screen, or scroll up, to bring it back.</string>
+    <string name="chrome_tip_body">This bar tucks away while you use an app. Tap the handle at the top of the screen, or pull down at the top of the page, to bring it back.</string>
     <string name="chrome_tip_action">Got it</string>
 
     <string name="feedback_title">Send feedback</string>

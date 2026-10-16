@@ -12,14 +12,14 @@ class ChromeRulesTests {
     private val events = mutableListOf<String>()
 
     /** At 2 pixels a dp, with an 8 px touch slop. */
-    private val gestures = ChromeGestures(density = 2f, touchSlop = 8f, onScroll = { events += if (it) "up" else "down" }, onTap = { events += "tap" })
+    private val gestures = ChromeGestures(density = 2f, touchSlop = 8f, onPull = { events += "pull" }, onScrollDown = { events += "down" }, onTap = { events += "tap" })
 
     private fun down(y: Float, x: Float = 200f, at: Long = 0) = gestures.touched(MotionEvent.ACTION_DOWN, x, y, at)
     private fun move(y: Float, x: Float = 200f, at: Long = 0) = gestures.touched(MotionEvent.ACTION_MOVE, x, y, at)
     private fun up(y: Float, x: Float = 200f, at: Long = 0) = gestures.touched(MotionEvent.ACTION_UP, x, y, at)
 
     @Test
-    fun testScrollingDownHidesAndScrollingUpBringsItBack() {
+    fun testScrollingDownHidesItAndScrollingUpLeavesItBe() {
         down(800f)
         move(700f)
         // 12 dp is 24 px: 20 isn't enough, 30 is.
@@ -27,13 +27,12 @@ class ChromeRulesTests {
         assertEquals(emptyList<String>(), events)
         gestures.scrolled(120, 130, 0)
         assertEquals(listOf("down"), events)
-        // Turning back starts the count again; 60 dp is 120 px.
-        gestures.scrolled(130, 20, 0)
+        // Any way up, short of the top, brings nothing back, and starts the count again.
+        gestures.scrolled(130, 5, 0)
+        gestures.scrolled(5, 25, 0)
         assertEquals(listOf("down"), events)
-        gestures.scrolled(20, 5, 0)
-        assertEquals(listOf("down", "up"), events)
         up(900f)
-        assertEquals("a drag is no tap", listOf("down", "up"), events)
+        assertEquals("a drag is no tap", listOf("down"), events)
     }
 
     @Test
@@ -69,9 +68,9 @@ class ChromeRulesTests {
         gestures.overscrolledTop()
         move(191f)
         move(400f)
-        assertEquals(listOf("up"), events)
+        assertEquals(listOf("pull"), events)
         up(400f)
-        assertEquals("a pull is no tap", listOf("up"), events)
+        assertEquals("a pull is no tap", listOf("pull"), events)
     }
 
     @Test

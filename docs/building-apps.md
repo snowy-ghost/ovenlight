@@ -299,17 +299,15 @@ clear.
 
 **Ovenlight's chrome.** The only thing Ovenlight draws over the app is a small pill at the
 top center, just below the status bar, with the way home and the app's menu (Reload and
-Send Feedback among them). It shows while the app opens, then tucks up under the status
-bar, leaving a small handle just below it. Scrolling up, pulling down at the top, or
-tapping the handle brings it back. So:
+Send Feedback among them). It tucks up under the status bar the moment your page appears,
+leaving a small handle just below it. Pulling down at the top of the page or tapping the
+handle brings it back, and scrolling down or tapping the page tucks it away again. So:
 
 - Put no controls in the strip at the top center just below the status bar, where the
-  handle lives (120 by 20 points), and none needed the moment the app opens anywhere
-  under the pill, which sits there until it tucks away.
+  handle lives (120 by 20 points).
 - Let the page itself scroll, not a full-height inner container
   (`height: 100vh; overflow: auto`): Ovenlight watches the page's scrolling, so inside
-  such a container scrolling up and pulling down don't bring the menu back, and only the
-  handle does.
+  such a container pulling down doesn't bring the menu back, and only the handle does.
 - Don't build pull-to-refresh, and don't turn off the page's bounce
   (`overscroll-behavior: none` on the page): pulling down is how people reach the menu,
   and Reload is in it.

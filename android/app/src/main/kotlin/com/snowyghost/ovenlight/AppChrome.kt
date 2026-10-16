@@ -105,7 +105,6 @@ import java.net.URI
 import kotlin.coroutines.resume
 import kotlin.math.abs
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.serialization.json.JsonPrimitive
@@ -131,7 +130,8 @@ data class AppChromeActions(
 /**
  * Whether the chrome shows, kept outside the view so tests can drive it. An app opens with the
  * pill tucked away, except while its one-time tip is due: then it shows with the tip until the
- * tip is closed. Main thread only.
+ * tip is closed, and tucks away as the page appears, or at once if it already has. Main thread
+ * only.
  */
 @Stable
 class ChromeController(private val store: KeyValueStore) {
@@ -140,7 +140,7 @@ class ChromeController(private val store: KeyValueStore) {
     var tipShowing by mutableStateOf(!store.getBoolean(TIP_CLOSED_KEY))
         private set
 
-    /** Hides on its own after the app loads, until the person takes charge of the chrome. */
+    /** Hides on its own once the app loads, until the person takes charge of the chrome. */
     var autoHides by mutableStateOf(true)
         private set
 
@@ -153,8 +153,8 @@ class ChromeController(private val store: KeyValueStore) {
     }
 
     /**
-     * The handle, or the page scrolled up or pulled down at its top. No haptic either way:
-     * design.md keeps them for actions, not for revealing the pill.
+     * The handle, or the page pulled down at its top. No haptic either way: design.md keeps them
+     * for actions, not for revealing the pill.
      */
     fun reveal(fromHandle: Boolean = true) {
         isShown = true
@@ -182,24 +182,27 @@ class ChromeController(private val store: KeyValueStore) {
 
     companion object {
         const val TIP_CLOSED_KEY = "chromeTipClosed"
-
-        /** How long after the first load the pill tucks itself away. */
-        const val AUTO_HIDE_MILLIS = 2_500L
     }
 }
 
 /**
  * Turns the page's scrolling and touches into the chrome following them, without taking any
- * (iOS's WebViewObserver): scrolling down 12 dp or tapping the page hides it, scrolling up 60 dp
- * or pulling down 40 dp past the top of the page brings it back. Only the person's own scrolling
- * counts: while a finger is down, and during the fling a drag ends with. Distances are in
- * pixels, times in milliseconds. WebView has no rubber band: a pull past the top is a downward
- * drag that WebView reports as overscrolling the top, which it does only for movement the page
- * left to it, so a map, a canvas or an inner scroller keeps its own drags, as on iOS.
+ * (iOS's WebViewObserver): scrolling down 12 dp or tapping the page hides it, pulling down 40 dp
+ * past the top of the page brings it back, and scrolling up leaves it as it is. Only the
+ * person's own scrolling counts: while a finger is down, and during the fling a drag ends with.
+ * Distances are in pixels, times in milliseconds. WebView has no rubber band: a pull past the
+ * top is a downward drag that WebView reports as overscrolling the top, which it does only for
+ * movement the page left to it, so a map, a canvas or an inner scroller keeps its own drags, as
+ * on iOS.
  */
-class ChromeGestures(density: Float, private val touchSlop: Float, private val onScroll: (up: Boolean) -> Unit, private val onTap: () -> Unit) {
+class ChromeGestures(
+    density: Float,
+    private val touchSlop: Float,
+    private val onPull: () -> Unit,
+    private val onScrollDown: () -> Unit,
+    private val onTap: () -> Unit,
+) {
     private val downThreshold = 12 * density
-    private val upThreshold = 60 * density
     private val pullThreshold = 40 * density
     private var travel = 0f
     private var touching = false
@@ -230,7 +233,7 @@ class ChromeGestures(density: Float, private val touchSlop: Float, private val o
                 if (!pulled && y - from > pullThreshold) {
                     pulled = true
                     travel = 0f
-                    onScroll(true)
+                    onPull()
                 }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
@@ -257,14 +260,11 @@ class ChromeGestures(density: Float, private val touchSlop: Float, private val o
         }
         if (new <= 0) return
         val delta = (new - old).toFloat()
-        if ((delta > 0) != (travel > 0)) travel = 0f
-        travel += delta
+        // Scrolling up starts the count again.
+        travel = if (delta > 0) travel + delta else 0f
         if (travel > downThreshold) {
             travel = 0f
-            onScroll(false)
-        } else if (travel < -upThreshold) {
-            travel = 0f
-            onScroll(true)
+            onScrollDown()
         }
     }
 
@@ -463,10 +463,9 @@ fun AppChrome(
     controller: ChromeController,
     touchExploration: Boolean = rememberTouchExploration(),
 ) {
+    // Tucked away the moment the page appears, so it never sits over the page on its own.
     LaunchedEffect(isLoaded, controller.autoHides, controller.tipShowing) {
-        if (!isLoaded || !controller.autoHides || controller.tipShowing) return@LaunchedEffect
-        delay(ChromeController.AUTO_HIDE_MILLIS)
-        controller.hide()
+        if (isLoaded && controller.autoHides && !controller.tipShowing) controller.hide()
     }
     // Gone at once for the frame a snapshot takes, mid-animation or not. Back, it shows as it
     // was without animating in: AnimatedVisibility doesn't animate what is visible from the start.
@@ -615,7 +614,8 @@ private fun WatchPage(view: PageWebView, controller: ChromeController) {
     DisposableEffect(view, controller) {
         val gestures = ChromeGestures(
             density, ViewConfiguration.get(view.context).scaledTouchSlop.toFloat(),
-            onScroll = { up -> if (up) controller.reveal(fromHandle = false) else controller.hide() },
+            onPull = { controller.reveal(fromHandle = false) },
+            onScrollDown = controller::hide,
             onTap = controller::hide,
         )
         view.setOnScrollChangeListener { _, _, y, _, oldY -> gestures.scrolled(oldY, y, SystemClock.uptimeMillis()) }

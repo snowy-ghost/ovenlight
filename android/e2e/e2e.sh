@@ -418,7 +418,7 @@ if [[ $SCENARIO == chrome ]]; then
   shot chrome-tip
   tap_text "Got it"
   await_text 40 "Recipe Box" || { shot chrome-failed; fail "Recipes never loaded: $(screen_text | tr '\n' '|')"; }
-  # Loaded, the pill tucks itself away 2.5 s later, leaving its handle.
+  # The tip closed, the pill tucks itself away as the page appears, leaving its handle.
   await_text 10 "Show app menu" || { shot chrome-failed; fail "the pill didn't tuck away: $(screen_text | tr '\n' '|')"; }
   ! screen_text | grep -qxF "Recipes options" || fail "the pill still shows beside its handle"
   shot chrome-tucked

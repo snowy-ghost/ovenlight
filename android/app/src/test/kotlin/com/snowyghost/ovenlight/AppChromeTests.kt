@@ -93,10 +93,10 @@ class AppChromeTests {
         inEveryLook {
             assertShown(recipes)
             composeRule.onNodeWithText("Your apps are up here").assertIsDisplayed()
-            composeRule.onNodeWithText("This bar tucks away while you use an app. Tap the handle at the top of the screen, or scroll up, to bring it back.").assertIsDisplayed()
+            composeRule.onNodeWithText("This bar tucks away while you use an app. Tap the handle at the top of the screen, or pull down at the top of the page, to bring it back.").assertIsDisplayed()
         }
-        // Loaded and past the auto-hide, the tip keeps it out.
-        composeRule.mainClock.advanceTimeBy(ChromeController.AUTO_HIDE_MILLIS + 500)
+        // Loaded, the tip keeps it out.
+        composeRule.waitForIdle()
         assertShown(recipes)
         // The page's touches can't hide it either while the tip is due.
         controller.hide()
@@ -108,8 +108,26 @@ class AppChromeTests {
         composeRule.onNodeWithText("Your apps are up here").assertDoesNotExist()
         assertTrue("closed for good", store.getBoolean(ChromeController.TIP_CLOSED_KEY))
         assertFalse(ChromeController(store).tipShowing)
-        // Then it tucks itself away after the load like any other time.
-        composeRule.mainClock.advanceTimeBy(ChromeController.AUTO_HIDE_MILLIS + 500)
+        // Then, the page already there, it tucks itself away at once.
+        composeRule.waitForIdle()
+        assertTucked()
+    }
+
+    /** The tip, closed before the page appears, leaves the pill until the page does, and not a moment longer. */
+    @Test
+    fun testThePillTucksAwayAsThePageAppears() {
+        val controller = ChromeController(MemoryStore())
+        show(recipes, controller)
+        composeRule.onNodeWithText("Got it").performClick()
+        composeRule.mainClock.advanceTimeBy(5_000)
+        assertShown(recipes)
+        composeRule.mainClock.autoAdvance = false
+        loaded = true
+        Snapshot.sendApplyNotifications()
+        // Within a few frames, not seconds.
+        repeat(3) { composeRule.mainClock.advanceTimeByFrame() }
+        assertFalse(controller.isShown)
+        composeRule.mainClock.autoAdvance = true
         composeRule.waitForIdle()
         assertTucked()
     }
@@ -129,7 +147,7 @@ class AppChromeTests {
         assertShown(recipes)
         // Once revealed, the person has it: a load doesn't hide it on its own.
         loaded = true
-        composeRule.mainClock.advanceTimeBy(ChromeController.AUTO_HIDE_MILLIS + 500)
+        composeRule.mainClock.advanceTimeBy(5_000)
         composeRule.waitForIdle()
         assertShown(recipes)
     }

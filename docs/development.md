@@ -248,8 +248,8 @@ Sign Ovenlight in to the first with `-authKey`, and open the second owner's invi
   (`AppLoadGate`). After about 10 seconds the app shows "Can't Reach \<App>" with Try
   Again. Launcher tiles dim with a badge while their machine isn't answering.
 - **The open app** has one piece of native chrome: a small capsule at the top with the
-  way home and the app's menu, which tucks up under the status bar. Tapping its handle,
-  scrolling up or pulling down at the top of the page brings it back. Tapping the status
+  way home and the app's menu, which tucks up under the status bar as the page appears.
+  Tapping its handle or pulling down at the top of the page brings it back. Tapping the status
   bar scrolls the page to the top, as iOS does, and leaves the chrome alone.
 - **Lock.** What locking holds back is in [security.md](security.md#on-the-iphone);
   `WebViewPool.stopCapture` ends the microphone and camera streams already running.
