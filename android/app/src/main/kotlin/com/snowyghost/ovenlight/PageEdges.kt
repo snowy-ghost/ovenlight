@@ -43,6 +43,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -61,13 +62,12 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import androidx.webkit.Navigation
-import androidx.webkit.NavigationListener
-import androidx.webkit.WebViewCompat
-import androidx.webkit.WebViewFeature
 import java.io.File
 import java.net.URI
+import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
@@ -128,23 +128,6 @@ class PageEdges(
 
     val chrome: WebChromeClient = Chrome()
 
-    /** Where present, the listener sees each navigation commit; otherwise onPageStarted and onPageFinished do. */
-    private val listens = WebViewFeature.isFeatureSupported(WebViewFeature.NAVIGATION_LISTENER)
-
-    init {
-        // The same check as [listens], where lint can see it.
-        if (WebViewFeature.isFeatureSupported(WebViewFeature.NAVIGATION_LISTENER)) {
-            WebViewCompat.addNavigationListener(
-                view, ContextCompat.getMainExecutor(context),
-                object : NavigationListener {
-                    override fun onNavigationCompleted(navigation: Navigation) {
-                        if (navigation.didCommit() && !navigation.isSameDocument) skipped(navigation.url)
-                    }
-                },
-            )
-        }
-    }
-
     /**
      * The page is on screen, unlocked, and Ovenlight is in front: its script keeps running
      * while Ovenlight is away (in a picker, its own Custom Tab or another app), and the lock
@@ -171,22 +154,22 @@ class PageEdges(
         }
     }
 
+    /** A main-frame address as the policy judges one the page went to by itself; one java.net.URI can't read is refused. */
+    private fun judge(url: String): NavigationPolicy.Decision =
+        uri(url)?.let { NavigationPolicy.decide(it, app.host, isMainFrame = true, tapped = false) } ?: NavigationPolicy.Decision.Refuse
+
     /** What the view shows (not what a callback names) is an app's own page. */
-    private fun showsAppPage(): Boolean =
-        view.url?.let(::uri)?.let { NavigationPolicy.decide(it, app.host, isMainFrame = true, tapped = false) } == NavigationPolicy.Decision.Allow
+    private fun showsAppPage(): Boolean = view.url?.let(::judge) == NavigationPolicy.Decision.Allow
 
     /** The page's client's onPageStarted, which comes as a main-frame navigation starts. */
-    fun pageStarted(url: String?) {
-        if (!listens) skipped(url)
-    }
+    fun pageStarted(url: String?) = skipped(url)
 
     /** The page's client's onPageFinished, which comes once one has committed, error pages included. */
     fun pageFinished(url: String?) {
-        if (!listens) skipped(url)
+        skipped(url)
         val back = returning ?: return
-        // The way back's own page, which a callback can name only once it has finished.
-        val arrived = url?.let(::uri)?.let { NavigationPolicy.decide(it, app.host, isMainFrame = true, tapped = false) } == NavigationPolicy.Decision.Allow
-        if (!arrived || !showsAppPage()) return
+        // The way back's own page, which a callback names only once it has finished.
+        if (url == null || judge(url) != NavigationPolicy.Decision.Allow || !showsAppPage()) return
         returning = null
         // Back never returns to the page that was stopped.
         if (back.home) view.clearHistory()
@@ -198,39 +181,61 @@ class PageEdges(
      */
     private var stopped: Pair<URI, Long>? = null
 
-    /** The view is on its way back to the app's page, by a step back or by loading it again ([home]). */
-    private class Return(val home: Boolean, val at: Long)
+    /** The view is on its way back to the app's page from [target], by a step back or by loading it again ([home]). */
+    private class Return(val target: String, val home: Boolean, val at: Long)
 
     private var returning: Return? = null
+    private var returnCheck: Job? = null
+
+    /** When each recent way back began, so a page that keeps going elsewhere ends on a blank page, not in a loop. */
+    private val returns = ArrayDeque<Long>()
 
     /**
      * shouldOverrideUrlLoading never sees a POST, nor a page's own move to a blob: URL, so a
-     * POST to another site, or a blob of another origin, gets this far. WebView reports it as it starts, as it fails and
-     * as its page commits, in no fixed order, often naming it again while the way back loads.
-     * So it stops, the view goes back if it shows that page by then, and the address opens
-     * outside once, as iOS does, though here the request has already gone.
+     * POST to another site, or a blob of another origin, gets this far. WebView reports one
+     * as it starts, as it fails and as its page commits, in no fixed order. Each time it
+     * stops, the view goes back if it shows that page by then, and the address opens outside
+     * once, as iOS does, though here the request has already gone.
      */
     private fun skipped(url: String?) {
-        val target = url?.let(::uri) ?: return
-        val decision = NavigationPolicy.decide(target, app.host, isMainFrame = true, tapped = false)
+        url ?: return
+        val decision = judge(url)
         if (decision == NavigationPolicy.Decision.Allow) return
         val now = SystemClock.elapsedRealtime()
-        // The way back is loading; stopping now would stop it.
-        if (returning?.let { now - it.at < RETURN_MILLIS } == true) return
-        Log.i(TAG, "${app.host}: stopped a page from ${target.scheme ?: "nowhere"} that skipped the navigation policy")
+        // While the way back loads, WebView may still name the stopped address, and stopping
+        // then would stop the way back. The end of that window checks again.
+        val back = returning
+        if (back != null && back.target == url && now - back.at < RETURN_MILLIS) return
+        Log.i(TAG, "${app.host}: stopped a page that skipped the navigation policy")
         view.stopLoading()
-        if (!showsAppPage()) {
-            // By index, not goBack, which skips pages the person never touched (Chromium's
-            // history intervention), as a script's POST leaves the one before it. Where WebView
-            // won't step back at all, the app starts again from its own page.
-            val step = view.canGoBackOrForward(-1)
-            returning = Return(home = !step, at = now)
-            if (step) view.goBackOrForward(-1) else home()
-        }
+        if (!showsAppPage()) goBack(url, now)
         val last = stopped
         if (decision is NavigationPolicy.Decision.OpenExternally && (last == null || last.first != decision.url || now - last.second > RETURN_MILLIS)) {
             stopped = decision.url to now
             openExternally(decision.url)
+        }
+    }
+
+    private fun goBack(target: String, now: Long) {
+        returns.addLast(now)
+        while (now - returns.first() > LOOP_MILLIS) returns.removeFirst()
+        returnCheck?.cancel()
+        if (returns.size > MAX_RETURNS) {
+            Log.i(TAG, "${app.host}: the page keeps leaving the app; leaving it blank")
+            returning = null
+            view.loadUrl("about:blank")
+            return
+        }
+        // By index, not goBack, which skips pages the person never touched (Chromium's history
+        // intervention), as a script's POST leaves the one before it. Where WebView won't step
+        // back at all, the app starts again from its own page.
+        val step = view.canGoBackOrForward(-1)
+        returning = Return(target, home = !step, at = now)
+        if (step) view.goBackOrForward(-1) else home()
+        returnCheck = scope.launch {
+            delay(RETURN_MILLIS)
+            returning = null
+            view.url?.let(::skipped)
         }
     }
 
@@ -291,6 +296,12 @@ class PageEdges(
     fun open(dialog: Dialog.OpenElsewhere) {
         dismiss(dialog)
         start(dialog.intent)
+    }
+
+    /** The page went: as [takenAway], and no way back is checked any more. */
+    fun destroy() {
+        returnCheck?.cancel()
+        takenAway()
     }
 
     /** The page left the screen (closed, covered, locked) or went: its dialog is answered and full screen ends. A file pick under way stays. */
@@ -388,14 +399,13 @@ class PageEdges(
         activity: ComponentActivity, contract: ActivityResultContract<I, O>, input: I,
         excursion: Boolean, failed: () -> Unit, done: (O) -> Unit,
     ) {
-        launches += 1
         var launcher: ActivityResultLauncher<I>? = null
         var ended: LifecycleEventObserver? = null
         val finish = {
             launcher?.unregister()
             ended?.let(activity.lifecycle::removeObserver)
         }
-        launcher = activity.activityResultRegistry.register("page-$launches", contract) { result ->
+        launcher = activity.activityResultRegistry.register("page-${UUID.randomUUID()}", contract) { result ->
             finish()
             done(result)
         }
@@ -468,8 +478,9 @@ class PageEdges(
         /** How long the way back from a stopped page may take before a new one is stopped again. */
         private const val RETURN_MILLIS = 3_000L
 
-        /** Each launch's own key in the activity's registry, across every page. */
-        private var launches = 0
+        /** More ways back than this within [LOOP_MILLIS] and the page is left blank. */
+        private const val MAX_RETURNS = 3
+        private const val LOOP_MILLIS = 30_000L
 
         /**
          * An `intent:` link as another app may receive it, or null. Parsed without
@@ -625,11 +636,20 @@ private fun PageDialog(edges: PageEdges, dialog: PageEdges.Dialog) {
                 GuardedFromOverlays()
                 Text(stringResource(R.string.page_open_elsewhere_body, edges.appName, dialog.target))
             },
-            confirmButton = { TextButton(onClick = { edges.open(dialog) }) { Text(stringResource(R.string.page_open)) } },
+            // Not at once: the page's own "tap twice here" can't land its second tap on Open.
+            confirmButton = {
+                val shownAt = remember(dialog) { SystemClock.uptimeMillis() }
+                TextButton(onClick = { if (SystemClock.uptimeMillis() - shownAt >= OPEN_DELAY_MILLIS) edges.open(dialog) }) {
+                    Text(stringResource(R.string.page_open))
+                }
+            },
             dismissButton = { TextButton(onClick = dismiss) { Text(stringResource(R.string.page_cancel)) } },
         )
     }
 }
+
+/** How long "Open in another app?" ignores Open after it shows. */
+private const val OPEN_DELAY_MILLIS = 500L
 
 /** A page's message, which can run long. */
 @Composable

@@ -222,6 +222,11 @@ class PageEdgesTests {
         composeRule.onNodeWithText("Open in another app?").assertExists()
         assertTrue(asked.target, asked.target.startsWith("“intent://example.com/"))
         assertTrue("nothing opens before the answer", started.intents.isEmpty())
+        // Open takes no tap in its first half second, so the page can't lure a double tap onto it.
+        composeRule.onNodeWithText("Open").performClick()
+        composeRule.waitForIdle()
+        assertTrue("an early tap does nothing", started.intents.isEmpty())
+        Thread.sleep(600)
         composeRule.onNodeWithText("Open").performClick()
         waitFor("the reader") { started.intents.isNotEmpty() }
         val opened = started.intents.single()
@@ -239,6 +244,7 @@ class PageEdgesTests {
         tapped("intent:")
         val asked = edges.dialog.value as PageEdges.Dialog.OpenElsewhere
         assertNull(asked.intent.getStringExtra("browser_fallback_url"))
+        Thread.sleep(600)
         composeRule.onNodeWithText("Open").performClick()
         waitFor("the start") { started.intents.isNotEmpty() }
         Thread.sleep(1_000)
@@ -305,6 +311,16 @@ class PageEdgesTests {
         assertTrue(onMain { view.url.orEmpty() }.startsWith(base))
         assertTrue("never more than one way back", homes <= 1)
         assertFalse("the callback never saw it", seen.any { it.first.contains("forms.example.com") })
+    }
+
+    /** An address java.net.URI can't read is stopped too, never let through. */
+    @Test
+    fun testAPostToAnAddressURICantReadIsStopped() {
+        load("<form id=f method=post action='https://forms.example.com/?a|b'><input name=a value=1></form>")
+        evaluate("document.getElementById('f').submit()")
+        Thread.sleep(3_000)
+        assertTrue(title(), title() == "ready" || title() == "home")
+        assertTrue(onMain { view.url.orEmpty() }.startsWith(base))
     }
 
     // Dialogs

@@ -280,7 +280,7 @@ class AppPage(
     /** The pool dropped this page: its route goes nowhere, its view stops and goes. */
     internal fun destroy() {
         destroyed = true
-        edges.takenAway()
+        edges.destroy()
         gateJob?.cancel()
         Core.clearRoute(routeKey)
         view.stopLoading()
