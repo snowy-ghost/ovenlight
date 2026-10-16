@@ -2,6 +2,7 @@ package com.snowyghost.ovenlight
 
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.graphics.Rect
+import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.View
 import android.view.accessibility.AccessibilityNodeInfo
@@ -139,11 +140,22 @@ class OpenPageTests {
         model.lock.lockAfterSeconds = 300
     }
 
+    /**
+     * A key, as a keyboard sends it to whatever window has focus. Through UiAutomation, since that
+     * may be the system's unlock prompt, which Android 10 lets no app's own events reach.
+     */
+    private fun press(key: Int) {
+        val down = SystemClock.uptimeMillis()
+        for (action in listOf(KeyEvent.ACTION_DOWN, KeyEvent.ACTION_UP)) {
+            instrumentation.uiAutomation.injectInputEvent(KeyEvent(down, SystemClock.uptimeMillis(), action, key, 0), true)
+        }
+    }
+
     /** Closes the system's prompt with Back, once it shows: before, Back would go to the lock screen and leave. */
     private fun closeThePrompt() {
         if (!model.lock.isAuthenticating.value) return
         waitFor("the prompt") { find("Unlock Ovenlight") != null }
-        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+        press(KeyEvent.KEYCODE_BACK)
         waitFor("the prompt to close") { !model.lock.isAuthenticating.value }
     }
 
@@ -193,9 +205,10 @@ class OpenPageTests {
 
     private val pageMarks = listOf("Page under the lock", "Alpha option", "Beta option", "Gamma option", "android.webkit.WebView")
 
-    /** The middle of a page element, on screen. */
-    private fun element(id: String): Pair<Float, Float> {
-        val box = evaluate("(r => [r.left + r.width / 2, r.top + r.height / 2])(document.getElementById('$id').getBoundingClientRect()).join(' ')")
+    /** The middle of a page element on screen, or with [atEnd] its far end, where a date input's calendar button is. */
+    private fun element(id: String, atEnd: Boolean = false): Pair<Float, Float> {
+        val x = if (atEnd) "r.right - 14" else "r.left + r.width / 2"
+        val box = evaluate("(r => [$x, r.top + r.height / 2])(document.getElementById('$id').getBoundingClientRect()).join(' ')")
             ?.trim('"')?.split(' ')?.map(String::toFloat) ?: error("no $id")
         return onMain {
             val at = IntArray(2).also(page.view::getLocationOnScreen)
@@ -222,14 +235,11 @@ class OpenPageTests {
         waitFor("the field focused") { evaluate("document.activeElement.id") == "\"field\"" }
         lock()
         for (key in listOf(KeyEvent.KEYCODE_TAB, KeyEvent.KEYCODE_TAB, KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_A, KeyEvent.KEYCODE_B, KeyEvent.KEYCODE_SPACE)) {
-            instrumentation.sendKeyDownUpSync(key)
+            press(key)
         }
         // Enter or Space may have pressed the lock screen's own Unlock; its prompt goes first.
         Thread.sleep(1_000)
-        if (model.lock.isAuthenticating.value) {
-            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
-            waitFor("the prompt to close") { !model.lock.isAuthenticating.value }
-        }
+        closeThePrompt()
         unlock()
         assertEquals("no key reached the page", 0.0, number("window.keys"), 0.0)
         assertEquals("nothing typed", "\"\"", evaluate("document.getElementById('field').value"))
@@ -246,7 +256,7 @@ class OpenPageTests {
      * A picker, the choice made in it before the lock, and what takes that choice. A select's list
      * closes as its page leaves the window; the pickers stay open.
      */
-    private class Picker(val opens: String, val value: String, val was: String, val choice: String?, val takes: String, val chosen: String, val staysOpen: Boolean = true)
+    private class Picker(val opens: String, val value: String, val was: String, val choice: String?, val takes: String, val chosen: String, val staysOpen: Boolean = true, val atEnd: Boolean = false)
 
     /**
      * WebView's select lists and pickers are windows of their own, which leaving composition
@@ -259,14 +269,14 @@ class OpenPageTests {
     fun testAPickerLeftOpenStaysUnderTheLock() {
         val pickers = listOf(
             Picker("pick", "document.getElementById('pick').value", "Alpha option", null, "Beta option", "Beta option", staysOpen = false),
-            Picker("when", "document.getElementById('when').value", "2026-03-05", "10 March 2026", "SET", "2026-03-10"),
-            Picker("inner", "window.closedDate.value", "2026-03-05", "10 March 2026", "SET", "2026-03-10"),
+            Picker("when", "document.getElementById('when').value", "2026-03-05", "10 March 2026", "SET", "2026-03-10", atEnd = true),
+            Picker("inner", "window.closedDate.value", "2026-03-05", "10 March 2026", "SET", "2026-03-10", atEnd = true),
             Picker("tint", "document.getElementById('tint').value", "#336699", "Red", "Set", "#ff0000"),
         )
         for (comingBack in listOf(false, true)) for (picker in pickers) {
             val way = if (comingBack) "coming back locked" else "locked in place"
             evaluate("${picker.value} = '${picker.was}'")
-            tap(element(picker.opens))
+            tap(element(picker.opens, picker.atEnd))
             waitFor("${picker.opens}'s picker") { find(picker.takes) != null }
             picker.choice?.let { tap(find(it) ?: error("no ${picker.choice}")) }
             val takes = find(picker.takes) ?: error("no ${picker.takes}")

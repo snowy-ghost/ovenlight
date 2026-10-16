@@ -17,6 +17,7 @@ import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.tryPerformAccessibilityChecks
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.filters.SdkSuppress
 import java.net.URI
 import java.time.Instant
 import org.junit.Assert.assertTrue
@@ -28,9 +29,12 @@ import org.junit.runner.RunWith
 /**
  * Every screen's states through the Accessibility Test Framework, on a device, where it checks
  * contrast, touch targets and labels. Robolectric's Compose tests skip these checks, so they run
- * here, in light, dark and at the largest font.
+ * here, in light, dark and at the largest font. On Android 10 the framework reaches none of
+ * Compose's nodes (every check comes back not run, and the negative control fails), so these run
+ * from Android 11; the negative control would show it if a version above stopped reaching them too.
  */
 @RunWith(AndroidJUnit4::class)
+@SdkSuppress(minSdkVersion = 30)
 class ScreenAccessibilityTests {
     @get:Rule
     val composeRule = createComposeRule()

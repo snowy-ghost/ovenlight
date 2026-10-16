@@ -6,6 +6,7 @@ import android.app.Instrumentation
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
+import android.os.Build
 import android.os.SystemClock
 import android.provider.MediaStore
 import android.webkit.WebResourceRequest
@@ -13,6 +14,8 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
@@ -427,18 +430,29 @@ class PageEdgesTests {
         waitFor("a second picker") { started.intents.size == 2 }
     }
 
-    /** As WebKit's menu does, an image input offers the camera beside the photo picker. */
+    /**
+     * As WebKit's menu does, an image input offers the camera beside the photo picker, and
+     * files too before Android 11 (FileChoice.kind).
+     */
     @Test
     fun testAnImageInputOffersTheCameraAndThePhotoPicker() {
         loadFileInput("accept='image/*'")
         tap()
         composeRule.waitUntil(5_000) { edges.dialog.value is PageEdges.Dialog.ChooseSource }
         composeRule.onNodeWithText("Take photo").assertExists()
-        composeRule.onNodeWithText("Choose file").assertDoesNotExist()
+        if (Build.VERSION.SDK_INT < 30) {
+            composeRule.onNodeWithText("Choose file").assertExists()
+        } else {
+            composeRule.onNodeWithText("Choose file").assertDoesNotExist()
+        }
         assertTrue("nothing yet", started.intents.isEmpty())
         composeRule.onNodeWithText("Choose photo").performClick()
         waitFor("the photo picker") { started.intents.isNotEmpty() }
-        assertEquals(MediaStore.ACTION_PICK_IMAGES, started.intents.single().action)
+        // The system's picker, or before Android 11 the one Play services offers in its place.
+        val picker = ActivityResultContracts.PickVisualMedia().createIntent(
+            composeRule.activity, PickVisualMediaRequest.Builder().setMediaType(ActivityResultContracts.PickVisualMedia.ImageOnly).build(),
+        )
+        assertEquals(picker.action, started.intents.single().action)
         waitFor("the answer") { title() == "canceled" }
     }
 
