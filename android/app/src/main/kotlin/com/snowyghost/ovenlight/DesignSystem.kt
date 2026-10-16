@@ -288,8 +288,8 @@ private object LampWarmUp {
 
 /**
  * The oven light: a cone of warm light falls from the camera across the screen, with a soft
- * halo where it leaves. The lock screen, the privacy states and the launcher are the same room
- * lit to different levels: 0.35 at rest on the lock, 1 while unlocking, 0.6 on the launcher.
+ * halo where it leaves. The lock screen and the launcher are the same room lit to different
+ * levels: 0.35 at rest on the lock, 1 while unlocking, 0.6 on the launcher.
  * It ignores insets, sits behind everything and takes no touches. Nothing is drawn for the
  * camera itself.
  */
@@ -410,8 +410,8 @@ enum class AppReachability {
          * whose computer didn't answer the last probe, or wasn't online to be probed. Nothing
          * before the node is ready (the launcher shows that) or before the first probe.
          */
-        fun forTile(host: String, route: Routing.Route, nodeState: NodeState, answers: Map<String, Boolean>?): AppReachability? {
-            if (route != Routing.Route.TailnetNode || nodeState != NodeState.Ready || answers == null) return null
+        fun forTile(host: String, nodeState: NodeState, answers: Map<String, Boolean>?): AppReachability? {
+            if (nodeState != NodeState.Ready || answers == null) return null
             return if (answers[Discovery.normalizedHost(host)] == true) null else Offline
         }
     }

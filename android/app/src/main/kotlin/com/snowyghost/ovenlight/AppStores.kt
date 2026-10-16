@@ -39,12 +39,11 @@ class WebProfiles(private val context: Context, private val discard: (UUID) -> U
         suspendCancellableCoroutine { done -> WebStorageCompat.deleteBrowsingData(profile.webStorage) { if (done.isActive) done.resume(Unit) } }
     }
 
-    override fun delete(store: UUID): Boolean {
+    override fun delete(store: UUID) {
         val name = profileName(store)
         val deleted = WebViewSetup.state.value == WebViewSetup.State.Ready &&
             runCatching { ProfileStore.getInstance().deleteProfile(name) }.getOrDefault(false)
         if (!deleted) ProfileDeletions.enqueue(context, name)
-        return true
     }
 
     override suspend fun stores(): List<UUID> {

@@ -18,7 +18,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
 
 /**
  * Between a page and Ovenlight: the page script (`assets/page.js`), added at document start to
@@ -200,7 +199,5 @@ sealed interface PageMessage {
             if (bytes.size > PageDownloads.BLOB_LIMIT) return null
             return Blob(href, fields.string("name") ?: "", fields.string("type") ?: "", bytes)
         }
-
-        private fun JsonObject.string(key: String): String? = (get(key) as? JsonPrimitive)?.takeIf { it.isString }?.content
     }
 }

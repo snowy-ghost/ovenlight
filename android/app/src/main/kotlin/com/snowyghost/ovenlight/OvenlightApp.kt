@@ -265,18 +265,13 @@ class Router(private val isLocked: () -> Boolean = { false }) {
         appsChanged(apps)
     }
 
-    /**
-     * Also called on unlock, for an app a link asked for while locked. True when it opens an app
-     * other than the one open.
-     */
-    fun appsChanged(apps: List<WebApp>): Boolean {
-        if (isLocked()) return false
-        val name = pendingName ?: return false
-        val app = apps.firstOrNull { sameName(it.name, name) } ?: return false
+    /** Also called on unlock, for an app a link asked for while locked. */
+    fun appsChanged(apps: List<WebApp>) {
+        if (isLocked()) return
+        val name = pendingName ?: return
+        val app = apps.firstOrNull { sameName(it.name, name) } ?: return
         pendingName = null
-        val another = openApp.value?.id != app.id
         open(app)
-        return another
     }
 }
 

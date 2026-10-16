@@ -13,7 +13,6 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.webkit.WebViewCompat
 import com.snowyghost.ovenlight.core.Core
-import java.net.URI
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.TimeSource
 import kotlinx.coroutines.CoroutineScope
@@ -302,7 +301,7 @@ class AppPage(
         // Once the app has rendered, a failed load leaves the page as it is. A link the person
         // tapped that can't reach the computer says so; what the page loads by itself never does.
         if (loaded.value) {
-            if (tapped && code in unreachable) cantReachAlert.value = true
+            if (tapped && code in retryableThroughNode) cantReachAlert.value = true
             return
         }
         if (code in retryableThroughNode && failedLoads < MAX_FAILED_LOADS) {
@@ -313,8 +312,8 @@ class AppPage(
         }
         failedLoads = 0
         // Chromium's description is a code ("net::ERR_TOO_MANY_REDIRECTS"): the log keeps it, the page says it plainly.
-        if (code !in unreachable) OvenlightLog.i("${app.host}: error $code, $description")
-        error.value = if (code in unreachable) ConnectionCopy.cantReachDetail else ConnectionCopy.pageFailed
+        if (code !in retryableThroughNode) OvenlightLog.i("${app.host}: error $code, $description")
+        error.value = if (code in retryableThroughNode) ConnectionCopy.cantReachDetail else ConnectionCopy.pageFailed
     }
 
     // Leaving
@@ -412,6 +411,5 @@ class AppPage(
             WebViewClient.ERROR_FAILED_SSL_HANDSHAKE, WebViewClient.ERROR_TIMEOUT, WebViewClient.ERROR_PROXY_AUTHENTICATION,
             WebViewClient.ERROR_CONNECT, WebViewClient.ERROR_HOST_LOOKUP, WebViewClient.ERROR_IO,
         )
-        val unreachable = retryableThroughNode
     }
 }

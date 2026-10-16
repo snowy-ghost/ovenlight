@@ -25,7 +25,6 @@ import kotlinx.coroutines.launch
 object AppLinks {
     const val supportEmail = "team@snowyghost.com"
     val privacyPolicy = URI("https://ovenlight.app/privacy")
-    val tailscalePricing = URI("https://tailscale.com/pricing")
 
     /** How to publish apps from your own computers. */
     const val ownComputersHelp = "https://ovenlight.app/support#own-computer"

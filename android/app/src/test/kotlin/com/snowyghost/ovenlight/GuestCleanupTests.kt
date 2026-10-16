@@ -196,10 +196,10 @@ class GuestCleanupTests {
         )
 
         val answers = mutableMapOf<String, Boolean>() // what a node records when nothing was left to probe
-        val tile = AppReachability.forTile(echo, Routing.Route.TailnetNode, NodeState.Ready, answers)
+        val tile = AppReachability.forTile(echo, NodeState.Ready, answers)
         assertEquals(AppReachability.Offline, tile)
         answers[echo] = true
-        assertNull(AppReachability.forTile(echo, Routing.Route.TailnetNode, NodeState.Ready, answers))
+        assertNull(AppReachability.forTile(echo, NodeState.Ready, answers))
     }
 
     @Test

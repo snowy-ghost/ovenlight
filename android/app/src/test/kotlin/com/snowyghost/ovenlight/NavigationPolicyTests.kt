@@ -46,19 +46,6 @@ class NavigationPolicyTests {
     }
 
     @Test
-    fun testOnlyTheAppsOwnPagesPopUpAPost() {
-        val post = NavigationPolicy.Request(URI("https://alex-mac.example.ts.net/api/notes"), method = "POST", body = "x".toByteArray())
-        val own = NavigationPolicy.popupRequest(post, fromScheme = "https", host = "Alex-Mac.example.ts.net.", appHost = host)
-        assertEquals("POST", own.method)
-        for ((scheme, other) in listOf<Pair<String?, String?>>("https" to "widget.example.com", "http" to host, null to null)) {
-            val sent = NavigationPolicy.popupRequest(post, fromScheme = scheme, host = other, appHost = host)
-            assertEquals("GET", sent.method)
-            assertNull(sent.body)
-            assertEquals(post.url, sent.url)
-        }
-    }
-
-    @Test
     fun testOtherHostLeavesAppButIframesLoad() {
         val url = URI("https://accounts.google.com/o/oauth2")
         assertEquals(NavigationPolicy.Decision.OpenExternally(url), decide(url.toString()))

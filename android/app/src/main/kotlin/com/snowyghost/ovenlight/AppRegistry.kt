@@ -42,8 +42,8 @@ class AppRegistry(
         /** Deletes a data store's cookies, storage and caches, even while a web view still uses it. */
         suspend fun clear(store: UUID)
 
-        /** Deletes the data store itself; false while a web view still uses it. */
-        fun delete(store: UUID): Boolean
+        /** Deletes the data store itself, now or, while a web view still uses it, at the next launch. */
+        fun delete(store: UUID)
 
         /** Every data store there is. */
         suspend fun stores(): List<UUID>
@@ -192,17 +192,10 @@ class AppRegistry(
         removeDataStore(app.dataStoreID)
     }
 
-    /**
-     * Deletes a data store's cookies, storage and caches. A web view that is still closing keeps
-     * its store in use, and deleting a store in use fails. So the data is cleared at once, and
-     * the store itself is deleted once it's free: retried here, and swept at the next launch.
-     */
+    /** Deletes a data store's cookies, storage and caches at once, and the store itself as soon as it can. */
     private suspend fun removeDataStore(id: UUID) {
         webData.clear(id)
-        for (wait in listOf(0, 1, 2, 4, 8)) {
-            delay(wait.seconds)
-            if (webData.delete(id)) return
-        }
+        webData.delete(id)
     }
 
     /** Deletes data stores no app uses: ones a removal couldn't delete while a web view still held them. Runs after launch. */
