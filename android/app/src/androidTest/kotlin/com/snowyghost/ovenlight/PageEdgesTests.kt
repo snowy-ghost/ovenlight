@@ -1,10 +1,13 @@
 package com.snowyghost.ovenlight
 
+import android.Manifest
 import android.app.Activity
 import android.app.Instrumentation
 import android.content.Intent
 import android.graphics.Bitmap
+import android.net.Uri
 import android.os.SystemClock
+import android.provider.MediaStore
 import android.view.MotionEvent
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
@@ -255,6 +258,18 @@ class PageEdgesTests {
         assertEquals("ready", title())
     }
 
+    /** As iOS opens it in Safari; a named browser means Ovenlight's App Link can't catch it. */
+    @Test
+    fun testTheJoinPageOpensInABrowser() {
+        loadLink("https://ovenlight.app/join#v=1&key=k")
+        tap()
+        tapped("https://ovenlight.app/join")
+        waitFor("the browser") { started.intents.isNotEmpty() }
+        val opened = started.intents.single()
+        assertEquals("https://ovenlight.app/join#v=1&key=k", opened.dataString)
+        assertTrue("a browser named: ${opened.`package`}", opened.`package` != null && opened.`package` != composeRule.activity.packageName)
+    }
+
     @Test
     fun testTelOpensTheDialerWithoutAsking() {
         loadLink("tel:+15550100")
@@ -422,6 +437,60 @@ class PageEdgesTests {
         // The page can ask again, so its first answer did come.
         tap()
         waitFor("a second picker") { started.intents.size == 2 }
+    }
+
+    /** As WebKit's menu does, an image input offers the camera beside the photo picker. */
+    @Test
+    fun testAnImageInputOffersTheCameraAndThePhotoPicker() {
+        loadFileInput("accept='image/*'")
+        tap()
+        composeRule.waitUntil(5_000) { edges.dialog.value is PageEdges.Dialog.ChooseSource }
+        composeRule.onNodeWithText("Take photo").assertExists()
+        composeRule.onNodeWithText("Choose file").assertDoesNotExist()
+        assertTrue("nothing yet", started.intents.isEmpty())
+        composeRule.onNodeWithText("Choose photo").performClick()
+        waitFor("the photo picker") { started.intents.isNotEmpty() }
+        assertEquals(MediaStore.ACTION_PICK_IMAGES, started.intents.single().action)
+        waitFor("the answer") { title() == "canceled" }
+    }
+
+    @Test
+    fun testAnImageInputThatTakesMoreOffersFilesToo() {
+        loadFileInput("accept='image/*,.pdf'")
+        tap()
+        composeRule.waitUntil(5_000) { edges.dialog.value is PageEdges.Dialog.ChooseSource }
+        composeRule.onNodeWithText("Choose file").performClick()
+        waitFor("the documents picker") { started.intents.isNotEmpty() }
+        assertEquals(Intent.ACTION_OPEN_DOCUMENT, started.intents.single().action)
+        assertEquals(listOf("image/*", "application/pdf"), started.intents.single().getStringArrayExtra(Intent.EXTRA_MIME_TYPES)?.toList())
+        waitFor("the answer") { title() == "canceled" }
+    }
+
+    /** With the camera permission already granted; asking for it is the system's own prompt. */
+    @Test
+    fun testTakePhotoOpensTheCamera() {
+        instrumentation.uiAutomation.grantRuntimePermission(composeRule.activity.packageName, Manifest.permission.CAMERA)
+        loadFileInput("accept='image/*'")
+        tap()
+        composeRule.waitUntil(5_000) { edges.dialog.value is PageEdges.Dialog.ChooseSource }
+        composeRule.onNodeWithText("Take photo").performClick()
+        waitFor("the camera") { started.intents.isNotEmpty() }
+        val camera = started.intents.single()
+        assertEquals(MediaStore.ACTION_IMAGE_CAPTURE, camera.action)
+        @Suppress("DEPRECATION")
+        val output = camera.getParcelableExtra<Uri>(MediaStore.EXTRA_OUTPUT)
+        assertEquals("${composeRule.activity.packageName}.captures", output?.authority)
+        waitFor("the answer") { title() == "canceled" }
+    }
+
+    @Test
+    fun testTheSheetTakenAwayAnswersWithNothing() {
+        loadFileInput("accept='image/*'")
+        tap()
+        composeRule.waitUntil(5_000) { edges.dialog.value is PageEdges.Dialog.ChooseSource }
+        onMain { edges.takenAway() }
+        waitFor("the answer") { title() == "canceled" }
+        assertTrue(started.intents.isEmpty())
     }
 
     /** A picker's result waits for the unlock, then reaches the page. */

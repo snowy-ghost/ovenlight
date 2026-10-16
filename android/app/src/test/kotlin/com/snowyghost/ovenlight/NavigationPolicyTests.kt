@@ -102,15 +102,20 @@ class NavigationPolicyTests {
         }
     }
 
-    /** The join page in every form Ovenlight's App Link takes, which Android could hand to Ovenlight itself. */
+    /**
+     * The join page in every form Ovenlight's App Link takes. It opens outside like any web
+     * page, as iOS opens it in Safari; only the hand-offs Ovenlight's App Link could catch
+     * refuse it (mayCarry, and CustomTabs without a browser to name).
+     */
     @Test
-    fun testPagesNeverOpenOvenlightsAppLink() {
+    fun testTheJoinPageOpensOutsideLikeAnyWebPage() {
         for (link in listOf(
             "https://ovenlight.app/join#v=1&key=k", "https://ovenlight.app/join/", "https://ovenlight.app/join.html",
             "HTTPS://OVENLIGHT.APP/JOIN", "https://Ovenlight.App./Join.HTML", "https://ovenlight.app:8443/join", "http://ovenlight.app/join",
         )) {
             assertTrue(link, NavigationPolicy.isOvenlightLink(URI(link)))
-            assertEquals(link, NavigationPolicy.Decision.Refuse, decide(link, tapped = true))
+            assertEquals(link, NavigationPolicy.Decision.OpenExternally(URI(link)), decide(link, tapped = true))
+            assertFalse(link, NavigationPolicy.mayCarry(URI(link)))
         }
         for (link in listOf("https://ovenlight.app/", "https://ovenlight.app/support", "https://ovenlight.app/joined", "https://www.ovenlight.app/join")) {
             assertFalse(link, NavigationPolicy.isOvenlightLink(URI(link)))

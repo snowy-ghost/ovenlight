@@ -8,4 +8,8 @@
     <!-- The app's name, then the link, already quoted. -->
     <string name="page_open_elsewhere_body">%1$s wants to open %2$s.</string>
     <string name="page_prompt_field">Answer</string>
+    <!-- An image input's sheet. -->
+    <string name="page_take_photo">Take photo</string>
+    <string name="page_choose_photo">Choose photo</string>
+    <string name="page_choose_file">Choose file</string>
 </resources>

@@ -23,6 +23,8 @@ object CustomTabs {
     fun open(context: Context, url: URI, toolbarColor: Int? = null): Boolean {
         val uri = url.toString().toUri()
         val browser = browser(context)
+        // With no browser to name, Android would hand Ovenlight's own App Link back to Ovenlight.
+        if (browser == null && NavigationPolicy.isOvenlightLink(url)) return false
         val tabs = browser != null && CustomTabsClient.getPackageName(context, listOf(browser), true) == browser
         val intent = if (tabs) {
             val builder = CustomTabsIntent.Builder().setShowTitle(true).setShareState(CustomTabsIntent.SHARE_STATE_OFF)

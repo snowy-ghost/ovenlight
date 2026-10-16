@@ -28,13 +28,21 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -43,13 +51,14 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -108,6 +117,11 @@ class PageEdges(
         }
 
         class Prompt(val message: String, val defaultText: String, val answer: DialogAnswer<String?>) : Dialog() {
+            override fun dropped() = answer.dropped()
+        }
+
+        /** An image input's sheet: take a photo, choose one, or choose a file when [files]. */
+        class ChooseSource(val files: Boolean, val answer: DialogAnswer<Source?>) : Dialog() {
             override fun dropped() = answer.dropped()
         }
 
@@ -331,28 +345,45 @@ class PageEdges(
         val mime = { ext: String -> MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) }
         when (val kind = FileChoice.kind(params.acceptTypes?.toList().orEmpty(), params.isCaptureEnabled, mime)) {
             is FileChoice.Kind.Camera -> capture(activity, kind.video, answer)
-            is FileChoice.Kind.Media -> {
-                val type = when {
-                    kind.single != null -> ActivityResultContracts.PickVisualMedia.SingleMimeType(kind.single)
-                    kind.images && kind.videos -> ActivityResultContracts.PickVisualMedia.ImageAndVideo
-                    kind.videos -> ActivityResultContracts.PickVisualMedia.VideoOnly
-                    else -> ActivityResultContracts.PickVisualMedia.ImageOnly
-                }
-                val request = PickVisualMediaRequest.Builder().setMediaType(type).build()
-                if (multiple) {
-                    pick(activity, ActivityResultContracts.PickMultipleVisualMedia(), request, answer) { it.toTypedArray().ifEmpty { null } }
-                } else {
-                    pick(activity, ActivityResultContracts.PickVisualMedia(), request, answer) { it?.let { uri -> arrayOf(uri) } }
-                }
-            }
-            is FileChoice.Kind.Documents -> {
-                val types = kind.types.toTypedArray()
-                if (multiple) {
-                    pick(activity, ActivityResultContracts.OpenMultipleDocuments(), types, answer) { it.toTypedArray().ifEmpty { null } }
-                } else {
-                    pick(activity, ActivityResultContracts.OpenDocument(), types, answer) { it?.let { uri -> arrayOf(uri) } }
-                }
-            }
+            is FileChoice.Kind.Media -> photos(activity, kind, multiple, answer)
+            is FileChoice.Kind.Documents -> documents(activity, kind, multiple, answer)
+            is FileChoice.Kind.Choice -> show(
+                Dialog.ChooseSource(files = kind.documents != null, DialogAnswer<Source?>(null) { source ->
+                    when (source) {
+                        null -> answer.dropped()
+                        Source.Camera -> capture(activity, video = false, answer)
+                        Source.Photos -> photos(activity, kind.media, multiple, answer)
+                        Source.Files -> kind.documents?.let { documents(activity, it, multiple, answer) } ?: answer.dropped()
+                    }
+                }),
+            )
+        }
+    }
+
+    /** Where an image input's file comes from, in Ovenlight's sheet. */
+    enum class Source { Camera, Photos, Files }
+
+    private fun photos(activity: ComponentActivity, media: FileChoice.Kind.Media, multiple: Boolean, answer: DialogAnswer<Array<Uri>?>) {
+        val type = when {
+            media.single != null -> ActivityResultContracts.PickVisualMedia.SingleMimeType(media.single)
+            media.images && media.videos -> ActivityResultContracts.PickVisualMedia.ImageAndVideo
+            media.videos -> ActivityResultContracts.PickVisualMedia.VideoOnly
+            else -> ActivityResultContracts.PickVisualMedia.ImageOnly
+        }
+        val request = PickVisualMediaRequest.Builder().setMediaType(type).build()
+        if (multiple) {
+            pick(activity, ActivityResultContracts.PickMultipleVisualMedia(), request, answer) { it.toTypedArray().ifEmpty { null } }
+        } else {
+            pick(activity, ActivityResultContracts.PickVisualMedia(), request, answer) { it?.let { uri -> arrayOf(uri) } }
+        }
+    }
+
+    private fun documents(activity: ComponentActivity, documents: FileChoice.Kind.Documents, multiple: Boolean, answer: DialogAnswer<Array<Uri>?>) {
+        val types = documents.types.toTypedArray()
+        if (multiple) {
+            pick(activity, ActivityResultContracts.OpenMultipleDocuments(), types, answer) { it.toTypedArray().ifEmpty { null } }
+        } else {
+            pick(activity, ActivityResultContracts.OpenDocument(), types, answer) { it?.let { uri -> arrayOf(uri) } }
         }
     }
 
@@ -522,6 +553,13 @@ object FileChoice {
         /** The photo picker: [single] when the input names exactly one type. */
         data class Media(val images: Boolean, val videos: Boolean, val single: String?) : Kind()
         data class Documents(val types: List<String>) : Kind()
+
+        /**
+         * An image input without `capture`: Ovenlight's sheet offers the camera and the photo
+         * picker, as WebKit's menu does, and [documents] too when the input takes more than
+         * photos and videos.
+         */
+        data class Choice(val media: Media, val documents: Documents?) : Kind()
     }
 
     /**
@@ -534,15 +572,19 @@ object FileChoice {
         val types = tokens.map { if (it.startsWith(".")) mimeType(it.drop(1)) else it }
         val any = types.isEmpty() || types.any { it == null || it == "*/*" }
         val known = types.filterNotNull()
-        val media = !any && known.all { it.startsWith("image/") || it.startsWith("video/") }
-        if (capture && (any || media)) return Kind.Camera(video = media && known.all { it.startsWith("video/") })
-        if (media) {
-            return Kind.Media(
-                images = known.any { it.startsWith("image/") }, videos = known.any { it.startsWith("video/") },
-                single = known.distinct().singleOrNull()?.takeUnless { it.endsWith("/*") },
-            )
+        val visual = known.filter { it.startsWith("image/") || it.startsWith("video/") }
+        val onlyMedia = !any && visual.size == known.size
+        if (capture && (any || onlyMedia)) return Kind.Camera(video = onlyMedia && known.all { it.startsWith("video/") })
+        val media = Kind.Media(
+            images = visual.any { it.startsWith("image/") }, videos = visual.any { it.startsWith("video/") },
+            single = visual.distinct().singleOrNull()?.takeUnless { it.endsWith("/*") },
+        )
+        val documents = Kind.Documents(if (any) listOf("*/*") else known.distinct())
+        return when {
+            media.images -> Kind.Choice(media, if (onlyMedia) null else documents)
+            onlyMedia -> media
+            else -> documents
         }
-        return Kind.Documents(if (any) listOf("*/*") else known.distinct())
     }
 }
 
@@ -629,6 +671,7 @@ private fun PageDialog(edges: PageEdges, dialog: PageEdges.Dialog) {
                 dismissButton = { TextButton(onClick = { dialog.answer(null); dismiss() }) { Text(stringResource(R.string.page_cancel)) } },
             )
         }
+        is PageEdges.Dialog.ChooseSource -> SourceSheet(dialog, dismiss)
         is PageEdges.Dialog.OpenElsewhere -> AlertDialog(
             onDismissRequest = dismiss,
             title = { Text(stringResource(R.string.page_open_elsewhere_title)) },
@@ -646,6 +689,32 @@ private fun PageDialog(edges: PageEdges, dialog: PageEdges.Dialog) {
             dismissButton = { TextButton(onClick = dismiss) { Text(stringResource(R.string.page_cancel)) } },
         )
     }
+}
+
+/** An image input's choice, as a small sheet over the page; a choice or a swipe away closes it. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SourceSheet(dialog: PageEdges.Dialog.ChooseSource, dismiss: () -> Unit) {
+    ModalBottomSheet(onDismissRequest = dismiss) {
+        val choose = { source: PageEdges.Source ->
+            dialog.answer(source)
+            dismiss()
+        }
+        SourceRow(R.drawable.ic_photo_camera, R.string.page_take_photo) { choose(PageEdges.Source.Camera) }
+        SourceRow(R.drawable.ic_photo_library, R.string.page_choose_photo) { choose(PageEdges.Source.Photos) }
+        if (dialog.files) SourceRow(R.drawable.ic_description, R.string.page_choose_file) { choose(PageEdges.Source.Files) }
+        Spacer(Modifier.navigationBarsPadding().padding(bottom = 16.dp))
+    }
+}
+
+@Composable
+private fun SourceRow(icon: Int, label: Int, onClick: () -> Unit) {
+    ListItem(
+        headlineContent = { Text(stringResource(label)) },
+        leadingContent = { Icon(painterResource(icon), contentDescription = null) },
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+        modifier = Modifier.clickable(onClick = onClick),
+    )
 }
 
 /** How long "Open in another app?" ignores Open after it shows. */

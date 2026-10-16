@@ -264,8 +264,8 @@ object NavigationPolicy {
     /**
      * Ovenlight's own links: its scheme, and every address its App Link takes (the join page,
      * in any letter case and on any port). A page never hands one to Ovenlight, since it could
-     * pick the invite; Android would open the https form in Ovenlight itself whenever no
-     * browser takes it.
+     * pick the invite: the scheme is refused everywhere, and the join page opens only in a
+     * named browser (CustomTabs), never through a hand-off Ovenlight's App Link could catch.
      */
     fun isOvenlightLink(url: URI): Boolean {
         val scheme = url.scheme?.lowercase()
@@ -306,7 +306,6 @@ object NavigationPolicy {
             "http", "https" -> when {
                 !isMainFrame -> Decision.Allow
                 Discovery.normalizedHost(url.host ?: "") == Discovery.normalizedHost(appHost) -> Decision.Allow
-                isOvenlightLink(url) -> Decision.Refuse
                 else -> Decision.OpenExternally(url)
             }
             // A frame of another site can make one too: the page shows only the app's own.
