@@ -240,4 +240,16 @@
     if (!apply(connected, this, []) && apply(eventType, event, []) === "click") clicked(this, event);
     return apply(dispatchEvent, this, [event]);
   };
+
+  // WebView's date and time pickers are windows of their own, which the lock taking the page
+  // away doesn't close; only the input's blur does. So a page going hidden (the lock, leaving
+  // Ovenlight, another app) closes the one its frame has open.
+  const blur = HTMLElement.prototype.blur, activeElement = getter(Document, "activeElement");
+  const hidden = getter(Document, "hidden"), inputType = getter(HTMLInputElement, "type");
+  const PICKERS = new Set(["date", "time", "datetime-local", "month", "week"]), has = Set.prototype.has;
+  apply(listen, document, ["visibilitychange", () => {
+    if (!apply(hidden, document, [])) return;
+    const element = apply(activeElement, document, []);
+    if (element instanceof HTMLInputElement && apply(has, PICKERS, [apply(inputType, element, [])])) apply(blur, element, []);
+  }, true]);
 })();
