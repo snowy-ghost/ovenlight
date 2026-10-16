@@ -18,6 +18,9 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
@@ -64,6 +67,9 @@ class PageEdgesTests {
     private val scope = MainScope()
     private val locked = MutableStateFlow(false)
     @Volatile private var shown = true
+
+    /** Whether the page's layer is composed: as in the app, it isn't while the page is off screen or locked. */
+    private var layered by mutableStateOf(true)
     private lateinit var view: WebView
     private lateinit var edges: PageEdges
 
@@ -114,7 +120,7 @@ class PageEdgesTests {
         composeRule.setContent {
             Box(Modifier.fillMaxSize()) {
                 AndroidView({ view }, Modifier.fillMaxSize())
-                PageEdgesLayer(edges)
+                if (layered) PageEdgesLayer(edges)
             }
         }
     }
@@ -529,18 +535,38 @@ class PageEdgesTests {
         waitFor("the page to know") { evaluate("document.fullscreenElement === null").answer() == "true" }
     }
 
-    /** Asked for off screen or locked, full screen is refused, and the page doesn't stay in it. */
+    /**
+     * Asked for off screen or locked, full screen is refused: Ovenlight shows none, and back in
+     * front the page is out of it, its request settled, and its next request goes full screen.
+     */
     @Test
     fun testFullScreenOffScreenOrLockedEndsInThePageToo() {
-        load("<div style='position:fixed;inset:0' onclick='document.title = \"asked\"; document.documentElement.requestFullscreen()'>Go</div>")
-        for (away in listOf({ shown = false }, { shown = true; locked.value = true })) {
+        load(
+            "<div style='position:fixed;inset:0' onclick='document.title = \"asked\"; document.documentElement.requestFullscreen()" +
+                ".then(() => { document.title = \"full\"; }, () => { document.title = \"refused\"; })'>Go</div>",
+        )
+        for (away in listOf({ shown = false }, { locked.value = true })) {
             away()
+            layered = false
+            composeRule.waitForIdle()
             evaluate("document.title = 'ready'").answer()
             tap()
-            waitFor("the page to ask") { title() == "asked" }
+            waitFor("the page to ask") { title() != "ready" }
             Thread.sleep(2_000)
             assertNull(edges.fullscreen.value)
-            assertEquals("true", evaluate("document.fullscreenElement === null").answer())
+
+            shown = true
+            locked.value = false
+            layered = true
+            composeRule.waitForIdle()
+            waitFor("the page out of full screen") { evaluate("document.fullscreenElement === null").answer() == "true" }
+            assertTrue("its request settled: ${title()}", title() == "refused" || title() == "full")
+            evaluate("document.title = 'ready'").answer()
+            tap()
+            waitFor("full screen on screen") { edges.fullscreen.value != null }
+            waitFor("the page to know") { title() == "full" }
+            onMain { edges.exitFullscreen() }
+            waitFor("the page to leave it") { evaluate("document.fullscreenElement === null").answer() == "true" }
         }
     }
 

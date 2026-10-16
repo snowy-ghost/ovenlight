@@ -90,6 +90,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import java.io.File
 import java.io.IOException
 import java.net.URI
@@ -388,6 +389,15 @@ class PageEdges(
         exitFullscreen()
     }
 
+    /** A full screen the page asked for while it couldn't act, ended once it's in front again. */
+    private var refusedFullscreen: WebChromeClient.CustomViewCallback? = null
+
+    /** The page is on screen, unlocked and in front again: a full screen refused meanwhile ends now. */
+    fun inFront() {
+        refusedFullscreen?.onCustomViewHidden()
+        refusedFullscreen = null
+    }
+
     fun exitFullscreen() {
         val screen = mutableFullscreen.value ?: return
         mutableFullscreen.value = null
@@ -544,10 +554,12 @@ class PageEdges(
         }
 
         override fun onShowCustomView(view: View, callback: CustomViewCallback) {
-            // Refused on the next turn: Chromium ignores a hide before it has finished entering
-            // full screen, and the page would stay in it.
+            // Refused once the page is back in front ([inFront]), never before: Chromium drops an
+            // end that comes before it has finished entering full screen (a tenth of a second or
+            // so), and then neither this request nor any later one of the page's ever settles.
             if (!mayAct) {
-                scope.launch { callback.onCustomViewHidden() }
+                refusedFullscreen?.onCustomViewHidden()
+                refusedFullscreen = callback
                 return
             }
             exitFullscreen()
@@ -556,6 +568,7 @@ class PageEdges(
 
         override fun onHideCustomView() {
             mutableFullscreen.value = null
+            refusedFullscreen = null
         }
 
         /** Ovenlight never gives a page the phone's location, as on iOS (docs/building-apps.md). */
@@ -733,6 +746,10 @@ fun PageEdgesLayer(edges: PageEdges) {
     val dialog by edges.dialog.collectAsState()
     val fullscreen by edges.fullscreen.collectAsState()
     DisposableEffect(edges) { onDispose(edges::takenAway) }
+    LifecycleResumeEffect(edges) {
+        edges.inFront()
+        onPauseOrDispose {}
+    }
     fullscreen?.let { key(it) { FullscreenView(it, edges.appName, edges::exitFullscreen) } }
     dialog?.let { key(it) { PageDialog(edges, it) } }
 }
