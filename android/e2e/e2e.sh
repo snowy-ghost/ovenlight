@@ -329,13 +329,19 @@ lock_now() {
   for i in $(seq 1 10); do locked && return 0; sleep 1; done
   fail "lockNow didn't lock: $(screen_text | tr '\n' '|')"
 }
-# Answers the prompt with fingerprint 1, opening it first from the lock screen if it was closed.
+# Answers the prompt with fingerprint 1, opening it first from the lock screen if it was
+# closed, and fails if Ovenlight stays locked.
 unlock_now() {
   # The prompt may still be on its way over the lock screen.
   local i
   for i in 1 2 3 4; do screen_text | grep -qxF "Unlock Ovenlight" && break; sleep 1; done
   screen_text | grep -qxF "Unlock Ovenlight" || { tap_text Unlock || true; sleep 2; }
-  a emu finger touch 1 >/dev/null
+  for i in 1 2 3; do
+    a emu finger touch 1 >/dev/null
+    sleep 2
+    locked || return 0
+  done
+  fail "Ovenlight didn't unlock: $(screen_text | tr '\n' '|')"
 }
 
 # The activity in front, as the activity manager names it.
