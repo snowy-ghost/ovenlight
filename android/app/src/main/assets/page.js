@@ -11,7 +11,10 @@
 // each one. Nothing a page sends grants anything: Ovenlight checks each download and stream.
 (() => {
   delete Navigator.prototype.serviceWorker;
-  for (const name of ["SpeechRecognition", "webkitSpeechRecognition", "SpeechGrammarList", "webkitSpeechGrammarList"]) delete window[name];
+  // APIs that hand a page's data to Google rather than the app's computer: speech recognition
+  // streams the microphone to Google's recognizer, BarcodeDetector runs on Google's Vision
+  // library, which reports usage. iOS offers neither.
+  for (const name of ["SpeechRecognition", "webkitSpeechRecognition", "SpeechGrammarList", "webkitSpeechGrammarList", "BarcodeDetector"]) delete window[name];
   const LIMIT = __LIMIT__, HREF_LIMIT = __HREF_LIMIT__, HEADER_LIMIT = __HEADER_LIMIT__;
 
   // The built-ins a report passes through, taken now, before any page script runs, and called
