@@ -146,9 +146,17 @@ object Acknowledgements {
         null
     }
 
-    /** One entry per paragraph, so a lazy list lays out only what shows: the text runs to thousands of lines. */
+    /**
+     * One entry per paragraph, so a lazy list lays out only what shows: the text runs to thousands
+     * of lines. A line's indent is made of no-break spaces, so a line too long for the screen
+     * wraps with its text rather than leaving the indent alone on a line above it.
+     */
     fun paragraphs(notices: String?): List<String> =
         (notices ?: "The licenses are missing from this build.").split("\n\n").map { it.trim(*newlines) }.filter { it.isNotEmpty() }
+            .map { paragraph -> paragraph.lines().joinToString("\n") { line -> line.takeWhile { it == ' ' }.replace(' ', '\u00A0') + line.trimStart(' ') } }
+
+    /** A title underlined with `=`, the heading of one library's or one file's licenses. */
+    fun heading(paragraph: String): String? = paragraph.lines().takeIf { it.size == 2 && it[1].isNotEmpty() && it[1].all { c -> c == '=' } }?.first()
 
     /** What iOS's `.newlines` trims. */
     private val newlines = charArrayOf('\n', '\r', '\u000B', '\u000C', '\u0085', '\u2028', '\u2029')

@@ -31,6 +31,10 @@ class AcknowledgementsTests {
         assertEquals(listOf("The licenses are missing from this build."), Acknowledgements.paragraphs(null))
         assertEquals(listOf("A", "B"), Acknowledgements.paragraphs("\nA\n\n\n\nB\n"))
         assertEquals("a CRLF file's returns go too", listOf("A", "B"), Acknowledgements.paragraphs("A\r\n\n\r\n\nB\r\n"))
+        assertEquals("an indent wraps with its line", listOf("Apache:\n\u00A0\u00A0androidx.core:core:1.19.1"), Acknowledgements.paragraphs("Apache:\n  androidx.core:core:1.19.1"))
+        assertEquals("Go standard library", Acknowledgements.heading("Go standard library\n==================="))
+        assertNull(Acknowledgements.heading("Copyright 2009 The Go Authors."))
+        assertNull("only = underlines a heading", Acknowledgements.heading("Source Serif\n------------"))
         assertNull("text that isn't UTF-8 counts as missing", Acknowledgements.notices { java.io.ByteArrayInputStream(byteArrayOf(0xC3.toByte(), 0x28)) })
     }
 }

@@ -71,7 +71,9 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextIndent
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import java.net.URI
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -364,11 +366,17 @@ private fun AcknowledgementsScreen(notices: suspend () -> String?, onBack: () ->
         LazyColumn(Modifier.fillMaxSize(), contentPadding = padding, verticalArrangement = Arrangement.spacedBy(12.dp)) {
             items(paragraphs) { paragraph ->
                 SelectionContainer {
-                    Text(
-                        paragraph,
-                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                        modifier = Modifier.padding(horizontal = 16.dp),
-                    )
+                    val heading = Acknowledgements.heading(paragraph)
+                    if (heading != null) {
+                        Text(heading, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp).semantics { heading() })
+                    } else {
+                        Text(
+                            paragraph,
+                            // A line too long for the screen goes on under itself, indented past where it began.
+                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace, textIndent = TextIndent(restLine = 2.4.em)),
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                        )
+                    }
                 }
             }
         }
