@@ -2,9 +2,14 @@ package com.snowyghost.ovenlight
 
 import java.net.URI
 import org.junit.Assert.assertEquals
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 
 class HomeReorderTests {
+    @get:Rule
+    val temp = TemporaryFolder()
+
     private data class Item(val id: String)
 
     private val items = listOf("a", "b", "c", "d", "e").map(::Item)
@@ -26,15 +31,15 @@ class HomeReorderTests {
     }
 
     @Test
-    fun testRegistryMoveSavesTheOrder() = inTemporaryDirectory { dir ->
-        val registry = offlineRegistry(dir)
+    fun testRegistryMoveSavesTheOrder() {
+        val registry = offlineRegistry(temp.root)
         val apps = listOf("one", "two", "three", "four").map { registry.add(URI("https://$it.example.com/")) }
 
         registry.move(apps[0].id, 2)
         assertEquals(listOf(apps[1], apps[2], apps[0], apps[3]).map { it.id }, registry.apps.map { it.id })
         registry.move(apps[3].id, 0)
 
-        val reopened = offlineRegistry(dir)
+        val reopened = offlineRegistry(temp.root)
         assertEquals(listOf(apps[3], apps[1], apps[2], apps[0]).map { it.id }, reopened.apps.map { it.id })
     }
 }

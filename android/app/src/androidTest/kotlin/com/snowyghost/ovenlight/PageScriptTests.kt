@@ -27,7 +27,9 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 
 /**
@@ -37,10 +39,12 @@ import org.junit.runner.RunWith
  */
 @RunWith(AndroidJUnit4::class)
 class PageScriptTests {
+    @get:Rule
+    val temp = TemporaryFolder()
+
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private val base = "https://recipes.example.test/"
     private val app = WebApp(name = "Recipe Box", startURL = URI(base))
-    private val folder = File(context.cacheDir, "test-downloads-${app.id}")
     private val scope = MainScope()
     private lateinit var view: WebView
     private lateinit var capture: PageCapture
@@ -159,7 +163,7 @@ class PageScriptTests {
                 app, ownersHosts = { emptySet() }, isLocked = { false }, isOnScreen = { onScreen }, scope = scope,
                 permissions = { needed, done -> asked += needed; done(true) }, stillCapturing = { false }, destroy = {},
             )
-            downloads = PageDownloads(app.id, app.host, folder, scope, mayStart = { true }, isLocked = { false }, client = { refetch }, freeBytes = { DownloadShelf.freeBytes(context) })
+            downloads = PageDownloads(app.id, app.host, temp.root, scope, mayStart = { true }, isLocked = { false }, client = { refetch }, freeBytes = { DownloadShelf.freeBytes(context) })
             view.webChromeClient = object : WebChromeClient() {
                 override fun onPermissionRequest(request: PermissionRequest) = capture.onPermissionRequest(request)
             }
@@ -188,7 +192,6 @@ class PageScriptTests {
             if (::view.isInitialized) view.destroy()
             scope.cancel()
         }
-        folder.deleteRecursively()
     }
 
     @Test

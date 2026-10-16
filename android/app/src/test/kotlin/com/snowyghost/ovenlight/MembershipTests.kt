@@ -1,7 +1,7 @@
 package com.snowyghost.ovenlight
 
+import java.io.File
 import java.net.URI
-import java.nio.file.Files
 import java.time.Instant
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -10,9 +10,15 @@ import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 
 class MembershipTests {
+    @get:Rule
+    val temp = TemporaryFolder()
+    private val dir: File get() = temp.root
+
     private fun invite(host: String = "echo-board.taildef456.ts.net", id: String = "inv1", control: String = "https://controlplane.tailscale.com") =
         InviteLink(control = URI(control), key = "tskey-$id", owner = "Riley", app = "echo-board", invite = id, host = host, name = "Echo Board", to = "Sam")
 
@@ -22,31 +28,26 @@ class MembershipTests {
      */
     @Test
     fun testPersistsAndReloads() {
-        val dir = Files.createTempDirectory("memberships").toFile()
-        try {
-            val membership = Membership(invite()).copy(pendingClaims = listOf(PendingClaim(invite(), Instant.ofEpochSecond(1_000))))
-            val store = MembershipStore(dir)
-            store.upsert(membership)
-            store.update(membership.id) { it.copy(joined = true) }
+        val membership = Membership(invite()).copy(pendingClaims = listOf(PendingClaim(invite(), Instant.ofEpochSecond(1_000))))
+        val store = MembershipStore(dir)
+        store.upsert(membership)
+        store.update(membership.id) { it.copy(joined = true) }
 
-            val reopened = MembershipStore(dir)
-            assertEquals(1, reopened.memberships.size)
-            assertNotNull(reopened[membership.id]?.hostName)
-            assertNotEquals("each membership its own name", membership.hostName, Membership(invite()).hostName)
-            assertEquals(true, reopened[membership.id]?.joined)
-            assertEquals("tskey-inv1", reopened[membership.id]?.pendingClaims?.first()?.invite?.key)
-            assertEquals(
-                "another app of the same owner reuses the node",
-                membership.id,
-                reopened.membership(invite("notes.taildef456.ts.net", id = "inv2"))?.id,
-            )
-            assertNull("another network", reopened.membership(invite("echo.tail0000.ts.net")))
-            assertNull("another control server", reopened.membership(invite(control = "https://headscale.example.com")))
-            reopened.delete(membership.id)
-            assertEquals(emptyList<Membership>(), MembershipStore(dir).memberships)
-        } finally {
-            dir.deleteRecursively()
-        }
+        val reopened = MembershipStore(dir)
+        assertEquals(1, reopened.memberships.size)
+        assertNotNull(reopened[membership.id]?.hostName)
+        assertNotEquals("each membership its own name", membership.hostName, Membership(invite()).hostName)
+        assertEquals(true, reopened[membership.id]?.joined)
+        assertEquals("tskey-inv1", reopened[membership.id]?.pendingClaims?.first()?.invite?.key)
+        assertEquals(
+            "another app of the same owner reuses the node",
+            membership.id,
+            reopened.membership(invite("notes.taildef456.ts.net", id = "inv2"))?.id,
+        )
+        assertNull("another network", reopened.membership(invite("echo.tail0000.ts.net")))
+        assertNull("another control server", reopened.membership(invite(control = "https://headscale.example.com")))
+        reopened.delete(membership.id)
+        assertEquals(emptyList<Membership>(), MembershipStore(dir).memberships)
     }
 
     @Test
@@ -70,36 +71,34 @@ class MembershipTests {
     }
 
     @Test
-    fun testSharedAppsAreAddedOnceAndNeverMergedWithOwnApps() = inTemporaryDirectory { dir ->
-        runTest {
-            val registry = offlineRegistry(dir)
-            val first = registry.addShared(
-                name = "Echo Board", host = "Echo-Board.taildef456.ts.net.", slug = "echo-board", membershipID = "m1", sharedBy = "Riley",
-            )
-            val again = registry.addShared(
-                name = "Echo Board", host = "echo-board.taildef456.ts.net", slug = "echo-board", membershipID = "m1", sharedBy = "Riley",
-            )
-            assertEquals(first.id, again.id)
-            assertEquals("https://echo-board.taildef456.ts.net/", first.startURL.toString())
-            val found = DiscoveredApp("echo-board.taildef456.ts.net", OvenlightManifest(name = "Mine", version = 1))
-            registry.mergeDiscovered(listOf(found))
-            assertEquals("discovery never adopts a shared app's tile", 2, registry.apps.size)
-            assertEquals("Echo Board", registry.apps.firstOrNull { it.isShared }?.name)
+    fun testSharedAppsAreAddedOnceAndNeverMergedWithOwnApps() = runTest {
+        val registry = offlineRegistry(dir)
+        val first = registry.addShared(
+            name = "Echo Board", host = "Echo-Board.taildef456.ts.net.", slug = "echo-board", membershipID = "m1", sharedBy = "Riley",
+        )
+        val again = registry.addShared(
+            name = "Echo Board", host = "echo-board.taildef456.ts.net", slug = "echo-board", membershipID = "m1", sharedBy = "Riley",
+        )
+        assertEquals(first.id, again.id)
+        assertEquals("https://echo-board.taildef456.ts.net/", first.startURL.toString())
+        val found = DiscoveredApp("echo-board.taildef456.ts.net", OvenlightManifest(name = "Mine", version = 1))
+        registry.mergeDiscovered(listOf(found))
+        assertEquals("discovery never adopts a shared app's tile", 2, registry.apps.size)
+        assertEquals("Echo Board", registry.apps.firstOrNull { it.isShared }?.name)
 
-            registry.remove(first.id)
-            registry.mergeDiscovered(emptyList())
-            assertEquals(
-                "removing a shared app doesn't dismiss its host",
-                "Echo Board",
-                registry.addShared(
-                    name = "Echo Board", host = "echo-board.taildef456.ts.net", slug = "echo-board", membershipID = "m1", sharedBy = "Riley",
-                ).name,
-            )
-        }
+        registry.remove(first.id)
+        registry.mergeDiscovered(emptyList())
+        assertEquals(
+            "removing a shared app doesn't dismiss its host",
+            "Echo Board",
+            registry.addShared(
+                name = "Echo Board", host = "echo-board.taildef456.ts.net", slug = "echo-board", membershipID = "m1", sharedBy = "Riley",
+            ).name,
+        )
     }
 
     @Test
-    fun testEachClaimGivesTheOwnersAppsTheirCurrentName() = inTemporaryDirectory { dir ->
+    fun testEachClaimGivesTheOwnersAppsTheirCurrentName() {
         val registry = offlineRegistry(dir)
         registry.addShared(name = "Echo Board", host = "echo-board.taildef456.ts.net", slug = "echo-board", membershipID = "m1", sharedBy = "Riley")
         registry.addShared(name = "Notes", host = "notes.tail0000.ts.net", slug = "notes", membershipID = "m2", sharedBy = "Kim")

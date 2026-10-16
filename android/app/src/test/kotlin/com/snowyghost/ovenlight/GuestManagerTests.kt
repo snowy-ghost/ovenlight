@@ -2,7 +2,6 @@ package com.snowyghost.ovenlight
 
 import java.io.File
 import java.net.URI
-import java.nio.file.Files
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -11,12 +10,13 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import okio.Buffer
-import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 
 private val echoInvite = InviteLink.parse(
     URI(
@@ -35,12 +35,9 @@ private fun answer(status: Int, json: String, code: String? = null) =
 // Android only: iOS doesn't unit test its managers, and the plan asks for the join and claim flow.
 @OptIn(ExperimentalCoroutinesApi::class)
 class GuestManagerTests {
-    private val folder: File = Files.createTempDirectory("guests").toFile()
-
-    @After
-    fun cleanUp() {
-        folder.deleteRecursively()
-    }
+    @get:Rule
+    val temp = TemporaryFolder()
+    private val folder: File get() = temp.root
 
     private class Setup(val clients: FakeClients, val nodes: NodeManager, val registry: AppRegistry, val router: Router, val guests: GuestManager)
 

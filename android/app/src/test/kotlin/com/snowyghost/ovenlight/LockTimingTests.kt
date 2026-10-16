@@ -1,12 +1,16 @@
 package com.snowyghost.ovenlight
 
 import java.io.File
-import java.nio.file.Files
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 
 class LockTimingTests {
+    @get:Rule
+    val temp = TemporaryFolder()
+
     @Test
     fun testLocksByTimeInTheBackgroundNotTheClock() {
         var now = 1_000_000L
@@ -54,21 +58,16 @@ class LockTimingTests {
 
     @Test
     fun testAnEmptyNodeFolderOrListIsNothingToLock() {
-        val base = Files.createTempDirectory("ovenlight").toFile()
-        try {
-            val ovenlight = File(base, "Ovenlight").apply { mkdirs() }
-            val nodes = File(base, "tailscale")
-            File(nodes, "owner").mkdirs()
-            assertTrue(OvenlightApp.hasSavedData(ovenlight, nodes))
-            File(nodes, "owner").delete()
-            assertFalse("what Stop Using My Own Computers leaves", OvenlightApp.hasSavedData(ovenlight, nodes))
-            for (name in listOf("apps.json", "memberships.json")) File(ovenlight, name).writeText("[]")
-            assertFalse("what a failed join or removing the last app leaves", OvenlightApp.hasSavedData(ovenlight, nodes))
-            File(ovenlight, "apps.json").writeText("""[{"id":"a","name":"Notes","startURL":"https://notes.example.com/","dataStoreID":"s"}]""")
-            assertTrue(OvenlightApp.hasSavedData(ovenlight, nodes))
-        } finally {
-            base.deleteRecursively()
-        }
+        val ovenlight = File(temp.root, "Ovenlight").apply { mkdirs() }
+        val nodes = File(temp.root, "tailscale")
+        File(nodes, "owner").mkdirs()
+        assertTrue(OvenlightApp.hasSavedData(ovenlight, nodes))
+        File(nodes, "owner").delete()
+        assertFalse("what Stop Using My Own Computers leaves", OvenlightApp.hasSavedData(ovenlight, nodes))
+        for (name in listOf("apps.json", "memberships.json")) File(ovenlight, name).writeText("[]")
+        assertFalse("what a failed join or removing the last app leaves", OvenlightApp.hasSavedData(ovenlight, nodes))
+        File(ovenlight, "apps.json").writeText("""[{"id":"a","name":"Notes","startURL":"https://notes.example.com/","dataStoreID":"s"}]""")
+        assertTrue(OvenlightApp.hasSavedData(ovenlight, nodes))
     }
 }
 
