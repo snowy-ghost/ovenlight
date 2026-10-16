@@ -51,6 +51,7 @@ class OpenPageTests {
         <title>ready</title><body style='margin:0;padding-top:120px;font-size:24px'>
         <h1>Page under the lock</h1>
         <input id=field aria-label='Page field' style='font-size:24px;width:80%'>
+        <input id=when type=date value='2026-03-05' aria-label='Page date' style='font-size:24px;width:80%;margin-top:24px'>
         <select id=pick aria-label='Page choice' style='position:fixed;left:10%;width:80%;top:55%;height:96px;font-size:32px'>
           <option>Alpha option</option><option>Beta option</option><option>Gamma option</option>
         </select>
@@ -213,6 +214,18 @@ class OpenPageTests {
         for (mark in pageMarks) assertFalse("$mark over the lock: $locked", locked.contains(mark))
         unlock()
         assertEquals("the choice didn't change", "\"Alpha option\"", evaluate("document.getElementById('pick').value"))
+    }
+
+    /** WebView's date picker is a window of its own, which leaving composition doesn't close. */
+    @Test
+    fun testAnOpenDatePickerNeverShowsOverTheLock() {
+        tap(element("when"))
+        waitFor("the date picker") { screen().any { it.contains("DatePicker") } }
+        lock()
+        val locked = screen()
+        assertFalse("a date picker over the lock: $locked", locked.any { it.contains("DatePicker") })
+        unlock()
+        assertEquals("the date didn't change", "\"2026-03-05\"", evaluate("document.getElementById('when').value"))
     }
 
     // A trip out and back
