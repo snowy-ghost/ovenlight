@@ -473,7 +473,9 @@ func isTailnetName(host, suffix string) bool {
 		(suffix != "" && (host == suffix || strings.HasSuffix(host, "."+suffix)))
 }
 
-// lowerASCII lowercases without the locale: host names are ASCII once encoded.
+// lowerASCII lowercases ASCII letters only: host names are ASCII once encoded, and
+// strings.ToLower would turn the Kelvin sign (U+212A) into "k" and let a name pass as a
+// tailnet one.
 func lowerASCII(s string) string {
 	b := []byte(s)
 	for i, c := range b {

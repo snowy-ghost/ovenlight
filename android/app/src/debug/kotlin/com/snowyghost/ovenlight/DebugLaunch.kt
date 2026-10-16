@@ -63,7 +63,6 @@ import org.json.JSONObject
  *   --es lab closedPort | proxy              the proxy override on a closed port, or back
  *   --el labHold <ms>                        how long the proxy holds a CONNECT (default 8000)
  *   --ez fakeOldWebView true                 the update screen
- *   --es preview lock|lock-error|cover|none  a screen of Phase 3's, before it's wired up
  *   --ez writeProxySecret true               files/proxy.txt: address, secret, realm
  *
  * And the app's own, as iOS's launch arguments are:
@@ -83,10 +82,9 @@ object DebugLaunch {
     private val nodes = mutableMapOf<String, Node>()
     private val view = MutableStateFlow<WebView?>(null)
     private val status = MutableStateFlow("Lab")
-    private val preview = MutableStateFlow("none")
     private val showing = MutableStateFlow(false)
 
-    /** A lab command or a preview came in, so the lab shows in place of the launcher. */
+    /** A lab command came in, so the lab shows in place of the launcher. */
     val active: StateFlow<Boolean> = showing
     private var viewProfile = ""
 
@@ -97,10 +95,6 @@ object DebugLaunch {
 
     fun receive(activity: ComponentActivity, intent: Intent) {
         if (intent.getBooleanExtra("fakeOldWebView", false)) WebViewSetup.pretendNeedsUpdate()
-        intent.getStringExtra("preview")?.let {
-            preview.value = it
-            showing.value = it != "none"
-        }
         receiveAppExtras(activity, intent)
         if (intent.getBooleanExtra("writeProxySecret", false)) {
             File(activity.filesDir, "proxy.txt").writeText(listOf(TailnetCore.proxyAddress, TailnetCore.proxySecret, TailnetCore.proxyRealm).joinToString("\n", postfix = "\n"))
@@ -314,11 +308,6 @@ object DebugLaunch {
     fun Content() {
         val web by view.collectAsState()
         val line by status.collectAsState()
-        when (preview.collectAsState().value) {
-            "lock" -> return LockScreen(isLocked = true, isAuthenticating = false, lastError = null, onUnlock = {})
-            "lock-error" -> return LockScreen(isLocked = true, isAuthenticating = false, lastError = "Couldn't unlock. Try again.", onUnlock = {})
-            "cover" -> return PrivacyCover()
-        }
         Box(Modifier.fillMaxSize()) {
             val current = web
             if (current == null) {

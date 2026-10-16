@@ -58,8 +58,8 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 
-/** The light's level while the lock screen waits, and behind the privacy states. */
-const val RESTING_LAMP_LEVEL = 0.35f
+/** The light's level while the lock screen waits. */
+private const val RESTING_LAMP_LEVEL = 0.35f
 
 /**
  * Shown whenever Ovenlight is locked, and as it fades away after an unlock. The system's
@@ -129,15 +129,6 @@ fun LockScreen(isLocked: Boolean, isAuthenticating: Boolean, lastError: String?,
             }
         },
     )
-}
-
-/**
- * Ovenlight while its contents mustn't show, matching the waiting lock screen's layout and
- * light, so a cover that turns into the lock screen doesn't move or brighten.
- */
-@Composable
-fun PrivacyCover() {
-    LockLayout(level = RESTING_LAMP_LEVEL, message = {}, controls = {})
 }
 
 /**
