@@ -15,9 +15,8 @@ fun intProperty(name: String) = providers.gradleProperty(name).get().toInt()
 
 // The Go core, which scripts/build-android-core.sh builds into libs/ (cached) before every
 // build: arm64-v8a only for local debug builds, the release set when a release or bundle
-// task is asked for, or with -Povenlight.allAbis.
-val allAbis = providers.gradleProperty("ovenlight.allAbis").isPresent ||
-    gradle.startParameter.taskNames.any { it.contains("release", ignoreCase = true) || it.contains("bundle", ignoreCase = true) }
+// task is asked for.
+val allAbis = gradle.startParameter.taskNames.any { it.contains("release", ignoreCase = true) || it.contains("bundle", ignoreCase = true) }
 val buildCore = tasks.register<Exec>("buildCore") {
     workingDir = rootDir.parentFile
     commandLine(listOf("scripts/build-android-core.sh") + if (allAbis) emptyList() else listOf("--dev"))
@@ -163,7 +162,7 @@ android {
         minSdk = intProperty("ovenlight.minSdk")
         targetSdk = providers.gradleProperty("targetSdk").orNull?.toInt() ?: intProperty("ovenlight.targetSdk")
         // Play gives every upload its versionCode (the highest on any track plus one).
-        versionCode = providers.gradleProperty("versionCode").orNull?.toInt() ?: 1
+        versionCode = 1
         versionName = "1.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // The Go core's ABIs. A library built for any other (AndroidX ships x86) would let

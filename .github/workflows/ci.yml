@@ -136,8 +136,8 @@ jobs:
       - run: go install github.com/juanfont/headscale/cmd/headscale@v0.29.4
       - run: OVENLIGHT_E2E_HEADSCALE="$(go env GOPATH)/bin/headscale" go test -tags e2e ./e2e -v -count=1 -timeout 15m
 
-  # The Android app: its Go core's checks, the core library for the three release ABIs,
-  # lint, unit tests, debug and release builds, and Play's 16 KB page alignment.
+  # The Android app: its Go core's checks, lint, unit tests, the debug build, and the
+  # release bundle with the checks Play and the plan ask of it (scripts/verify-bundle.sh).
   android:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
@@ -166,7 +166,6 @@ jobs:
       # One NDK pin, read from gradle.properties as Gradle and the core's build read it.
       - name: SDK packages (no-ops when the image has them)
         run: |
-          echo "NDK=$(sed -n 's/^ovenlight.ndkVersion=//p' gradle.properties)" >> "$GITHUB_ENV"
           (yes || true) | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$(sed -n 's/^ovenlight.ndkVersion=//p' gradle.properties)" "platforms;android-37.0" "build-tools;36.0.0" > /dev/null
       - name: Go core
         working-directory: android/core
@@ -183,30 +182,12 @@ jobs:
           go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
           "$(go env GOPATH)/bin/govulncheck" ./...
           GOOS=android GOARCH=arm64 CGO_ENABLED=0 "$(go env GOPATH)/bin/govulncheck" ./...
-      - name: Core library
-        run: ../scripts/build-android-core.sh
+      - name: Lint, unit tests, and the debug build and release bundle
+        run: ./gradlew --no-daemon :app:lintDebug :app:lintRelease :app:testDebugUnitTest :app:assembleDebug :app:bundleRelease
+      - name: Release bundle
+        run: scripts/verify-bundle.sh app/build/outputs/bundle/release/app-release.aab
       - name: Third-party notices
         run: grep -q "^tailscale.com $(cd core && go list -m -f '{{.Version}}' tailscale.com)\$" app/libs/THIRD_PARTY_NOTICES.txt
-      - name: Lint, unit tests, and debug and release builds
-        run: ./gradlew --no-daemon -Povenlight.allAbis :app:lintDebug :app:lintRelease :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease
-      - name: 16 KB alignment
-        run: |
-          apk=app/build/outputs/apk/release/app-release-unsigned.apk
-          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 -v 4 "$apk" | tail -1 | grep -q 'Verification successful'
-          libs="$RUNNER_TEMP/libs" && unzip -q -o "$apk" 'lib/*' -d "$libs"
-          readelf="$ANDROID_HOME/ndk/$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
-          [ -x "$readelf" ] || { echo "no llvm-readelf at $readelf"; exit 1; }
-          checked=0
-          for so in "$libs"/lib/*/*.so; do
-            [ -f "$so" ] || continue
-            aligns="$("$readelf" -lW "$so" | awk '$1 == "LOAD" { print $NF }')"
-            [ -n "$aligns" ] || { echo "no LOAD segments in $so"; exit 1; }
-            for align in $aligns; do
-              [ $((align)) -ge 16384 ] || { echo "$so has a LOAD segment aligned to $align"; exit 1; }
-            done
-            checked=$((checked + 1))
-          done
-          [ "$checked" -gt 0 ] || { echo "no libraries in $apk"; exit 1; }
 
   # The docs as the site renders them: a link or #anchor in docs/ that goes nowhere fails.
   docs:
