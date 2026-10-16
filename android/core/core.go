@@ -196,6 +196,12 @@ func ownPrefixes() ([]netip.Prefix, error) {
 			if bits < 0 || bits > ip.BitLen() {
 				bits = ip.BitLen()
 			}
+			// A home is usually delegated a /56 and numbers its other networks (guest, IoT, a
+			// mesh node's) inside it, so a global IPv6 /64 stands for its /56. On cellular
+			// that also covers other subscribers' /64s, which no app needs.
+			if ip.Is6() && ip.IsGlobalUnicast() && bits > 56 {
+				bits = 56
+			}
 			p, _ := ip.Prefix(bits)
 			own = append(own, p)
 		}

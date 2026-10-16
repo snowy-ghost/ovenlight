@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -727,22 +728,28 @@ func TestThePhonesNetworksFollowNetworkChanges(t *testing.T) {
 	]`}
 	NetworkChanged("wlan0", "192.168.1.1", "2001:67c:2b0:db32::/96")
 	nets := phoneNetworks()
-	if fmt.Sprint(nets.own) != "[127.0.0.0/8 192.168.1.0/24 2a02:1810:4d00:1234::/64 fe80::/64 81.2.69.160/32]" {
+	if fmt.Sprint(nets.own) != "[127.0.0.0/8 192.168.1.0/24 2a02:1810:4d00:1200::/56 fe80::/64 81.2.69.160/32]" {
 		t.Errorf("Wi-Fi: %v", nets.own)
 	}
 	if nets.nat64 != netip.MustParsePrefix("2001:67c:2b0:db32::/96") {
 		t.Errorf("Wi-Fi's NAT64 prefix: %v", nets.nat64)
 	}
+	// The home's other networks under its delegated /56: a guest or IoT network, the router's ::1.
+	for _, sibling := range []string{"2a02:1810:4d00:1235::1", "2a02:1810:4d00:12ff::1", "2a02:1810:4d00:1200::1"} {
+		if !slices.ContainsFunc(nets.own, func(p netip.Prefix) bool { return p.Contains(netip.MustParseAddr(sibling)) }) {
+			t.Errorf("%s isn't counted as the phone's own network", sibling)
+		}
+	}
 	platform = fakePlatform{json: `[{"name":"rmnet_data0","addrs":[{"ip":"2607:fb90:1234:5678::2","prefixLen":64}]}]`}
 	NetworkChanged("rmnet_data0", "", "")
 	nets = phoneNetworks()
-	if fmt.Sprint(nets.own) != "[2607:fb90:1234:5678::/64]" || nets.nat64.IsValid() {
+	if fmt.Sprint(nets.own) != "[2607:fb90:1234:5600::/56]" || nets.nat64.IsValid() {
 		t.Errorf("cellular: %v %v", nets.own, nets.nat64)
 	}
 	for _, unreadable := range []string{"not json", "[]"} {
 		platform = fakePlatform{json: unreadable}
 		NetworkChanged("rmnet_data0", "", "")
-		if nets = phoneNetworks(); fmt.Sprint(nets.own) != "[2607:fb90:1234:5678::/64]" {
+		if nets = phoneNetworks(); fmt.Sprint(nets.own) != "[2607:fb90:1234:5600::/56]" {
 			t.Errorf("%s replaced the last list: %v", unreadable, nets.own)
 		}
 	}
