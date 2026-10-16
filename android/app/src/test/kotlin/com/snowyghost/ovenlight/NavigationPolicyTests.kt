@@ -36,6 +36,13 @@ class NavigationPolicyTests {
         assertEquals("forms.example.com", NavigationPolicy.pageURI("https://forms.example.com/?a|b")?.host)
         assertEquals(URI("blob:https://alex-mac.example.ts.net/6f1c"), NavigationPolicy.pageURI("blob:https://alex-mac.example.ts.net/6f1c"))
         assertNull("anything else unreadable is refused", NavigationPolicy.pageURI("mailto:a b|c"))
+        for (text in listOf("https://u%zz@alex-mac.example.ts.net/", "https://u%@alex-mac.example.ts.net/")) {
+            assertNull("refused, not thrown: $text", NavigationPolicy.pageURI(text))
+        }
+        for (text in listOf("https://alex-mac{.example.ts.net/", "https://a{b.example.com/", "https://a%7Bb.example.com/")) {
+            assertNull("HttpUrl would name another host: $text", NavigationPolicy.pageURI(text))
+        }
+        assertEquals("[fd7a::1]", NavigationPolicy.pageURI("https://[fd7a::1]/a|b")?.host)
     }
 
     @Test

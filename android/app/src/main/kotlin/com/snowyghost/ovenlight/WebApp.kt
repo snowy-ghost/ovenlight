@@ -313,10 +313,18 @@ object NavigationPolicy {
     /**
      * A page's address as java.net.URI, read as Chromium writes it. An http(s) address goes
      * through OkHttp's HttpUrl, which encodes what java.net.URI refuses (`{`, `"`, `|`, `^`,
-     * `[` in a path) and names the same place; anything else is read as written, and is
-     * refused if it can't be.
+     * `[` in a path); anything else is read as written. Null, so refused, when it can't be
+     * read, or when the encoding would name another host (HttpUrl drops characters such as
+     * `{` from one, which Chromium keeps).
      */
-    fun pageURI(text: String): URI? = text.toHttpUrlOrNull()?.toUri() ?: uri(text)
+    fun pageURI(text: String): URI? {
+        val http = text.toHttpUrlOrNull() ?: return uri(text)
+        // toUri throws for some userinfo HttpUrl takes, such as a stray `%`.
+        val url = runCatching { http.toUri() }.getOrNull() ?: return null
+        // java.net.URI leaves the host out for names it won't take (`a_b.com`), as before.
+        val host = url.host?.removeSurrounding("[", "]") ?: return url
+        return url.takeIf { host.equals(http.host, ignoreCase = true) }
+    }
 
     /** The link as the confirmation names it, cut short. */
     fun target(url: URI): String {

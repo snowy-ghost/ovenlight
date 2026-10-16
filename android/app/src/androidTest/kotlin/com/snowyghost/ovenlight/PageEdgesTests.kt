@@ -13,6 +13,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
@@ -21,6 +22,8 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.FileProvider
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.Lifecycle
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -577,7 +580,11 @@ class PageEdgesTests {
         }
     }
 
-    /** Chrome's rule: past three dialogs in five seconds, the page's dialogs can be stopped until it loads again. */
+    /**
+     * Chrome's rule: past three dialogs in a row, however slowly each is read, the page's
+     * dialogs can be stopped, and stay stopped through the page's own loads, until the
+     * person reloads the app.
+     */
     @Test
     fun testADialogLoopEnds() {
         load("<script>function loop() { for (let i = 0; i < 50; i++) alert('again ' + i); document.title = 'done'; }</script>")
@@ -585,6 +592,8 @@ class PageEdgesTests {
         for (i in 0 until 3) {
             waitFor("dialog $i") { (edges.dialog.value as? PageEdges.Dialog.Alert)?.message == "again $i" }
             composeRule.onNodeWithText("Don't let this app show more dialogs").assertDoesNotExist()
+            // A slow reader still gets the choice.
+            Thread.sleep(2_000)
             composeRule.onNodeWithText("OK").performClick()
         }
         waitFor("dialog 3") { (edges.dialog.value as? PageEdges.Dialog.Alert)?.message == "again 3" }
@@ -594,11 +603,34 @@ class PageEdgesTests {
         waitFor("the loop's end") { title() == "done" }
         assertNull(edges.dialog.value)
 
-        // Loaded again, the page may ask again.
-        load("")
+        // The page's own move to a page of its own doesn't lift it.
+        evaluate("location.href = URL.createObjectURL(new Blob(['<title>again</title>'], {type: 'text/html'}))")
+        waitFor("the page's next page") { title() == "again" && onMain { view.progress } == 100 }
+        assertEquals("\"quiet\"", evaluate("alert('still'); 'quiet'").answer())
+        assertNull(edges.dialog.value)
+
+        // The person's Reload does.
+        onMain { edges.allowDialogsAgain() }
         evaluate("alert('back')")
         waitFor("a dialog again") { edges.dialog.value is PageEdges.Dialog.Alert }
         composeRule.onNodeWithText("OK").performClick()
+    }
+
+    /** A swipe that brings the system bars back ends full screen, as its notice says. */
+    @Test
+    fun testFullScreenEndsWhenTheBarsComeBack() {
+        composeRule.activityRule.scenario.onActivity { it.enableEdgeToEdge() }
+        load("<div style='position:fixed;inset:0' onclick='document.documentElement.requestFullscreen()'>Go</div>")
+        tap()
+        waitFor("full screen") { edges.fullscreen.value != null }
+        // The rule composes the full screen only while it waits.
+        composeRule.waitForIdle()
+        Thread.sleep(1_500)
+        assertTrue("the bars' going away doesn't end it", edges.fullscreen.value != null)
+        composeRule.activityRule.scenario.onActivity {
+            WindowCompat.getInsetsController(it.window, it.window.decorView).show(WindowInsetsCompat.Type.systemBars())
+        }
+        waitFor("full screen to end") { edges.fullscreen.value == null }
     }
 
     /** setGeolocationEnabled(false) already fails it before the prompt; the prompt's answer is no too. */

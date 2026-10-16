@@ -139,6 +139,7 @@ class AppPage(
     }
 
     internal fun onScreen() {
+        edges.allowDialogsAgain()
         shown = true
         view.onResume()
     }
@@ -157,6 +158,7 @@ class AppPage(
 
     /** Try Again, and Reload. A page that already loaded stays on screen while the path is checked again. */
     fun reload() {
+        edges.allowDialogsAgain()
         failedLoads = 0
         appDownLoads = 0
         error.value = null

@@ -35,11 +35,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.areSystemBarsVisible
 import androidx.compose.foundation.layout.displayCutoutPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -69,6 +66,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -88,6 +86,7 @@ import androidx.compose.ui.window.DialogWindowProvider
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
+import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -204,14 +203,7 @@ class PageEdges(
     private fun showsAppPage(): Boolean = view.url?.let(::judge) == NavigationPolicy.Decision.Allow
 
     /** The page's client's onPageStarted, which comes as a main-frame navigation starts. */
-    fun pageStarted(url: String?) {
-        // A page of the app loading again may show dialogs again.
-        if (url != null && judge(url) == NavigationPolicy.Decision.Allow) {
-            quiet = false
-            dialogTimes.clear()
-        }
-        skipped(url)
-    }
+    fun pageStarted(url: String?) = skipped(url)
 
     /** The page's client's onPageFinished, which comes once one has committed, error pages included. */
     fun pageFinished(url: String?) {
@@ -337,22 +329,27 @@ class PageEdges(
         mutableDialog.value = dialog
     }
 
-    /** When the page's recent dialogs showed, for Chrome's rule on dialog loops. */
-    private val dialogTimes = ArrayDeque<Long>()
+    /** The page's dialogs in a row, each within [DIALOG_RUN_GAP_MILLIS] of the last one closing. */
+    private var dialogRun = 0
+    private var lastDialogClosed: Long? = null
 
-    /** The person stopped this page's dialogs: each is answered with its fallback at once, until the page next loads. */
+    /**
+     * The person stopped this page's dialogs: each is answered with its fallback at once,
+     * until they reload the app or open it again ([allowDialogsAgain]). Nothing the page
+     * does itself (a reload of its own) lifts it.
+     */
     private var quiet = false
 
     /**
-     * A page's alert, confirm or prompt. Past [DIALOG_LOOP_COUNT] within [DIALOG_LOOP_MILLIS],
-     * each offers "Don't let this app show more dialogs", as Chrome does, so a page that
-     * asks in a loop can't trap the person.
+     * A page's alert, confirm or prompt. Past [DIALOG_LOOP_COUNT] in a row, however long each
+     * was read, each offers "Don't let this app show more dialogs", as Chrome does, so a page
+     * that asks in a loop can't trap the person.
      */
     private fun fromPage(make: (offersQuiet: Boolean) -> Dialog.FromPage) {
         val now = SystemClock.elapsedRealtime()
-        while (dialogTimes.isNotEmpty() && now - dialogTimes.first() > DIALOG_LOOP_MILLIS) dialogTimes.removeFirst()
-        val dialog = make(dialogTimes.size >= DIALOG_LOOP_COUNT)
-        dialogTimes.addLast(now)
+        val closed = lastDialogClosed
+        dialogRun = if (closed != null && now - closed < DIALOG_RUN_GAP_MILLIS) dialogRun + 1 else 1
+        val dialog = make(dialogRun > DIALOG_LOOP_COUNT)
         if (quiet) return dialog.dropped()
         show(dialog)
     }
@@ -361,8 +358,14 @@ class PageEdges(
         quiet = true
     }
 
+    /** The person reloaded the app, or it came back on screen (opened again, or unlocked): its page may show dialogs again. */
+    fun allowDialogsAgain() {
+        quiet = false
+    }
+
     /** The dialog closed: answered, dismissed or let go, it answers once. */
     fun dismiss(dialog: Dialog) {
+        if (dialog is Dialog.FromPage) lastDialogClosed = SystemClock.elapsedRealtime()
         if (mutableDialog.value === dialog) mutableDialog.value = null
         dialog.dropped()
     }
@@ -580,9 +583,11 @@ class PageEdges(
         /** A page's dialog text past this many characters is cut: a page can pass megabytes. */
         private const val MAX_DIALOG_TEXT = 4_000
 
-        /** Chrome's rule: past three dialogs within five seconds, the page's dialogs can be stopped. */
+        /** Chrome's rule: past three dialogs in a row, the page's dialogs can be stopped. */
         private const val DIALOG_LOOP_COUNT = 3
-        private const val DIALOG_LOOP_MILLIS = 5_000L
+
+        /** A page's dialog that comes this soon after the last one closed is the next in a row. */
+        private const val DIALOG_RUN_GAP_MILLIS = 1_000L
 
         /** A page's text as its dialog shows it, cut at [MAX_DIALOG_TEXT] without splitting a character. */
         internal fun cut(text: String?): String {
@@ -712,21 +717,33 @@ fun PageEdgesLayer(edges: PageEdges) {
  * fake lock or system screen), so for its first seconds a notice names the app and the way
  * out, as Chrome's does. Back exits, and so does a swipe that brings the bars back.
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun FullscreenView(screen: PageEdges.Fullscreen, appName: String, exit: () -> Unit) {
     val window = LocalActivity.current?.window
+    val currentExit by rememberUpdatedState(exit)
     DisposableEffect(window) {
+        val decor = window?.decorView
         val bars = window?.let { WindowCompat.getInsetsController(it, it.decorView) }
-        // Not transient: bars a swipe brings back stay, and that ends full screen below.
+        // Not transient: bars a swipe brings back stay, and that ends full screen.
         bars?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_DEFAULT
         bars?.hide(WindowInsetsCompat.Type.systemBars())
-        onDispose { bars?.show(WindowInsetsCompat.Type.systemBars()) }
-    }
-    val barsVisible = WindowInsets.areSystemBarsVisible
-    var barsWentAway by remember { mutableStateOf(false) }
-    LaunchedEffect(barsVisible) {
-        if (!barsVisible) barsWentAway = true else if (barsWentAway) exit()
+        // Read from the window itself, which knows whether the bars show however they came
+        // back. Not systemBars(), whose caption bar never shows on a phone.
+        var barsWentAway = false
+        val check = object : Runnable {
+            override fun run() {
+                val visible = decor?.let(ViewCompat::getRootWindowInsets)?.let {
+                    it.isVisible(WindowInsetsCompat.Type.statusBars()) || it.isVisible(WindowInsetsCompat.Type.navigationBars())
+                }
+                if (visible == false) barsWentAway = true else if (visible == true && barsWentAway) return currentExit()
+                decor?.postDelayed(this, BARS_CHECK_MILLIS)
+            }
+        }
+        decor?.post(check)
+        onDispose {
+            decor?.removeCallbacks(check)
+            bars?.show(WindowInsetsCompat.Type.systemBars())
+        }
     }
     BackHandler(onBack = exit)
     var notice by remember { mutableStateOf(true) }
@@ -754,6 +771,9 @@ private fun FullscreenView(screen: PageEdges.Fullscreen, appName: String, exit: 
         }
     }
 }
+
+/** How often full screen checks whether a swipe brought the bars back. */
+private const val BARS_CHECK_MILLIS = 250L
 
 /** How long full screen's notice shows, as Chrome's does. */
 private const val FULLSCREEN_NOTICE_MILLIS = 4_000L
