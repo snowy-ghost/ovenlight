@@ -23,9 +23,9 @@ struct AppChromeActions {
 /// The open app's only native chrome: a small glass capsule at the top with the way home
 /// and the app's menu. An app opens with it tucked up under the status bar, leaving a small
 /// handle just below it, so the page has the whole screen. While its one-time tip about
-/// the handle is due, it shows with the tip until the tip is closed. Tapping the handle,
-/// scrolling up, or pulling down at the top of the page brings it back; scrolling down or
-/// touching the page hides it again. With VoiceOver on it stays put.
+/// the handle is due, it shows with the tip until the tip is closed. Tapping the handle or
+/// pulling down at the top of the page brings it back; scrolling down or touching the page
+/// hides it again. With VoiceOver on it stays put.
 struct AppChrome: View {
     let app: WebApp
     let icon: UIImage?
@@ -37,7 +37,7 @@ struct AppChrome: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Tucked away from the start. Only its tip brings it out on its own (see the tip's task).
     @State private var isShown = false
-    /// Hide on its own after the app loads, until the user takes charge of the chrome.
+    /// Hide on its own once the app loads, until the user takes charge of the chrome.
     @State private var autoHides = true
     @State private var tipShowing = false
     @State private var revealCount = 0
@@ -63,14 +63,15 @@ struct AppChrome: View {
         }
         .background(
             WebViewObserver(webView: webView,
-                            onScroll: { up in up ? reveal(haptic: false) : hide() },
+                            onPull: { reveal(haptic: false) },
+                            onScrollDown: { hide() },
                             onTouch: { hide() })
         )
         .sensoryFeedback(.impact(weight: .light), trigger: revealCount)
-        .task(id: AutoHideKey(loaded: isLoaded, armed: autoHides, tip: tipShowing)) {
-            guard isLoaded, autoHides, !tipShowing else { return }
-            try? await Task.sleep(for: .seconds(2.5))
-            guard !Task.isCancelled else { return }
+        // Tucked away at once when the page has loaded and the tip is closed, so it never sits
+        // over the page on its own.
+        .onChange(of: AutoHideKey(loaded: isLoaded, armed: autoHides, tip: tipShowing), initial: true) { _, key in
+            guard key.loaded, key.armed, !key.tip else { return }
             autoHides = false
             hide()
         }
@@ -181,7 +182,7 @@ struct AppChrome: View {
 /// Teaches, once, where the chrome goes when it hides.
 struct ChromeTip: Tip {
     var title: Text { Text("Your Apps Are Up Here") }
-    var message: Text? { Text("This bar tucks away while you use an app. Tap the handle at the top of the screen, or scroll up, to bring it back.") }
+    var message: Text? { Text("This bar tucks away while you use an app. Tap the handle at the top of the screen, or pull down at the top of the page, to bring it back.") }
     var image: Image? { Image(systemName: "hand.tap") }
 }
 
@@ -205,11 +206,13 @@ private struct ChromeHandle: View {
     }
 }
 
-/// Watches the web view without taking it over: scroll direction through key-value
-/// observation, and touches through a recognizer that never claims them.
+/// Watches the web view without taking it over: scrolling through key-value observation,
+/// and touches through a recognizer that never claims them. Scrolling up leaves the chrome
+/// as it is.
 private struct WebViewObserver: UIViewRepresentable {
     let webView: WKWebView
-    let onScroll: (_ up: Bool) -> Void
+    let onPull: () -> Void
+    let onScrollDown: () -> Void
     let onTouch: () -> Void
 
     func makeUIView(context: Context) -> UIView {
@@ -220,7 +223,8 @@ private struct WebViewObserver: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: UIView, context: Context) {
-        context.coordinator.onScroll = onScroll
+        context.coordinator.onPull = onPull
+        context.coordinator.onScrollDown = onScrollDown
         context.coordinator.onTouch = onTouch
     }
 
@@ -229,26 +233,27 @@ private struct WebViewObserver: UIViewRepresentable {
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onScroll: onScroll, onTouch: onTouch)
+        Coordinator(onPull: onPull, onScrollDown: onScrollDown, onTouch: onTouch)
     }
 
     @MainActor
     final class Coordinator: NSObject, UIGestureRecognizerDelegate {
-        var onScroll: (Bool) -> Void
+        var onPull: () -> Void
+        var onScrollDown: () -> Void
         var onTouch: () -> Void
         private weak var webView: WKWebView?
         private var observation: NSKeyValueObservation?
         private var recognizer: UITapGestureRecognizer?
         private var travel: CGFloat = 0
 
-        /// Points of steady scrolling before the chrome follows.
+        /// Points of steady scrolling down before the chrome hides.
         private let downThreshold: CGFloat = 12
-        private let upThreshold: CGFloat = 60
         /// Points of pulling down past the top of the page that bring the chrome back.
         private let pullThreshold: CGFloat = 40
 
-        init(onScroll: @escaping (Bool) -> Void, onTouch: @escaping () -> Void) {
-            self.onScroll = onScroll
+        init(onPull: @escaping () -> Void, onScrollDown: @escaping () -> Void, onTouch: @escaping () -> Void) {
+            self.onPull = onPull
+            self.onScrollDown = onScrollDown
             self.onTouch = onTouch
         }
 
@@ -277,20 +282,17 @@ private struct WebViewObserver: UIViewRepresentable {
             // Only the user's own scrolling counts, and not the rubber band past either end.
             guard scrollView.isTracking || scrollView.isDecelerating else { travel = 0; return }
             if scrollView.isTracking, new < -pullThreshold, old >= -pullThreshold {
-                onScroll(true)
+                onPull()
                 travel = 0
                 return
             }
             let maxY = scrollView.contentSize.height - scrollView.bounds.height
             guard new > 0, new < maxY else { return }
             let delta = new - old
-            if (delta > 0) != (travel > 0) { travel = 0 }
-            travel += delta
+            // Scrolling up starts the count again.
+            travel = delta > 0 ? travel + delta : 0
             if travel > downThreshold {
-                onScroll(false)
-                travel = 0
-            } else if travel < -upThreshold {
-                onScroll(true)
+                onScrollDown()
                 travel = 0
             }
         }
