@@ -397,7 +397,8 @@ class PageDownloads(
 
 /**
  * Finished files waiting for their app's page to show them, oldest first (iOS's
- * waitingDownloads). They outlive the app's view; all of them go at the next launch.
+ * waitingDownloads). They outlive the app's view; all of them go at the next launch, and an
+ * app's go when it is removed or its data cleared.
  */
 object DownloadShelf {
     data class Download(val file: File, /** What Open offers it as; null when it doesn't. */ val type: String?)
@@ -424,6 +425,16 @@ object DownloadShelf {
     fun remove(app: UUID, download: Download) = files.update { map ->
         val left = map[app].orEmpty() - download
         if (left.isEmpty()) map - app else map + (app to left)
+    }
+
+    /** Drops the app's waiting files and deletes them, when the app goes or its data does. */
+    fun drop(app: UUID) {
+        var dropped = emptyList<Download>()
+        files.update {
+            dropped = it[app].orEmpty()
+            it - app
+        }
+        for (download in dropped) download.file.parentFile?.deleteRecursively()
     }
 
     fun folder(context: Context) = File(context.cacheDir, "Downloads")

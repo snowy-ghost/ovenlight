@@ -93,6 +93,27 @@ class AppRegistryTests {
     }
 
     @Test
+    fun testRemovingAnAppOrClearingItsDataDeletesItsWaitingDownloads() = runTest {
+        val registry = offlineRegistry(dir)
+        val apps = listOf("removed", "cleared", "kept").map { registry.add(URI("https://$it.example.com/")) }
+        val files = apps.map { app ->
+            File(temp.newFolder(), "notes.txt").also {
+                it.writeText(app.name)
+                assertTrue(DownloadShelf.add(app.id, it))
+            }
+        }
+        val (removed, cleared, kept) = apps
+
+        registry.remove(removed.id)
+        registry.clearData(cleared.id)
+        assertNull(DownloadShelf.waiting.value[removed.id])
+        assertNull(DownloadShelf.waiting.value[cleared.id])
+        assertEquals(listOf(false, false, true), files.map { it.parentFile!!.exists() })
+        assertEquals(listOf(files[2]), DownloadShelf.waiting.value[kept.id]?.map { it.file })
+        DownloadShelf.drop(kept.id)
+    }
+
+    @Test
     fun testAMissingFileIsEmptyAndSaves() {
         val registry = offlineRegistry(dir)
         assertFalse(registry.loadFailed)

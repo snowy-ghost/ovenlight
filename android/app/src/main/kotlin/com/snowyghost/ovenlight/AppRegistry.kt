@@ -156,8 +156,8 @@ class AppRegistry(
     }
 
     /**
-     * Removes the app and deletes everything it stored (cookies, storage, caches). Discovery
-     * won't add one of the owner's own apps back.
+     * Removes the app and deletes everything it stored (cookies, storage, caches, and files
+     * waiting to be saved). Discovery won't add one of the owner's own apps back.
      */
     suspend fun remove(id: UUID) = withContext(NonCancellable) {
         val app = apps.firstOrNull { it.id == id } ?: return@withContext
@@ -165,6 +165,7 @@ class AppRegistry(
         if (!app.isShared) dismissedHosts = dismissedHosts + Discovery.normalizedHost(app.host)
         save()
         webData.discard(app.id)
+        DownloadShelf.drop(app.id)
         iconFile(app)?.delete()
         webData.forget(app)
         removeDataStore(app.dataStoreID)
@@ -192,6 +193,7 @@ class AppRegistry(
     suspend fun clearData(id: UUID) = withContext(NonCancellable) {
         val old = apps.firstOrNull { it.id == id }?.dataStoreID ?: return@withContext
         webData.discard(id)
+        DownloadShelf.drop(id)
         apps = apps.map { if (it.id == id) it.copy(dataStoreID = UUID.randomUUID()) else it }
         save()
         removeDataStore(old)
