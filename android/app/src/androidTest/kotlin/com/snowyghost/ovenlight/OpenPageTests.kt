@@ -49,6 +49,7 @@ class OpenPageTests {
         <h1>Page under the lock</h1>
         <input id=field aria-label='Page field' style='font-size:24px;width:80%'>
         <input id=when type=date value='2026-03-05' aria-label='Page date' style='font-size:24px;width:80%;margin-top:24px'>
+        <input id=tint type=color value='#336699' aria-label='Page color' style='display:block;width:120px;height:60px;margin-top:24px'>
         <select id=pick aria-label='Page choice' style='position:fixed;left:10%;width:80%;top:55%;height:96px;font-size:32px'>
           <option>Alpha option</option><option>Beta option</option><option>Gamma option</option>
         </select>
@@ -67,6 +68,8 @@ class OpenPageTests {
         runBlocking { model.lock.unlock(fingerprint) }
         lockAfter = model.lock.lockAfterSeconds
         model.lock.lockAfterSeconds = 300
+        // The pill's one-time tip would take the first tap.
+        PreferencesStore(instrumentation.targetContext).putBoolean(ChromeController.TIP_CLOSED_KEY, true)
         scenario = ActivityScenario.launch(MainActivity::class.java)
         app = onMain { model.registry.add(URI("https://lock-check.example.invalid/")) }
         onMain { model.router.open(app) }
@@ -110,6 +113,23 @@ class OpenPageTests {
         runBlocking { model.lock.unlock(fingerprint) }
         waitFor("the page back in the window") { onMain { page.view.isAttachedToWindow } }
         instrumentation.waitForIdleSync()
+    }
+
+    /**
+     * What the screen showed while the system's prompt, which came with the lock, was closed
+     * with Back. The prompt hides the windows under it, and Back may close a picker above it
+     * first, so the screen is read before each Back and once the prompt is gone.
+     */
+    private fun screenThroughThePrompt(): List<String> {
+        val seen = screen().toMutableList()
+        repeat(3) {
+            if (!model.lock.isAuthenticating.value) return@repeat
+            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+            Thread.sleep(1_000)
+            seen += screen()
+        }
+        assertFalse("the prompt didn't close", model.lock.isAuthenticating.value)
+        return seen
     }
 
     /** The text, descriptions and classes of every window on screen, as TalkBack reads them. */
@@ -213,15 +233,26 @@ class OpenPageTests {
         Thread.sleep(500)
         scenario.moveToState(Lifecycle.State.RESUMED)
         waitFor("the lock") { model.lock.isLocked.value }
-        val locked = screen()
-        assertFalse("a date picker over the lock: $locked", locked.any { it.contains("DatePicker") })
-        // Coming back locked opens the system's own prompt, which goes first.
-        if (model.lock.isAuthenticating.value) {
-            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
-            waitFor("the prompt to close") { !model.lock.isAuthenticating.value }
-        }
+        val seen = screenThroughThePrompt()
+        assertFalse("a date picker over the lock: $seen", seen.any { it.contains("DatePicker") })
         unlock()
         assertEquals("the date didn't change", "\"2026-03-05\"", evaluate("document.getElementById('when').value"))
+    }
+
+    /** The color picker too, which a blur doesn't close. */
+    @Test
+    fun testAColorPickerLeftOpenIsGoneWhenOvenlightComesBackLocked() {
+        tap(element("tint"))
+        waitFor("the color picker") { screen().any { it.contains("Select color") } }
+        model.lock.lockAfterSeconds = 0
+        scenario.moveToState(Lifecycle.State.CREATED)
+        Thread.sleep(500)
+        scenario.moveToState(Lifecycle.State.RESUMED)
+        waitFor("the lock") { model.lock.isLocked.value }
+        val seen = screenThroughThePrompt()
+        assertFalse("a color picker over the lock: $seen", seen.any { it.contains("Select color") })
+        unlock()
+        assertEquals("the color didn't change", "\"#336699\"", evaluate("document.getElementById('tint').value"))
     }
 
     // A trip out and back

@@ -152,12 +152,15 @@
       }
     }
   };
-  // WebView's date and time pickers are windows of their own, which the lock taking the page
-  // away doesn't close; only the input's blur does. So a page going hidden (the lock, leaving
-  // Ovenlight, another app) closes the one its frame has open, inside open shadow roots too.
+  // WebView's date, time and color pickers are windows of their own, which the lock taking the
+  // page away doesn't close. A date or time picker closes with its input's blur; a color picker
+  // only when the input stops being a color input, so its type goes to text and back, which keeps
+  // the value. A page going hidden (the lock, leaving Ovenlight, another app) closes the one its
+  // frame has open, inside open shadow roots too.
   const blur = HTMLElement.prototype.blur, activeElement = getter(Document, "activeElement");
   const shadowRoot = getter(Element, "shadowRoot"), shadowActive = getter(ShadowRoot, "activeElement");
   const hidden = getter(Document, "hidden"), inputType = getter(HTMLInputElement, "type");
+  const setInputType = describe(HTMLInputElement.prototype, "type").set;
   const PICKERS = new Set(["date", "time", "datetime-local", "month", "week"]), has = Set.prototype.has;
   const closePicker = () => {
     if (!apply(hidden, document, [])) return;
@@ -168,7 +171,14 @@
       if (!inner) break;
       element = inner;
     }
-    if (element instanceof HTMLInputElement && apply(has, PICKERS, [apply(inputType, element, [])])) apply(blur, element, []);
+    if (!(element instanceof HTMLInputElement)) return;
+    const type = apply(inputType, element, []);
+    if (apply(has, PICKERS, [type])) {
+      apply(blur, element, []);
+    } else if (type === "color") {
+      apply(setInputType, element, ["text"]);
+      apply(setInputType, element, ["color"]);
+    }
   };
 
   const listenFirst = () => {
