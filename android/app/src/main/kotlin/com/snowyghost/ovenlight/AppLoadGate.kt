@@ -96,6 +96,7 @@ object ConnectionCopy {
     fun cantReach(app: String) = "Can't reach $app"
     const val cantReachDetail = "Its computer may be asleep or offline. Try again in a moment."
     fun notResponding(app: String) = "$app isn't responding on its computer right now. Try again in a moment."
+    const val pageFailed = "This page couldn't load. Try again in a moment."
     fun signIn(toOpen: String) = "Sign in to open $toOpen"
 
     // Apps someone shared, and joining them. Guests see all of these.
