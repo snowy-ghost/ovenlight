@@ -280,10 +280,6 @@ tasks.withType<Test>().configureEach {
     val wire = rootProject.layout.projectDirectory.dir("../connector/testdata/wire")
     inputs.dir(wire).withPathSensitivity(PathSensitivity.RELATIVE)
     systemProperty("ovenlight.wireDir", wire.asFile.absolutePath)
-    // The assets the app ships, generated and checked in, for AcknowledgementsTests.
-    dependsOn(acknowledgements)
-    val assetDirs = listOf(layout.buildDirectory.dir("generated/acknowledgements").get().asFile, file("src/main/assets"))
-    systemProperty("ovenlight.assetDirs", assetDirs.joinToString(File.pathSeparator))
     // Robolectric reaches into FileDescriptor to fake Android's shared memory.
     jvmArgs("--add-opens=java.base/java.io=ALL-UNNAMED", "--add-exports=java.base/jdk.internal.access=ALL-UNNAMED")
 }
