@@ -101,10 +101,10 @@ class AppRegistry(
             apps = loaded.elements
             unread = loaded.unread
             loadFailed = false
-            if (unread.isNotEmpty()) SavedJSON.log.severe("apps: kept ${unread.size} this version can't read")
+            if (unread.isNotEmpty()) SavedJSON.problem("apps: kept ${unread.size} this version can't read")
         } catch (e: Exception) {
             loadFailed = true
-            SavedJSON.log.severe("apps: couldn't read: $e")
+            SavedJSON.problem("apps: couldn't read: $e")
         }
     }
 
@@ -113,12 +113,12 @@ class AppRegistry(
         try {
             SavedJSON.write(SavedJSON.encode(WebApp.serializer(), apps, unread), file)
         } catch (e: Exception) {
-            SavedJSON.log.severe("apps: couldn't save: $e")
+            SavedJSON.problem("apps: couldn't save: $e")
         }
         try {
             SavedJSON.write(ovenlightJSON.encodeToString(ListSerializer(String.serializer()), dismissedHosts.sorted()), dismissedFile)
         } catch (e: Exception) {
-            SavedJSON.log.severe("dismissed hosts: couldn't save: $e")
+            SavedJSON.problem("dismissed hosts: couldn't save: $e")
         }
     }
 
@@ -304,7 +304,7 @@ class AppRegistry(
         try {
             SavedJSON.write(png, File(iconsDirectory, name))
         } catch (e: Exception) {
-            SavedJSON.log.severe("icons: couldn't save: $e")
+            SavedJSON.problem("icons: couldn't save: $e")
         }
         update(id) { it.copy(iconFile = name) }
         save()

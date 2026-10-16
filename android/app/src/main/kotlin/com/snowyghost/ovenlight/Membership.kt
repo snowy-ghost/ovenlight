@@ -190,10 +190,10 @@ class MembershipStore(directory: File) {
             memberships = list.elements
             unread = list.unread
             loadFailed = false
-            if (unread.isNotEmpty()) SavedJSON.log.severe("memberships: kept ${unread.size} this version can't read")
+            if (unread.isNotEmpty()) SavedJSON.problem("memberships: kept ${unread.size} this version can't read")
         } catch (e: Exception) {
             loadFailed = true
-            SavedJSON.log.severe("memberships: couldn't read: $e")
+            SavedJSON.problem("memberships: couldn't read: $e")
         }
     }
 
@@ -224,7 +224,7 @@ class MembershipStore(directory: File) {
         try {
             SavedJSON.write(SavedJSON.encode(Membership.serializer(), memberships, unread), file)
         } catch (e: Exception) {
-            SavedJSON.log.severe("memberships: couldn't save: $e")
+            SavedJSON.problem("memberships: couldn't save: $e")
         }
     }
 }
@@ -235,7 +235,15 @@ class MembershipStore(directory: File) {
  * that over it.
  */
 object SavedJSON {
-    val log: Logger = Logger.getLogger("com.snowyghost.ovenlight.storage")
+    private val log: Logger = Logger.getLogger("com.snowyghost.ovenlight.storage")
+
+    /**
+     * A problem with a saved list, in debug builds only: Android hands java.util.logging to the
+     * system log, and a decoding error quotes the file it couldn't read, names and keys included.
+     */
+    fun problem(line: String) {
+        if (BuildConfig.DEBUG) log.severe(line)
+    }
 
     /** A saved list as read. */
     class List<Element>(
