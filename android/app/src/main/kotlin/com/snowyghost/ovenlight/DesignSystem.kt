@@ -25,10 +25,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.BlurEffect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.TileMode
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.translate
@@ -319,12 +318,7 @@ fun LampLight(level: Float, modifier: Modifier = Modifier) {
     BoxWithConstraints(modifier.fillMaxSize().graphicsLayer { alpha = warm.value }.clearAndSetSemantics {}) {
         val source = LightSource.of(constraints.maxWidth.toFloat(), constraints.maxHeight.toFloat(), top, left, right, statusBar)
         val sideways = source.edge != LightSource.Edge.TOP
-        val blur = with(density) { (if (sideways) 58.dp else 26.dp).toPx() }
-        // The cone's soft edge is a blur where Android has one (12 and later), else three
-        // widening cones.
-        Canvas(Modifier.fillMaxSize().graphicsLayer {
-            if (Build.VERSION.SDK_INT >= 31) renderEffect = BlurEffect(blur, blur, TileMode.Decal)
-        }) {
+        Canvas(Modifier.fillMaxSize()) {
             turned(source) { originX, originY, across, along ->
                 val start = (if (sideways) 132.dp else 96.dp).toPx()
                 val spread = across * (if (sideways) 0.30f else 0.22f)
@@ -334,24 +328,21 @@ fun LampLight(level: Float, modifier: Modifier = Modifier) {
                     1f to oven.lampGlow.copy(alpha = 0f),
                     start = Offset(originX, originY), end = Offset(originX, along),
                 )
-                val cones = if (Build.VERSION.SDK_INT >= 31) listOf(0f to 1f) else listOf(0f to 0.5f, 12.dp.toPx() to 0.3f, 24.dp.toPx() to 0.2f)
-                for ((widen, share) in cones) {
-                    drawPath(
-                        Path().apply {
-                            moveTo(originX - start / 2 - widen, originY)
-                            lineTo(originX + start / 2 + widen, originY)
-                            lineTo(across + spread + widen, along)
-                            lineTo(-spread - widen, along)
-                            close()
-                        },
-                        beam, alpha = share,
-                    )
+                // The cone's sides and top are soft, as a blur of this sigma would leave them,
+                // but drawn as a gradient across each edge, which is dithered: a blur's layer has
+                // 8 bits a channel and no dithering, so the faint light would fall in bands. The
+                // light has faded out by the bottom. Walking each edge, the light is on the left.
+                val soft = (if (sideways) 34.dp else 15.dp).toPx()
+                val edges = listOf(
+                    Offset(across + spread, along), Offset(originX + start / 2, originY),
+                    Offset(originX - start / 2, originY), Offset(-spread, along),
+                ).zipWithNext()
+                val light = edges.fold(beam) { light, (from, to) ->
+                    val inward = (to - from).let { Offset(it.y, -it.x) * (2.5f * soft / it.getDistance()) }
+                    Brush.composite(light, Brush.linearGradient(*SoftEdge, start = from - inward, end = from + inward), BlendMode.DstIn)
                 }
-            }
-        }
-        // A soft halo where it leaves, not blurred.
-        Canvas(Modifier.fillMaxSize()) {
-            turned(source) { originX, originY, _, _ ->
+                drawRect(light, size = Size(across, along))
+                // A soft halo where it leaves.
                 val halo = 150.dp.toPx()
                 drawCircle(
                     Brush.radialGradient(
@@ -366,6 +357,16 @@ fun LampLight(level: Float, modifier: Modifier = Modifier) {
         }
     }
 }
+
+/**
+ * How a blur fades an edge, from transparent 2.5 sigmas outside it to opaque 2.5 inside: the
+ * integral of a gaussian.
+ */
+private val SoftEdge = arrayOf(
+    0f to Color.Transparent, 0.2f to Color.Black.copy(alpha = 0.067f), 0.35f to Color.Black.copy(alpha = 0.227f),
+    0.5f to Color.Black.copy(alpha = 0.5f), 0.65f to Color.Black.copy(alpha = 0.773f), 0.8f to Color.Black.copy(alpha = 0.933f),
+    1f to Color.Black,
+)
 
 /**
  * Draws with the canvas turned so the light runs down its own y axis, passing where it
