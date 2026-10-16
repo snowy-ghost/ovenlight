@@ -1,7 +1,8 @@
 """A test app for e2e.sh: serves its folder on $PORT, and echoes WebSocket messages at /ws.
 
 For the downloads scenario, /session sets an HttpOnly cookie, and /private.csv is an
-attachment only with that cookie (403 without it).
+attachment only with that cookie (403 without it). For the upload scenario, a POST to /upload
+keeps its body as uploaded/<X-Name> in the folder.
 
 The standard library has no WebSocket server, so this is the least of one: the handshake,
 then text frames echoed back until the client closes.
@@ -13,6 +14,7 @@ import http.server
 import os
 import struct
 import sys
+import urllib.parse
 
 GUID = b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
@@ -59,6 +61,16 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 frame = bytes([0x81]) + (bytes([len(data)]) if len(data) < 126 else bytes([126]) + struct.pack(">H", len(data)))
                 self.wfile.write(frame + data)
                 self.wfile.flush()
+
+    def do_POST(self):
+        if self.path != "/upload":
+            return self.reply(404, b"no such endpoint")
+        name = os.path.basename(urllib.parse.unquote(self.headers.get("X-Name", ""))) or "upload"
+        body = self.rfile.read(int(self.headers.get("Content-Length", "0")))
+        os.makedirs("uploaded", exist_ok=True)
+        with open(os.path.join("uploaded", name), "wb") as f:
+            f.write(body)
+        return self.reply(200, str(len(body)).encode())
 
     def log_message(self, format, *args):
         sys.stderr.write("%s %s\n" % (self.path, format % args))
