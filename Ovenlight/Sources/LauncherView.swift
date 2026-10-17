@@ -441,9 +441,8 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage(LockManager.lockAfterKey) private var lockAfterSeconds = LockManager.defaultLockAfter
     @Environment(\.dynamicTypeSize) private var typeSize
-    /// Sign Out, or Stop Using My Own Computers with apps to remove, asks first: the row's
-    /// name, which the dialog's button repeats.
-    @State private var confirming: String?
+    /// Sign Out, or Stop Using My Own Computers with apps to remove, asks first.
+    @State private var confirming = false
     @State private var mail: MailDraft?
     @State private var showingPrivacyPolicy = false
 
@@ -481,15 +480,15 @@ struct SettingsView: View {
                             if node.state == .awaitingApproval {
                                 Button("Approve This iPhone") { router.present(.approve) }
                             }
-                            if node.status?.account != nil {
-                                Button("Sign Out", role: .destructive) { confirming = "Sign Out" }
+                            if signedIn {
+                                Button("Sign Out", role: .destructive) { confirming = true }
                             }
                         }
                         // While no account is signed in, "Use My Own Computers" can still be taken back.
                         if node.ownerHasNoAccount {
                             Button("Stop Using My Own Computers") {
                                 if registry.apps.contains(where: { !$0.isShared && $0.discovered }) {
-                                    confirming = "Stop Using My Own Computers"
+                                    confirming = true
                                 } else {
                                     stopUsingMyOwnComputers()
                                 }
@@ -497,11 +496,10 @@ struct SettingsView: View {
                         }
                     }
                     .ovenlightRows()
-                    .confirmationDialog(confirming == "Sign Out" ? "Sign out of your computers?" : "Stop using your own computers?",
-                                        isPresented: Binding { confirming != nil } set: { if !$0 { confirming = nil } },
-                                        titleVisibility: .visible, presenting: confirming) { label in
-                        Button(label, role: .destructive) { stopUsingMyOwnComputers() }
-                    } message: { _ in
+                    .confirmationDialog(signedIn ? "Sign Out of Your Computers?" : "Stop Using Your Own Computers?",
+                                        isPresented: $confirming, titleVisibility: .visible) {
+                        Button(signedIn ? "Sign Out" : "Stop Using My Own Computers", role: .destructive) { stopUsingMyOwnComputers() }
+                    } message: {
                         Text("This removes the apps found on your computers and everything they stored on this iPhone.")
                     }
                     Section {
@@ -556,6 +554,9 @@ struct SettingsView: View {
             }
         }
     }
+
+    /// Sign Out shows while an account is signed in, Stop Using My Own Computers before one.
+    private var signedIn: Bool { node.status?.account != nil }
 
     private var computersSummary: String {
         if node.state == .ready, let account = node.status?.account {
