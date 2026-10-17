@@ -42,6 +42,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.captionBarIgnoringVisibility
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
@@ -614,13 +615,14 @@ private fun AppMenuItems(app: WebApp, actions: AppChromeActions, close: () -> Un
 val ChromeHandleHeight = 20.dp
 
 /**
- * Where the band at the top of an open app and the handle in it start: below the status bar, or
- * the cutout when it's deeper. The same with the bars hidden for a page's full screen, so the page
- * behind it doesn't move.
+ * Where the band at the top of an open app and the handle in it start: below the status bar, the
+ * cutout or a desktop window's caption, whichever is deepest. The same with the bars hidden for a
+ * page's full screen, so the page behind it doesn't move.
  */
 val chromeTop: WindowInsets
     @OptIn(ExperimentalLayoutApi::class)
-    @Composable get() = WindowInsets.statusBarsIgnoringVisibility.union(WindowInsets.displayCutout).only(WindowInsetsSides.Top)
+    @Composable get() = WindowInsets.statusBarsIgnoringVisibility.union(WindowInsets.captionBarIgnoringVisibility)
+        .union(WindowInsets.displayCutout).only(WindowInsetsSides.Top)
 
 /**
  * What stays of the chrome while it's tucked away: a small handle at the top center, in the band
