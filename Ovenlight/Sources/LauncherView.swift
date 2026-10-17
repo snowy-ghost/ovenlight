@@ -498,12 +498,12 @@ struct SettingsView: View {
                         }
                     }
                     .ovenlightRows()
-                    .confirmationDialog("Sign out of your computers?",
+                    .confirmationDialog(confirming == "Sign Out" ? "Sign out of your computers?" : "Stop using your own computers?",
                                         isPresented: Binding { confirming != nil } set: { if !$0 { confirming = nil } },
                                         titleVisibility: .visible, presenting: confirming) { label in
                         Button(label, role: .destructive) { stopUsingMyOwnComputers() }
                     } message: { _ in
-                        Text("Signing out removes the apps found on your computers and everything they stored on this iPhone.")
+                        Text("This removes the apps found on your computers and everything they stored on this iPhone.")
                     }
                     Section {
                         NavigationLink("Advanced") { AdvancedSettingsView() }

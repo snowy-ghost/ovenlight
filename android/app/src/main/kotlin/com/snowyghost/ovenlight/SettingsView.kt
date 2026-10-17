@@ -318,7 +318,8 @@ private fun SettingsList(state: SettingsState, scroll: ScrollState, onClose: () 
     }
     confirming?.let { row ->
         Confirmation(
-            stringResource(R.string.settings_sign_out_title), stringResource(R.string.settings_sign_out_detail), stringResource(row),
+            stringResource(if (row == R.string.settings_sign_out) R.string.settings_sign_out_title else R.string.settings_stop_using_title),
+            stringResource(R.string.settings_sign_out_detail), stringResource(row),
             onDismiss = { confirming = null }, action = state.stopUsingMyOwnComputers,
         )
     }

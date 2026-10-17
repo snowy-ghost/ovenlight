@@ -207,7 +207,7 @@ class SettingsViewTests {
         inEveryLook {
             row("Sign out").performClick()
             inDialog("Sign out of your computers?").assertIsDisplayed()
-            inDialog("Signing out removes the apps found on your computers and everything they stored on this phone.").assertIsDisplayed()
+            inDialog("This removes the apps found on your computers and everything they stored on this phone.").assertIsDisplayed()
             composeRule.checkAccessibility()
             inDialog("Cancel").performClick()
             assertEquals(0, signedOut)
@@ -227,8 +227,8 @@ class SettingsViewTests {
         show { SettingsState(owner = owner, stopUsingMyOwnComputers = { stopped++ }) }
         inEveryLook {
             row("Stop using my own computers").performClick()
-            inDialog("Sign out of your computers?").assertIsDisplayed()
-            inDialog("Signing out removes the apps found on your computers and everything they stored on this phone.").assertIsDisplayed()
+            inDialog("Stop using your own computers?").assertIsDisplayed()
+            inDialog("This removes the apps found on your computers and everything they stored on this phone.").assertIsDisplayed()
             composeRule.checkAccessibility()
             inDialog("Cancel").performClick()
             assertEquals(0, stopped)
