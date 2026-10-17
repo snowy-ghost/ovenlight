@@ -40,6 +40,14 @@ sealed class NodeState {
 
     val isBusy: Boolean get() = this == Starting || this == Connecting || this is Retrying
 
+    /**
+     * Whether the sign-in page closes: the phone is connected, or the node failed. A tailnet that
+     * approves each new device keeps it open through the start between the sign-in and the
+     * approval, and the wait for approval, so the owner can carry on in Tailscale's pages. Idle
+     * doesn't close it either: that is Ovenlight closing its nodes while away.
+     */
+    val endsSignIn: Boolean get() = this == Ready || this is Failed
+
     val summary: String
         get() = when (this) {
             Idle -> "Off"

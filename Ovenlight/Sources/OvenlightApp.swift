@@ -251,11 +251,7 @@ struct RootView: View {
             if !locked, !router.appsChanged(registry.apps) { WebViewPool.shared.presentWaitingDownloads() }
         }
         .onChange(of: node.state) { _, state in
-            // Signed in, but the tailnet approves each new device: the sign-in page stays, so
-            // the owner can carry on in Tailscale's pages, and closes once the iPhone is approved.
-            if case .needsLogin = state { return }
-            if state == .awaitingApproval { return }
-            if case .login = router.sheet { router.sheet = nil }
+            if state.endsSignIn, case .login = router.sheet { router.sheet = nil }
         }
         // Opening an app, from anywhere, clears its new dot.
         .onChange(of: router.openApp?.id) { _, id in

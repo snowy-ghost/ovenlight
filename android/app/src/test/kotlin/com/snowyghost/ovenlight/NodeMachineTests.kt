@@ -2,6 +2,8 @@ package com.snowyghost.ovenlight
 
 import java.net.URI
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class NodeMachineTests {
@@ -63,6 +65,20 @@ class NodeMachineTests {
         )
         assertEquals(NodeState.Connecting, run(listOf(backend("Running")), from = NodeState.AwaitingApproval))
         assertEquals("a stray probe result can't skip login", NodeState.NeedsLogin(login), run(listOf(NodeEvent.Reachable), from = NodeState.NeedsLogin(login)))
+    }
+
+    /** On a tailnet that approves each new device, the start after the sign-in doesn't close the sign-in page. */
+    @Test
+    fun testSignInStaysOpenUntilApproved() {
+        val events = listOf(backend("Starting"), backend("NeedsMachineAuth"), backend("Running"), NodeEvent.Reachable)
+        val states = events.runningFold<NodeEvent, NodeState>(NodeState.NeedsLogin(login), NodeMachine::next)
+        assertEquals(
+            listOf(NodeState.NeedsLogin(login), NodeState.Connecting, NodeState.AwaitingApproval, NodeState.Connecting, NodeState.Ready),
+            states,
+        )
+        assertEquals(listOf(false, false, false, false, true), states.map { it.endsSignIn })
+        assertTrue(NodeState.Failed("boom").endsSignIn)
+        assertFalse("Ovenlight closing its nodes while away", NodeState.Idle.endsSignIn)
     }
 
     @Test

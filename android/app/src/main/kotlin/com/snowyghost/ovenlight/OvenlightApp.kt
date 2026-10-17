@@ -125,17 +125,13 @@ class AppModel(context: Context) {
                 pool.appClosed(open = app?.id)
             }
         }
-        // Signed in, but the tailnet approves each new device: the sign-in page stays, so the
-        // owner can carry on in Tailscale's pages, and closes once the phone is approved.
+        // The sign-in page closes once the sign-in is over (see NodeState.endsSignIn).
         scope.launch {
             nodes.owner.state.collect { state ->
                 // A sign-in or approval tab may come next.
                 if (state is NodeState.NeedsLogin || state == NodeState.AwaitingApproval) CustomTabs.connect(context)
                 val sheet = router.sheet.value
-                // Not for Idle: that is Ovenlight closing its nodes while away, not the sign-in ending.
-                if (state !is NodeState.NeedsLogin && state != NodeState.AwaitingApproval && state != NodeState.Idle && sheet is RootSheet.Login) {
-                    router.sheet.value = null
-                }
+                if (state.endsSignIn && sheet is RootSheet.Login) router.sheet.value = null
                 // Android only: the Machines page is a Custom Tab over Ovenlight, so once the phone
                 // is approved Ovenlight comes back rather than waiting for the tab to close.
                 if (state == NodeState.Ready && sheet == RootSheet.Approve) router.sheet.value = null
