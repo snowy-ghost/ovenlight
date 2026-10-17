@@ -4,6 +4,7 @@ import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.graphics.Rect
+import android.os.ParcelFileDescriptor
 import android.os.SystemClock
 import android.provider.Settings
 import android.view.KeyEvent
@@ -243,8 +244,12 @@ class OpenPageTests {
 
     /** Switches the emulator's navigation, `gestural` or `threebutton`, and waits for the window to follow. */
     private fun navigation(mode: String) {
-        instrumentation.uiAutomation.executeShellCommand("cmd overlay enable-exclusive --category com.android.internal.systemui.navbar.$mode").close()
-        waitFor("$mode navigation") { (tappableBottom() > 0) == (mode == "threebutton") }
+        // Read to the end, so the switch has been made before the wait starts; System UI can take
+        // more than 15 s to redraw its bar while the rest of the suite loads the emulator.
+        ParcelFileDescriptor.AutoCloseInputStream(
+            instrumentation.uiAutomation.executeShellCommand("cmd overlay enable-exclusive --category com.android.internal.systemui.navbar.$mode"),
+        ).use { it.readBytes() }
+        waitFor("$mode navigation", millis = 30_000) { (tappableBottom() > 0) == (mode == "threebutton") }
         instrumentation.waitForIdleSync()
     }
 
