@@ -137,7 +137,8 @@ final class AppRegistry: ObservableObject {
         save()
     }
 
-    /// Removes the app and deletes everything it stored (cookies, storage, caches).
+    /// Removes the app and deletes everything it stored (cookies, storage, caches, and files
+    /// waiting to be saved).
     /// Discovery won't add one of the owner's own apps back.
     func remove(_ id: UUID) async {
         guard let app = apps.first(where: { $0.id == id }) else { return }
@@ -158,6 +159,7 @@ final class AppRegistry: ObservableObject {
         save()
         for app in gone {
             WebViewPool.shared.discard(app.id)
+            WebViewPool.shared.dropWaitingDownloads(of: app.id)
             if let file = app.iconFile {
                 icons[file] = nil
                 try? FileManager.default.removeItem(at: iconsDirectory.appendingPathComponent(file))
@@ -213,6 +215,7 @@ final class AppRegistry: ObservableObject {
         guard let index = apps.firstIndex(where: { $0.id == id }) else { return }
         let old = apps[index].dataStoreID
         WebViewPool.shared.discard(id)
+        WebViewPool.shared.dropWaitingDownloads(of: id)
         apps[index].dataStoreID = UUID()
         save()
         await Self.removeDataStore(old)
