@@ -177,7 +177,18 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
     /// The node the app loads through, if any; the first navigation then waits for the gate.
     let node: MembershipNode?
     var usesNode: Bool { node != nil }
-    weak var webView: WKWebView?
+    weak var webView: WKWebView? {
+        didSet {
+            colorWatchers = [
+                webView?.observe(\.themeColor, options: .initial) { [weak self] view, _ in
+                    MainActor.assumeIsolated { self?.themeColor = view.themeColor }
+                },
+                webView?.observe(\.underPageBackgroundColor, options: .initial) { [weak self] view, _ in
+                    MainActor.assumeIsolated { self?.underPageColor = view.underPageBackgroundColor }
+                },
+            ].compactMap { $0 }
+        }
+    }
 
     @Published var loadError: String?
     @Published var hasLoadedOnce = false
@@ -186,6 +197,13 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
     /// sits inside the safe area.
     @Published private(set) var fitsCover = true
     @Published private(set) var gate: AppLoadGate = .waiting
+    /// The page's theme color and the color WebKit paints around it (its background), kept
+    /// current through a light or dark switch and the page's own changes.
+    @Published private(set) var themeColor: UIColor?
+    @Published private(set) var underPageColor: UIColor?
+    private var colorWatchers: [NSKeyValueObservation] = []
+    /// What the page shows at its top, as WebKit reads it.
+    var headerColor: UIColor? { themeColor ?? underPageColor }
 
     /// Publishes only a real change: the gate's waits go round every second, and an equal
     /// assignment would redraw the page's cover each time.

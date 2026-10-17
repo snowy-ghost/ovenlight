@@ -57,8 +57,18 @@ private struct AppPage: View {
     var body: some View {
         let icon = registry.icon(for: app)
         ZStack {
-            (coordinator.fitsCover ? Color(.systemBackground) : Color(uiColor: webView.themeColor ?? webView.underPageBackgroundColor))
+            (coordinator.fitsCover ? Color(.systemBackground) : Color(uiColor: coordinator.underPageColor ?? .systemBackground))
                 .ignoresSafeArea()
+            // Only the strip behind the status bar takes the header color: a phone on its side
+            // has none, and its sides show the page's background.
+            if !coordinator.fitsCover {
+                VStack(spacing: 0) {
+                    Color(uiColor: coordinator.headerColor ?? .systemBackground)
+                        .ignoresSafeArea(edges: .top)
+                        .frame(height: 0)
+                    Spacer(minLength: 0)
+                }
+            }
             // Files that finished while the person was back in the launcher, once the page
             // is in a window to present over (it isn't yet as the view appears). The page
             // stays visible under the opaque placeholder, which fades out over it, and takes
@@ -113,6 +123,7 @@ private struct AppPage: View {
                 icon: icon,
                 webView: webView,
                 isLoaded: coordinator.hasLoadedOnce,
+                header: coordinator.headerColor.map(Color.init) ?? StatusBarTint.color(for: app, in: colorScheme),
                 actions: AppChromeActions(
                     home: onClose,
                     reload: { coordinator.reload() },
@@ -149,8 +160,8 @@ private struct AppPage: View {
         .animation(.easeOut(duration: 0.25), value: coordinator.hasLoadedOnce)
         .animation(.easeOut(duration: 0.25), value: coordinator.loadError)
         .animation(.easeOut(duration: 0.25), value: coordinator.gate)
-        .onChange(of: coordinator.hasLoadedOnce, initial: true) { _, loaded in
-            if loaded { StatusBarTint.remember(webView.themeColor ?? webView.underPageBackgroundColor, for: app, in: colorScheme) }
+        .onChange(of: coordinator.hasLoadedOnce ? coordinator.headerColor : nil, initial: true) { _, header in
+            if let header { StatusBarTint.remember(header, for: app, in: colorScheme) }
         }
         .statusBarHidden(false)
         .sheet(item: $sheet) { sheet in

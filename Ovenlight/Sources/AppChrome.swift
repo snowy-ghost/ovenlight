@@ -31,6 +31,8 @@ struct AppChrome: View {
     let icon: UIImage?
     let webView: WKWebView
     let isLoaded: Bool
+    /// The color under the handle, which takes the tone that reads on it.
+    let header: Color?
     let actions: AppChromeActions
 
     @Environment(\.accessibilityVoiceOverEnabled) private var voiceOver
@@ -39,7 +41,8 @@ struct AppChrome: View {
     @State private var isShown = false
     /// Hide on its own once the app loads, until the user takes charge of the chrome.
     @State private var autoHides = true
-    @State private var tipShowing = false
+    // Known from the start, so a loaded app reopened while the tip is due doesn't hide first.
+    @State private var tipShowing = ChromeTip().shouldDisplay
     @State private var revealCount = 0
     private let tip = ChromeTip()
 
@@ -57,7 +60,7 @@ struct AppChrome: View {
         .frame(maxWidth: .infinity)
         .overlay(alignment: .top) {
             if !isShown && !voiceOver {
-                ChromeHandle { reveal() }
+                ChromeHandle(header: header) { reveal() }
                     .transition(.opacity)
             }
         }
@@ -70,8 +73,8 @@ struct AppChrome: View {
         .sensoryFeedback(.impact(weight: .light), trigger: revealCount)
         // Tucked away at once when the page has loaded and the tip is closed, so it never sits
         // over the page on its own.
-        .onChange(of: AutoHideKey(loaded: isLoaded, armed: autoHides, tip: tipShowing), initial: true) { _, key in
-            guard key.loaded, key.armed, !key.tip else { return }
+        .onChange(of: isLoaded && autoHides && !tipShowing, initial: true) { _, due in
+            guard due else { return }
             autoHides = false
             hide()
         }
@@ -171,12 +174,6 @@ struct AppChrome: View {
         withAnimation(.spring(duration: 0.3, bounce: 0)) { isShown = false }
         autoHides = false
     }
-
-    private struct AutoHideKey: Equatable {
-        let loaded: Bool
-        let armed: Bool
-        let tip: Bool
-    }
 }
 
 /// Teaches, once, where the chrome goes when it hides.
@@ -191,18 +188,28 @@ struct ChromeTip: Tip {
 /// scroll the page to the top). It works on any page, however the page scrolls. A phone on
 /// its side has no top safe area, so there the handle sits on the page's top edge.
 private struct ChromeHandle: View {
+    let header: Color?
     let reveal: () -> Void
+
+    @Environment(\.self) private var environment
 
     var body: some View {
         Button(action: reveal) {
             Capsule()
-                .fill(Color.primary.opacity(0.3))
+                .fill((header.map { isLight($0) ? Color.black : .white } ?? .primary).opacity(0.3))
                 .frame(width: 36, height: 5)
                 .frame(width: 120, height: 20)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Show App Menu")
+    }
+
+    /// Whether dark marks read better than light ones on the color: lighter than where black
+    /// and white contrast with it equally.
+    private func isLight(_ color: Color) -> Bool {
+        let c = color.resolve(in: environment)
+        return 0.2126 * c.linearRed + 0.7152 * c.linearGreen + 0.0722 * c.linearBlue > 0.179
     }
 }
 
