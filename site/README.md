@@ -23,6 +23,10 @@ preview image, `og-invite.jpg`, is written by `design/og/generate.py`, and the i
 `.well-known/apple-app-site-association` makes invite links open the app. iOS
 accepts it only when it is served directly, with no redirect, as
 `application/json`; `_headers` sets the content type.
+`.well-known/assetlinks.json` does the same on Android, for builds signed with Google
+Play's app signing key only (Play Console, Test and release, App integrity), never the upload
+key, which a sideloaded build could carry. Android 14 and earlier read it only when the app is
+installed or updated.
 
 ## Deploying
 

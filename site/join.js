@@ -6,9 +6,11 @@
   "use strict";
 
   // A display label, as Ovenlight shows it: no control or format characters (Swift's
-  // controlCharacters, so no bidi overrides), trimmed, at most 64 characters.
+  // controlCharacters, so no bidi overrides) except the joiners emoji and scripts such as
+  // Persian need (U+200C, U+200D) and the tags in flags like England's (U+E0020 to
+  // U+E007F), trimmed, at most 64 characters.
   function label(text) {
-    var clean = (text || "").replace(/[\p{Cc}\p{Cf}]/gu, "").trim();
+    var clean = (text || "").replace(/(?![\u200C\u200D\u{E0020}-\u{E007F}])[\p{Cc}\p{Cf}]/gu, "").trim();
     var chars = typeof Intl.Segmenter === "function"
       ? Array.from(new Intl.Segmenter().segment(clean), function (part) { return part.segment; })
       : Array.from(clean);
@@ -17,8 +19,7 @@
 
   // Also on a fragment change, since a page already open in a tab doesn't reload for one.
   function render() {
-    var fields = location.hash.slice(1);
-    var params = new URLSearchParams(fields);
+    var params = new URLSearchParams(location.hash.slice(1));
     var required = ["control", "key", "app", "invite", "host"];
     var isInvite = params.get("v") === "1" && required.every(function (name) { return params.get(name); });
     var title = "You're invited to an app on Ovenlight";
@@ -28,7 +29,9 @@
       var app = label(params.get("name")) || label(params.get("app"));
       title = owner + " invited you to " + app;
       guest = label(params.get("to"));
-      document.getElementById("open").href = "ovenlight://join?" + fields;
+      // Rebuilt from the parsed fields, so a "#" or anything else in a crafted link stays
+      // inside a field's value.
+      document.getElementById("open").href = "ovenlight://join?" + params.toString();
     }
     document.getElementById("title").textContent = title;
     document.title = isInvite ? title + " · Ovenlight" : title;

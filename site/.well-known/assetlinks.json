@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.snowyghost.ovenlight",
+      "sha256_cert_fingerprints": [
+        "3C:66:CD:63:13:E5:52:17:93:F0:3E:5B:3A:C6:42:6B:77:5C:EF:3C:B0:7C:CD:B5:3C:7F:93:B1:B7:5B:7E:7A"
+      ]
+    }
+  }
+]
