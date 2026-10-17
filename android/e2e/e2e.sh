@@ -932,7 +932,12 @@ sys.exit(0 if ok else 1)'; }
   # Touches and holds what's named $1 (a tile's name), as a person does to open its menu.
   hold() {
     local box
-    box=($(bounds text "$1"))
+    # uiautomator's dump now and then comes back empty while the screen animates.
+    for i in 1 2 3 4 5; do
+      box=($(bounds text "$1"))
+      [[ ${#box[@]} == 4 ]] && break
+      sleep 1
+    done
     [[ ${#box[@]} == 4 ]] || return 1
     a shell input swipe $(((box[0] + box[2]) / 2)) $(((box[1] + box[3]) / 2)) $(((box[0] + box[2]) / 2)) $(((box[1] + box[3]) / 2)) 900
   }
@@ -1035,6 +1040,9 @@ sys.exit(0 if ok else 1)'; }
       tap_text "Use screen lock"
       for i in $(seq 1 10); do [[ $(front) != *$PKG/.MainActivity* ]] && break; sleep 1; done
       [[ $(front) != *$PKG/.MainActivity* ]] || fail "the screen lock's screen didn't open: $(front)"
+      # Android 10's screen offers the fingerprint first, with its own Use PIN.
+      KEEP_LOCK=1 await_text 10 "Use PIN" || fail "the screen lock's screen has no Use PIN: $(screen_text | tr '\n' '|')"
+      tap_text "Use PIN"
       sleep 2
     }
     share_recipes Ann
@@ -1060,7 +1068,11 @@ sys.exit(0 if ok else 1)'; }
       sleep 3
       shot sharing-return-$way
       # Whatever comes back, the screen lock's screen or Ovenlight's lock, nothing opens unlocked.
-      [[ $(front) != *$PKG/.MainActivity* ]] && { note "back through the $way: the screen lock's screen, which Back cancels"; a shell input keyevent KEYCODE_BACK; sleep 3; }
+      if [[ $(front) != *$PKG/.MainActivity* ]]; then
+        note "back through the $way: the screen lock's screen, which Back cancels"
+        # Back leaves the PIN for the fingerprint, then cancels.
+        for i in 1 2 3; do [[ $(front) == *$PKG/.MainActivity* ]] && break; a shell input keyevent KEYCODE_BACK; sleep 3; done
+      fi
       locked || { shot sharing-failed; fail "back through the $way from the screen lock's screen without the lock: $(screen_text | tr '\n' '|')"; }
       guests | python3 -c 'import json, sys; sys.exit(0 if not any(i["to"].startswith("Bo") for i in json.load(sys.stdin)["invites"]) else 1)' || fail "an invite for Bo without the screen lock"
       note "Home from the screen lock's screen, back through the $way: Ovenlight is locked, and no invite was made"
