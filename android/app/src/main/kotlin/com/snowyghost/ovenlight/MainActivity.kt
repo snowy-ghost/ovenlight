@@ -49,11 +49,20 @@ class MainActivity : ComponentActivity() {
     /** The return from a Custom Tab under way. */
     private var returning: Job? = null
 
+    /** Whether to lock waits for the answer of the screen lock asked for again (see onStart). */
+    private var lockCheckWaits = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         if (givesWayToAnotherOvenlight()) return finishAndRemoveTask()
-        unlockPrompt = UnlockPrompt(this, confirmedAfterRestart = { lifecycleScope.launch { lock.unlock(screenLockEntered) } })
+        unlockPrompt = UnlockPrompt(
+            this, confirmedAfterRestart = { lifecycleScope.launch { lock.unlock(screenLockEntered) } },
+            confirmAnswered = { confirmed ->
+                if (confirmed) lock.screenLockEntered()
+                checkLock()
+            },
+        )
         // Collected while stopped too: the tab is in front then, and Ovenlight comes back over it.
         // A tab waits for the unlock, as iOS's sheets wait under the lock window.
         lifecycleScope.launch {
@@ -98,12 +107,24 @@ class MainActivity : ComponentActivity() {
      */
     override fun onStart() {
         super.onStart()
-        lock.willBecomeActive()
+        // Back from Android 10's screen lock screen asked for again before an invite or a
+        // removal: its answer arrives after this, and a yes means the time away doesn't count.
+        if (unlockPrompt.confirming && unlockPrompt.showingCredentialScreen) lockCheckWaits = true else lock.willBecomeActive()
         model.lifecycle.activityStarted()
     }
 
+    private fun checkLock() {
+        lockCheckWaits = false
+        lock.willBecomeActive()
+    }
+
+    /** Asks for the screen lock again before anything that changes who can open an app (see [UnlockPrompt.confirm]). */
+    suspend fun confirmOwner(reason: String): Boolean = unlockPrompt.confirm(reason)
+
     override fun onResume() {
         super.onResume()
+        // The answer always comes before this; should it not, the lock doesn't wait for it any longer.
+        if (lockCheckWaits) checkLock()
         lock.screenLockChecked(getSystemService(KeyguardManager::class.java).isDeviceSecure)
         lifecycleScope.launch { lock.didBecomeActive(unlockPrompt) }
         returnedFromTab()
@@ -112,9 +133,11 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         if (isChangingConfigurations) return
-        // Android 10's screen lock screen, asked for while locked, stops Ovenlight without
-        // the person leaving it: an excursion that doesn't start the lock's clock.
-        if (unlockPrompt.showingCredentialScreen) model.lifecycle.beginExcursion() else lock.didEnterBackground()
+        // Android 10's screen lock screen stops Ovenlight without the person leaving it: an
+        // excursion. Asked for to unlock, it doesn't start the lock's clock; asked for again
+        // before an invite or a removal, it does, as a picker does, until its answer (see onStart).
+        if (unlockPrompt.showingCredentialScreen) model.lifecycle.beginExcursion()
+        if (!unlockPrompt.showingCredentialScreen || unlockPrompt.confirming) lock.didEnterBackground()
         model.lifecycle.activityStopped()
     }
 

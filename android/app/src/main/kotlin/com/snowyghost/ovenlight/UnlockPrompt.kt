@@ -25,12 +25,18 @@ import kotlinx.coroutines.suspendCancellableCoroutine
  * screen at once when none is enrolled.
  *
  * Register it in the activity's onCreate: the screen lock's screen answers through an
- * activity result. [confirmedAfterRestart] takes a yes that comes with nothing waiting for it.
+ * activity result. [confirmedAfterRestart] takes a yes that comes with nothing waiting for it,
+ * and [confirmAnswered] the screen's answer to [confirm], as it arrives, before Ovenlight shows.
  */
-class UnlockPrompt(private val activity: ComponentActivity, confirmedAfterRestart: () -> Unit) : Authenticator {
+class UnlockPrompt(
+    private val activity: ComponentActivity,
+    confirmedAfterRestart: () -> Unit,
+    private val confirmAnswered: (Boolean) -> Unit,
+) : Authenticator {
     private var credentialAnswer: CompletableDeferred<Boolean>? = null
     private val credentialScreen = activity.registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         val confirmed = it.resultCode == Activity.RESULT_OK
+        if (confirming) confirmAnswered(confirmed)
         val waiting = credentialAnswer
         // Nothing waits when Android ended Ovenlight's process while the screen lock's screen was
         // up, and this activity is the one it made again. The yes is still the screen lock's own:
@@ -44,25 +50,45 @@ class UnlockPrompt(private val activity: ComponentActivity, confirmedAfterRestar
     var showingCredentialScreen = false
         private set
 
-    override suspend fun authenticate(): Authenticator.Result {
+    /** True from the start of [confirm] until it answers. */
+    var confirming = false
+        private set
+
+    override suspend fun authenticate(): Authenticator.Result = authenticate(activity.getString(R.string.unlock_prompt_title))
+
+    /**
+     * The screen lock again, while unlocked, before anything that changes who can open an app
+     * (iOS's OwnerAuth), with [reason] as the prompt's title. A phone with no screen lock has
+     * nothing to ask for, and Ovenlight already opens without one there (see [LockManager]).
+     */
+    suspend fun confirm(reason: String): Boolean {
+        confirming = true
+        try {
+            val result = authenticate(reason)
+            return result == Authenticator.Result.Success || result == Authenticator.Result.NoScreenLock
+        } finally {
+            confirming = false
+        }
+    }
+
+    private suspend fun authenticate(title: String): Authenticator.Result {
         val keyguard = activity.getSystemService(KeyguardManager::class.java)
         if (!keyguard.isDeviceSecure) return Authenticator.Result.NoScreenLock
         // With the screen lock among its choices, the prompt always answers.
-        if (Build.VERSION.SDK_INT >= 30) return prompt(withScreenLock = true) ?: Authenticator.Result.Canceled
+        if (Build.VERSION.SDK_INT >= 30) return prompt(title, withScreenLock = true) ?: Authenticator.Result.Canceled
         val biometrics = activity.getSystemService(BiometricManager::class.java)
         @Suppress("DEPRECATION") // canAuthenticate(Int) is API 30.
-        if (biometrics.canAuthenticate() != BiometricManager.BIOMETRIC_SUCCESS) return credential(keyguard)
+        if (biometrics.canAuthenticate() != BiometricManager.BIOMETRIC_SUCCESS) return credential(keyguard, title)
         // Any error but a cancel (a fingerprint locked out after too many tries, a sensor that
         // isn't available) goes on to the screen lock, as iOS falls back to the passcode.
-        return when (val answer = prompt(withScreenLock = false)) {
-            null, is Authenticator.Result.Failed -> credential(keyguard)
+        return when (val answer = prompt(title, withScreenLock = false)) {
+            null, is Authenticator.Result.Failed -> credential(keyguard, title)
             else -> answer
         }
     }
 
     /** The prompt's answer, or null when Android 10's button for the screen lock was tapped. */
-    private suspend fun prompt(withScreenLock: Boolean): Authenticator.Result? = suspendCancellableCoroutine { done ->
-        val title = activity.getString(R.string.unlock_prompt_title)
+    private suspend fun prompt(title: String, withScreenLock: Boolean): Authenticator.Result? = suspendCancellableCoroutine { done ->
         val builder = BiometricPrompt.Builder(activity).setTitle(title)
         if (withScreenLock && Build.VERSION.SDK_INT >= 30) {
             builder.setAllowedAuthenticators(BIOMETRIC_WEAK or DEVICE_CREDENTIAL)
@@ -92,9 +118,9 @@ class UnlockPrompt(private val activity: ComponentActivity, confirmedAfterRestar
         })
     }
 
-    private suspend fun credential(keyguard: KeyguardManager): Authenticator.Result {
+    private suspend fun credential(keyguard: KeyguardManager, title: String): Authenticator.Result {
         @Suppress("DEPRECATION") // The Android 10 path only; later versions use the prompt.
-        val intent: Intent = keyguard.createConfirmDeviceCredentialIntent(activity.getString(R.string.unlock_prompt_title), null)
+        val intent: Intent = keyguard.createConfirmDeviceCredentialIntent(title, null)
             ?: return Authenticator.Result.NoScreenLock
         val answer = CompletableDeferred<Boolean>().also { credentialAnswer = it }
         showingCredentialScreen = true

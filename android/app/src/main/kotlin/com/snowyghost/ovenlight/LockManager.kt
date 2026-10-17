@@ -95,6 +95,11 @@ class LockManager(
         locked.value = true
     }
 
+    /** The screen lock was just entered again while unlocked (see UnlockPrompt.confirm): the time it kept Ovenlight stopped doesn't lock it. */
+    fun screenLockEntered() {
+        backgroundedAt = null
+    }
+
     suspend fun didBecomeActive(authenticator: Authenticator) {
         if (!locked.value || !promptsWhenActive) return
         promptsWhenActive = false
