@@ -138,6 +138,28 @@ class JoinViewsTests {
         inEveryLook(ConnectionCopy.privateServer("hs.example.com", "Riley"), "Join")
     }
 
+    /** On a phone on its side the question and Join show without scrolling, in every look. */
+    @Test
+    @Config(qualifiers = "w915dp-h412dp")
+    fun testOnItsSideTheQuestionAndJoinShowWithoutScrolling() {
+        show()
+        composeRule.inEveryLook(look) {
+            composeRule.onNodeWithText(ConnectionCopy.joinTitle("Riley", "Echo Board")).assertIsDisplayed()
+            composeRule.onNodeWithText("Join").assertIsDisplayed()
+        }
+    }
+
+    /** And another connection server's warning shows with Join, without scrolling. */
+    @Test
+    @Config(qualifiers = "w915dp-h412dp")
+    fun testOnItsSideTheConnectionServerWarningShowsWithoutScrolling() {
+        show(JoinRequest(Result.success(invite.copy(control = URI("https://hs.example.com")))))
+        composeRule.inEveryLook(look) {
+            composeRule.onNodeWithText(ConnectionCopy.privateServer("hs.example.com", "Riley")).assertIsDisplayed()
+            composeRule.onNodeWithText("Join").assertIsDisplayed()
+        }
+    }
+
     @Test
     fun testJoiningThenOpeningTheApp() {
         val opened = mutableListOf<WebApp>()

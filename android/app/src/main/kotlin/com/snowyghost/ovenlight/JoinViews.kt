@@ -435,15 +435,6 @@ private fun JoinInvite(invite: InviteLink, state: JoinState, close: () -> Unit) 
                                 val text = ConnectionCopy.joinDetail(invite.owner, invite.name, invite.to)
                                 val spoken = "$text ${ConnectionCopy.appAddress(invite.host)}"
                                 detail(text, Modifier.semantics { contentDescription = spoken })
-                                if (!invite.usesTailscaleControl) {
-                                    Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                        Icon(painterResource(R.drawable.ic_warning), contentDescription = null, tint = colors.tertiary, modifier = Modifier.size(18.dp))
-                                        Text(
-                                            ConnectionCopy.privateServer(invite.control.bareHost.orEmpty(), invite.owner),
-                                            style = MaterialTheme.typography.bodySmall, color = colors.tertiary,
-                                        )
-                                    }
-                                }
                             }
                         }
                     }
@@ -472,6 +463,16 @@ private fun JoinInvite(invite: InviteLink, state: JoinState, close: () -> Unit) 
                     phase is JoinPhase.Failed || (phase == null && preflight == Preflight.OwnApp) -> primary(stringResource(R.string.join_done), close)
                     phase != null -> Unit
                     else -> {
+                        // With the actions, so it shows whenever Join does.
+                        if (!invite.usesTailscaleControl) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Icon(painterResource(R.drawable.ic_warning), contentDescription = null, tint = colors.tertiary, modifier = Modifier.size(18.dp))
+                                Text(
+                                    ConnectionCopy.privateServer(invite.control.bareHost.orEmpty(), invite.owner),
+                                    style = MaterialTheme.typography.bodySmall, color = colors.tertiary,
+                                )
+                            }
+                        }
                         primary(stringResource(R.string.join_join)) { state.accept(invite) }
                         TextButton(onClick = close) { Text(stringResource(R.string.join_not_now)) }
                     }
