@@ -417,9 +417,8 @@ final class MembershipNode: ObservableObject {
     }
 
     /// The MagicDNS suffix of the owner's tailnet: from the node's status, or as last seen,
-    /// so an app opened before the node reports still routes through it. It outlives Sign
-    /// Out (the next sign-in replaces it) and goes with Stop Using My Own Computers. Nil for
-    /// a guest.
+    /// so an app opened before the node reports still routes through it. It goes with Sign
+    /// Out and Stop Using My Own Computers. Nil for a guest.
     var magicDNSSuffixSeen: String? {
         guard isOwner else { return nil }
         if let suffix = status?.tailnet?.magicDNSSuffix, !suffix.isEmpty { return suffix }
@@ -848,14 +847,21 @@ final class NodeManager: ObservableObject {
         Task { await owner.ensureRunning() }
     }
 
-    /// Undoes `enableOwner` while no account is signed in: the owner's node logs out and is
-    /// forgotten with its tailnet, and the launcher goes back to its welcome when nothing
-    /// else is saved.
+    /// The owner's node is forgotten: the apps found on the owner's computers go too (the
+    /// app sets this).
+    var onOwnerForgotten: () async -> Void = {}
+
+    /// Undoes `enableOwner`: Sign Out, and Stop Using My Own Computers before a sign-in. The
+    /// owner's node logs out and is forgotten with its tailnet, the apps found on the owner's
+    /// computers go with their data, and the launcher goes back to its welcome when nothing
+    /// else is saved. Guest nodes are untouched.
     func disableOwner() async {
         ownerEnabled = false
         UserDefaults.standard.removeObject(forKey: Self.ownerEnabledKey)
         await owner.logOutAndForget()
         MembershipNode.rememberOwnerSuffix(nil)
+        // Once the node has stopped, so no discovery from before can bring them back.
+        await onOwnerForgotten()
     }
 
     // MARK: Lifecycle
@@ -880,13 +886,6 @@ final class NodeManager: ObservableObject {
     /// Tries the owner's node again after a failure.
     func restart() async {
         await owner.restart()
-    }
-
-    /// Signs this iPhone out of the owner's tailnet and forgets its node, then starts
-    /// over at login. Guest nodes are untouched.
-    func signOut() async {
-        await owner.logOutAndForget()
-        await owner.start()
     }
 
     func rediscover() async {
