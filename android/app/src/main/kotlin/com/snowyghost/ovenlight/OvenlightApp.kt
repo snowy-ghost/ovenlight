@@ -117,7 +117,12 @@ class AppModel(context: Context) {
             }
         }
         scope.launch { nodes.owner.discovered.collect { registry.mergeDiscovered(it) } }
-        nodes.onOwnerForgotten = registry::removeDiscovered
+        nodes.onOwnerForgotten = {
+            // As access ending closes a guest's app: one open as it goes closes first.
+            router.openApp.value?.let { if (it.discovered && !it.isShared) router.openApp.value = null }
+            registry.removeDiscovered()
+        }
+        scope.launch { nodes.finishSignOut() }
         // Opening an app, from anywhere, clears its new dot. Closing one drops its Send feedback;
         // the lock, which leaves the app open, doesn't.
         scope.launch {

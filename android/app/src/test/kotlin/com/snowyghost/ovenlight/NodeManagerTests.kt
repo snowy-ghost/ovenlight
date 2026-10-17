@@ -106,6 +106,39 @@ class NodeManagerTests {
     }
 
     @Test
+    fun testASignOutCutShortFinishesAtLaunch() = runTest {
+        val nodes = manager(FakeClients())
+        val webData = object : AppRegistry.WebData {
+            override fun discard(app: UUID) {}
+            override suspend fun clear(store: UUID) {}
+            override fun delete(store: UUID) {}
+            override suspend fun stores() = emptyList<UUID>()
+        }
+        val registry = AppRegistry(File(folder, "apps"), session = { null }, webData = webData, iconPNG = { null }, scope = backgroundScope)
+        nodes.onOwnerForgotten = registry::removeDiscovered
+        // What the process left dying during a Sign Out: owner mode off, the node's state and the
+        // apps found still there, and one removed by hand still dismissed.
+        val found = listOf(
+            DiscoveredApp("recipe-box.tailabc123.ts.net", OvenlightManifest(name = "Recipe Box", version = 1)),
+            DiscoveredApp("notes.tailabc123.ts.net", OvenlightManifest(name = "Notes", version = 1)),
+        )
+        registry.mergeDiscovered(found)
+        registry.remove(registry.apps.single { it.name == "Notes" }.id)
+        val state = nodes.stateDirectory(Membership.ownerID).apply { mkdirs() }
+        File(state, "tailscaled.state").writeText("{}")
+
+        nodes.finishSignOut()
+        assertFalse("its login doesn't come back", state.exists())
+        assertEquals(emptyList<WebApp>(), registry.apps)
+        registry.mergeDiscovered(found)
+        assertEquals("signing in again finds them all", listOf("Recipe Box", "Notes"), registry.apps.map { it.name })
+
+        nodes.enableOwner()
+        nodes.finishSignOut()
+        assertEquals("with owner mode on, nothing goes", 2, registry.apps.size)
+    }
+
+    @Test
     fun testAClosedNodeIsNeverStartedAgain() = runTest {
         val clients = FakeClients()
         val nodes = manager(clients)

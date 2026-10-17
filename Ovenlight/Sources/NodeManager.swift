@@ -3,6 +3,7 @@ import Foundation
 import Network
 import os
 import TailscaleKit
+import UIKit
 import WebKit
 
 /// Where one of Ovenlight's connections is: the owner's own tailnet, or a guest node in
@@ -777,9 +778,23 @@ final class NodeManager: ObservableObject {
         ownerEnabled = false
         UserDefaults.standard.removeObject(forKey: Self.ownerEnabledKey)
         await owner.logOutAndForget()
-        MembershipNode.rememberOwnerSuffix(nil)
         // Once the node has stopped, so no discovery from before can bring them back.
+        await forgetOwner()
+    }
+
+    private func forgetOwner() async {
+        MembershipNode.rememberOwnerSuffix(nil)
         await onOwnerForgotten()
+    }
+
+    /// Finishes a Sign Out that Ovenlight quit during, at launch: with owner mode off, the
+    /// owner's node state and the apps found on the owner's computers go. Nothing is there
+    /// to go otherwise. Not before the first unlock, when owner mode reads as off.
+    func finishSignOut() async {
+        guard !ownerEnabled, !UserDefaults.standard.bool(forKey: Self.ownerEnabledKey),
+              UIApplication.shared.isProtectedDataAvailable else { return }
+        try? FileManager.default.removeItem(at: Self.stateDirectory(for: Membership.ownerID))
+        await forgetOwner()
     }
 
     // MARK: Lifecycle

@@ -11,10 +11,15 @@ struct OvenlightApp: App {
     init() {
         let registry = AppRegistry()
         _registry = StateObject(wrappedValue: registry)
-        NodeManager.shared.onOwnerForgotten = { [weak registry] in await registry?.removeDiscovered() }
         let lock = LockManager { Self.hasSavedData() }
         _lock = StateObject(wrappedValue: lock)
-        _router = StateObject(wrappedValue: Router(isLocked: { [weak lock] in lock?.holdsLinks ?? true }))
+        let router = Router(isLocked: { [weak lock] in lock?.holdsLinks ?? true })
+        _router = StateObject(wrappedValue: router)
+        NodeManager.shared.onOwnerForgotten = { [weak registry, weak router] in
+            // As access ending closes a guest's app: one open as it goes closes first.
+            if let open = router?.openApp, open.discovered, !open.isShared { router?.openApp = nil }
+            await registry?.removeDiscovered()
+        }
         #if DEBUG
         // Simulator testing: `-resetTips YES` shows first-run tips again.
         if UserDefaults.standard.bool(forKey: "resetTips") { try? Tips.resetDatastore() }
@@ -269,6 +274,7 @@ struct RootView: View {
         .task {
             guests.registry = registry
             guests.router = router
+            await node.finishSignOut()
             // Leftovers from apps removed while their web view was still closing.
             try? await Task.sleep(for: .seconds(5))
             await registry.sweepUnusedDataStores()

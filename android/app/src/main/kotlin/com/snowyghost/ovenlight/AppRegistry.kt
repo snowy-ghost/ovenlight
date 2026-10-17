@@ -165,8 +165,15 @@ class AppRegistry(
         remove(listOf(app))
     }
 
-    /** Removes the apps found on the owner's computers, and everything they stored, as the owner signs out. Signing in again finds them. */
+    /**
+     * Removes the apps found on the owner's computers, and everything they stored, as the owner
+     * signs out. The tailnet is forgotten, so its dismissals go too: signing in again finds them all.
+     */
     suspend fun removeDiscovered() = withContext(NonCancellable) {
+        if (dismissedHosts.isNotEmpty()) {
+            dismissedHosts = emptySet()
+            save()
+        }
         remove(apps.filter { it.discovered && !it.isShared })
     }
 

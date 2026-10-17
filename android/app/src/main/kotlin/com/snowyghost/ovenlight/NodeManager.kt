@@ -713,9 +713,23 @@ class NodeManager(
         preferences.remove(OWNER_ENABLED_KEY)
         owner.logOutAndForget()
         clients.forget(Membership.ownerID)
-        rememberOwnerSuffix(null)
         // Once the node has stopped, so no discovery from before can bring them back.
+        forgetOwner()
+    }
+
+    private suspend fun forgetOwner() {
+        rememberOwnerSuffix(null)
         onOwnerForgotten()
+    }
+
+    /**
+     * Finishes a Sign Out the process died during, at launch: with owner mode off, the owner's
+     * node state and the apps found on the owner's computers go. Nothing is there to go otherwise.
+     */
+    suspend fun finishSignOut() = withContext(NonCancellable) {
+        if (mutableOwnerEnabled.value) return@withContext
+        withContext(io) { stateDirectory(Membership.ownerID).deleteRecursively() }
+        forgetOwner()
     }
 
     /** Remembers the owner's tailnet (null forgets it). A different one changes routes. */
