@@ -106,6 +106,7 @@ import java.net.URI
 import kotlin.coroutines.resume
 import kotlin.math.abs
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.serialization.json.JsonObject
@@ -703,9 +704,9 @@ fun AppChromeHost(model: AppModel, page: AppPage, icon: Bitmap?, header: Color?,
     val dark = isSystemInDarkTheme()
 
     WatchPage(page.view, controller)
-    val look by page.look.collectAsState()
-    // The header for the next launch, as each load reads it.
-    LaunchedEffect(look) { StatusBarTint(PreferencesStore(context)).remember(look.header, app, dark) }
+    // The header for the next launch, as each read finds it, saved under the appearance it was
+    // read in: never the look already there, which an app reopened after a switch read in the other.
+    LaunchedEffect(page, dark) { page.look.drop(1).collect { StatusBarTint(PreferencesStore(context)).remember(it.header, app, dark) } }
     // Read again in the other appearance, and on opening an app that's loaded, which may have
     // switched while it was closed.
     LaunchedEffect(page, dark) {
