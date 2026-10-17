@@ -4,22 +4,26 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.junit4.accessibility.enableAccessibilityChecks
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.tryPerformAccessibilityChecks
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.SdkSuppress
 import java.net.URI
 import java.time.Instant
+import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -174,6 +178,66 @@ class ScreenAccessibilityTests {
             ),
             onClose = {},
         )
+    }
+
+    private val book = AdminApp("book-club", "Book Club", "https://book-club.tail1.ts.net/", online = true, shareable = true, guests = 2)
+    private val machine = OwnerSharing.Machine(
+        adminHost = "book-club.tail1.ts.net",
+        apps = listOf(book, AdminApp("budget", "Budget", "https://budget.tail1.ts.net/", online = false)),
+        guests = AdminGuestList(
+            guests = listOf(
+                AdminGuest("n1", "p1", "Sam", "book-club", "ovenlight-4k2x9q", claimedAt = Instant.ofEpochSecond(1_780_000_000), lastOpened = Instant.ofEpochSecond(1_784_000_000)),
+                AdminGuest("n4", "p1", "Sam", "book-club", "ovenlight-m7c1pw", claimedAt = Instant.ofEpochSecond(1_784_000_000), lastOpened = Instant.now()),
+                AdminGuest("n2", "p2", "Kim", "book-club", "ovenlight-r5j8de", claimedAt = Instant.ofEpochSecond(1_786_000_000)),
+            ),
+            invites = listOf(AdminInvite("i3", "Lee", "p3", "book-club", AdminInvite.sent, expires = Instant.now().plusSeconds(86_400))),
+            openedSince = Instant.ofEpochSecond(1_770_000_000),
+            taggedDevices = AdminTaggedDevices(apps = 1, guests = 3, tailnet = 5),
+        ),
+        feedback = listOf(AdminFeedback("f1", Instant.now().minusSeconds(1_800), "book-club", "Sam", "guest", note = "The chapter list stops scrolling.")),
+    )
+    private val sharing = SharingState(MutableStateFlow(listOf(machine)))
+
+    @Composable
+    private fun Sharing(root: SharingPage) = SharingScreen(sharing, root, onClose = {}, scope = rememberCoroutineScope())
+
+    @Test
+    fun testPeopleAndSharing() = check { Sharing(SharingPage.List) }
+
+    @Test
+    fun testPeopleAndSharingNotConnected() = check { SharingScreen(sharing.copy(isAvailable = false), SharingPage.List, onClose = {}, scope = rememberCoroutineScope()) }
+
+    @Test
+    fun testAnAppsPeopleWithARowMenu() = check(open = { composeRule.onNodeWithContentDescription("Sam options").performClick() }) {
+        Sharing(SharingPage.App(machine.id, "book-club"))
+    }
+
+    @Test
+    fun testSelectingPeople() = check(open = { composeRule.onNodeWithText("Kim").performTouchInput { longClick() } }) { Sharing(SharingPage.People) }
+
+    @Test
+    fun testAPersonsPage() = check { Sharing(SharingPage.Person(machine.id, "p1")) }
+
+    @Test
+    fun testAPersonsRemoval() = check(open = { composeRule.onNodeWithText("Remove Sam").performScrollTo().performClick() }) {
+        Sharing(SharingPage.Person(machine.id, "p1"))
+    }
+
+    @Test
+    fun testTheFeedbackInbox() = check { Sharing(SharingPage.Feedback()) }
+
+    @Test
+    fun testTheInviteComposer() = check { InviteComposerDialog(InviteComposer(machine, book), sharing, rememberCoroutineScope(), onDismiss = {}) }
+
+    @Test
+    fun testANewInvite() = check {
+        val composer = InviteComposer(machine, book).apply {
+            result = AdminShareResult(
+                AdminInvite("i9", "Jo", "p9", "book-club", AdminInvite.sent, expires = Instant.now().plusSeconds(7 * 86_400)),
+                link = "https://ovenlight.app/join#v=1&key=tskey-auth-k1&owner=Dimitri&app=book-club&invite=i9&host=book-club.tail1.ts.net&to=Jo",
+            )
+        }
+        InviteComposerDialog(composer, sharing, rememberCoroutineScope(), onDismiss = {})
     }
 
     @Test

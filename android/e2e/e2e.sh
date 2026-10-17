@@ -5,7 +5,7 @@
 # connector runs from this run's folder with its own HOME, config and state, logs in only to
 # the local Headscale, and stops by its recorded pid.
 #
-#   android/e2e/e2e.sh [gates | owner | signin [seconds] | screens | app | chrome | downloads | upload | return] [avd]
+#   android/e2e/e2e.sh [gates | owner | signin [seconds] | screens | app | chrome | downloads | upload | return | sharing] [avd]
 #
 # gates runs Phase 1's checks G2 to G5 through the debug lab. owner signs the owner's node in
 # with a preauth key and waits for the launcher to show both test apps. signin goes through
@@ -34,8 +34,15 @@
 # first WebSocket still open and answering, and its timers never held up for more than
 # Chromium's once a second out of sight. Then a POST to Pantry, which the connector refuses
 # from another site, goes back and opens Pantry outside.
+# sharing makes Recipes shareable and shares it from the phone: the tile menu's Share, the
+# invite composer with the screen lock asked for again, Send invite and Copy link, then People
+# from the menu, where the owner cancels the invite and removes a guest who joined from a
+# phone of their own (guest.go), checked on the connector. On Android 10 it confirms an invite
+# on the screen lock's own screen, and leaves that screen for Home. A second owner on a second
+# Headscale invites the phone, which joins once Phase 5's join sheet is in the tree.
 # Each writes what it saw to
-# android/e2e/out/: gates.txt, logs and screenshots.
+# android/e2e/out/: gates.txt, logs and screenshots. OVENLIGHT_E2E_PORT names the emulator's
+# console port, for a run beside another session's emulators.
 #
 # Needs Headscale v0.29.4 (docs/development.md#local-headscale) and the fixed AVD set
 # (android/scripts/avds.sh). The test CA lives in test-ca/ beside the SDK, made on the first
@@ -113,7 +120,7 @@ until_ok() {
 }
 
 [[ -x $HS ]] || fail "no headscale at $HS"
-[[ $SCENARIO =~ ^(gates|owner|signin|screens|app|chrome|downloads|upload|return)$ ]] || fail "unknown scenario $SCENARIO"
+[[ $SCENARIO =~ ^(gates|owner|signin|screens|app|chrome|downloads|upload|return|sharing)$ ]] || fail "unknown scenario $SCENARIO"
 
 say "the test CA in $CA, made once, and a *.$BASE certificate for this run"
 if [[ ! -f $CA/ca.pem ]]; then
@@ -122,7 +129,8 @@ if [[ ! -f $CA/ca.pem ]]; then
     -addext "basicConstraints=critical,CA:TRUE" -addext "keyUsage=critical,keyCertSign" -keyout $CA/ca.key -out $CA/ca.pem 2>/dev/null
 fi
 openssl req -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -subj "/CN=*.$BASE" -keyout $D/leaf.key -out $D/leaf.csr 2>/dev/null
-printf 'subjectAltName=DNS:*.%s\nextendedKeyUsage=serverAuth\nkeyUsage=critical,digitalSignature\nbasicConstraints=critical,CA:FALSE\n' $BASE > $D/leaf.ext
+# The second owner's network, in sharing, is riley.$BASE.
+printf 'subjectAltName=DNS:*.%s,DNS:*.riley.%s\nextendedKeyUsage=serverAuth\nkeyUsage=critical,digitalSignature\nbasicConstraints=critical,CA:FALSE\n' $BASE $BASE > $D/leaf.ext
 openssl x509 -req -in $D/leaf.csr -CA $CA/ca.pem -CAkey $CA/ca.key -CAcreateserial -CAserial $D/ca.srl -days 2 -extfile $D/leaf.ext -out $D/leaf.pem 2>/dev/null
 
 say "the debug build, which trusts that CA"
@@ -132,7 +140,18 @@ APK=$ROOT/android/app/build/outputs/apk/debug/app-debug.apk
 say "headscale on 127.0.0.1, base domain $BASE"
 HSPORT=$(port) METRICS=$(port) GRPC=$(port)
 CTRL=http://127.0.0.1:$HSPORT
-printf '%s\n' '{"acls": [{"action": "accept", "src": ["owner@"], "dst": ["owner@:*"]}]}' > $D/policy.hujson
+# What setup-sharing and publish --shareable write for app <slug>, with Headscale's user syntax
+# for the owner $1: their own devices, the app's node, and its guests to its port 443 alone.
+policy() {
+  local owner=$1 slug=${2:-}
+  [[ -n $slug ]] || { printf '{"acls": [{"action": "accept", "src": ["%s"], "dst": ["%s:*"]}]}\n' $owner $owner; return; }
+  printf '{"tagOwners": {"tag:ovenlight-app-%s": ["%s"], "tag:ovenlight-guest-%s": ["%s"]},\n' $slug $owner $slug $owner
+  printf ' "acls": [{"action": "accept", "src": ["%s"], "dst": ["%s:*", "tag:ovenlight-app-%s:*"]},\n' $owner $owner $slug
+  printf '          {"action": "accept", "src": ["tag:ovenlight-guest-%s"], "dst": ["tag:ovenlight-app-%s:443"]}]}\n' $slug $slug
+}
+shared=
+[[ $SCENARIO == sharing ]] && shared=recipes
+policy owner@ $shared > $D/policy.hujson
 cat > $D/headscale.yaml <<EOF
 server_url: $CTRL
 listen_addr: 127.0.0.1:$HSPORT
@@ -222,14 +241,17 @@ for app in recipes:Recipes pantry:Pantry; do
   c publish --config $D/config.json --state $D/st --port $(port) --name "$name" --slug $app \
     --run "python3 $ROOT/android/e2e/app.py" --dir "$D/$app" >> $D/publish.log 2>&1 || fail "publish $app: $(cat $D/publish.log)"
 done
+# Sharing drives Headscale's CLI for keys, devices and tags, as docs/development.md says.
+dev_headscale=
+[[ $SCENARIO == sharing ]] && dev_headscale="--dev-headscale $HS --dev-headscale-config $D/headscale.yaml"
 ( exec env HOME=$D/home OVENLIGHT_DEV=1 TS_NO_LOGS_NO_SUPPORT=1 $D/ovenlight run --config $D/config.json --state $D/st \
-    --control-url $CTRL --auth-key $KEY --dev-tls-cert $D/leaf.pem --dev-tls-key $D/leaf.key >> $D/connector.log 2>&1 ) &
+    --control-url $CTRL --auth-key $KEY --dev-tls-cert $D/leaf.pem --dev-tls-key $D/leaf.key $dev_headscale >> $D/connector.log 2>&1 ) &
 connector_pid=$!
 until_ok 120 sh -c "env HOME=$D/home $D/ovenlight status --config $D/config.json --state $D/st --json | grep -c '\"state\": \"serving\"' | grep -qx 2" ||
   fail "the connector didn't serve both apps"
 
 say "$AVD, booted from ready with a network capture, and the app"
-for p in $(seq 5554 2 5582); do
+for p in ${OVENLIGHT_E2E_PORT:-$(seq 5554 2 5582)}; do
   if ! adb devices | grep -q "^emulator-${p}[[:space:]]"; then emulator_port=$p; break; fi
 done
 [[ -n $emulator_port ]] || fail "no free emulator port"
@@ -886,6 +908,213 @@ if [[ $SCENARIO == screens ]]; then
   a shell input tap $((w / 2)) $((h / 2)); sleep 3
   locked || fail "back through Recents without the lock: $(screen_text | tr '\n' '|')"
   note "back through Recents: locked"
+  say "PASSED"
+  exit 0
+fi
+
+if [[ $SCENARIO == sharing ]]; then
+  say "sharing: Recipes made shareable, as the owner's"
+  status_json() { c status --config $D/config.json --state $D/st --json; }
+  # The owner goes in the config by hand, as the connector's own e2e test does: publish --shareable
+  # records one only after a person types yes.
+  owner_of() { python3 -c 'import json, sys; print(next(a["nodeUser"] for a in json.load(sys.stdin)["apps"] if a["slug"] == sys.argv[1]))' "$1"; }
+  set_owner() { python3 -c 'import json, sys; c = json.load(open(sys.argv[1])); c.update(owner=sys.argv[2], ownerLabel=sys.argv[3]); json.dump(c, open(sys.argv[1], "w"))' "$@"; }
+  set_owner $D/config.json "$(status_json | owner_of recipes)" Dimitri
+  c publish --config $D/config.json --state $D/st --slug recipes --shareable >> $D/publish.log 2>&1 || fail "publish --shareable: $(tail -5 $D/publish.log)"
+  serving_shareable() { status_json | python3 -c '
+import json, sys
+apps = {a["slug"]: a for a in json.load(sys.stdin)["apps"]}
+ok = all(a.get("state") == "serving" for a in apps.values()) and "tag:ovenlight-app-recipes" in (apps["recipes"].get("tags") or [])
+sys.exit(0 if ok else 1)'; }
+  until_ok 120 serving_shareable || fail "Recipes never served as a shareable app node: $(status_json)"
+  # The connector's guests and invites, as the admin API lists them.
+  guests() { c guests --config $D/config.json --state $D/st --json; }
+  # Touches and holds what's named $1 (a tile's name), as a person does to open its menu.
+  hold() {
+    local box
+    box=($(bounds text "$1"))
+    [[ ${#box[@]} == 4 ]] || return 1
+    a shell input swipe $(((box[0] + box[2]) / 2)) $(((box[1] + box[3]) / 2)) $(((box[0] + box[2]) / 2)) $(((box[1] + box[3]) / 2)) 900
+  }
+  # The system's prompt for the screen lock again, titled $1, answered with fingerprint 1.
+  confirm_with_finger() {
+    KEEP_LOCK=1 await_text 15 "$1" || fail "no prompt for the screen lock titled \"$1\": $(screen_text | tr '\n' '|')"
+    a emu finger touch 1 >/dev/null
+  }
+  # Opens the composer from Recipes' menu, once the connector has said Recipes is shareable.
+  share_recipes() {
+    for i in 1 2 3 4 5 6; do
+      hold Recipes || fail "no Recipes tile"
+      await_text 5 "Share…" && break
+      a shell input keyevent KEYCODE_BACK; sleep 3
+    done
+    tap_text "Share…" || fail "Recipes' menu has no Share: $(screen_text | tr '\n' '|')"
+    await_text 10 "Share Recipes" "Their name, like Sam" || fail "no composer: $(screen_text | tr '\n' '|')"
+    tap_class android.widget.EditText
+    a shell input text "$1"; sleep 1
+    tap_text Create || fail "no Create"
+  }
+  owner_launcher
+
+  say "sharing: Share from Recipes' menu invites Sam, after the screen lock"
+  share_recipes Sam
+  confirm_with_finger "Share Recipes with Sam"
+  await_text 20 "Invite for Sam" "Invite code" "Send invite" "Copy link" || { shot sharing-failed; fail "no invite for Sam: $(screen_text | tr '\n' '|')"; }
+  shot sharing-invite
+  invite=$(guests | python3 -c 'import json, sys; print(next(i["id"] for i in json.load(sys.stdin)["invites"] if i["to"] == "Sam" and i["state"] == "sent"))') ||
+    fail "the connector has no invite for Sam"
+  note "Create asked for the screen lock, then showed Sam's invite with its code; the connector has it ($invite)"
+  tap_text "Send invite"
+  for i in $(seq 1 10); do [[ $(front) == *Chooser* ]] && break; sleep 1; done
+  [[ $(front) == *Chooser* ]] || fail "Send invite opened no Sharesheet: $(front)"
+  shot sharing-sheet
+  a shell input keyevent KEYCODE_BACK; sleep 2
+  await_text 10 "Invite for Sam" || fail "back from the Sharesheet, the invite is gone: $(screen_text | tr '\n' '|')"
+  tap_text "Copy link"
+  await_text 5 Copied || fail "Copy link didn't say Copied"
+  # A key in a link is a credential until used: the system log, which adb and bug reports read, never has one.
+  ! a logcat -d 2>/dev/null | LC_ALL=C grep -q 'ovenlight\.app/join' || fail "an invite link reached the system log"
+  note "Send invite opened the Sharesheet, Back came back to the invite, Copy link says Copied, and no link reached the system log"
+  tap_text Close
+  await_text 10 Recipes Pantry || fail "Close didn't close the invite"
+
+  say "sharing: Kim joins Recipes from a phone of her own, with an invite from the terminal"
+  # share needs a terminal, as a person types it; the link stays in this run's folder.
+  env HOME=$D/home OVENLIGHT_DEV=1 TS_NO_LOGS_NO_SUPPORT=1 /usr/bin/script -q $D/share.log $D/ovenlight share recipes --to Kim --config $D/config.json --state $D/st < /dev/null > /dev/null 2>&1 ||
+    fail "share --to Kim failed: $(tail -5 $D/share.log)"
+  link=$(LC_ALL=C grep -o 'https://ovenlight\.app/join#[^[:space:][:cntrl:]]*' $D/share.log | head -1)
+  rm $D/share.log
+  [[ -n $link ]] || fail "share printed no invite link"
+  printf '%s\n' "$link" | env TS_NO_LOGS_NO_SUPPORT=1 TS_DISABLE_PORTMAPPER=1 go -C $ROOT/connector run $ROOT/android/e2e/guest.go $CTRL $D/guest $CA/ca.pem > $D/guest.log 2>&1 ||
+    fail "Kim's phone didn't claim the invite: $(tail -3 $D/guest.log)"
+  note "Kim's phone joined the owner's Headscale and claimed the invite"
+  # The menu reuses an answer younger than 15 s, so it may take another look to count Kim.
+  for i in 1 2 3 4 5 6; do
+    hold Recipes || fail "no Recipes tile"
+    await_text 5 "People (1)" && break
+    a shell input keyevent KEYCODE_BACK; sleep 4
+  done
+  tap_text "People (1)" || fail "Recipes' menu doesn't count Kim: $(screen_text | tr '\n' '|')"
+  await_text 15 Kim "For Sam" || { shot sharing-failed; fail "Recipes' people show neither Kim nor Sam's invite: $(screen_text | tr '\n' '|')"; }
+  shot sharing-people
+  note "Recipes' menu says People (1), which shows Kim and Sam's open invite"
+
+  say "sharing: Cancel invite takes Sam's invite back"
+  tap_text "For Sam options" && await_text 5 "Cancel invite" && tap_text "Cancel invite" || fail "no Cancel invite in Sam's invite's menu"
+  for i in $(seq 1 15); do screen_text | grep -qxF "For Sam" || break; sleep 1; done
+  ! screen_text | grep -qxF "For Sam" || fail "Sam's invite is still listed"
+  guests | python3 -c 'import json, sys; sys.exit(0 if all(i["state"] != "sent" for i in json.load(sys.stdin)["invites"] if i["id"] == sys.argv[1]) else 1)' "$invite" ||
+    fail "the connector still has Sam's invite open"
+  note "Sam's invite left the list, and the connector has it canceled"
+
+  say "sharing: Remove Kim, after the screen lock"
+  tap_text "Kim options" && await_text 5 "Remove Kim" && tap_text "Remove Kim" || fail "no Remove Kim in Kim's menu"
+  await_text 5 "Remove Kim?" || fail "Remove Kim didn't ask first"
+  tap_text Remove
+  confirm_with_finger "Remove Kim"
+  for i in $(seq 1 20); do screen_text | grep -qxF Kim || break; sleep 1; done
+  ! screen_text | grep -qxF Kim || { shot sharing-failed; fail "Kim is still listed"; }
+  shot sharing-removed
+  guests | python3 -c 'import json, sys; sys.exit(0 if all(g.get("removedAt") for g in json.load(sys.stdin)["guests"] if g["name"] == "Kim") else 1)' ||
+    fail "the connector still has Kim"
+  ! $HS -c $D/headscale.yaml nodes list -o json | grep -q '"ovenlight-guest' || fail "Kim's phone is still in the owner's network"
+  note "Kim left the list, the connector removed her, and her phone left the owner's network"
+  a shell input keyevent KEYCODE_BACK; sleep 2
+  await_text 10 Recipes Pantry || fail "Back didn't close People"
+
+  if [[ $(a shell getprop ro.build.version.sdk | tr -d '\r') == 29 ]]; then
+    say "sharing, Android 10: at Immediately, the screen lock's own screen before an invite"
+    tap_text More && sleep 1 && tap_text Settings
+    await_text 10 "Require screen lock" || fail "no Settings"
+    tap_text "Require screen lock" && sleep 1 && tap_text Immediately
+    await_text 10 Immediately || fail "the delay didn't change"
+    a shell input keyevent KEYCODE_BACK; sleep 2
+    # Use screen lock opens the screen lock's own screen, which stops Ovenlight.
+    open_screen_lock() {
+      KEEP_LOCK=1 await_text 15 "Use screen lock" || fail "no Use screen lock: $(screen_text | tr '\n' '|')"
+      tap_text "Use screen lock"
+      for i in $(seq 1 10); do [[ $(front) != *$PKG/.MainActivity* ]] && break; sleep 1; done
+      [[ $(front) != *$PKG/.MainActivity* ]] || fail "the screen lock's screen didn't open: $(front)"
+      sleep 2
+    }
+    share_recipes Ann
+    open_screen_lock
+    a shell input text 1111; a shell input keyevent KEYCODE_ENTER
+    KEEP_LOCK=1 await_text 20 "Invite for Ann" || { shot sharing-failed; fail "the screen lock entered, but no invite for Ann: $(screen_text | tr '\n' '|')"; }
+    ! locked || fail "a second prompt after the screen lock's own screen"
+    note "the screen lock entered on its own screen made Ann's invite, with no second prompt"
+    tap_text Close
+    await_text 10 Recipes || fail "Close didn't close the invite"
+
+    for way in icon Recents; do
+      share_recipes "Bo $way"
+      open_screen_lock
+      a shell input keyevent KEYCODE_HOME; sleep 3
+      if [[ $way == icon ]]; then
+        a shell monkey -p $PKG -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
+      else
+        a shell input keyevent KEYCODE_APP_SWITCH; sleep 3
+        size=$(a shell wm size | tail -1 | sed 's/.*: //' | tr -d '\r'); w=${size%x*}; h=${size#*x}
+        a shell input tap $((w / 2)) $((h / 2))
+      fi
+      sleep 3
+      shot sharing-return-$way
+      # Whatever comes back, the screen lock's screen or Ovenlight's lock, nothing opens unlocked.
+      [[ $(front) != *$PKG/.MainActivity* ]] && { note "back through the $way: the screen lock's screen, which Back cancels"; a shell input keyevent KEYCODE_BACK; sleep 3; }
+      locked || { shot sharing-failed; fail "back through the $way from the screen lock's screen without the lock: $(screen_text | tr '\n' '|')"; }
+      guests | python3 -c 'import json, sys; sys.exit(0 if not any(i["to"].startswith("Bo") for i in json.load(sys.stdin)["invites"]) else 1)' || fail "an invite for Bo without the screen lock"
+      note "Home from the screen lock's screen, back through the $way: Ovenlight is locked, and no invite was made"
+      unlock_now
+      a shell input keyevent KEYCODE_BACK; sleep 2
+      await_text 10 Recipes || fail "the launcher didn't come back: $(screen_text | tr '\n' '|')"
+    done
+  fi
+
+  say "sharing: a second owner, Riley, on a Headscale of their own, invites this phone"
+  B=$D/riley
+  mkdir -p $B/home $B/garden
+  HSPORT_B=$(port) METRICS_B=$(port) GRPC_B=$(port)
+  CTRL_B=http://127.0.0.1:$HSPORT_B
+  sed -e "s|$D/|$B/|g" -e "s|127.0.0.1:$HSPORT\$|127.0.0.1:$HSPORT_B|" -e "s|127.0.0.1:$METRICS\$|127.0.0.1:$METRICS_B|" \
+    -e "s|127.0.0.1:$GRPC\$|127.0.0.1:$GRPC_B|" -e "s|base_domain: $BASE|base_domain: riley.$BASE|" $D/headscale.yaml > $B/headscale.yaml
+  policy riley@ garden > $B/policy.hujson
+  $HS -c $B/headscale.yaml serve > $B/headscale.log 2>&1 &
+  pids="$pids $!"
+  until_ok 30 $HS -c $B/headscale.yaml users list || fail "Riley's headscale didn't start"
+  $HS -c $B/headscale.yaml users create riley >/dev/null
+  RILEY_ID=$($HS -c $B/headscale.yaml users list -o json | python3 -c 'import json, sys; print(json.load(sys.stdin)[0]["id"])')
+  KEY_B=$($HS -c $B/headscale.yaml preauthkeys create -u $RILEY_ID --reusable -e 2h -o json | python3 -c 'import json, sys; print(json.load(sys.stdin)["key"])')
+  printf '%s\n' '<!doctype html><meta charset="utf-8"><title>Garden</title><h1>Garden</h1>' > $B/garden/index.html
+  cr() { env HOME=$B/home OVENLIGHT_DEV=1 TS_NO_LOGS_NO_SUPPORT=1 $D/ovenlight "$@" --config $B/config.json --state $B/st; }
+  cr publish --port $(port) --name Garden --slug garden --run "python3 $ROOT/android/e2e/app.py" --dir $B/garden >> $D/publish.log 2>&1 || fail "publish garden: $(tail -5 $D/publish.log)"
+  ( exec env HOME=$B/home OVENLIGHT_DEV=1 TS_NO_LOGS_NO_SUPPORT=1 $D/ovenlight run --config $B/config.json --state $B/st --control-url $CTRL_B --auth-key $KEY_B \
+      --dev-tls-cert $D/leaf.pem --dev-tls-key $D/leaf.key --dev-headscale $HS --dev-headscale-config $B/headscale.yaml >> $B/connector.log 2>&1 ) &
+  pids="$pids $!"
+  until_ok 120 sh -c "env HOME=$B/home $D/ovenlight status --config $B/config.json --state $B/st --json | grep -q '\"state\": \"serving\"'" || fail "Riley's connector didn't serve Garden"
+  set_owner $B/config.json "$(cr status --json | owner_of garden)" Riley
+  cr publish --slug garden --shareable >> $D/publish.log 2>&1 || fail "publish garden --shareable: $(tail -5 $D/publish.log)"
+  until_ok 120 sh -c "env HOME=$B/home $D/ovenlight status --config $B/config.json --state $B/st --json | grep -q 'tag:ovenlight-app-garden'" || fail "Garden never served as a shareable app node"
+  env HOME=$B/home OVENLIGHT_DEV=1 TS_NO_LOGS_NO_SUPPORT=1 /usr/bin/script -q $B/share.log $D/ovenlight share garden --to Dimitri --config $B/config.json --state $B/st < /dev/null > /dev/null 2>&1 ||
+    fail "share garden failed: $(tail -5 $B/share.log)"
+  riley_link=$(LC_ALL=C grep -o 'https://ovenlight\.app/join#[^[:space:][:cntrl:]]*' $B/share.log | head -1)
+  rm $B/share.log
+  [[ $riley_link == *"control=http%3A%2F%2F127.0.0.1%3A$HSPORT_B"* ]] || fail "Riley's invite doesn't name Riley's Headscale"
+  note "Riley's connector serves Garden, shareable, and made an invite for this phone"
+  if grep -q 'fun JoinFlowView' $ROOT/android/app/src/main/kotlin/com/snowyghost/ovenlight/JoinViews.kt; then
+    a reverse tcp:$HSPORT_B tcp:$HSPORT_B >/dev/null
+    # Quoted whole for the device's shell, which reads # as a comment and & as background.
+    a shell "am start -n $PKG/.MainActivity -a android.intent.action.VIEW -d '$riley_link'" >/dev/null
+    await_text 20 "Join Riley's Garden?" || { shot sharing-failed; fail "the invite didn't ask to join: $(screen_text | tr '\n' '|')"; }
+    tap_text Join
+    await_text 90 "Garden is ready" || { shot sharing-failed; fail "the phone didn't join Riley's Garden: $(screen_text | tr '\n' '|')"; }
+    tap_text "Open Garden"
+    await_text 40 Garden || fail "Garden didn't open"
+    cr guests --json | python3 -c 'import json, sys; sys.exit(0 if any(g["name"] == "Dimitri" and not g.get("removedAt") for g in json.load(sys.stdin)["guests"]) else 1)' ||
+      fail "Riley's connector has no guest Dimitri"
+    note "the phone joined Riley's Garden from its link, and Riley's connector has it as a guest"
+  else
+    note "joining Riley's invite waits for Phase 5's join sheet (JoinFlowView): skipped"
+  fi
   say "PASSED"
   exit 0
 fi
