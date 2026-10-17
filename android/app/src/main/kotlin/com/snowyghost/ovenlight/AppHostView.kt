@@ -150,7 +150,24 @@ private fun AppPageView(model: AppModel, page: AppPage, onClose: () -> Unit) {
     val color = { css: String? -> css?.let(StatusBarTint::opaqueHex)?.let(::themeColor) }
     // What sits under the status bar and the handle: the page's header, or the one from its last load.
     val header = color(look.header) ?: tint
-    StatusBarIcons(if (look.cover) null else header ?: plain)
+    val appNode: MembershipNode? = page.node
+    val retryNode: () -> Unit = { appNode?.let { node -> model.scope.launch { node.restart() } } }
+    val action = appNode?.let { nodeState?.let { NodeActionOverlay.action(it, app, ownerEnabled) } }
+    val showing = when {
+        error != null -> Cover.Error
+        loaded -> Cover.None
+        action != null -> Cover.Node
+        gate == AppLoadGate.Unreachable -> Cover.CantReach
+        else -> Cover.Placeholder
+    }
+    // The icons read on what's under them: the placeholder's tint, the page's header, or the overlays' plain background.
+    StatusBarIcons(
+        when (showing) {
+            Cover.Placeholder -> tint
+            Cover.None -> if (look.cover) null else header
+            else -> null
+        },
+    )
     Box(Modifier.backShrink(back).fillMaxSize().background(if (look.cover) plain else color(look.background) ?: plain)) {
         if (!look.cover) Box(Modifier.fillMaxWidth().windowInsetsTopHeight(insideBars).background(header ?: plain))
         AndroidView(
@@ -159,17 +176,8 @@ private fun AppPageView(model: AppModel, page: AppPage, onClose: () -> Unit) {
         )
         // The page takes no touches until it has loaded; the placeholder or overlay over it does.
         if (!loaded) Box(Modifier.fillMaxSize().pointerInput(Unit) { awaitEachGesture { awaitFirstDown().consume() } })
-        val appNode: MembershipNode? = page.node
-        val retryNode: () -> Unit = { appNode?.let { node -> model.scope.launch { node.restart() } } }
-        val action = appNode?.let { nodeState?.let { NodeActionOverlay.action(it, app, ownerEnabled) } }
         AnimatedContent(
-            targetState = when {
-                error != null -> Cover.Error
-                loaded -> Cover.None
-                action != null -> Cover.Node
-                gate == AppLoadGate.Unreachable -> Cover.CantReach
-                else -> Cover.Placeholder
-            },
+            targetState = showing,
             transitionSpec = { fadeIn(tween(250)) togetherWith fadeOut(tween(250)) },
             label = "app cover",
         ) { cover ->
@@ -213,8 +221,8 @@ private fun AppPageView(model: AppModel, page: AppPage, onClose: () -> Unit) {
 private enum class Cover { None, Placeholder, CantReach, Error, Node }
 
 /**
- * The status bar's icons over [strip], the color Ovenlight paints behind them for a page that
- * doesn't cover the screen; with none, they follow the phone's light or dark mode.
+ * The status bar's icons over [strip], the color Ovenlight paints behind them; with none, they
+ * follow the phone's light or dark mode.
  */
 @Composable
 private fun StatusBarIcons(strip: Color?) {
