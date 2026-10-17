@@ -130,7 +130,7 @@ func goodApp(t *testing.T) http.HandlerFunc {
 				<link rel="stylesheet" href="app.css">
 				</head><body><a href="https://example.com/">elsewhere</a></body></html>`))
 		case "/app.css":
-			w.Write([]byte(`body { padding-top: env(safe-area-inset-top); }`))
+			w.Write([]byte(`body { padding-bottom: env(safe-area-inset-bottom); }`))
 		case "/manifest.webmanifest":
 			w.Write([]byte(`{"theme_color": "#0e6b66", "icons": [{"src": "/icon-512.png", "sizes": "512x512", "type": "image/png"}]}`))
 		case "/icon-512.png":
