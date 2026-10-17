@@ -157,7 +157,7 @@ private fun AppPageView(model: AppModel, page: AppPage, onClose: () -> Unit) {
         gate == AppLoadGate.Unreachable -> Cover.CantReach
         else -> Cover.Placeholder
     }
-    StatusBarIcons(header ?: plain)
+    StatusBarIcons(band)
     Box(Modifier.backShrink(back).fillMaxSize().background(color(look.background) ?: plain)) {
         // No page runs under the status bar or the handle, which lives in this band.
         Box(Modifier.fillMaxWidth().background(band).windowInsetsPadding(chromeTop).height(ChromeHandleHeight))
@@ -195,7 +195,7 @@ private fun AppPageView(model: AppModel, page: AppPage, onClose: () -> Unit) {
                 }
             }
         }
-        AppChromeHost(model, page, icon, header ?: plain, onClose)
+        AppChromeHost(model, page, icon, band, onClose)
         // Last, so full screen covers everything else and its Back comes first.
         PageEdgesLayer(page.edges)
     }
@@ -220,9 +220,10 @@ private fun StatusBarIcons(band: Color) {
     val dark = isSystemInDarkTheme()
     // enableEdgeToEdge sets the icons again on a configuration change, so they're set after it.
     val configuration = LocalConfiguration.current
-    DisposableEffect(band, dark, configuration) {
+    val light = band.isLight()
+    DisposableEffect(light, dark, configuration) {
         val bars = view.context.componentActivity()?.window?.let { WindowCompat.getInsetsController(it, view) }
-        bars?.isAppearanceLightStatusBars = band.isLight()
+        bars?.isAppearanceLightStatusBars = light
         onDispose { bars?.isAppearanceLightStatusBars = !dark }
     }
 }
