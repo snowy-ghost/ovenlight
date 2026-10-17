@@ -42,12 +42,15 @@ import android.content.Context
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.ColorScheme
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -440,6 +443,11 @@ fun CenteredScroll(modifier: Modifier = Modifier, contentPadding: Dp = 0.dp, spa
         )
     }
 }
+
+/** A sheet's drag handle as Material draws it, but a 48 dp target: Material's own is 32 dp wide. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SheetDragHandle() = BottomSheetDefaults.DragHandle(Modifier.minimumInteractiveComponentSize())
 
 /** The window of the dialog this composable is in, if it's in one. */
 fun View.dialogWindow(): Window? = generateSequence(parent) { it.parent }.firstNotNullOfOrNull { (it as? DialogWindowProvider)?.window }
