@@ -1096,7 +1096,7 @@ sys.exit(0 if ok else 1)'; }
   $HS -c $B/headscale.yaml users create riley >/dev/null
   RILEY_ID=$($HS -c $B/headscale.yaml users list -o json | python3 -c 'import json, sys; print(json.load(sys.stdin)[0]["id"])')
   KEY_B=$($HS -c $B/headscale.yaml preauthkeys create -u $RILEY_ID --reusable -e 2h -o json | python3 -c 'import json, sys; print(json.load(sys.stdin)["key"])')
-  printf '%s\n' '<!doctype html><meta charset="utf-8"><title>Garden</title><h1>Garden</h1>' > $B/garden/index.html
+  printf '%s\n' '<!doctype html><meta charset="utf-8"><title>Garden</title><h1>Garden beds</h1>' > $B/garden/index.html
   cr() { env HOME=$B/home OVENLIGHT_DEV=1 TS_NO_LOGS_NO_SUPPORT=1 $D/ovenlight "$@" --config $B/config.json --state $B/st; }
   cr publish --port $(port) --name Garden --slug garden --run "python3 $ROOT/android/e2e/app.py" --dir $B/garden >> $D/publish.log 2>&1 || fail "publish garden: $(tail -5 $D/publish.log)"
   ( exec env HOME=$B/home OVENLIGHT_DEV=1 TS_NO_LOGS_NO_SUPPORT=1 $D/ovenlight run --config $B/config.json --state $B/st --control-url $CTRL_B --auth-key $KEY_B \
@@ -1120,7 +1120,8 @@ sys.exit(0 if ok else 1)'; }
     tap_text Join
     await_text 90 "Garden is ready" || { shot sharing-failed; fail "the phone didn't join Riley's Garden: $(screen_text | tr '\n' '|')"; }
     tap_text "Open Garden"
-    await_text 40 Garden || fail "Garden didn't open"
+    close_tip
+    await_text 40 "Garden beds" || { shot sharing-failed; fail "Garden didn't open: $(screen_text | tr '\n' '|')"; }
     cr guests --json | python3 -c 'import json, sys; sys.exit(0 if any(g["name"] == "Dimitri" and not g.get("removedAt") for g in json.load(sys.stdin)["guests"]) else 1)' ||
       fail "Riley's connector has no guest Dimitri"
     note "the phone joined Riley's Garden from its link, and Riley's connector has it as a guest"
