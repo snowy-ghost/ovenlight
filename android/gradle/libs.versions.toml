@@ -33,7 +33,7 @@ androidx-webkit = { module = "androidx.webkit:webkit", version.ref = "webkit" }
 androidx-browser = { module = "androidx.browser:browser", version.ref = "browser" }
 androidx-camera-camera2 = { module = "androidx.camera:camera-camera2", version.ref = "camerax" }
 androidx-camera-lifecycle = { module = "androidx.camera:camera-lifecycle", version.ref = "camerax" }
-androidx-camera-view = { module = "androidx.camera:camera-view", version.ref = "camerax" }
+androidx-camera-compose = { module = "androidx.camera:camera-compose", version.ref = "camerax" }
 compose-bom = { module = "androidx.compose:compose-bom", version.ref = "compose-bom" }
 compose-ui = { module = "androidx.compose.ui:ui" }
 compose-foundation = { module = "androidx.compose.foundation:foundation" }
