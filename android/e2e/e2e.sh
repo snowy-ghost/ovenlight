@@ -5,7 +5,7 @@
 # connector runs from this run's folder with its own HOME, config and state, logs in only to
 # the local Headscale, and stops by its recorded pid.
 #
-#   android/e2e/e2e.sh [gates | owner | signin [seconds] | screens | app | chrome | downloads | upload | return | guests | sharing] [avd]
+#   android/e2e/e2e.sh [gates | owner | signin [seconds] | screens | app | chrome | downloads | upload | return | guests | sharing | shortcuts] [avd]
 #
 # gates runs Phase 1's checks G2 to G5 through the debug lab. owner signs the owner's node in
 # with a preauth key and waits for the launcher to show both test apps. signin goes through
@@ -46,6 +46,10 @@
 # phone of their own (guest.go), checked on the connector. On Android 10 it confirms an invite
 # on the screen lock's own screen, and leaves that screen for Home. A second owner on a second
 # Headscale invites the phone, which joins from the link.
+# shortcuts pins Recipes to the home screen from its menu through the launcher's own dialog,
+# and with the lock at Immediately opens it from there through the lock, warm and after Android
+# ends Ovenlight's process. A rename reaches the shortcut, Remove app disables it so a tap opens
+# nothing, and a link to the removed app's ID opens no app.
 # Each writes what it saw to
 # android/e2e/out/: gates.txt, logs and screenshots.
 #
@@ -127,7 +131,7 @@ until_ok() {
 }
 
 [[ -x $HS ]] || fail "no headscale at $HS"
-[[ $SCENARIO =~ ^(gates|owner|signin|screens|app|chrome|downloads|upload|return|guests|sharing)$ ]] || fail "unknown scenario $SCENARIO"
+[[ $SCENARIO =~ ^(gates|owner|signin|screens|app|chrome|downloads|upload|return|guests|sharing|shortcuts)$ ]] || fail "unknown scenario $SCENARIO"
 
 say "the test CA in $CA, made once, and a *.$BASE certificate for this run"
 if [[ ! -f $CA/ca.pem ]]; then
@@ -333,6 +337,18 @@ tap_bounds() {
 tap_text() { tap_bounds text "$1"; }
 tap_class() { tap_bounds class "$1"; }
 tap_matching() { tap_bounds match "$1"; }
+# Touches and holds what's named $1 (a tile's name), as a person does to open its menu.
+hold() {
+  local box
+  # uiautomator's dump now and then comes back empty while the screen animates.
+  for i in 1 2 3 4 5; do
+    box=($(bounds text "$1"))
+    [[ ${#box[@]} == 4 ]] && break
+    sleep 1
+  done
+  [[ ${#box[@]} == 4 ]] || return 1
+  a shell input swipe $(((box[0] + box[2]) / 2)) $(((box[1] + box[3]) / 2)) $(((box[0] + box[2]) / 2)) $(((box[1] + box[3]) / 2)) 900
+}
 # The first app Ovenlight opens shows its pill with a one-time tip, in a popup of its own: closed here.
 close_tip() { if await_text ${1:-10} "Got it"; then tap_text "Got it"; sleep 1; fi; }
 # Waits up to $1 seconds until every one of the other arguments is on screen.
@@ -1083,18 +1099,6 @@ sys.exit(0 if ok else 1)'; }
   until_ok 120 serving_shareable || fail "Recipes never served as a shareable app node: $(status_json)"
   # The connector's guests and invites, as the admin API lists them.
   guests() { c guests --config $D/config.json --state $D/st --json; }
-  # Touches and holds what's named $1 (a tile's name), as a person does to open its menu.
-  hold() {
-    local box
-    # uiautomator's dump now and then comes back empty while the screen animates.
-    for i in 1 2 3 4 5; do
-      box=($(bounds text "$1"))
-      [[ ${#box[@]} == 4 ]] && break
-      sleep 1
-    done
-    [[ ${#box[@]} == 4 ]] || return 1
-    a shell input swipe $(((box[0] + box[2]) / 2)) $(((box[1] + box[3]) / 2)) $(((box[0] + box[2]) / 2)) $(((box[1] + box[3]) / 2)) 900
-  }
   # The system's prompt for the screen lock again, titled $1, answered with fingerprint 1.
   confirm_with_finger() {
     KEEP_LOCK=1 await_text 15 "$1" || fail "no prompt for the screen lock titled \"$1\": $(screen_text | tr '\n' '|')"
@@ -1287,6 +1291,95 @@ if [[ $SCENARIO == owner ]]; then
   owner_launcher
   shot owner-launcher
   note "the launcher shows Recipes and Pantry"
+  say "PASSED"
+  exit 0
+fi
+
+if [[ $SCENARIO == shortcuts ]]; then
+  say "shortcuts: the owner signs in, with the lock at Immediately"
+  owner_launcher
+  tap_text More && sleep 1 && tap_text Settings
+  await_text 10 "Require screen lock" || fail "no Settings: $(screen_text | tr '\n' '|')"
+  tap_text "Require screen lock" && sleep 1 && tap_text Immediately
+  await_text 10 Immediately || fail "the delay didn't change"
+  a shell input keyevent KEYCODE_BACK; sleep 2
+  # The shortcut's state as Android keeps it: its label, and whether it's pinned or disabled.
+  shortcut() { a shell dumpsys shortcut | LC_ALL=C grep -A12 "id=$1" || true; }
+
+  say "shortcuts: Add to Home screen from Recipes' menu, confirmed in the launcher's dialog"
+  hold Recipes || fail "no Recipes tile"
+  await_text 5 "Add to Home screen" || fail "Recipes' menu has no Add to Home screen: $(screen_text | tr '\n' '|')"
+  tap_text "Add to Home screen"
+  sleep 3; shot shortcuts-dialog
+  note "the launcher asks: $(screen_text | tr '\n' '|')"
+  tap_matching '^(Add|ADD|Add automatically|ADD AUTOMATICALLY|Add to home screen)$' || fail "no Add in the launcher's dialog: $(screen_text | tr '\n' '|')"
+  sleep 2
+  id=$(a shell dumpsys shortcut | LC_ALL=C grep -o -E 'id=[0-9a-f-]{36}' | head -1 | sed 's/id=//' || true)
+  [[ -n $id ]] || fail "no shortcut for Recipes: $(a shell dumpsys shortcut | LC_ALL=C grep -A40 "Package: $PKG" | head -60)"
+  note "pinned $id: $(shortcut $id | tr -s ' ' | tr '\n' ' ' | cut -c1-400)"
+
+  say "shortcuts: from the home screen, through the lock"
+  a shell input keyevent KEYCODE_HOME; sleep 3
+  shot shortcuts-home
+  tap_text Recipes || fail "no Recipes on the home screen: $(screen_text | tr '\n' '|')"
+  sleep 3
+  [[ $(front) == *$PKG* ]] || fail "the shortcut didn't open Ovenlight: $(front)"
+  locked || fail "the shortcut opened Ovenlight without the lock: $(screen_text | tr '\n' '|')"
+  unlock_now
+  close_tip
+  await_text 40 "Recipe Box" || { shot shortcuts-failed; fail "Recipes didn't open after the unlock: $(screen_text | tr '\n' '|')"; }
+  note "the shortcut opened Ovenlight locked, and Recipes after the unlock"
+
+  say "shortcuts: again after Android ends Ovenlight's process in the background, so the shortcut starts it"
+  # Not force-stop: the launcher hides a stopped app's shortcuts until it runs again.
+  a shell input keyevent KEYCODE_HOME; sleep 2
+  a shell am kill $PKG
+  until_ok 10 sh -c "[ -z \"\$(adb -s $S shell pidof $PKG)\" ]" || fail "Ovenlight's process didn't end"
+  tap_text Recipes || fail "no Recipes on the home screen: $(screen_text | tr '\n' '|')"
+  sleep 3
+  locked || fail "the shortcut started Ovenlight without the lock: $(screen_text | tr '\n' '|')"
+  unlock_now
+  await_text 60 "Recipe Box" || { shot shortcuts-failed; fail "Recipes didn't open after a cold start: $(screen_text | tr '\n' '|')"; }
+  note "a cold start through the shortcut is locked, and opens Recipes after the unlock"
+  a shell input keyevent KEYCODE_BACK; sleep 2
+  await_text 10 Pantry || fail "Back didn't close Recipes: $(screen_text | tr '\n' '|')"
+
+  say "shortcuts: Rename carries over to the shortcut"
+  hold Recipes || fail "no Recipes tile"
+  await_text 5 Rename || fail "no Rename: $(screen_text | tr '\n' '|')"
+  tap_text Rename
+  await_text 5 "Rename app" || fail "no Rename app dialog"
+  a shell input keyevent KEYCODE_MOVE_END $(printf 'KEYCODE_DEL %.0s' 1 2 3 4 5 6 7 8 9 10)
+  a shell input text Cookbook
+  tap_text Save
+  until_ok 15 sh -c "adb -s $S shell dumpsys shortcut | grep -q 'shortLabel=Cookbook'" || fail "the shortcut kept its name: $(shortcut $id | head -5)"
+  note "the shortcut is called Cookbook too"
+
+  say "shortcuts: Remove app disables the shortcut"
+  hold Cookbook || fail "no Cookbook tile"
+  await_text 5 "Remove app" || fail "no Remove app: $(screen_text | tr '\n' '|')"
+  tap_text "Remove app"
+  await_text 5 "Remove Cookbook?" || fail "Remove didn't ask first"
+  tap_text "Remove app"
+  until_ok 15 sh -c "adb -s $S shell dumpsys shortcut | grep -q 'disabledMessage=No longer in Ovenlight'" ||
+    fail "the shortcut isn't disabled: $(shortcut $id | head -8)"
+  note "disabled: $(shortcut $id | LC_ALL=C grep -o -E 'disabledMessage=[^,]*|disabledReason=\[[^]]*\]' | tr '\n' ' ')"
+  a shell input keyevent KEYCODE_HOME; sleep 3
+  shot shortcuts-disabled
+  tap_text Cookbook || fail "the disabled shortcut left the home screen: $(screen_text | tr '\n' '|')"
+  sleep 3
+  [[ $(front) != *$PKG* ]] || fail "the disabled shortcut opened Ovenlight"
+  note "on the home screen it stays, dimmed, and a tap doesn't open Ovenlight"
+
+  say "shortcuts: a link to an app that isn't there opens nothing else"
+  a shell "am start -W -a android.intent.action.VIEW -d 'ovenlight://open?id=$id' -p $PKG" >/dev/null
+  sleep 2
+  unlock_now
+  await_text 20 Pantry "Lock Ovenlight" || fail "no launcher after the link: $(screen_text | tr '\n' '|')"
+  sleep 3
+  screen_text | grep -qxF "Lock Ovenlight" || fail "the link opened an app: $(screen_text | tr '\n' '|')"
+  [[ $(front) == *$PKG* && -n $(a shell pidof $PKG) ]] || fail "Ovenlight isn't running after the link"
+  note "Ovenlight shows the launcher, with no app open"
   say "PASSED"
   exit 0
 fi

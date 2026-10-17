@@ -112,6 +112,8 @@ data class LauncherState(
     val move: (UUID, Int) -> Unit = { _, _ -> },
     val rename: (UUID, String) -> Unit = { _, _ -> },
     val refreshIcon: (UUID) -> Unit = {},
+    /** Pins an app to the phone's home screen; null where the launcher can't. */
+    val addToHomeScreen: ((WebApp) -> Unit)? = null,
     val clearData: (UUID) -> Unit = {},
     val remove: (UUID) -> Unit = {},
     /** Leaves a guest membership: its apps, their data and its node. */
@@ -157,6 +159,7 @@ fun LauncherView(model: AppModel) {
         apps.mapNotNull { app -> nodes.reachability(app)?.let { app.id to it } }.toMap()
     }
     val scope = model.scope
+    val canPin = remember { HomeShortcuts.isSupported(context) }
     LauncherView(
         LauncherState(
             apps = apps,
@@ -178,6 +181,7 @@ fun LauncherView(model: AppModel) {
             move = registry::move,
             rename = registry::rename,
             refreshIcon = { scope.launch { registry.refreshMetadata(it) } },
+            addToHomeScreen = { app: WebApp -> HomeShortcuts.request(context, app, IconDecoder.load(registry.iconFile(app))) }.takeIf { canPin },
             clearData = { scope.launch { registry.clearData(it) } },
             remove = { scope.launch { registry.remove(it) } },
             leave = { scope.launch { model.guests.leave(it) } },
@@ -425,7 +429,9 @@ private fun ColumnScope.AppMenu(
             maxLines = 1, overflow = TextOverflow.Ellipsis,
         )
     }
-    // Add to Home screen comes first here, with Phase 7's pinned shortcuts.
+    state.addToHomeScreen?.let { pin ->
+        AppMenuItem(close, stringResource(R.string.launcher_add_to_home_screen), R.drawable.ic_add_to_home_screen) { pin(app) }
+    }
     AppMenuItem(close, stringResource(R.string.launcher_rename), R.drawable.ic_edit, action = rename)
     AppMenuItem(close, stringResource(R.string.launcher_refresh_icon), R.drawable.ic_refresh, action = refreshIcon)
     if (plan != AppMenuPlan()) {

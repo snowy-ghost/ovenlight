@@ -32,6 +32,7 @@
     <string name="launcher_move_before">Move before %1$s</string>
     <string name="launcher_move_after">Move after %1$s</string>
 
+    <string name="launcher_add_to_home_screen">Add to Home screen</string>
     <string name="launcher_rename">Rename</string>
     <string name="launcher_refresh_icon">Refresh icon</string>
     <string name="launcher_sign_out_clear">Sign out and clear data</string>
@@ -46,5 +47,7 @@
     <string name="launcher_remove_title">Remove %1$s?</string>
     <string name="launcher_remove_message">This removes the app from Ovenlight and deletes everything it stored on this phone.</string>
     <string name="launcher_leave">Leave</string>
+    <!-- A removed app's home screen shortcut, when tapped. -->
+    <string name="shortcut_removed">No longer in Ovenlight</string>
 
 </resources>
