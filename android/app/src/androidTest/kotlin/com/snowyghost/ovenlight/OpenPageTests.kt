@@ -4,6 +4,7 @@ import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.pm.ActivityInfo
 import android.graphics.Rect
 import android.os.SystemClock
+import android.provider.Settings
 import android.view.KeyEvent
 import android.view.View
 import android.view.accessibility.AccessibilityNodeInfo
@@ -236,11 +237,27 @@ class OpenPageTests {
 
     private fun viewTop(): Int = onMain { IntArray(2).also(page.view::getLocationOnScreen)[1] }
 
+    /** Switches the emulator's navigation, `gestural` or `threebutton`, and waits for the window to follow. */
+    private fun navigation(mode: String) {
+        instrumentation.uiAutomation.executeShellCommand("cmd overlay enable-exclusive --category com.android.internal.systemui.navbar.$mode").close()
+        waitFor("$mode navigation") { (tappableBottom() > 0) == (mode == "threebutton") }
+        instrumentation.waitForIdleSync()
+    }
+
+    private fun tappableBottom(): Int = onMain { ViewCompat.getRootWindowInsets(page.view)?.getInsets(WindowInsetsCompat.Type.tappableElement())?.bottom ?: 0 }
+
+    /** How far the page's view stops short of the bottom of the screen, in pixels. */
+    private fun viewGap(): Int = onMain {
+        val at = IntArray(2).also(page.view::getLocationOnScreen)
+        page.view.rootView.height - (at[1] + page.view.height)
+    }
+
     /**
      * A page that asks for `viewport-fit=cover` runs under the status bar and gets its height
      * through `env()`, however the page came on screen: opened, reopened from the pool, after the
      * lock and after a rotation. A page that doesn't sits below the status bar instead, and sees
-     * no inset.
+     * no inset; at the bottom it runs under the gesture handle, as on iOS, and stops above
+     * three-button navigation.
      */
     @Test
     fun testACoverPageGetsTheStatusBarAndAnyOtherSitsBelowIt() {
@@ -250,7 +267,7 @@ class OpenPageTests {
             assertTrue("$how: env(safe-area-inset-top) $env, the status bar $bar", bar > 0 && kotlin.math.abs(env - bar) < 1.5)
         }
         onMain { page.view.loadDataWithBaseURL(app.startURL.toString(), html.replace("initial-scale=1", "initial-scale=1, viewport-fit=cover"), "text/html", "utf-8", null) }
-        waitFor("the cover page") { onMain { page.fitsCover.value } }
+        waitFor("the cover page") { onMain { page.look.value.cover } }
         assertCovers("opened")
 
         onMain { model.router.openApp.value = null }
@@ -274,10 +291,19 @@ class OpenPageTests {
         assertCovers("rotated and back")
 
         onMain { page.view.loadDataWithBaseURL(app.startURL.toString(), html, "text/html", "utf-8", null) }
-        waitFor("the plain page") { onMain { !page.fitsCover.value } }
+        waitFor("the plain page") { onMain { !page.look.value.cover } }
         val bar = topInsets().second
         waitFor("the plain page below the status bar") { kotlin.math.abs(viewTop() / onMain { page.view.resources.displayMetrics.density } - bar) < 1 }
         assertEquals("no inset for a page inside the bars", 0.0, topInsets().first, 0.0)
+        val wasGestural = Settings.Secure.getInt(instrumentation.targetContext.contentResolver, "navigation_mode", 0) == 2
+        try {
+            navigation("gestural")
+            waitFor("the plain page under the gesture handle") { viewGap() == 0 }
+            navigation("threebutton")
+            waitFor("the plain page above the buttons") { viewGap() == tappableBottom() }
+        } finally {
+            navigation(if (wasGestural) "gestural" else "threebutton")
+        }
     }
 
     // The lock

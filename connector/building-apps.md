@@ -296,8 +296,9 @@ and the home indicator, and Ovenlight adds no insets. Pad with `env(safe-area-in
 the status bar sits on top of your page. Pad a fixed bottom tab bar with
 `env(safe-area-inset-bottom)`, and the page's bottom by the bar's height so it scrolls
 clear. A page without `viewport-fit=cover` starts below the status bar instead, as in a
-browser, and Ovenlight paints the strip behind the status bar (and on Android the
-navigation bar) with its `theme-color`, or its background without one.
+browser, and Ovenlight paints the strip behind the status bar with its `theme-color`, or
+its background without one. Its bottom still runs under the home indicator, and on
+Android stops above three-button navigation, on the page's background.
 
 **Ovenlight's chrome.** The only thing Ovenlight draws over the app is a small pill at the
 top center, just below the status bar, with the way home and the app's menu (Reload and

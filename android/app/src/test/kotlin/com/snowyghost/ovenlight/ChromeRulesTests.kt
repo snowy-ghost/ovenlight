@@ -146,9 +146,16 @@ class ChromeRulesTests {
         assertNull(StatusBarTint.opaqueHex("rgba(0, 0, 0, 0)"))
         assertNull(StatusBarTint.opaqueHex("transparent"))
         assertNull(StatusBarTint.opaqueHex("#fff"))
-        assertEquals("rgb(1, 2, 3)", StatusBarTint.decoded("\"rgb(1, 2, 3)\""))
-        assertNull(StatusBarTint.decoded("null"))
-        assertNull(StatusBarTint.decoded("42"))
-        assertNull(StatusBarTint.decoded(null))
+    }
+
+    @Test
+    fun testReadsThePagesLook() {
+        assertEquals(
+            PageLook(cover = true, header = "#336699", background = "rgb(1, 2, 3)"),
+            PageLook.decoded("""{"cover":true,"header":"#336699","background":"rgb(1, 2, 3)"}"""),
+        )
+        assertEquals(PageLook(cover = false), PageLook.decoded("""{"cover":false,"header":null,"background":null}"""))
+        // No answer, or not the script's, is a page that didn't ask to cover the screen.
+        for (result in listOf("null", "42", "\"rgb(1, 2, 3)\"", null)) assertEquals(PageLook(cover = false), PageLook.decoded(result))
     }
 }

@@ -15,16 +15,21 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.tappableElement
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -92,8 +97,10 @@ object NodeActionOverlay {
 /**
  * One open app, full screen: its web view edge to edge and, until its first page loads, the
  * overlay its connection needs, Can't Reach, or its launch placeholder. A page that doesn't ask
- * for `viewport-fit=cover` sits inside the bars and the cutout instead, its header color around
- * it. Back goes back in the page, then closes the app (iOS's AppHostView).
+ * for `viewport-fit=cover` sits below the status bar and inside the cutout instead, its header
+ * color behind them, and runs under the gesture handle as on iOS, or above three-button
+ * navigation on its background color. Back goes back in the page, then closes the app (iOS's
+ * AppHostView).
  */
 @Composable
 fun AppHostView(model: AppModel, app: WebApp, onClose: () -> Unit) {
@@ -119,8 +126,7 @@ private fun AppPageView(model: AppModel, page: AppPage, onClose: () -> Unit) {
     val iconRevisions by model.registry.iconRevisions.collectAsState()
     val icon = rememberIcon(app, iconRevisions[app.id] ?: 0) { IconDecoder.load(model.registry.iconFile(it)) }
     val cantReach by page.cantReachAlert.collectAsState()
-    val cover by page.fitsCover.collectAsState()
-    val headerColor by page.headerColor.collectAsState()
+    val look by page.look.collectAsState()
 
     DisposableEffect(page) {
         page.attach(activity)
@@ -136,11 +142,15 @@ private fun AppPageView(model: AppModel, page: AppPage, onClose: () -> Unit) {
     val back = rememberAppBack(canGoBack = page.view::canGoBack, goBack = page.view::goBack, close = onClose)
     val tint = rememberStatusBarTint(app)
 
-    val surround = if (cover) MaterialTheme.colorScheme.background else themeColor(headerColor) ?: tint ?: MaterialTheme.colorScheme.background
-    Box(Modifier.backShrink(back).fillMaxSize().background(surround)) {
+    val plain = MaterialTheme.colorScheme.background
+    val color = { css: String? -> css?.let(StatusBarTint::opaqueHex)?.let(::themeColor) }
+    Box(Modifier.backShrink(back).fillMaxSize().background(if (look.cover) plain else color(look.header) ?: tint ?: plain)) {
+        if (!look.cover) {
+            Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().windowInsetsBottomHeight(WindowInsets.tappableElement).background(color(look.background) ?: plain))
+        }
         AndroidView(
             factory = { page.view.also { (it.parent as? ViewGroup)?.removeView(it) } },
-            modifier = if (cover) Modifier.fillMaxSize() else Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars.union(WindowInsets.displayCutout)),
+            modifier = if (look.cover) Modifier.fillMaxSize() else Modifier.fillMaxSize().windowInsetsPadding(insideBars),
         )
         // The page takes no touches until it has loaded; the placeholder or overlay over it does.
         if (!loaded) Box(Modifier.fillMaxSize().pointerInput(Unit) { awaitEachGesture { awaitFirstDown().consume() } })
@@ -196,6 +206,15 @@ private fun AppPageView(model: AppModel, page: AppPage, onClose: () -> Unit) {
 }
 
 private enum class Cover { None, Placeholder, CantReach, Error, Node }
+
+/**
+ * Where a page that doesn't cover the screen sits: below the status bar, inside the cutout and
+ * side bars, and above navigation buttons. Only three-button navigation has a tappable bottom;
+ * the gesture handle has none.
+ */
+private val insideBars: WindowInsets
+    @Composable get() = WindowInsets.systemBars.union(WindowInsets.displayCutout).only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
+        .union(WindowInsets.tappableElement.only(WindowInsetsSides.Bottom))
 
 /**
  * What an app shows until its first page loads: its header color behind the status bar, its icon

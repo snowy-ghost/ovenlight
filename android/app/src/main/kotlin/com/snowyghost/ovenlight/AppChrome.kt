@@ -107,7 +107,9 @@ import kotlin.math.abs
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 
 /** What the chrome can do for the open app. Null leaves an item out of the menu. */
@@ -295,7 +297,7 @@ class PageWebView @JvmOverloads constructor(context: Context, attributes: Attrib
 class StatusBarTint(private val store: KeyValueStore) {
     fun color(app: WebApp, dark: Boolean): Color? = store.getString(key(app, dark))?.let(::themeColor) ?: if (dark) null else themeColor(app.themeColorHex)
 
-    /** Saves what [script] read from the page, when it is a color that is mostly opaque. */
+    /** Saves the header color [PageLook] read from the page, when it is a color that is mostly opaque. */
     fun remember(css: String?, app: WebApp, dark: Boolean) {
         val hex = css?.let(::opaqueHex) ?: return
         store.putString(key(app, dark), hex)
@@ -307,27 +309,6 @@ class StatusBarTint(private val store: KeyValueStore) {
 
     companion object {
         private fun key(app: WebApp, dark: Boolean) = "statusBarTint.${app.id.toString().uppercase()}.${if (dark) "dark" else "light"}"
-
-        /**
-         * What WebKit gives iOS as the page's theme color, else its background: the first
-         * `theme-color` whose `media` matches, read through a canvas so any CSS color comes
-         * back as `#rrggbb` or `rgba()` without touching the page's DOM; else the computed
-         * background of `html`, or of `body`, which paints the page when `html` has none.
-         */
-        const val script = """(() => {
-  const ctx = document.createElement("canvas").getContext("2d");
-  for (const meta of document.querySelectorAll('meta[name="theme-color" i]')) {
-    const media = meta.getAttribute("media");
-    if (media && !matchMedia(media).matches) continue;
-    ctx.fillStyle = "#010203"; ctx.fillStyle = meta.content.trim();
-    if (ctx.fillStyle !== "#010203" || /^#010203$/i.test(meta.content.trim())) return ctx.fillStyle;
-  }
-  for (const element of [document.documentElement, document.body]) {
-    const color = element && getComputedStyle(element).backgroundColor;
-    if (color && color !== "transparent" && !/^rgba\(.*,\s*0\)$/.test(color)) return color;
-  }
-  return null;
-})()"""
 
         private val rgb = Regex("""^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+)\s*)?\)$""")
 
@@ -341,10 +322,44 @@ class StatusBarTint(private val store: KeyValueStore) {
             val channels = (1..3).map { match.groupValues[it].toDoubleOrNull()?.toInt()?.coerceIn(0, 255) ?: return null }
             return "#" + channels.joinToString("") { "%02x".format(it) }
         }
+    }
+}
 
-        /** The script's answer, a JSON string or null, as the string. */
-        fun decoded(result: String?): String? =
-            result?.let { runCatching { ovenlightJSON.parseToJsonElement(it) as? JsonPrimitive }.getOrNull() }?.takeIf { it.isString }?.contentOrNull
+/**
+ * What Ovenlight reads of a page, in one script: whether its viewport asks for
+ * `viewport-fit=cover` (iOS's WebCoordinator.coverScript), its header color and its background.
+ * CSS colors, as Chromium writes them.
+ */
+data class PageLook(val cover: Boolean = true, val header: String? = null, val background: String? = null) {
+    companion object {
+        /**
+         * The viewport is the last viewport meta's. The header is what WebKit gives iOS as the
+         * page's theme color, else its background: the first `theme-color` whose `media`
+         * matches, read through a canvas so any CSS color comes back as `#rrggbb` or `rgba()`
+         * without touching the page's DOM. The background is the computed one of `html`, or of
+         * `body`, which paints the page when `html` has none.
+         */
+        const val script = """(() => {
+  const ctx = document.createElement("canvas").getContext("2d");
+  let header = null;
+  for (const meta of document.querySelectorAll('meta[name="theme-color" i]')) {
+    const media = meta.getAttribute("media");
+    if (media && !matchMedia(media).matches) continue;
+    ctx.fillStyle = "#010203"; ctx.fillStyle = meta.content.trim();
+    if (ctx.fillStyle !== "#010203" || /^#010203$/i.test(meta.content.trim())) { header = ctx.fillStyle; break; }
+  }
+  const background = [document.documentElement, document.body].map(e => e && getComputedStyle(e).backgroundColor)
+    .find(c => c && c !== "transparent" && !/^rgba\(.*,\s*0\)$/.test(c)) ?? null;
+  const viewport = [...document.querySelectorAll('meta[name="viewport" i]')].pop();
+  return { cover: /viewport-fit\s*=\s*cover/i.test(viewport?.content ?? ""), header: header ?? background, background };
+})()"""
+
+        /** The script's answer, a JSON object; anything else is a page that didn't ask to cover the screen. */
+        fun decoded(result: String?): PageLook {
+            val fields = result?.let { runCatching { ovenlightJSON.parseToJsonElement(it) as? JsonObject }.getOrNull() } ?: return PageLook(cover = false)
+            fun text(name: String) = (fields[name] as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull
+            return PageLook((fields["cover"] as? JsonPrimitive)?.booleanOrNull == true, text("header"), text("background"))
+        }
     }
 }
 
@@ -681,12 +696,13 @@ fun AppChromeHost(model: AppModel, page: AppPage, icon: Bitmap?, onClose: () -> 
     val dark = isSystemInDarkTheme()
 
     WatchPage(page.view, controller)
-    // After the first load, and each time the app opens loaded: what the page's header is now.
+    // After the first load, each time the app opens loaded, and in the other appearance: the
+    // page's colors now.
     LaunchedEffect(page, loaded, dark) {
         if (!loaded) return@LaunchedEffect
-        val css = StatusBarTint.decoded(page.view.evaluate(StatusBarTint.script))
-        page.headerColor.value = css?.let(StatusBarTint::opaqueHex)
-        StatusBarTint(PreferencesStore(context)).remember(css, app, dark)
+        val look = PageLook.decoded(page.view.evaluate(PageLook.script))
+        page.look.value = look
+        StatusBarTint(PreferencesStore(context)).remember(look.header, app, dark)
     }
 
     val membership = memberships.firstOrNull { it.id == app.membershipID }
