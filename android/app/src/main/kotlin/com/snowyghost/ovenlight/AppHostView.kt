@@ -3,6 +3,7 @@ package com.snowyghost.ovenlight
 import android.graphics.Bitmap
 import android.view.ViewGroup
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -20,18 +21,18 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.tappableElement
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -52,13 +53,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -99,12 +97,12 @@ object NodeActionOverlay {
 }
 
 /**
- * One open app, full screen: its web view edge to edge and, until its first page loads, the
- * overlay its connection needs, Can't Reach, or its launch placeholder. A page that doesn't ask
- * for `viewport-fit=cover` sits below the status bar and inside the cutout instead, its header
- * color behind them, and runs under the gesture handle as on iOS, or above three-button
- * navigation on its background color. Back goes back in the page, then closes the app (iOS's
- * AppHostView).
+ * One open app, full screen: a band at the top in the page's header color, behind the status bar
+ * and the chrome's handle, and below it the web view and, until its first page loads, the overlay
+ * its connection needs, Can't Reach, or its launch placeholder. A page that asks for
+ * `viewport-fit=cover` runs to the bottom and side edges; one that doesn't sits inside the cutout,
+ * and runs under the gesture handle as on iOS, or above three-button navigation on its
+ * background color. Back goes back in the page, then closes the app (iOS's AppHostView).
  */
 @Composable
 fun AppHostView(model: AppModel, app: WebApp, onClose: () -> Unit) {
@@ -148,8 +146,9 @@ private fun AppPageView(model: AppModel, page: AppPage, onClose: () -> Unit) {
 
     val plain = MaterialTheme.colorScheme.background
     val color = { css: String? -> css?.let(StatusBarTint::opaqueHex)?.let(::themeColor) }
-    // What sits under the status bar and the handle: the page's header, or the one from its last load.
-    val header = color(look.header) ?: tint
+    // The band under the status bar and the handle: the page's header, or until it loads the one from its last load.
+    val header = if (loaded) color(look.header) else tint
+    val band by animateColorAsState(header ?: plain, tween(250), label = "band")
     val appNode: MembershipNode? = page.node
     val retryNode: () -> Unit = { appNode?.let { node -> model.scope.launch { node.restart() } } }
     val action = appNode?.let { nodeState?.let { NodeActionOverlay.action(it, app, ownerEnabled) } }
@@ -160,45 +159,41 @@ private fun AppPageView(model: AppModel, page: AppPage, onClose: () -> Unit) {
         gate == AppLoadGate.Unreachable -> Cover.CantReach
         else -> Cover.Placeholder
     }
-    // The icons read on what's under them: the placeholder's tint, the page's header, or the overlays' plain background.
-    StatusBarIcons(
-        when (showing) {
-            Cover.Placeholder -> tint
-            Cover.None -> if (look.cover) null else header
-            else -> null
-        },
-    )
-    Box(Modifier.backShrink(back).fillMaxSize().background(if (look.cover) plain else color(look.background) ?: plain)) {
-        if (!look.cover) Box(Modifier.fillMaxWidth().windowInsetsTopHeight(insideBars).background(header ?: plain))
-        AndroidView(
-            factory = { page.view.also { (it.parent as? ViewGroup)?.removeView(it) } },
-            modifier = if (look.cover) Modifier.fillMaxSize() else Modifier.fillMaxSize().windowInsetsPadding(insideBars),
-        )
-        // The page takes no touches until it has loaded; the placeholder or overlay over it does.
-        if (!loaded) Box(Modifier.fillMaxSize().pointerInput(Unit) { awaitEachGesture { awaitFirstDown().consume() } })
-        AnimatedContent(
-            targetState = showing,
-            transitionSpec = { fadeIn(tween(250)) togetherWith fadeOut(tween(250)) },
-            label = "app cover",
-        ) { cover ->
-            when (cover) {
-                Cover.None -> Unit
-                Cover.Placeholder -> LaunchPlaceholder(app, icon, tint)
-                Cover.CantReach -> LoadErrorView(ConnectionCopy.cantReach(app.name), ConnectionCopy.cantReachDetail, page::reload, onClose)
-                Cover.Error -> LoadErrorView(stringResource(R.string.app_cant_open, app.name), error.orEmpty(), page::reload, onClose)
-                Cover.Node -> action?.let {
-                    NodeActionCard(
-                        app, it, deviceName = model.nodes.deviceName,
-                        connect = {
-                            when (val state = model.nodes.owner.state.value) {
-                                is NodeState.NeedsLogin -> model.router.presentTab(RootSheet.Login(state.url))
-                                NodeState.AwaitingApproval -> model.router.presentTab(RootSheet.Approve)
-                                else -> if (!ownerEnabled) model.nodes.enableOwner()
-                            }
-                        },
-                        retry = retryNode,
-                        close = onClose,
-                    )
+    StatusBarIcons(header ?: plain)
+    Box(Modifier.backShrink(back).fillMaxSize().background(color(look.background) ?: plain)) {
+        // No page runs under the status bar or the handle, which lives in this band.
+        Box(Modifier.fillMaxWidth().background(band).windowInsetsPadding(topBar).height(ChromeHandleHeight))
+        Box(Modifier.fillMaxSize().windowInsetsPadding(topBar).padding(top = ChromeHandleHeight)) {
+            AndroidView(
+                factory = { page.view.also { (it.parent as? ViewGroup)?.removeView(it) } },
+                modifier = if (look.cover) Modifier.fillMaxSize() else Modifier.fillMaxSize().windowInsetsPadding(insideBars),
+            )
+            // The page takes no touches until it has loaded; the placeholder or overlay over it does.
+            if (!loaded) Box(Modifier.fillMaxSize().pointerInput(Unit) { awaitEachGesture { awaitFirstDown().consume() } })
+            AnimatedContent(
+                targetState = showing,
+                transitionSpec = { fadeIn(tween(250)) togetherWith fadeOut(tween(250)) },
+                label = "app cover",
+            ) { cover ->
+                when (cover) {
+                    Cover.None -> Unit
+                    Cover.Placeholder -> LaunchPlaceholder(app, icon)
+                    Cover.CantReach -> LoadErrorView(ConnectionCopy.cantReach(app.name), ConnectionCopy.cantReachDetail, page::reload, onClose)
+                    Cover.Error -> LoadErrorView(stringResource(R.string.app_cant_open, app.name), error.orEmpty(), page::reload, onClose)
+                    Cover.Node -> action?.let {
+                        NodeActionCard(
+                            app, it, deviceName = model.nodes.deviceName,
+                            connect = {
+                                when (val state = model.nodes.owner.state.value) {
+                                    is NodeState.NeedsLogin -> model.router.presentTab(RootSheet.Login(state.url))
+                                    NodeState.AwaitingApproval -> model.router.presentTab(RootSheet.Approve)
+                                    else -> if (!ownerEnabled) model.nodes.enableOwner()
+                                }
+                            },
+                            retry = retryNode,
+                            close = onClose,
+                        )
+                    }
                 }
             }
         }
@@ -220,50 +215,47 @@ private fun AppPageView(model: AppModel, page: AppPage, onClose: () -> Unit) {
 
 private enum class Cover { None, Placeholder, CantReach, Error, Node }
 
-/**
- * The status bar's icons over [strip], the color Ovenlight paints behind them; with none, they
- * follow the phone's light or dark mode.
- */
+/** The status bar's icons over [band], the color Ovenlight paints behind them. */
 @Composable
-private fun StatusBarIcons(strip: Color?) {
+private fun StatusBarIcons(band: Color) {
     val view = LocalView.current
     val dark = isSystemInDarkTheme()
     // enableEdgeToEdge sets the icons again on a configuration change, so they're set after it.
     val configuration = LocalConfiguration.current
-    DisposableEffect(strip, dark, configuration) {
+    DisposableEffect(band, dark, configuration) {
         val bars = view.context.componentActivity()?.window?.let { WindowCompat.getInsetsController(it, view) }
-        bars?.isAppearanceLightStatusBars = strip?.isLight() ?: !dark
+        bars?.isAppearanceLightStatusBars = band.isLight()
         onDispose { bars?.isAppearanceLightStatusBars = !dark }
     }
 }
 
+/** What the band at the top reaches below: the status bar, or the cutout when it's deeper. As the chrome's handle sits. */
+private val topBar: WindowInsets
+    @Composable get() = WindowInsets.safeDrawing.only(WindowInsetsSides.Top)
+
 /**
- * Where a page that doesn't cover the screen sits: below the status bar, inside the cutout and
- * side bars, and above navigation buttons. Only three-button navigation has a tappable bottom;
- * the gesture handle has none.
+ * Where a page that doesn't cover the screen sits below the band: inside the cutout and side bars,
+ * and above navigation buttons. Only three-button navigation has a tappable bottom; the gesture
+ * handle has none.
  */
 private val insideBars: WindowInsets
-    @Composable get() = WindowInsets.systemBars.union(WindowInsets.displayCutout).only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
+    @Composable get() = WindowInsets.systemBars.union(WindowInsets.displayCutout).only(WindowInsetsSides.Horizontal)
         .union(WindowInsets.tappableElement.only(WindowInsetsSides.Bottom))
 
 /**
- * What an app shows until its first page loads: its header color behind the status bar, its icon
- * in the middle, and a spinner with "Connecting…" only after a beat, so fast loads never show one.
+ * What an app shows below the band until its first page loads: its icon in the middle, and a
+ * spinner with "Connecting…" only after a beat, so fast loads never show one.
  */
 @Composable
-private fun LaunchPlaceholder(app: WebApp, icon: Bitmap?, tint: Color?) {
+private fun LaunchPlaceholder(app: WebApp, icon: Bitmap?) {
     var spinner by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         delay(700)
         spinner = true
     }
     val label = ConnectionCopy.connecting(to = app.name)
-    val background = LocalOvenColors.current.pageBackground
-    val statusBar = WindowInsets.statusBars.getTop(LocalDensity.current).toFloat()
     Column(
-        Modifier.fillMaxSize().background(background)
-            .drawBehind { if (tint != null) drawRect(tint, size = Size(size.width, statusBar)) }
-            .clearAndSetSemantics { contentDescription = label },
+        Modifier.fillMaxSize().background(LocalOvenColors.current.pageBackground).clearAndSetSemantics { contentDescription = label },
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {

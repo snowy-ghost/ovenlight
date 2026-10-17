@@ -471,7 +471,7 @@ private fun rememberTouchExploration(): Boolean {
 /**
  * The open app's only native chrome: a small floating toolbar at the top with the way home and
  * the app's menu, tucked up under the status bar while the person uses the app, leaving a small
- * handle just below it. With TalkBack on it stays put and the handle never shows. Remove
+ * handle in the band just below it. With TalkBack on it stays put and the handle never shows. Remove
  * animations zeroes Compose's durations, so then it comes and goes at once.
  */
 @Composable
@@ -606,17 +606,20 @@ private fun AppMenuItems(app: WebApp, actions: AppChromeActions, close: () -> Un
     AppMenuItem(close, stringResource(R.string.chrome_lock), R.drawable.ic_lock, action = actions.lock)
 }
 
+/** The handle's height, which the band at the top of an open app holds below the status bar (AppHostView). */
+val ChromeHandleHeight = 20.dp
+
 /**
- * What stays of the chrome while it's tucked away: a small handle at the top center, just below
- * the status bar, which takes its own touches (they pull down the shade). It works on any page,
- * however the page scrolls. 120 by 20 dp, the strip the building guide tells apps to keep clear.
+ * What stays of the chrome while it's tucked away: a small handle at the top center, in the band
+ * just below the status bar, which takes its own touches (they pull down the shade). It works on
+ * any page, however the page scrolls.
  */
 @Composable
 private fun ChromeHandle(header: Color?, reveal: () -> Unit) {
     val label = stringResource(R.string.chrome_show_menu)
     Box(
         Modifier
-            .size(width = 120.dp, height = 20.dp)
+            .size(width = 120.dp, height = ChromeHandleHeight)
             .clickable(role = Role.Button, onClick = reveal)
             .semantics { contentDescription = label },
         contentAlignment = Alignment.Center,

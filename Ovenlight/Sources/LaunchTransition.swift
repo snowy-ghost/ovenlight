@@ -55,22 +55,18 @@ enum StatusBarTint {
     }
 }
 
-/// What an app shows until its first page finishes loading: its header color behind the
-/// status bar and its icon in the middle, the way a Home Screen web app opens.
+/// What an app shows below its band until its first page finishes loading: its icon in the
+/// middle, the way a Home Screen web app opens.
 struct LaunchPlaceholder: View {
     let app: WebApp
     let icon: UIImage?
     /// Said under the spinner, for example while Ovenlight connects.
     var caption: String?
 
-    @Environment(\.colorScheme) private var colorScheme
     @State private var showsSpinner = false
 
     var body: some View {
         VStack(spacing: 0) {
-            (StatusBarTint.color(for: app, in: colorScheme) ?? Color(.systemBackground))
-                .ignoresSafeArea(edges: .top)
-                .frame(height: 0)
             Spacer()
             AppIconView(app: app, image: icon, size: 96)
             VStack(spacing: 10) {

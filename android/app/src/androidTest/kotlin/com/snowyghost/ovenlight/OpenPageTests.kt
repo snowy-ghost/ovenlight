@@ -257,48 +257,48 @@ class OpenPageTests {
     }
 
     /**
-     * A page that asks for `viewport-fit=cover` runs under the status bar and gets its height
-     * through `env()`, however the page came on screen: opened, reopened from the pool, after the
-     * lock and after a rotation. A page that doesn't sits below the status bar instead, and sees
-     * no inset; at the bottom it runs under the gesture handle, as on iOS, and stops above
-     * three-button navigation.
+     * Every page starts below the band Ovenlight keeps at the top, the status bar's height and the
+     * handle's, and sees no top inset, whether it asks for `viewport-fit=cover` or not, however it
+     * came on screen: opened, reopened from the pool, after the lock, on its side and back. At the
+     * bottom a page that doesn't cover the screen runs under the gesture handle, as on iOS, and
+     * stops above three-button navigation.
      */
     @Test
-    fun testACoverPageGetsTheStatusBarAndAnyOtherSitsBelowIt() {
-        fun assertCovers(how: String) {
-            waitFor("the cover page laid out edge to edge, $how") { viewTop() == 0 }
-            val (env, bar) = topInsets()
-            assertTrue("$how: env(safe-area-inset-top) $env, the status bar $bar", bar > 0 && kotlin.math.abs(env - bar) < 1.5)
+    fun testEveryPageStartsBelowTheStatusBarAndTheHandle() {
+        val density = onMain { page.view.resources.displayMetrics.density }
+        fun assertBelowTheBand(how: String) {
+            val bar = topInsets().second
+            waitFor("the page below the band, $how") { kotlin.math.abs(viewTop() / density - (bar + ChromeHandleHeight.value)) < 1 }
+            assertEquals("$how: env(safe-area-inset-top)", 0.0, topInsets().first, 0.0)
         }
         onMain { page.view.loadDataWithBaseURL(app.startURL.toString(), html.replace("initial-scale=1", "initial-scale=1, viewport-fit=cover"), "text/html", "utf-8", null) }
         waitFor("the cover page") { onMain { page.look.value.cover } }
-        assertCovers("opened")
+        assertBelowTheBand("a cover page, opened")
 
         onMain { model.router.openApp.value = null }
         waitFor("the page to leave the window") { onMain { !page.view.isAttachedToWindow } }
         onMain { model.router.open(app) }
         waitFor("the page back in the window") { onMain { page.view.isAttachedToWindow } }
-        assertCovers("reopened")
+        assertBelowTheBand("reopened")
 
         lock()
         unlock()
-        assertCovers("unlocked")
+        assertBelowTheBand("unlocked")
 
         try {
             scenario.onActivity { it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
             waitFor("landscape") { onMain { page.view.width > page.view.height } }
+            assertBelowTheBand("in landscape")
             scenario.onActivity { it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }
             waitFor("portrait") { onMain { page.view.width < page.view.height } }
         } finally {
             scenario.onActivity { it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED }
         }
-        assertCovers("rotated and back")
+        assertBelowTheBand("rotated and back")
 
         onMain { page.view.loadDataWithBaseURL(app.startURL.toString(), html, "text/html", "utf-8", null) }
         waitFor("the plain page") { onMain { !page.look.value.cover } }
-        val bar = topInsets().second
-        waitFor("the plain page below the status bar") { kotlin.math.abs(viewTop() / onMain { page.view.resources.displayMetrics.density } - bar) < 1 }
-        assertEquals("no inset for a page inside the bars", 0.0, topInsets().first, 0.0)
+        assertBelowTheBand("a plain page")
         val wasGestural = Settings.Secure.getInt(instrumentation.targetContext.contentResolver, "navigation_mode", 0) == 2
         try {
             navigation("gestural")
@@ -311,17 +311,22 @@ class OpenPageTests {
     }
 
     /**
-     * A cover page's status bar icons follow a switch to dark mode and back: light icons on the
-     * page gone dark. From Android 11, the first whose `cmd uimode night` switches the mode.
+     * The status bar icons read on the band: light ones on a dark header in light mode, and
+     * through a switch to dark mode and back on a page with no header color of its own, which
+     * leaves the band the phone's background. From Android 11, the first whose
+     * `cmd uimode night` switches the mode.
      */
     @Test
     @SdkSuppress(minSdkVersion = 30)
-    fun testACoverPagesStatusBarIconsFollowTheMode() {
-        val cover = html.replace("initial-scale=1", "initial-scale=1, viewport-fit=cover").replace("<title>", "<meta name=color-scheme content='light dark'><title>")
-        onMain { page.view.loadDataWithBaseURL(app.startURL.toString(), cover, "text/html", "utf-8", null) }
-        waitFor("the cover page") { onMain { page.look.value.cover } }
+    fun testTheStatusBarIconsFollowTheBand() {
         lateinit var window: Window
         scenario.onActivity { window = it.window }
+        val darkIcons = { onMain { WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars } }
+        val load = { head: String -> onMain { page.view.loadDataWithBaseURL(app.startURL.toString(), html.replace("<title>", "$head<title>"), "text/html", "utf-8", null) } }
+        load("<meta name=theme-color content='#1e3fa8'>")
+        waitFor("light icons on a dark header in light mode") { !darkIcons() }
+        load("<meta name=color-scheme content='light dark'>")
+        waitFor("dark icons on the phone's background") { darkIcons() }
         val shell = { command: String -> instrumentation.uiAutomation.executeShellCommand(command).close() }
         try {
             for (night in listOf(true, false)) {
@@ -329,8 +334,7 @@ class OpenPageTests {
                 waitFor("night mode $night") { onMain { window.context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES } == night }
                 instrumentation.waitForIdleSync()
                 Thread.sleep(1_000)
-                val darkIcons = onMain { WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars }
-                assertEquals("dark icons with night mode $night", !night, darkIcons)
+                assertEquals("dark icons with night mode $night", !night, darkIcons())
             }
         } finally {
             shell("cmd uimode night no")

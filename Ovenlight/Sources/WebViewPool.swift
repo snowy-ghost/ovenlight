@@ -184,9 +184,9 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
 
     @Published var loadError: String?
     @Published var hasLoadedOnce = false
-    /// The page lays itself out under the status bar (`viewport-fit=cover`), read as each page
-    /// finishes loading and before the first one shows, so it never moves. One that doesn't
-    /// sits inside the safe area.
+    /// The page lays itself out to the bottom and side edges (`viewport-fit=cover`), read as
+    /// each page finishes loading and before the first one shows, so it never moves. One that
+    /// doesn't stays inside the side safe areas.
     @Published private(set) var fitsCover = true
     @Published private(set) var gate: AppLoadGate = .waiting
     /// The page's theme color and the color WebKit paints around it (its background), kept

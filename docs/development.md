@@ -248,10 +248,16 @@ Sign Ovenlight in to the first with `-authKey`, and open the second owner's invi
   after the node is ready and the app's host answers a probe through the current proxy
   (`AppLoadGate`). After about 10 seconds the app shows "Can't Reach \<App>" with Try
   Again. Launcher tiles dim with a badge while their machine isn't answering.
-- **The open app** has one piece of native chrome: a small capsule at the top with the
-  way home and the app's menu, which tucks up under the status bar as the page appears.
-  Tapping its handle or pulling down at the top of the page brings it back. Tapping the status
-  bar scrolls the page to the top, as iOS does, and leaves the chrome alone.
+- **The open app** starts below a band at the top, the status bar's height plus the
+  handle's 20 points (`AppChrome.handleHeight`), painted in the page's header color: its
+  `theme-color`, else its background, and before the first load the one remembered from
+  the last (`StatusBarTint`). The status bar's text takes the tone that reads on it
+  (`StatusBarTone`). A page with `viewport-fit=cover` runs to the bottom and side edges;
+  any other stays inside the side safe areas. The one piece of native chrome is a small
+  capsule at the top with the way home and the app's menu, which tucks up under the status
+  bar as the page appears, leaving its handle in the band. Tapping the handle or pulling
+  down at the top of the page brings it back. Tapping the status bar scrolls the page to
+  the top, as iOS does, and leaves the chrome alone.
 - **Lock.** What locking holds back is in [security.md](security.md#on-the-iphone);
   `WebViewPool.stopCapture` ends the microphone and camera streams already running.
 - **Permissions.** Besides the camera (scanning invite codes, and pages when allowed) and

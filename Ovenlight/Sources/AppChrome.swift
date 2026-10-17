@@ -22,16 +22,20 @@ struct AppChromeActions {
 
 /// The open app's only native chrome: a small glass capsule at the top with the way home
 /// and the app's menu. It shows while the app opens, over the placeholder, and tucks up
-/// under the status bar as the page appears, leaving a small handle just below it. Tapping
+/// under the status bar as the page appears, leaving a small handle in the band just below it. Tapping
 /// the handle or pulling down at the top of the page brings it back; scrolling down or
 /// touching the page hides it again. With VoiceOver on it stays put.
 struct AppChrome: View {
+    /// The handle's height, which the band at the top of the open app holds below the status
+    /// bar (`AppPage`).
+    static let handleHeight: CGFloat = 20
+
     let app: WebApp
     let icon: UIImage?
     let webView: WKWebView
     let isLoaded: Bool
     /// The color under the handle, which takes the tone that reads on it.
-    let header: Color?
+    let header: Color
     let actions: AppChromeActions
 
     @Environment(\.accessibilityVoiceOverEnabled) private var voiceOver
@@ -174,12 +178,12 @@ struct ChromeTip: Tip {
     var image: Image? { Image(systemName: "hand.tap") }
 }
 
-/// What stays of the chrome while it's tucked away: a small handle at the top center, just
-/// below the top safe area, since the status bar takes the taps inside that area (to
-/// scroll the page to the top). It works on any page, however the page scrolls. A phone on
-/// its side has no top safe area, so there the handle sits on the page's top edge.
+/// What stays of the chrome while it's tucked away: a small handle at the top center, in the
+/// band just below the top safe area, since the status bar takes the taps inside that area
+/// (to scroll the page to the top). It works on any page, however the page scrolls. A phone
+/// on its side has no top safe area, so there the band is the handle's alone.
 private struct ChromeHandle: View {
-    let header: Color?
+    let header: Color
     let reveal: () -> Void
 
     @Environment(\.self) private var environment
@@ -187,19 +191,21 @@ private struct ChromeHandle: View {
     var body: some View {
         Button(action: reveal) {
             Capsule()
-                .fill((header.map { isLight($0) ? Color.black : .white } ?? .primary).opacity(0.3))
+                .fill((header.isLight(in: environment) ? Color.black : .white).opacity(0.3))
                 .frame(width: 36, height: 5)
-                .frame(width: 120, height: 20)
+                .frame(width: 120, height: AppChrome.handleHeight)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Show App Menu")
     }
+}
 
+extension Color {
     /// Whether dark marks read better than light ones on the color: lighter than where black
     /// and white contrast with it equally.
-    private func isLight(_ color: Color) -> Bool {
-        let c = color.resolve(in: environment)
+    func isLight(in environment: EnvironmentValues) -> Bool {
+        let c = resolve(in: environment)
         return 0.2126 * c.linearRed + 0.7152 * c.linearGreen + 0.0722 * c.linearBlue > 0.179
     }
 }
