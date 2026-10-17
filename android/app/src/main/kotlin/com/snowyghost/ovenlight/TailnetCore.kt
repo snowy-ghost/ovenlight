@@ -157,6 +157,9 @@ object TailnetCore : Platform, TailnetClients {
             .readTimeout(timeoutMillis, TimeUnit.MILLISECONDS)
             .writeTimeout(timeoutMillis, TimeUnit.MILLISECONDS)
             .callTimeout(totalMillis, TimeUnit.MILLISECONDS)
+            // Not even on a pooled connection that died: a change (an admin DELETE, say) may have
+            // arrived. Callers that may ask again do (AdminClient's GETs, the claim, the polls).
+            .retryOnConnectionFailure(false)
             .build()
         return { request -> client.fetch(request) }
     }
