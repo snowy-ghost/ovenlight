@@ -279,6 +279,12 @@ class AdminAPITests {
         advanceTimeBy(15_000)
         sharing.refreshIfStale(ownApps)
         assertEquals("then asked again, through the host that answered", setOf("coach.tailabc123.ts.net"), asked.map { it.substringBefore('/') }.toSet())
+
+        sharing.forget()
+        assertEquals("signing out forgets it all", emptyList<OwnerSharing.Machine>(), sharing.machines.value)
+        asked.clear()
+        sharing.refreshIfStale(ownApps)
+        assertTrue("and the next menu asks afresh", asked.isNotEmpty())
     }
 
     @Test

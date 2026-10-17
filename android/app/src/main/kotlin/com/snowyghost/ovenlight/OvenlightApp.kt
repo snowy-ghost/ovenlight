@@ -128,6 +128,9 @@ class AppModel(context: Context) {
             // As access ending closes a guest's app: one open as it goes closes first.
             router.openApp.value?.let { if (it.discovered && !it.isShared) router.openApp.value = null }
             registry.removeDiscovered()
+            // What the owner's connectors said, and an invite being made, go with the owner.
+            composer.value = null
+            sharing.forget()
         }
         scope.launch { nodes.finishSignOut() }
         // Opening an app, from anywhere, clears its new dot. Closing one drops its Send feedback;

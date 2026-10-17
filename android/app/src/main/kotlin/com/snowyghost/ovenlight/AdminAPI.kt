@@ -830,6 +830,17 @@ class OwnerSharing(
         }.awaitAll().toMap()
     }
 
+    /** The owner signed out: nothing their connectors said stays, and a refresh under way stops. */
+    fun forget() {
+        loading?.cancel()
+        loading = null
+        again = false
+        lastRefresh = null
+        mutableLoading.value = false
+        mutableMachines.value = emptyList()
+        mutableProblem.value = null
+    }
+
     /** Debug builds' `sharingFixture`: what a connector would report, for screenshots without one. */
     fun useFixture(fixture: List<Machine>) {
         mutableMachines.value = fixture
