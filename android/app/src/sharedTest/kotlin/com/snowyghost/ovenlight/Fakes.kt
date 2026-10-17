@@ -67,6 +67,9 @@ class FakeClients : TailnetClients {
     var upError: String? = null
     var startError: String? = null
 
+    /** Runs before each request is answered, so a test can hold one in flight. */
+    var beforeAnswer: suspend () -> Unit = {}
+
     /** Runs inside each node's start, as the core's blocking call would. */
     var onStart: () -> Unit = {}
     var loginRequests = 0
@@ -79,6 +82,7 @@ class FakeClients : TailnetClients {
     override fun session(routeKey: String, timeoutMillis: Long, totalMillis: Long): Send = { request ->
         fetched += routeKey to request.url.toString()
         requests += request
+        beforeAnswer()
         respond?.invoke(request) ?: pages[request.url.toString()]
     }
 

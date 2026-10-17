@@ -117,6 +117,7 @@ class AppModel(context: Context) {
             }
         }
         scope.launch { nodes.owner.discovered.collect { registry.mergeDiscovered(it) } }
+        nodes.onOwnerForgotten = registry::removeDiscovered
         // Opening an app, from anywhere, clears its new dot. Closing one drops its Send feedback;
         // the lock, which leaves the app open, doesn't.
         scope.launch {

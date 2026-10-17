@@ -493,9 +493,12 @@ struct SettingsView: View {
                     }
                     .ovenlightRows()
                     .confirmationDialog("Sign out of your computers?", isPresented: $confirmingSignOut, titleVisibility: .visible) {
-                        Button("Sign Out", role: .destructive) { Task { await node.signOut() } }
+                        Button("Sign Out", role: .destructive) {
+                            Task { await node.disableOwner() }
+                            dismiss()
+                        }
                     } message: {
-                        Text("Your apps stay in Ovenlight. Sign in again to open them.")
+                        Text("Signing out removes the apps found on your computers and everything they stored on this iPhone.")
                     }
                     Section {
                         NavigationLink("Advanced") { AdvancedSettingsView() }

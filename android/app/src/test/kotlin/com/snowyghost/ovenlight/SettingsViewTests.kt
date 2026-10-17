@@ -203,11 +203,11 @@ class SettingsViewTests {
     @Test
     fun testSignOutAsksFirst() {
         var signedOut = 0
-        show { SettingsState(owner = OwnerSettings(NodeState.Ready, account = dimitri, deviceName = "pixel-9"), signOut = { signedOut++ }) }
+        show { SettingsState(owner = OwnerSettings(NodeState.Ready, account = dimitri, deviceName = "pixel-9"), stopUsingMyOwnComputers = { signedOut++ }) }
         inEveryLook {
             row("Sign out").performClick()
             inDialog("Sign out of your computers?").assertIsDisplayed()
-            inDialog("Your apps stay in Ovenlight. Sign in again to open them.").assertIsDisplayed()
+            inDialog("Signing out removes the apps found on your computers and everything they stored on this phone.").assertIsDisplayed()
             composeRule.checkAccessibility()
             inDialog("Cancel").performClick()
             assertEquals(0, signedOut)

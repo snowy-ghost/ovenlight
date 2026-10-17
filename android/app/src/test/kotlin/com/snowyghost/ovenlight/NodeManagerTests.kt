@@ -2,6 +2,8 @@ package com.snowyghost.ovenlight
 
 import java.io.File
 import java.net.URI
+import java.util.UUID
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -56,6 +58,51 @@ class NodeManagerTests {
         assertEquals("pixel-ab12", nodes.deviceName)
         assertFalse(nodes.ownerHasNoAccount)
         assertTrue("its own requests go on the owner's node key", clients.fetched.all { it.first == "node-owner" })
+    }
+
+    @Test
+    fun testSigningOutRemovesTheAppsFoundOnYourComputers() = runTest {
+        val clients = FakeClients()
+        val nodes = manager(clients)
+        val deleted = mutableListOf<UUID>()
+        val webData = object : AppRegistry.WebData {
+            override fun discard(app: UUID) {}
+            override suspend fun clear(store: UUID) {}
+            override fun delete(store: UUID) {
+                deleted += store
+            }
+            override suspend fun stores() = emptyList<UUID>()
+        }
+        val registry = AppRegistry(File(folder, "apps"), session = { null }, webData = webData, iconPNG = { null }, scope = backgroundScope)
+        // As the app model wires them.
+        backgroundScope.launch { nodes.owner.discovered.collect { registry.mergeDiscovered(it) } }
+        nodes.onOwnerForgotten = registry::removeDiscovered
+        val handAdded = registry.add(URI("https://notes.tailabc123.ts.net/"))
+        val shared = registry.addShared("Echo Board", "echo-board.taildef456.ts.net", "echo-board", "m1", "Riley")
+        clients.pages["https://laptop.tailabc123.ts.net/.well-known/ovenlight.json"] =
+            FetchResponse(200, """{"name":"Recipe Box","version":1}""".toByteArray())
+        clients.status[Membership.ownerID] = status("Running", self = ownerSelf, peers = laptop)
+        nodes.enableOwner()
+        advanceTimeBy(2_500)
+        val found = registry.apps.single { it.discovered }
+        assertEquals("Recipe Box", found.name)
+
+        // A look for new apps is under way as the owner signs out.
+        val held = CompletableDeferred<Unit>()
+        clients.beforeAnswer = { held.await() }
+        val late = launch { nodes.owner.rediscover() }
+        runCurrent()
+        nodes.disableOwner()
+        held.complete(Unit)
+        late.join()
+        runCurrent()
+        assertEquals("what it found doesn't bring the app back", listOf(handAdded.id, shared.id), registry.apps.map { it.id })
+        assertEquals(listOf(found.dataStoreID), deleted)
+
+        clients.beforeAnswer = {}
+        nodes.enableOwner()
+        advanceTimeBy(2_500)
+        assertEquals("signing in again finds it", listOf("Recipe Box"), registry.apps.filter { it.discovered }.map { it.name })
     }
 
     @Test

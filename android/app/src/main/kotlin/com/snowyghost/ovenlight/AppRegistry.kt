@@ -161,14 +161,27 @@ class AppRegistry(
      */
     suspend fun remove(id: UUID) = withContext(NonCancellable) {
         val app = apps.firstOrNull { it.id == id } ?: return@withContext
-        apps = apps.filter { it.id != id }
         if (!app.isShared) dismissedHosts = dismissedHosts + Discovery.normalizedHost(app.host)
+        remove(listOf(app))
+    }
+
+    /** Removes the apps found on the owner's computers, and everything they stored, as the owner signs out. Signing in again finds them. */
+    suspend fun removeDiscovered() = withContext(NonCancellable) {
+        remove(apps.filter { it.discovered && !it.isShared })
+    }
+
+    private suspend fun remove(gone: List<WebApp>) {
+        if (gone.isEmpty()) return
+        val ids = gone.map { it.id }.toSet()
+        apps = apps.filter { it.id !in ids }
         save()
-        webData.discard(app.id)
-        DownloadShelf.drop(app.id)
-        iconFile(app)?.delete()
-        webData.forget(app)
-        removeDataStore(app.dataStoreID)
+        for (app in gone) {
+            webData.discard(app.id)
+            DownloadShelf.drop(app.id)
+            iconFile(app)?.delete()
+            webData.forget(app)
+            removeDataStore(app.dataStoreID)
+        }
     }
 
     /** Deletes a data store's cookies, storage and caches at once, and the store itself as soon as it can. */

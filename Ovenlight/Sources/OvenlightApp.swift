@@ -9,7 +9,9 @@ struct OvenlightApp: App {
     @StateObject private var node = NodeManager.shared
 
     init() {
-        _registry = StateObject(wrappedValue: AppRegistry())
+        let registry = AppRegistry()
+        _registry = StateObject(wrappedValue: registry)
+        NodeManager.shared.onOwnerForgotten = { [weak registry] in await registry?.removeDiscovered() }
         let lock = LockManager { Self.hasSavedData() }
         _lock = StateObject(wrappedValue: lock)
         _router = StateObject(wrappedValue: Router(isLocked: { [weak lock] in lock?.holdsLinks ?? true }))

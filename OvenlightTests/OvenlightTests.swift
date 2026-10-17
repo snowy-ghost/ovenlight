@@ -323,6 +323,51 @@ final class AppRegistryTests: XCTestCase {
         XCTAssertEqual(reopened.apps.count, 1, "adding it by hand brings it back")
     }
 
+    func testSigningOutRemovesTheAppsFoundOnYourComputers() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let defaults = UserDefaults.standard
+        let keys = ["ownTailnetEnabled", MembershipNode.ownerSuffixKey]
+        let saved = keys.map { defaults.object(forKey: $0) }
+        defer { for (key, value) in zip(keys, saved) { defaults.set(value, forKey: key) } }
+        let nodes = NodeManager.shared
+        let registry = makeRegistry(dir)
+        let hook = nodes.onOwnerForgotten
+        nodes.onOwnerForgotten = { await registry.removeDiscovered() }
+        defer { nodes.onOwnerForgotten = hook }
+        // Signing out deletes the owner's node state: the test host's own waits aside.
+        let state = NodeManager.stateDirectory(for: Membership.ownerID)
+        let aside = dir.appendingPathComponent("owner")
+        try? FileManager.default.moveItem(at: state, to: aside)
+        defer { try? FileManager.default.moveItem(at: aside, to: state) }
+
+        let coach = DiscoveredApp(host: "interview-coach.tailabc123.ts.net",
+                                  manifest: OvenlightManifest(name: "Interview Coach", version: 1))
+        await registry.mergeDiscovered([coach])
+        let handAdded = registry.add(url: URL(string: "https://notes.tailabc123.ts.net/")!)
+        let shared = registry.addShared(name: "Echo Board", host: "echo-board.taildef456.ts.net", slug: "echo-board",
+                                        membershipID: "m1", sharedBy: "Riley")
+        let found = try XCTUnwrap(registry.apps.first(where: \.discovered))
+        let cookie = try XCTUnwrap(HTTPCookie(properties: [.domain: coach.host, .path: "/", .name: "session", .value: "1"]))
+        await WKWebsiteDataStore(forIdentifier: found.dataStoreID).httpCookieStore.setCookie(cookie)
+        func stores() async -> [UUID] {
+            await withCheckedContinuation { continuation in
+                WKWebsiteDataStore.fetchAllDataStoreIdentifiers { continuation.resume(returning: $0) }
+            }
+        }
+        let before = await stores()
+        XCTAssertTrue(before.contains(found.dataStoreID))
+
+        await nodes.disableOwner()
+        XCTAssertEqual(registry.apps.map(\.id), [handAdded.id, shared.id])
+        XCTAssertEqual(nodes.discovered, [], "what the node found goes with it, so nothing merges it back")
+        let after = await stores()
+        XCTAssertFalse(after.contains(found.dataStoreID), "its data store is deleted")
+
+        await registry.mergeDiscovered([coach])
+        XCTAssertEqual(registry.apps.filter(\.discovered).map(\.name), ["Interview Coach"], "signing in again finds it")
+    }
+
     func testAMissingFileIsEmptyAndSaves() throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: dir) }

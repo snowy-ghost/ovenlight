@@ -115,7 +115,7 @@ data class SettingsState(
     val useMyOwnComputers: () -> Unit = {},
     val signIn: (URI) -> Unit = {},
     val approve: () -> Unit = {},
-    val signOut: () -> Unit = {},
+    /** Sign out, and Stop using my own computers before a sign-in: one action (see [NodeManager.disableOwner]). */
     val stopUsingMyOwnComputers: () -> Unit = {},
     /** False when the phone has no email app. */
     val contactUs: () -> Boolean = { true },
@@ -165,7 +165,6 @@ fun SettingsView(model: AppModel, onClose: () -> Unit) {
         },
         signIn = { url -> model.router.present(RootSheet.Login(url)) },
         approve = { model.router.present(RootSheet.Approve) },
-        signOut = { model.scope.launch { nodes.signOut() } },
         stopUsingMyOwnComputers = {
             model.scope.launch { nodes.disableOwner() }
             onClose()
@@ -316,7 +315,7 @@ private fun SettingsList(state: SettingsState, scroll: ScrollState, onClose: () 
     if (confirmingSignOut) {
         Confirmation(
             stringResource(R.string.settings_sign_out_title), stringResource(R.string.settings_sign_out_detail), stringResource(R.string.settings_sign_out),
-            onDismiss = { confirmingSignOut = false }, action = state.signOut,
+            onDismiss = { confirmingSignOut = false }, action = state.stopUsingMyOwnComputers,
         )
     }
     if (noEmailApp) NoEmailAppDialog(onDismiss = { noEmailApp = false })

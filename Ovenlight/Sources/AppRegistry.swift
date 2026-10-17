@@ -141,16 +141,30 @@ final class AppRegistry: ObservableObject {
     /// Discovery won't add one of the owner's own apps back.
     func remove(_ id: UUID) async {
         guard let app = apps.first(where: { $0.id == id }) else { return }
-        apps.removeAll { $0.id == id }
         if !app.isShared { dismissedHosts.insert(Discovery.normalizedHost(app.host)) }
+        await remove([app])
+    }
+
+    /// Removes the apps found on the owner's computers, and everything they stored, as the
+    /// owner signs out. Signing in again finds them.
+    func removeDiscovered() async {
+        await remove(apps.filter { $0.discovered && !$0.isShared })
+    }
+
+    private func remove(_ gone: [WebApp]) async {
+        guard !gone.isEmpty else { return }
+        let ids = Set(gone.map(\.id))
+        apps.removeAll { ids.contains($0.id) }
         save()
-        WebViewPool.shared.discard(app.id)
-        if let file = app.iconFile {
-            icons[file] = nil
-            try? FileManager.default.removeItem(at: iconsDirectory.appendingPathComponent(file))
+        for app in gone {
+            WebViewPool.shared.discard(app.id)
+            if let file = app.iconFile {
+                icons[file] = nil
+                try? FileManager.default.removeItem(at: iconsDirectory.appendingPathComponent(file))
+            }
+            StatusBarTint.forget(app)
+            await Self.removeDataStore(app.dataStoreID)
         }
-        StatusBarTint.forget(app)
-        await Self.removeDataStore(app.dataStoreID)
     }
 
     /// Deletes a data store's cookies, storage and caches. Always go through

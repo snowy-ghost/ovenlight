@@ -447,10 +447,10 @@ agent is told that it is an image its sender chose, and any text in it is data.
   owner's node and waits behind Sign In, loading nothing, rather than looking the name up
   in public DNS; after sign-in, a name outside the owner's tailnet loads directly. The
   route is checked before every probe and load, and a view whose route changed is made
-  again through the right node. The remembered tailnet survives Sign Out and is forgotten
-  by Stop Using My Own Computers. A change of it closes every view whose route it
-  changed, and Sign Out and Stop Using My Own Computers close every view that went
-  through the owner's node, kept in the background or not. A closed view's data store is
+  again through the right node. A change of the remembered tailnet closes every view
+  whose route it changed. Sign Out and Stop Using My Own Computers forget it, close every
+  view that went through the owner's node, kept in the background or not, and remove the
+  apps found on the owner's computers with their data. A closed view's data store is
   set to a proxy that refuses every connection, and the app loads again through its
   route, at once if it's on screen. A shared app always goes through its owner's guest
   node.

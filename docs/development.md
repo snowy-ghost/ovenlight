@@ -223,13 +223,13 @@ Sign Ovenlight in to the first with `-authKey`, and open the second owner's invi
   app waiting there can be approved too. An "Approve This iPhone" card names this iPhone as
   the tailnet lists it and opens that page again, and an app opened meanwhile shows the same
   card. Settings shows the account
-  and has Sign Out, which logs the node out and deletes its state; your apps stay, and
-  ask you to sign in again. While no account is signed in, before the first sign-in or
-  after Sign Out, Settings has Stop Using My Own Computers, which undoes the choice: the
-  node logs out, its state and the remembered tailnet are forgotten, and the launcher
-  goes back to its welcome when nothing else is saved. Both close every app view that
-  went through the owner's node, kept in the background included
-  (`WebViewPool.discard(attachedTo:)`).
+  and has Sign Out; while no account is signed in, it has Stop Using My Own Computers in
+  its place. Both undo the choice (`NodeManager.disableOwner`): the node logs out, its
+  state and the remembered tailnet are forgotten, the apps found on the owner's computers
+  go with their data (`AppRegistry.removeDiscovered`), and the launcher goes back to its
+  welcome when nothing else is saved. Apps added by hand and shared ones stay, and
+  signing in again finds the owner's apps. Both close every app view that went through
+  the owner's node, kept in the background included (`WebViewPool.discard(attachedTo:)`).
 - **Memberships.** One embedded node per network: the owner's own tailnet (state in
   `Application Support/Ovenlight/tailscale/owner`) and one guest node per owner whose
   invite this iPhone accepted (`tailscale/<membership ID>`, listed in

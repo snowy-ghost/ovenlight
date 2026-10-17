@@ -403,8 +403,8 @@ class MembershipNode(
 
     /**
      * The MagicDNS suffix of the owner's tailnet: from the node's status, or as last seen, so an
-     * app opened before the node reports still routes through it. It outlives Sign Out and goes
-     * with Stop Using My Own Computers. Null for a guest.
+     * app opened before the node reports still routes through it. It goes with Sign Out and Stop
+     * Using My Own Computers. Null for a guest.
      */
     val magicDNSSuffixSeen: String?
         get() {
@@ -559,9 +559,11 @@ class MembershipNode(
         val current = generation
         val hosts = probeHosts
         val outcome = probe(hosts)
+        // A node stopped or logged out meanwhile: its answers, and the apps it found, are gone with it.
+        if (current != generation) return
         record(outcome, hosts)
         if (outcome.reachable && isOwner && mutableDiscovered.value != outcome.apps) mutableDiscovered.value = outcome.apps
-        if (isOwner || current != generation || !silence.record(hosts, outcome.reachable)) return
+        if (isOwner || !silence.record(hosts, outcome.reachable)) return
         log("$id: no app has answered for a while, restarting the node")
         scope.launch { restart() }
     }
@@ -637,6 +639,9 @@ class NodeManager(
     /** A node starts to log out: the web views it carried go (the pool sets this). */
     var onLoggingOut: (MembershipNode) -> Unit = {}
 
+    /** The owner's node is forgotten: the apps found on the owner's computers go too (the app model sets this). */
+    var onOwnerForgotten: suspend () -> Unit = {}
+
     val owner: MembershipNode = node(Membership.ownerID) {
         MembershipNode.Settings(controlURL = ownerControlURL, authKey = debugAuthKey, hostName = hostName)
     }
@@ -698,9 +703,10 @@ class NodeManager(
     }
 
     /**
-     * Undoes [enableOwner] while no account is signed in: the owner's node logs out and is
-     * forgotten with its tailnet, and the launcher goes back to its welcome when nothing else
-     * is saved.
+     * Undoes [enableOwner]: Sign Out, and Stop Using My Own Computers before a sign-in. The
+     * owner's node logs out and is forgotten with its tailnet, the apps found on the owner's
+     * computers go with their data, and the launcher goes back to its welcome when nothing else
+     * is saved. Guest nodes are untouched.
      */
     suspend fun disableOwner() = withContext(NonCancellable) {
         mutableOwnerEnabled.value = false
@@ -708,6 +714,8 @@ class NodeManager(
         owner.logOutAndForget()
         clients.forget(Membership.ownerID)
         rememberOwnerSuffix(null)
+        // Once the node has stopped, so no discovery from before can bring them back.
+        onOwnerForgotten()
     }
 
     /** Remembers the owner's tailnet (null forgets it). A different one changes routes. */
@@ -733,12 +741,6 @@ class NodeManager(
 
     /** Tries the owner's node again after a failure. */
     suspend fun restart() = owner.restart()
-
-    /** Signs this phone out of the owner's tailnet and forgets its node, then starts over at login. Guest nodes are untouched. */
-    suspend fun signOut() = withContext(NonCancellable) {
-        owner.logOutAndForget()
-        owner.start()
-    }
 
     suspend fun rediscover() {
         owner.rediscover()

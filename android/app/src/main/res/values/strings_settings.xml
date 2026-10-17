@@ -28,7 +28,7 @@
     <string name="settings_approve">Approve this phone</string>
     <string name="settings_sign_out">Sign out</string>
     <string name="settings_sign_out_title">Sign out of your computers?</string>
-    <string name="settings_sign_out_detail">Your apps stay in Ovenlight. Sign in again to open them.</string>
+    <string name="settings_sign_out_detail">Signing out removes the apps found on your computers and everything they stored on this phone.</string>
     <string name="settings_stop_using_my_own_computers">Stop using my own computers</string>
 
     <string name="settings_advanced">Advanced</string>
