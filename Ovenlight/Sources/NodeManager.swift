@@ -26,13 +26,14 @@ enum NodeState: Equatable {
         }
     }
 
-    /// Whether the sign-in sheet closes: the iPhone is approved, or the node failed or stopped.
-    /// A tailnet that approves each new device keeps it open through the start between the
-    /// sign-in and the approval, and the wait for approval, so the owner can carry on in
-    /// Tailscale's pages.
+    /// Whether the sign-in sheet closes: the iPhone is approved, or the node failed. A tailnet
+    /// that approves each new device keeps it open through the start between the sign-in and
+    /// the approval, and the wait for approval, so the owner can carry on in Tailscale's pages.
+    /// Idle doesn't close it either: coming back from an authenticator app can restart a node
+    /// whose listener died, which passes through idle.
     var endsSignIn: Bool {
         switch self {
-        case .ready, .failed, .idle: return true
+        case .ready, .failed: return true
         default: return false
         }
     }

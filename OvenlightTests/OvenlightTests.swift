@@ -670,7 +670,7 @@ final class NodeMachineTests: XCTestCase {
         XCTAssertEqual(states, [.needsLogin(login), .connecting, .awaitingApproval, .connecting, .ready])
         XCTAssertEqual(states.map(\.endsSignIn), [false, false, false, false, true])
         XCTAssertTrue(NodeState.failed("boom").endsSignIn)
-        XCTAssertTrue(NodeState.idle.endsSignIn, "the node stopped")
+        XCTAssertFalse(NodeState.idle.endsSignIn, "a restart on coming back passes through idle")
     }
 
     func testStatusDecoding() throws {
