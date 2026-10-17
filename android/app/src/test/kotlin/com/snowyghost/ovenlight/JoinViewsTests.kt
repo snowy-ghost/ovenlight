@@ -11,7 +11,10 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -64,14 +67,19 @@ class JoinViewsTests {
         return composeRule.onAllNodes(isRoot(), useUnmergedTree = true).fetchSemanticsNodes().flatMap(::texts)
     }
 
+    /** The node showing [text], scrolled to unless it's one of the actions, which stay below what scrolls. */
+    private fun node(text: String) = composeRule.onNodeWithText(text).also {
+        if (composeRule.onAllNodes(hasText(text) and hasAnyAncestor(hasScrollAction())).fetchSemanticsNodes().isNotEmpty()) it.performScrollTo()
+    }
+
     /** [texts] in each look, then the label checks, and the copy rules on everything showing. */
     private fun inEveryLook(vararg texts: String) = composeRule.inEveryLook(look) {
-        for (text in texts) composeRule.onNodeWithText(text).performScrollTo().assertIsDisplayed()
+        for (text in texts) node(text).assertIsDisplayed()
         composeRule.checkAccessibility()
         shownText().forEach(CopyRules::assertNeutral)
     }
 
-    private fun tap(text: String) = composeRule.onNodeWithText(text).performScrollTo().performClick()
+    private fun tap(text: String) = node(text).performClick()
 
     @Test
     fun testTheEntryFindsAnInviteInAPastedMessageAndTheLockKeepsIt() {

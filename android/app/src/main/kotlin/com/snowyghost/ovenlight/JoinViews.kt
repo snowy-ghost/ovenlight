@@ -373,72 +373,77 @@ private fun JoinInvite(invite: InviteLink, state: JoinState, close: () -> Unit) 
         felt = phase
     }
 
-    // Anchored just above the buttons rather than floating mid-screen, scrolling only when the
-    // largest font sizes don't fit.
+    // The actions stay at the bottom; what's above them sits just over them rather than floating
+    // mid-screen, and scrolls when it doesn't fit (the largest font sizes, a phone on its side).
     BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
-        Column(
-            Modifier.widthIn(max = 640.dp).verticalScroll(rememberScrollState()).heightIn(min = maxHeight).fillMaxWidth()
-                .padding(horizontal = 28.dp).animateContentSize(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Bottom,
-        ) {
-            Spacer(Modifier.height(24.dp))
-            Box(Modifier.padding(bottom = 22.dp)) {
-                AppIconView(added ?: preview, image = image, size = 88.dp)
-                // Named in full: the column's own AnimatedVisibility is in scope too.
-                androidx.compose.animation.AnimatedVisibility(
-                    phase is JoinPhase.Joined, Modifier.align(Alignment.BottomEnd).offset(8.dp, 8.dp),
-                    enter = scaleIn() + fadeIn(), exit = scaleOut() + fadeOut(),
+        // At a compact height the icon gives way, so the question still shows above the actions.
+        val compact = maxHeight < 480.dp
+        Column(Modifier.widthIn(max = 640.dp).fillMaxSize().padding(horizontal = 28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            BoxWithConstraints(Modifier.weight(1f)) {
+                Column(
+                    Modifier.verticalScroll(rememberScrollState()).heightIn(min = maxHeight).fillMaxWidth().animateContentSize(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Bottom,
                 ) {
-                    Icon(
-                        painterResource(R.drawable.ic_check_circle), contentDescription = null, tint = LocalOvenColors.current.success,
-                        modifier = Modifier.size(28.dp).background(LocalOvenColors.current.groupedBackground, CircleShape),
-                    )
-                }
-            }
-            // Announced as the join goes along.
-            Column(
-                Modifier.padding(bottom = 32.dp).semantics { liveRegion = LiveRegionMode.Polite },
-                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                @Composable
-                fun title(text: String) = Text(text, Modifier.semantics { heading() }, style = OvenType.displayTitle, color = colors.onSurface, textAlign = TextAlign.Center)
+                    Spacer(Modifier.height(24.dp))
+                    if (!compact) Box(Modifier.padding(bottom = 22.dp)) {
+                        AppIconView(added ?: preview, image = image, size = 88.dp)
+                        // Named in full: the column's own AnimatedVisibility is in scope too.
+                        androidx.compose.animation.AnimatedVisibility(
+                            phase is JoinPhase.Joined, Modifier.align(Alignment.BottomEnd).offset(8.dp, 8.dp),
+                            enter = scaleIn() + fadeIn(), exit = scaleOut() + fadeOut(),
+                        ) {
+                            Icon(
+                                painterResource(R.drawable.ic_check_circle), contentDescription = null, tint = LocalOvenColors.current.success,
+                                modifier = Modifier.size(28.dp).background(LocalOvenColors.current.groupedBackground, CircleShape),
+                            )
+                        }
+                    }
+                    // Announced as the join goes along.
+                    Column(
+                        Modifier.padding(bottom = 32.dp).semantics { liveRegion = LiveRegionMode.Polite },
+                        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        @Composable
+                        fun title(text: String) = Text(text, Modifier.semantics { heading() }, style = OvenType.displayTitle, color = colors.onSurface, textAlign = TextAlign.Center)
 
-                @Composable
-                fun detail(text: String, modifier: Modifier = Modifier) =
-                    Text(text, modifier, style = MaterialTheme.typography.bodyLarge, color = colors.onSurfaceVariant, textAlign = TextAlign.Center)
+                        @Composable
+                        fun detail(text: String, modifier: Modifier = Modifier) =
+                            Text(text, modifier, style = MaterialTheme.typography.bodyLarge, color = colors.onSurfaceVariant, textAlign = TextAlign.Center)
 
-                when {
-                    phase is JoinPhase.Joined || (phase == null && preflight is Preflight.AlreadyAdded) -> {
-                        title(ConnectionCopy.joined(invite.name))
-                        detail(stringResource(R.string.join_added, invite.owner))
-                    }
-                    phase is JoinPhase.Failed -> {
-                        title(phase.error.title(invite.owner, invite.name))
-                        detail(phase.error.message(invite.owner, invite.name))
-                    }
-                    phase != null -> {
-                        title(ConnectionCopy.joining(invite.owner, invite.name))
-                        detail(ConnectionCopy.joiningDetail)
-                        CircularProgressIndicator(Modifier.padding(top = 6.dp))
-                    }
-                    preflight == Preflight.OwnApp -> {
-                        title(JoinError.OwnApp.title(invite.owner, invite.name))
-                        detail(JoinError.OwnApp.message(invite.owner, invite.name))
-                    }
-                    else -> {
-                        title(ConnectionCopy.joinTitle(invite.owner, invite.name))
-                        // The address reads as code to a friend; TalkBack still says it.
-                        val text = ConnectionCopy.joinDetail(invite.owner, invite.name, invite.to)
-                        val spoken = "$text ${ConnectionCopy.appAddress(invite.host)}"
-                        detail(text, Modifier.semantics { contentDescription = spoken })
-                        if (!invite.usesTailscaleControl) {
-                            Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Icon(painterResource(R.drawable.ic_warning), contentDescription = null, tint = colors.tertiary, modifier = Modifier.size(18.dp))
-                                Text(
-                                    ConnectionCopy.privateServer(invite.control.bareHost.orEmpty(), invite.owner),
-                                    style = MaterialTheme.typography.bodySmall, color = colors.tertiary,
-                                )
+                        when {
+                            phase is JoinPhase.Joined || (phase == null && preflight is Preflight.AlreadyAdded) -> {
+                                title(ConnectionCopy.joined(invite.name))
+                                detail(stringResource(R.string.join_added, invite.owner))
+                            }
+                            phase is JoinPhase.Failed -> {
+                                title(phase.error.title(invite.owner, invite.name))
+                                detail(phase.error.message(invite.owner, invite.name))
+                            }
+                            phase != null -> {
+                                title(ConnectionCopy.joining(invite.owner, invite.name))
+                                detail(ConnectionCopy.joiningDetail)
+                                CircularProgressIndicator(Modifier.padding(top = 6.dp))
+                            }
+                            preflight == Preflight.OwnApp -> {
+                                title(JoinError.OwnApp.title(invite.owner, invite.name))
+                                detail(JoinError.OwnApp.message(invite.owner, invite.name))
+                            }
+                            else -> {
+                                title(ConnectionCopy.joinTitle(invite.owner, invite.name))
+                                // The address reads as code to a friend; TalkBack still says it.
+                                val text = ConnectionCopy.joinDetail(invite.owner, invite.name, invite.to)
+                                val spoken = "$text ${ConnectionCopy.appAddress(invite.host)}"
+                                detail(text, Modifier.semantics { contentDescription = spoken })
+                                if (!invite.usesTailscaleControl) {
+                                    Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        Icon(painterResource(R.drawable.ic_warning), contentDescription = null, tint = colors.tertiary, modifier = Modifier.size(18.dp))
+                                        Text(
+                                            ConnectionCopy.privateServer(invite.control.bareHost.orEmpty(), invite.owner),
+                                            style = MaterialTheme.typography.bodySmall, color = colors.tertiary,
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
