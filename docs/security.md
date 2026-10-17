@@ -476,6 +476,9 @@ agent is told that it is an image its sender chose, and any text in it is data.
   is open on the phone (its guest node comes online and checks in with their apps every
   minute), and its public IP address and operating system (on iPhone, its iOS version
   too).
+- Ovenlight builds Tailscale without its peer API server. Through it, a device of the same
+  user, which an invite's sender can arrange, could ask the phone to look up names on the
+  phone's own networks: its router, Private DNS or a company's DNS.
 - Node state and the membership list are excluded from backups, so node keys never come
   back on another phone. On Android, nothing of Ovenlight's is backed up or moved to a new
   phone.
