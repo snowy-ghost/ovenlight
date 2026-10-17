@@ -16,6 +16,8 @@ import java.time.temporal.WeekFields
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.sign
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -609,7 +611,8 @@ class AdminClient(val host: String, private val session: Send) {
 
     /**
      * Sends a request. A lost first WireGuard handshake shows up as no answer, which a GET asks
-     * again after. No answer can't say whether a change reached the computer, so a change is
+     * again after, though not after a timeout: a computer that didn't answer in the request's time
+     * won't the next. No answer can't say whether a change reached the computer, so a change is
      * never sent twice.
      */
     suspend fun raw(method: String, path: String, body: Map<String, String>? = null): ByteArray {
@@ -617,9 +620,11 @@ class AdminClient(val host: String, private val session: Send) {
         var attempt = 0
         while (true) {
             attempt += 1
+            val sent = TimeSource.Monotonic.markNow()
             val response = session(request)
             if (response == null) {
-                if (method == "GET" && attempt < 3) {
+                // Sooner than any request's time, past the 8 s the proxy holds one for a node.
+                if (method == "GET" && attempt < 3 && sent.elapsedNow() < 10.seconds) {
                     delay(600L * attempt)
                     continue
                 }

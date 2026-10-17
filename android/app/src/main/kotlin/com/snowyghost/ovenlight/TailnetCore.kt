@@ -149,7 +149,7 @@ object TailnetCore : Platform, TailnetClients {
     /**
      * Fetches through the proxy with [routeKey], answering its challenge up front. Null when
      * nothing answered; any HTTP answer, an error page included, is a response. Bodies are
-     * capped, since every fetch here is a small page, manifest or API answer.
+     * capped, since every fetch here is a small page, manifest, API answer or feedback screenshot.
      */
     override fun session(routeKey: String, timeoutMillis: Long, totalMillis: Long): Send {
         val client = client(routeKey)
@@ -172,7 +172,8 @@ object TailnetCore : Platform, TailnetClients {
     // Redirects are followed, as iOS's sessions follow them (an app's start page that sends
     // `/` to `/login` still names the app), but never from https to http.
     private val http = OkHttpClient.Builder().cache(null).followSslRedirects(false).build()
-    private const val MAX_BODY = 4L shl 20
+    /** Above the connector's 5 MiB for a feedback screenshot, the largest answer Ovenlight reads. */
+    private const val MAX_BODY = 6L shl 20
 
     private suspend fun OkHttpClient.fetch(request: Request): FetchResponse? = suspendCancellableCoroutine { done ->
         val call = newCall(request)

@@ -62,6 +62,8 @@ class UnlockPrompt(
      * nothing to ask for, and Ovenlight already opens without one there (see [LockManager]).
      */
     suspend fun confirm(reason: String): Boolean {
+        // A second tap before the prompt covers the screen asks nothing more.
+        if (confirming) return false
         confirming = true
         try {
             val result = authenticate(reason)
