@@ -49,5 +49,7 @@
     <string name="launcher_leave">Leave</string>
     <!-- A removed app's home screen shortcut, when tapped. -->
     <string name="shortcut_removed">No longer in Ovenlight</string>
+    <!-- Add to Home screen, for an app already there. -->
+    <string name="shortcut_already_pinned">Already on your Home screen</string>
 
 </resources>

@@ -8,6 +8,7 @@ import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.Shader
+import android.widget.Toast
 import androidx.compose.ui.graphics.toArgb
 import androidx.core.content.pm.ShortcutInfoCompat
 import androidx.core.content.pm.ShortcutManagerCompat
@@ -33,8 +34,15 @@ object HomeShortcuts {
 
     fun isSupported(context: Context): Boolean = ShortcutManagerCompat.isRequestPinShortcutSupported(context)
 
-    /** Asks the launcher to pin the app; its own dialog confirms. */
+    /**
+     * Asks the launcher to pin the app; its own dialog confirms. Android answers a request for a
+     * shortcut already pinned without the dialog, so Ovenlight says so instead.
+     */
     fun request(context: Context, app: WebApp, image: Bitmap?) {
+        if (pinned(context).contains(app.id.toString())) {
+            Toast.makeText(context, R.string.shortcut_already_pinned, Toast.LENGTH_SHORT).show()
+            return
+        }
         ShortcutManagerCompat.requestPinShortcut(context, shortcut(context, app, image), null)
     }
 
@@ -43,7 +51,7 @@ object HomeShortcuts {
         // Android refuses shortcut calls before the phone's first unlock, and a busy one may
         // refuse an update for a while; the next change tries again.
         runCatching {
-            val pinned = ShortcutManagerCompat.getShortcuts(context, ShortcutManagerCompat.FLAG_MATCH_PINNED).filter { it.isEnabled }.map { it.id }.toSet()
+            val pinned = pinned(context)
             val changed = apps.filter { it.id.toString() in pinned }
             if (changed.isNotEmpty()) ShortcutManagerCompat.updateShortcuts(context, changed.map { shortcut(context, it, image(it)) })
         }
@@ -53,6 +61,10 @@ object HomeShortcuts {
     fun disable(context: Context, app: WebApp) {
         runCatching { ShortcutManagerCompat.disableShortcuts(context, listOf(app.id.toString()), context.getString(R.string.shortcut_removed)) }
     }
+
+    /** The IDs of the shortcuts pinned and still enabled. */
+    private fun pinned(context: Context): Set<String> =
+        ShortcutManagerCompat.getShortcuts(context, ShortcutManagerCompat.FLAG_MATCH_PINNED).filter { it.isEnabled }.map { it.id }.toSet()
 
     private fun shortcut(context: Context, app: WebApp, image: Bitmap?): ShortcutInfoCompat {
         val link = Intent(Intent.ACTION_VIEW, "${InviteLink.scheme}://open?id=${app.id}".toUri(), context, MainActivity::class.java)

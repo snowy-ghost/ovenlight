@@ -1314,9 +1314,17 @@ if [[ $SCENARIO == shortcuts ]]; then
   note "the launcher asks: $(screen_text | tr '\n' '|')"
   tap_matching '^(Add|ADD|Add automatically|ADD AUTOMATICALLY|Add to home screen)$' || fail "no Add in the launcher's dialog: $(screen_text | tr '\n' '|')"
   sleep 2
-  id=$(a shell dumpsys shortcut | LC_ALL=C grep -o -E 'id=[0-9a-f-]{36}' | head -1 | sed 's/id=//' || true)
+  id=$(a shell dumpsys shortcut | LC_ALL=C sed -n "/Package: $PKG /,/Package: /p" | LC_ALL=C grep -o -E 'id=[0-9a-f-]{36}' | head -1 | sed 's/id=//' || true)
   [[ -n $id ]] || fail "no shortcut for Recipes: $(a shell dumpsys shortcut | LC_ALL=C grep -A40 "Package: $PKG" | head -60)"
   note "pinned $id: $(shortcut $id | tr -s ' ' | tr '\n' ' ' | cut -c1-400)"
+  # Asked again, Android answers without its dialog, and Ovenlight says it's already there.
+  hold Recipes || fail "no Recipes tile"
+  await_text 5 "Add to Home screen" || fail "Recipes' menu has no Add to Home screen"
+  tap_text "Add to Home screen"
+  sleep 2
+  [[ $(front) == *$PKG* ]] || fail "asked again, the launcher's dialog came back: $(front)"
+  shot shortcuts-again
+  note "asked again, the launcher shows no second dialog"
 
   say "shortcuts: from the home screen, through the lock"
   a shell input keyevent KEYCODE_HOME; sleep 3
