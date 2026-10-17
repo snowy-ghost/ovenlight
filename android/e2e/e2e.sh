@@ -575,7 +575,8 @@ sys.exit(0 if nodes and not live else 1)'
   note "the camera was asked for once, the scanner had it, and Cancel went back and let it go"
 
   say "guests: no invite's key in the system log"
-  for key in "${keys[@]}"; do ! LC_ALL=C grep -qF -- "$key" $OUT/logcat-guests.log || fail "an invite's key is in the system log"; done
+  # Not adbd's lines: Android 17's adbd logs each command this script sends it, links and all.
+  for key in "${keys[@]}"; do ! LC_ALL=C grep -v ' adbd *: ' $OUT/logcat-guests.log | LC_ALL=C grep -qF -- "$key" || fail "an invite's key is in the system log"; done
   note "none of the ${#keys[@]} keys is in the $(wc -l < $OUT/logcat-guests.log | tr -d ' ') lines logged"
   say "PASSED"
   exit 0
@@ -1539,7 +1540,9 @@ load_and_check() { # profile url key title-pattern
   corelog "$opened" > $D/core-$profile.log
   lablog "$opened" > $D/lab-$profile.log
   { grep '^proxy: ' $D/core-$profile.log || true; } | cut -d' ' -f2- | sed 's/: open$//' | sort | uniq -c | while read -r l; do note "  $l"; done
-  keys=$({ grep '^proxy: ' $D/core-$profile.log || true; } | cut -d' ' -f2 | sort -u | tr '\n' ' ')
+  # Tunnels only: a plain request (405 or 400, as Android 17's WebView sends the page's fetch of
+  # the proxy's own port) opens none and has no key.
+  keys=$({ grep '^proxy: ' $D/core-$profile.log | grep -v -E ': (400|405)$' || true; } | cut -d' ' -f2 | sort -u | tr '\n' ' ')
   [[ $keys == "$key " ]] || fail "profile $profile's tunnels carried keys: $keys"
 }
 
