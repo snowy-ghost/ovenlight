@@ -224,7 +224,7 @@ private fun StatusBarIcons(strip: Color?) {
     val configuration = LocalConfiguration.current
     DisposableEffect(strip, dark, configuration) {
         val bars = view.context.componentActivity()?.window?.let { WindowCompat.getInsetsController(it, view) }
-        if (strip != null) bars?.isAppearanceLightStatusBars = strip.isLight()
+        bars?.isAppearanceLightStatusBars = strip?.isLight() ?: !dark
         onDispose { bars?.isAppearanceLightStatusBars = !dark }
     }
 }

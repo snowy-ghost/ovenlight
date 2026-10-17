@@ -7,10 +7,12 @@ import android.os.SystemClock
 import android.provider.Settings
 import android.view.KeyEvent
 import android.view.View
+import android.view.Window
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
 import android.view.inspector.WindowInspector
 import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ActivityScenario
@@ -303,6 +305,29 @@ class OpenPageTests {
             waitFor("the plain page above the buttons") { viewGap() == tappableBottom() }
         } finally {
             navigation(if (wasGestural) "gestural" else "threebutton")
+        }
+    }
+
+    /** A cover page's status bar icons follow a switch to dark mode and back: light icons on the page gone dark. */
+    @Test
+    fun testACoverPagesStatusBarIconsFollowTheMode() {
+        val cover = html.replace("initial-scale=1", "initial-scale=1, viewport-fit=cover").replace("<title>", "<meta name=color-scheme content='light dark'><title>")
+        onMain { page.view.loadDataWithBaseURL(app.startURL.toString(), cover, "text/html", "utf-8", null) }
+        waitFor("the cover page") { onMain { page.look.value.cover } }
+        lateinit var window: Window
+        scenario.onActivity { window = it.window }
+        val shell = { command: String -> instrumentation.uiAutomation.executeShellCommand(command).close() }
+        try {
+            for (night in listOf(true, false)) {
+                shell("cmd uimode night ${if (night) "yes" else "no"}")
+                waitFor("night mode $night") { onMain { window.context.resources.configuration.isNightModeActive } == night }
+                instrumentation.waitForIdleSync()
+                Thread.sleep(1_000)
+                val darkIcons = onMain { WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars }
+                assertEquals("dark icons with night mode $night", !night, darkIcons)
+            }
+        } finally {
+            shell("cmd uimode night no")
         }
     }
 
