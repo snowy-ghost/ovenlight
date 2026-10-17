@@ -108,13 +108,7 @@ class NodeManagerTests {
     @Test
     fun testASignOutCutShortFinishesAtLaunch() = runTest {
         val nodes = manager(FakeClients())
-        val webData = object : AppRegistry.WebData {
-            override fun discard(app: UUID) {}
-            override suspend fun clear(store: UUID) {}
-            override fun delete(store: UUID) {}
-            override suspend fun stores() = emptyList<UUID>()
-        }
-        val registry = AppRegistry(File(folder, "apps"), session = { null }, webData = webData, iconPNG = { null }, scope = backgroundScope)
+        val registry = offlineRegistry(File(folder, "apps"))
         nodes.onOwnerForgotten = registry::removeDiscovered
         // What the process left dying during a Sign Out: owner mode off, the node's state and the
         // apps found still there, and one removed by hand still dismissed.
