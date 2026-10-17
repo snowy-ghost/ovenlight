@@ -11,7 +11,8 @@
 # with a preauth key and waits for the launcher to show both test apps. signin goes through
 # the launcher's Connect card and the sign-in page in Chrome's Custom Tab, approves the phone
 # after [seconds] (default 90: Android freezes an app about a minute after it goes out of
-# sight), and checks that Ovenlight comes back over the tab by itself, connected. screens
+# sight), checking first that Chrome keeps Ovenlight running behind the tab, and checks that
+# Ovenlight comes back over the tab by itself, connected, and lets Chrome go. screens
 # signs in as owner does, takes the launcher, Settings and lock screenshots in light and
 # dark, and checks the lock: at Immediately, Home and back through the icon or Recents asks
 # for it, and a canceled prompt doesn't come back by itself. app opens Recipes from the
@@ -350,6 +351,9 @@ unlock_now() {
 
 # The activity in front, as the activity manager names it.
 front() { a shell dumpsys activity activities | LC_ALL=C grep -m1 -E 'topResumedActivity|mResumedActivity' || true; }
+# Whether service $1 (a component) has a binding from app $2's process.
+# grep reads it all, so adb never sees a closed pipe and fails the pipeline.
+bound() { a shell dumpsys activity services "$1" | LC_ALL=C grep -E "ProcessRecord\{[^}]* [0-9]+:$2/" >/dev/null; }
 # Waits up to $1 seconds for an activity other than Ovenlight in front, with the address $2 in its intent.
 await_outside() {
   for i in $(seq 1 $1); do
@@ -903,6 +907,10 @@ if [[ $SCENARIO == signin ]]; then
   tap_text "Use my own computers"
   await_text 60 Connect || fail "no Connect card: $(screen_text | tr '\n' '|')"
   shot signin-card
+  # Ovenlight connects to Chrome once the owner needs a sign-in, and a tab opened before Chrome
+  # answers goes without the keep-alive: a cold Chrome, just force-stopped, mustn't race it.
+  chrome_tabs=com.android.chrome/org.chromium.chrome.browser.customtabs.CustomTabsConnectionService
+  until_ok 30 bound $chrome_tabs $PKG || fail "Ovenlight never connected to Chrome"
   tap_text Connect
   # Headscale's registration page, in the Custom Tab: its address names the registration.
   reg=
@@ -915,12 +923,17 @@ if [[ $SCENARIO == signin ]]; then
   shot signin-tab
   note "the sign-in page opened in a Custom Tab; approving in $SIGNIN_WAIT s"
   sleep $SIGNIN_WAIT
+  # What keeps Ovenlight from being frozen behind the tab, on API 29 too, which has no freezer.
+  bound $PKG/.TabKeepAlive com.android.chrome || { shot signin-failed; fail "Chrome isn't keeping Ovenlight running behind the tab"; }
+  note "Chrome keeps Ovenlight running behind the tab"
   $HS -c $D/headscale.yaml nodes register --user owner --key "$reg" >/dev/null || fail "headscale couldn't register the phone"
   # Ovenlight comes back over the tab by itself once the node connects, as on iOS.
   for i in $(seq 1 30); do [[ $(front) == *$PKG* ]] && break; sleep 1; done
   [[ $(front) == *$PKG* ]] || { shot signin-failed; fail "still behind the tab 30 s after the approval: $(front)"; }
   await_text 40 Recipes Pantry || { shot signin-failed; fail "back over the tab, but not connected: $(screen_text | tr '\n' '|')"; }
   note "Ovenlight came back over the tab by itself, connected"
+  ! bound $chrome_tabs $PKG || fail "still connected to Chrome once the phone is"
+  note "and it let Chrome go"
   shot signin-connected
   say "PASSED"
   exit 0
