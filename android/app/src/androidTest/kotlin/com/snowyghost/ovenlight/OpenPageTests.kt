@@ -1,7 +1,6 @@
 package com.snowyghost.ovenlight
 
 import android.accessibilityservice.AccessibilityServiceInfo
-import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.graphics.Rect
 import android.os.ParcelFileDescriptor
@@ -291,15 +290,20 @@ class OpenPageTests {
         unlock()
         assertBelowTheBand("unlocked")
 
+        // The display turned, as a person turns the phone: Android 16 ignores an app's requested
+        // orientation on a tablet.
+        val shell = { command: String -> ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand(command)).use { it.readBytes() } }
+        val wide = { onMain { page.view.width > page.view.height } }
+        val upright = wide()
         try {
-            scenario.onActivity { it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
-            waitFor("landscape") { onMain { page.view.width > page.view.height } }
-            assertBelowTheBand("in landscape")
-            scenario.onActivity { it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }
-            waitFor("portrait") { onMain { page.view.width < page.view.height } }
+            shell("settings put system accelerometer_rotation 0")
+            shell("settings put system user_rotation 1")
+            waitFor("on its side") { wide() != upright }
+            assertBelowTheBand("on its side")
         } finally {
-            scenario.onActivity { it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED }
+            shell("settings put system user_rotation 0")
         }
+        waitFor("upright again") { wide() == upright }
         assertBelowTheBand("rotated and back")
 
         evaluate("document.body.insertAdjacentHTML('beforeend', \"<button id=full style='position:fixed;left:0;top:45%;width:100%;height:96px' onclick='document.documentElement.requestFullscreen()'>Full</button>\")")

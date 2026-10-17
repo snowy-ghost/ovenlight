@@ -187,7 +187,9 @@ class PageScriptTests {
         val agent = eval("navigator.userAgent")!!
         assertTrue(agent, agent.startsWith("Mozilla/5.0 (Linux; Android "))
         assertTrue("WebView's own marker stays", agent.contains("; wv)"))
-        assertTrue(agent, Regex(" Mobile Safari/\\S+ Ovenlight/${Regex.escape(BuildConfig.VERSION_NAME)}$").containsMatchIn(agent))
+        // A tablet's WebView leaves out Mobile, as Chrome does there.
+        val mobile = if (context.resources.configuration.smallestScreenWidthDp >= 600) "" else " Mobile"
+        assertTrue(agent, Regex("$mobile Safari/\\S+ Ovenlight/${Regex.escape(BuildConfig.VERSION_NAME)}$").containsMatchIn(agent))
         assertTrue("no phone model or build: $agent", agent.startsWith("Mozilla/5.0 (Linux; Android 10; K; wv)"))
         // Nor through client hints, which a page can ask for whatever the string says.
         eval(
