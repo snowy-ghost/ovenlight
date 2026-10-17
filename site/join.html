@@ -15,19 +15,19 @@
 <title>You're invited to an app on Ovenlight</title>
 <!-- An invite's page, not one to find in search. -->
 <meta name="robots" content="noindex">
-<meta name="description" content="Open this invite on your iPhone to join with Ovenlight.">
+<meta name="description" content="Open this invite on your phone to join with Ovenlight.">
 
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Ovenlight">
 <meta property="og:title" content="You're invited to an app on Ovenlight">
-<meta property="og:description" content="Open this invite on your iPhone to join with Ovenlight.">
+<meta property="og:description" content="Open this invite on your phone to join with Ovenlight.">
 <meta property="og:image" content="https://ovenlight.app/og-invite.jpg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="The Ovenlight wordmark on its rack, lit by a soft cone of warm light from above.">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="You're invited to an app on Ovenlight">
-<meta name="twitter:description" content="Open this invite on your iPhone to join with Ovenlight.">
+<meta name="twitter:description" content="Open this invite on your phone to join with Ovenlight.">
 <meta name="twitter:image" content="https://ovenlight.app/og-invite.jpg">
 
 <meta name="theme-color" content="#faf5ee" media="(prefers-color-scheme: light)">
@@ -124,9 +124,13 @@
   }
   .primary:active, .store:active { transform: translateY(1px); }
   .secondary { background: var(--bg); color: var(--ink); border: 1px solid var(--line); margin-top: 0.6rem; }
-  /* Apple's official badge artwork, unmodified (black on light, white on dark). */
+  /* Apple's and Google's official badges, unmodified (Apple's black on light, white on dark).
+     Google's image carries its clear space, a quarter of the badge's height on each side, and
+     is sized so the badge stands as tall as Apple's. */
   .store { display: block; width: max-content; margin: 1.75rem auto 0; border-radius: 0.75rem; line-height: 0; }
   .store img { width: 12rem; }
+  #ask-play { margin-top: 0.75rem; }
+  #ask-play img { width: 15.5rem; }
   .have { margin-top: 1.75rem; padding-top: 1.5rem; border-top: 1px solid var(--line); color: var(--ink); font-weight: 600; }
   .note { font-size: 0.9375rem; color: var(--ink-soft); margin-top: 1.25rem; }
   footer.site { border-top: 1px solid var(--line); color: var(--ink-soft); font-size: 0.875rem; }
@@ -153,8 +157,8 @@
       <img class="mark" src="/icon.svg" width="88" height="88" alt="">
       <h1 id="title">You're invited to an app on Ovenlight</h1>
       <p class="for" id="for" hidden></p>
-      <p class="about">Ovenlight opens web apps that friends run on their own computers, and keeps them behind Face&nbsp;ID or your passcode.</p>
-      <p class="note" id="elsewhere" hidden>Ovenlight is for iPhone. Open this invite link on your iPhone to join.</p>
+      <p class="about">Ovenlight opens web apps that friends run on their own computers, and keeps them behind your phone's lock.</p>
+      <p class="note" id="elsewhere" hidden>Ovenlight is for iPhone and Android phones. Open this invite link on your phone to join.</p>
       <p class="note" id="missing" hidden>This link is incomplete. Ask for it again and copy the whole link.</p>
 
       <a class="store" id="ask" href="https://apps.apple.com/app/id6817561066">
@@ -163,13 +167,16 @@
           <img src="/images/app-store-badge-black.svg" width="150" height="50" alt="Download on the App Store">
         </picture>
       </a>
+      <a class="store" id="ask-play" href="https://play.google.com/store/apps/details?id=com.snowyghost.ovenlight">
+        <img src="/images/google-play-badge.png" width="646" height="250" alt="Get it on Google Play">
+      </a>
       <a class="btn primary" id="testflight" href="#" hidden>Get Ovenlight on TestFlight</a>
 
       <div id="invite" hidden>
         <p class="note">Once Ovenlight is installed, open the invite link again.</p>
         <p class="have">Already have Ovenlight?</p>
         <a class="btn secondary" id="open" href="#">Open in Ovenlight</a>
-        <p class="note">The invite works once, on one iPhone, and expires, so open it soon. This page doesn't send your invite anywhere.</p>
+        <p class="note">The invite works once, on one phone, and expires, so open it soon. This page doesn't send your invite anywhere.</p>
       </div>
     </div>
   </div>

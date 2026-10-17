@@ -1,9 +1,12 @@
 // Reads the invite from the fragment (#v=1&control=...&key=...), the same fields as
 // ovenlight://join?..., and never sends it anywhere: no requests, no storage, no analytics
 // (the page's Content-Security-Policy blocks them too). Reaching this page means the link
-// didn't open Ovenlight, so it offers the ovenlight:// link and the way to get the app.
+// didn't open Ovenlight, so it offers Open in Ovenlight and the way to get the app.
 (function () {
   "use strict";
+
+  var onIPhone = /iPhone/.test(navigator.userAgent);
+  var onAndroid = /Android/.test(navigator.userAgent);
 
   // A display label, as Ovenlight shows it: no control or format characters (Swift's
   // controlCharacters, so no bidi overrides) except the joiners emoji and scripts such as
@@ -30,15 +33,20 @@
       title = owner + " invited you to " + app;
       guest = label(params.get("to"));
       // Rebuilt from the parsed fields, so a "#" or anything else in a crafted link stays
-      // inside a field's value.
-      document.getElementById("open").href = "ovenlight://join?" + params.toString();
+      // inside a field's value. On Android, an intent: link names Ovenlight's package, since
+      // any app can claim the ovenlight: scheme, and carries the fields in its fragment,
+      // which Android 10 to 12 leave out when they log the link.
+      var fields = params.toString();
+      document.getElementById("open").href = onAndroid
+        ? "intent://join#" + fields + "#Intent;scheme=ovenlight;package=com.snowyghost.ovenlight;end"
+        : "ovenlight://join?" + fields;
     }
     document.getElementById("title").textContent = title;
     document.title = isInvite ? title + " · Ovenlight" : title;
-    // Ovenlight is iPhone only; elsewhere the button would do nothing.
-    var onIPhone = /iPhone/.test(navigator.userAgent);
-    document.getElementById("invite").hidden = !isInvite || !onIPhone;
-    document.getElementById("elsewhere").hidden = !isInvite || onIPhone;
+    // Ovenlight is for iPhone and Android; elsewhere the button would do nothing.
+    var onPhone = onIPhone || onAndroid;
+    document.getElementById("invite").hidden = !isInvite || !onPhone;
+    document.getElementById("elsewhere").hidden = !isInvite || onPhone;
     document.getElementById("missing").hidden = isInvite;
     var invitee = document.getElementById("for");
     invitee.textContent = "This invite is for " + guest + ".";
@@ -47,8 +55,12 @@
   render();
   window.addEventListener("hashchange", render);
 
+  // A phone gets its own store's badge, and anywhere else both show.
+  document.getElementById("ask").hidden = onAndroid;
+  document.getElementById("ask-play").hidden = onIPhone;
+
   var testFlight = document.querySelector('meta[name="ovenlight-testflight"]').content.trim();
-  if (/^https:\/\/testflight\.apple\.com\//.test(testFlight)) {
+  if (!onAndroid && /^https:\/\/testflight\.apple\.com\//.test(testFlight)) {
     var button = document.getElementById("testflight");
     button.href = testFlight;
     button.hidden = false;
