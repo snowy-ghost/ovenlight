@@ -166,9 +166,7 @@ private struct AppPage: View {
         }
         .onChange(of: node.state) { _, state in
             // As at the root: the sign-in page stays until the iPhone is approved.
-            if case .needsLogin = state { return }
-            if state == .awaitingApproval { return }
-            if case .login = sheet { sheet = nil }
+            if state.endsSignIn, case .login = sheet { sheet = nil }
         }
         .sheet(item: $feedback) { capture in
             FeedbackSheet(app: app, screenshot: capture.image, pageURL: capture.pageURL)

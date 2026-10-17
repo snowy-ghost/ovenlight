@@ -659,6 +659,20 @@ final class NodeMachineTests: XCTestCase {
         XCTAssertEqual(NodeState.failed("boom").logDescription, "failed", "the message is the summary beside it")
     }
 
+    /// On a tailnet that approves each new device, the start after the sign-in doesn't close
+    /// the sign-in sheet.
+    func testSignInStaysOpenUntilApproved() {
+        var states: [NodeState] = [.needsLogin(login)]
+        for event: NodeEvent in [.backend(state: "Starting", authURL: nil), .backend(state: "NeedsMachineAuth", authURL: nil),
+                                 .backend(state: "Running", authURL: nil), .reachable] {
+            states.append(NodeMachine.next(states.last!, event))
+        }
+        XCTAssertEqual(states, [.needsLogin(login), .connecting, .awaitingApproval, .connecting, .ready])
+        XCTAssertEqual(states.map(\.endsSignIn), [false, false, false, false, true])
+        XCTAssertTrue(NodeState.failed("boom").endsSignIn)
+        XCTAssertTrue(NodeState.idle.endsSignIn, "the node stopped")
+    }
+
     func testStatusDecoding() throws {
         let json = """
         {"BackendState":"Running","AuthURL":"","Self":{"HostName":"ovenlight-abc123","DNSName":"ovenlight-abc123.tailabc123.ts.net.","OS":"iOS","Online":true,"UserID":42},
