@@ -114,7 +114,7 @@ app's home page (`/`) and its web manifest:
 
 - **Name and slug** come from `ovenlight publish`.
 - **Icon**: the raster icon in the manifest's `icons` closest to 512 px (of two equally
-  close, the larger), skipping SVG, which iOS can't use. Without one, the page's
+  close, the larger), skipping SVG, which Ovenlight can't use. Without one, the page's
   `<link rel="apple-touch-icon">`.
 - **Theme color**: the manifest's `theme_color`, else the page's first
   `<meta name="theme-color">`.
@@ -160,6 +160,35 @@ None of this is required: an app without it is still listed, by name.
   from a link activated in the page's main frame, and Ovenlight first asks "Open in
   another app?" naming the link, except for `tel:`, `facetime:` and `facetime-audio:`,
   where iOS asks.
+
+## In the Android app
+
+- Each app runs full screen in its own WebView with its own profile: cookies, storage and
+  cache apart from every other app's.
+- **User agent**: WebView's own as Android 17 sends it, with no phone model and
+  `Android 10` in place of the version, ending in `Ovenlight/<version>` (for example
+  `... Chrome/145.0.0.0 Mobile Safari/537.36 Ovenlight/1.0.0`). Downloads, which Ovenlight
+  fetches itself, carry it too, but its reachability checks and icon fetches don't. WebView
+  also sends `X-Requested-With: com.snowyghost.ovenlight` with the page's requests.
+- **Downloads**: the same links and answers as on iPhone (a PDF among them, which WebView
+  can't show) open Ovenlight's Save, Share and Open sheet. Ovenlight fetches a file from
+  the app's address again, through its own connection, as a GET with the page's cookies,
+  and follows no redirect, so a file that a form's POST answers doesn't arrive. A `blob:`
+  or `data:` download needs an `<a download>` click in a frame of the app's own origin, up
+  to 32 MB for a blob and 2 MB for a data URL. Downloads come only from the app's own
+  host, and are refused while Ovenlight is locked.
+- **No service workers or offline copies.** WebView would run them, so Ovenlight's page
+  script hides `navigator.serviceWorker`, as on iPhone.
+- **Microphone and camera**: the same rules as on iPhone, with Android's permission asked
+  once and Ovenlight's own prompt where iOS shows WebKit's. An Allow lasts for the page it
+  was given to.
+- **Other websites**: as on iPhone, except they open in the phone's browser, over
+  Ovenlight, in a Custom Tab. A form's POST to another site has gone by the time
+  Ovenlight sees it: the view goes back, and the address opens in the browser.
+- **Other apps**: as on iPhone, with `tel:` the only scheme that opens without the
+  question, since the dialer waits for the person to call. `intent:` links are stripped of
+  their component, selector, flags and any extra that names an address, and never reach
+  Ovenlight itself. `android-app:`, `file:` and `content:` links are refused.
 
 ## Feedback
 
