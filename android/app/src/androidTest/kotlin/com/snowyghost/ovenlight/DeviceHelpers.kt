@@ -2,6 +2,9 @@ package com.snowyghost.ovenlight
 
 import android.os.SystemClock
 import android.view.MotionEvent
+import androidx.compose.ui.test.isRoot
+import androidx.compose.ui.test.junit4.ComposeTestRule
+import androidx.compose.ui.test.tryPerformAccessibilityChecks
 import androidx.test.platform.app.InstrumentationRegistry
 
 // What the device tests share.
@@ -31,3 +34,6 @@ fun tap(at: Pair<Float, Float>) {
     instrumentation.sendPointerSync(MotionEvent.obtain(down, down, MotionEvent.ACTION_DOWN, x, y, 0))
     instrumentation.sendPointerSync(MotionEvent.obtain(down, down + 50, MotionEvent.ACTION_UP, x, y, 0))
 }
+
+/** The Accessibility Test Framework's checks on every root showing, dialogs, menus and sheets included. */
+fun ComposeTestRule.checkEveryRoot() = onAllNodes(isRoot()).fetchSemanticsNodes().indices.forEach { onAllNodes(isRoot())[it].tryPerformAccessibilityChecks() }

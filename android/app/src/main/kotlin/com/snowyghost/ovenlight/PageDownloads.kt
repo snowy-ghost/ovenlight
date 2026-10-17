@@ -624,7 +624,7 @@ private fun DownloadSheet(model: AppModel, app: WebApp, download: DownloadShelf.
         action()
         scope.launch { sheet.hide() }.invokeOnCompletion { DownloadShelf.remove(app.id, download) }
     }
-    ModalBottomSheet(onDismissRequest = { DownloadShelf.remove(app.id, download) }, sheetState = sheet) {
+    ModalBottomSheet(onDismissRequest = { DownloadShelf.remove(app.id, download) }, sheetState = sheet, dragHandle = { SheetDragHandle() }) {
         DownloadSheetContent(
             name = download.file.name,
             size = size,

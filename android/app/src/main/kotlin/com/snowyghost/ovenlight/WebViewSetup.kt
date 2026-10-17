@@ -19,6 +19,7 @@ import androidx.webkit.WebViewStartUpConfig
 import androidx.webkit.WebViewStartUpResult
 import androidx.webkit.WebViewStartupException
 import java.util.concurrent.Executors
+import kotlin.math.roundToInt
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -102,6 +103,7 @@ object WebViewSetup {
             loadWithOverviewMode = true
             userAgentString = WebViewPool.userAgentName(after = WebSettings.getDefaultUserAgent(view.context))
         }
+        followTextSize(view)
         // Client hints say the same: no model and Android 10. Left alone, WebView gives an agent
         // that contains its default (Android 17's is already reduced) the phone's full metadata.
         WebSettingsCompat.setUserAgentMetadata(
@@ -117,6 +119,11 @@ object WebViewSetup {
         if (WebViewFeature.isFeatureSupported(WebViewFeature.ALGORITHMIC_DARKENING)) {
             WebSettingsCompat.setAlgorithmicDarkeningAllowed(view.settings, false)
         }
+    }
+
+    /** A page's text follows the phone's font size, as Chrome's does: WebView alone keeps it at 100%. */
+    fun followTextSize(view: WebView, fontScale: Float = view.resources.configuration.fontScale) {
+        view.settings.textZoom = (fontScale * 100).roundToInt()
     }
 
     /**

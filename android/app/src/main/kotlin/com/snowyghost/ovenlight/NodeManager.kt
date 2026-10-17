@@ -6,9 +6,12 @@ import kotlin.coroutines.cancellation.CancellationException
 import kotlin.math.min
 import kotlin.math.pow
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -787,14 +790,23 @@ class NodeManager(
         mutableGuests.value = made
     }
 
-    /** Logs a guest node out, deletes its state and forgets the membership. */
-    suspend fun removeGuest(membershipID: String) = withContext(NonCancellable) {
-        val node = mutableGuests.value[membershipID]
-        if (node != null) node.logOutAndForget() else withContext(io) { stateDirectory(membershipID).deleteRecursively() }
-        mutableGuests.value = mutableGuests.value - membershipID
-        clients.forget(membershipID)
-        memberships.delete(membershipID)
-    }
+    /** Removals under way, so a second caller (Leave and the orphan sweep, or two sweeps) waits for the first. */
+    private val removals = mutableMapOf<String, Deferred<Unit>>()
+
+    /** Logs a guest node out, deletes its state and forgets the membership. Finishes even when its caller is canceled. */
+    suspend fun removeGuest(membershipID: String) = removals.getOrPut(membershipID) {
+        scope.async(start = CoroutineStart.LAZY) {
+            try {
+                val node = mutableGuests.value[membershipID]
+                if (node != null) node.logOutAndForget() else withContext(io) { stateDirectory(membershipID).deleteRecursively() }
+                mutableGuests.value = mutableGuests.value - membershipID
+                clients.forget(membershipID)
+                memberships.delete(membershipID)
+            } finally {
+                removals.remove(membershipID)
+            }
+        }
+    }.await()
 
     // Routing
 

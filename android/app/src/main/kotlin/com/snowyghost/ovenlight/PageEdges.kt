@@ -891,7 +891,7 @@ private fun PageDialog(edges: PageEdges, dialog: PageEdges.Dialog) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SourceSheet(dialog: PageEdges.Dialog.ChooseSource, dismiss: () -> Unit) {
-    ModalBottomSheet(onDismissRequest = dismiss) {
+    ModalBottomSheet(onDismissRequest = dismiss, dragHandle = { SheetDragHandle() }) {
         val choose = { source: PageEdges.Source ->
             dialog.answer(source)
             dismiss()

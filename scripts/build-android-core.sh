@@ -17,9 +17,9 @@ GO_TOOLCHAIN=go1.27.2
 # below). The build info still names android/core's folder, which gomobile's module replaces it
 # with, so a library built elsewhere differs in that one path.
 GO_FLAGS=-trimpath
-# As iOS: no debug LocalAPI handlers, and no saved netmap, so a removed guest isn't
-# hidden by an old one.
-BUILD_TAGS=ts_omit_debug,ts_omit_cachenetmap
+# As iOS: no debug LocalAPI handlers, no peerAPI server, and no saved netmap, so a removed
+# guest isn't hidden by an old one.
+BUILD_TAGS=ts_omit_debug,ts_omit_peerapiserver,ts_omit_cachenetmap
 RELEASE_TARGETS=android/arm64,android/arm,android/amd64
 DEV_TARGETS=android/arm64
 # gomobile links with the NDK's clang. Ask for 16 KB pages whatever its default.

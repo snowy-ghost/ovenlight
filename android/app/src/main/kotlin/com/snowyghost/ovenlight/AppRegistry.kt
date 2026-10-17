@@ -32,7 +32,10 @@ class AppRegistry(
         /** Closes the app's web view, if it has one. */
         fun discard(app: UUID)
 
-        /** Forgets what was kept about a removed app outside its data store, such as its status bar tint. */
+        /**
+         * Forgets what was kept about a removed app outside its data store, such as its status bar
+         * tint, and disables its home screen shortcut.
+         */
         fun forget(app: WebApp) {}
 
         /** Deletes a data store's cookies, storage and caches, even while a web view still uses it. */

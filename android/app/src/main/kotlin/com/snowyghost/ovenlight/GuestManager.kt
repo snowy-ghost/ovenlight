@@ -37,11 +37,6 @@ class GuestManager(
     private val joins = mutableMapOf<String, Job>()
     private val verifying = mutableSetOf<UUID>()
 
-    /**
-     * Memberships being left, so two orphan sweeps at once (an ended share and the app's view
-     * closing) log one out once.
-     */
-    private val leaving = mutableSetOf<String>()
     private val store: MembershipStore get() = nodes.memberships
 
     init {
@@ -332,13 +327,8 @@ class GuestManager(
         // A shared app whose membership is gone can't be reached or checked any more.
         for (app in GuestCleanup.stranded(registry.apps, store::get)) registry.remove(app.id)
         for (id in GuestCleanup.orphans(store.memberships, registry.apps)) {
-            if (!leaving.add(id)) continue
             log("$id: no apps left, leaving")
-            try {
-                nodes.removeGuest(id)
-            } finally {
-                leaving.remove(id)
-            }
+            nodes.removeGuest(id)
         }
     }
 }

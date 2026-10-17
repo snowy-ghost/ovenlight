@@ -7,6 +7,8 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -222,7 +224,8 @@ class NodeManagerTests {
         val directory = nodes.stateDirectory(membership.id)
         assertTrue(directory.exists())
 
-        nodes.removeGuest(membership.id)
+        // Twice at once, as Leave and the orphan sweep can: one removal.
+        listOf(async { nodes.removeGuest(membership.id) }, async { nodes.removeGuest(membership.id) }).awaitAll()
         assertTrue(clients.nodes.single { it.id == membership.id }.loggedOut)
         assertFalse(directory.exists())
         assertEquals(listOf(membership.id), clients.forgotten)

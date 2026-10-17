@@ -1,12 +1,13 @@
 package com.snowyghost.ovenlight
 
+import android.graphics.Bitmap
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.size
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.semantics.SemanticsActions
-import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.junit4.accessibility.enableAccessibilityChecks
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.longClick
@@ -58,7 +59,7 @@ class ScreenAccessibilityTests {
         composeRule.waitForIdle()
         open()
         composeRule.inEveryLook(look) {
-            composeRule.onAllNodes(isRoot()).fetchSemanticsNodes().indices.forEach { composeRule.onAllNodes(isRoot())[it].tryPerformAccessibilityChecks() }
+            composeRule.checkEveryRoot()
         }
     }
 
@@ -273,4 +274,49 @@ class ScreenAccessibilityTests {
 
     @Test
     fun testTheLockScreenWithAnError() = check { LockScreen(isLocked = true, isAuthenticating = false, lastError = "Couldn't unlock. Try again.", onUnlock = {}) }
+
+    // The open app's own screens. The tucked handle is left out: it is 20 dp tall by design
+    // (design.md), and a pull at the top reaches the pill too.
+
+    private val chromeActions = AppChromeActions(share = {}, sendFeedback = {})
+
+    @Composable
+    private fun Chrome(controller: ChromeController, touchExploration: Boolean = false) =
+        AppChrome(recipes, icon = null, isLoaded = true, actions = chromeActions, controller = controller, header = MaterialTheme.colorScheme.background, touchExploration = touchExploration)
+
+    @Test
+    fun testThePillWithItsTip() = check { Chrome(ChromeController(MemoryStore())) }
+
+    @Test
+    fun testTheAppMenu() = check(open = { composeRule.onNodeWithContentDescription("Recipe Box options").performClick() }) {
+        Chrome(ChromeController(MemoryStore().apply { putBoolean(ChromeController.TIP_CLOSED_KEY, true) }), touchExploration = true)
+    }
+
+    @Test
+    fun testSendFeedback() = check {
+        val screenshot = Bitmap.createBitmap(90, 160, Bitmap.Config.ARGB_8888).apply { eraseColor(android.graphics.Color.rgb(200, 120, 60)) }
+        FeedbackSheet(recipes, FeedbackDraft(screenshot, URI("https://recipe-box.tail1.ts.net/soup")), density = 1f, send = { FeedbackResult.Sent }, onDismiss = {}, scope = rememberCoroutineScope())
+    }
+
+    @Test
+    fun testADownloadsSheet() = check { DownloadSheetContent("Recipes export.csv", "2.1 kB", canOpen = true, {}, {}, {}) }
+
+    @Test
+    fun testTheCapturePrompt() = check { CapturePromptDialog("Allow Recipe Box to use the camera?") {} }
+
+    @Test
+    fun testTheWebViewUpdateScreen() = check { WebViewUpdateScreen("com.google.android.webview") }
+
+    @Test
+    fun testAcknowledgements() = check(open = { composeRule.onNodeWithText("Acknowledgements").performScrollTo().performClick() }) {
+        SettingsScreen(SettingsState(version = "1.0.0 (12)"), onClose = {})
+    }
+
+    @Test
+    fun testAnInviteThatCantBeUsed() = check {
+        JoinFlowScreen(JoinRequest(URI("ovenlight://join?v=2&control=https%3A%2F%2Fcontrolplane.tailscale.com")), JoinState(), onClose = {})
+    }
+
+    @Test
+    fun testJoining() = check { JoinFlowScreen(JoinRequest(Result.success(invite)), JoinState(phases = mapOf("i1" to JoinPhase.Claiming)), onClose = {}) }
 }

@@ -22,6 +22,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.test.junit4.accessibility.disableAccessibilityChecks
+import androidx.compose.ui.test.junit4.accessibility.enableAccessibilityChecks
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -163,6 +165,14 @@ class PageEdgesTests {
     }
 
     private fun ArrayBlockingQueue<String>.answer(millis: Long = 5_000): String? = poll(millis, TimeUnit.MILLISECONDS)
+
+    /** What shows, through the Accessibility Test Framework from Android 11 (see ScreenAccessibilityTests). */
+    private fun checkAccessibility() {
+        if (Build.VERSION.SDK_INT < 30) return
+        composeRule.enableAccessibilityChecks()
+        composeRule.checkEveryRoot()
+        composeRule.disableAccessibilityChecks()
+    }
 
     private fun tapped(prefix: String) {
         waitFor("the tap on $prefix to reach the policy") { seen.any { it.first.startsWith(prefix) } }
@@ -446,6 +456,7 @@ class PageEdgesTests {
         tap()
         composeRule.waitUntil(5_000) { edges.dialog.value is PageEdges.Dialog.ChooseSource }
         composeRule.onNodeWithText("Take photo").assertExists()
+        checkAccessibility()
         if (Build.VERSION.SDK_INT < 30) {
             composeRule.onNodeWithText("Choose file").assertExists()
         } else {
@@ -636,6 +647,7 @@ class PageEdgesTests {
             composeRule.onNodeWithText("OK").performClick()
         }
         waitFor("dialog 3") { (edges.dialog.value as? PageEdges.Dialog.Alert)?.message == "again 3" }
+        checkAccessibility()
         composeRule.onNodeWithText("Don't let this app show more dialogs").performClick()
         composeRule.onNodeWithText("OK").performClick()
         result.answer(10_000)
