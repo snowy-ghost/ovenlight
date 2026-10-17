@@ -549,7 +549,8 @@ sys.exit(0 if nodes and not live else 1)'
   shot guests-scanner
   tap_text Cancel
   await_text 10 "Scan invite code" || fail "Cancel didn't go back: $(screen_text | tr '\n' '|')"
-  note "the camera was asked for once, the scanner had it, and Cancel went back"
+  until_ok 10 eval '! scanning' || fail "the camera is still open after Cancel"
+  note "the camera was asked for once, the scanner had it, and Cancel went back and let it go"
 
   say "guests: no invite's key in the system log"
   for key in "${keys[@]}"; do ! LC_ALL=C grep -qF -- "$key" $OUT/logcat-guests.log || fail "an invite's key is in the system log"; done
