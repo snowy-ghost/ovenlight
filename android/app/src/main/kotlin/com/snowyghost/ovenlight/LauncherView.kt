@@ -181,7 +181,7 @@ fun LauncherView(model: AppModel) {
             leave = { scope.launch { model.guests.leave(it) } },
             problemReport = { app -> MailDraft.problemReport(context, nodes, model.pool, app) },
             openLink = { CustomTabs.open(context, URI(it), model.lifecycle) },
-            sharing = { app -> machines.let { model.sharing.info(app) } },
+            sharing = remember(machines) { { app: WebApp -> model.sharing.info(app) } },
             refreshSharing = { scope.launch { model.refreshSharing() } },
             share = { machine, app -> model.composer.value = InviteComposer(machine, app) },
         ),

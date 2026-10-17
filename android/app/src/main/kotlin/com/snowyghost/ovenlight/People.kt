@@ -7,7 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.ScrollState
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -48,7 +48,7 @@ private data class PersonRef(val machineID: String, val person: String)
  * or Select in the menu), and their devices leave the owner's Tailscale network.
  */
 @Composable
-internal fun SharingPeopleList(state: SharingState, open: (SharingPage) -> Unit, back: () -> Unit, scope: CoroutineScope) {
+internal fun SharingPeopleList(state: SharingState, scroll: ScrollState, open: (SharingPage) -> Unit, back: () -> Unit, scope: CoroutineScope) {
     val resources = LocalResources.current
     val machines by state.machines.collectAsState()
     val groups = machines.map { it to GuestPerson.byActivity(it.guests) }.filter { it.second.isNotEmpty() }
@@ -107,7 +107,7 @@ internal fun SharingPeopleList(state: SharingState, open: (SharingPage) -> Unit,
 
     val title = if (selecting && selection.isNotEmpty()) pluralStringResource(R.plurals.people_selected, selection.size, selection.size) else stringResource(R.string.sharing_people)
     GroupedScreen(
-        title, onBack = if (selecting) stopSelecting else back, scroll = rememberScrollState(), refresh = state.refresh,
+        title, onBack = if (selecting) stopSelecting else back, scroll = scroll, refresh = state.refresh,
         navigationIcon = if (selecting) R.drawable.ic_close else R.drawable.ic_arrow_back,
         navigationLabel = stringResource(if (selecting) R.string.people_done_selecting else R.string.sharing_back),
         actions = {
@@ -214,7 +214,7 @@ private sealed interface Removal {
  * with removing them from an app, a device they no longer use, or everything.
  */
 @Composable
-internal fun SharingPersonView(state: SharingState, page: SharingPage.Person, back: () -> Unit, scope: CoroutineScope) {
+internal fun SharingPersonView(state: SharingState, page: SharingPage.Person, scroll: ScrollState, back: () -> Unit, scope: CoroutineScope) {
     val resources = LocalResources.current
     val machines by state.machines.collectAsState()
     fun person(machines: List<OwnerSharing.Machine>) =
@@ -250,7 +250,7 @@ internal fun SharingPersonView(state: SharingState, page: SharingPage.Person, ba
         if (person(state.machines.value) == null && error == null) back()
     }
 
-    GroupedScreen(person?.name.orEmpty(), onBack = back, scroll = rememberScrollState(), refresh = state.refresh) {
+    GroupedScreen(person?.name.orEmpty(), onBack = back, scroll = scroll, refresh = state.refresh) {
         Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
             error?.let { SharingError(it) }
             if (machine == null || person == null) {

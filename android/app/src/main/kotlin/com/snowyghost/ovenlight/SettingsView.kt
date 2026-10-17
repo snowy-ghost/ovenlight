@@ -80,6 +80,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextIndent
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import java.net.URI
@@ -533,6 +534,7 @@ internal fun SettingsRow(
     supporting: String? = null,
     @DrawableRes icon: Int? = null,
     color: Color = Color.Unspecified,
+    maxLines: Int = Int.MAX_VALUE,
     leading: (@Composable () -> Unit)? = icon?.let { { Icon(painterResource(it), contentDescription = null) } },
     trailing: (@Composable () -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
@@ -544,7 +546,7 @@ internal fun SettingsRow(
         else -> Modifier.semantics(mergeDescendants = true) {}
     }
     ListItem(
-        headlineContent = { Text(headline, color = color) },
+        headlineContent = { Text(headline, color = color, maxLines = maxLines, overflow = TextOverflow.Ellipsis) },
         modifier = Modifier.clip(shape).then(action),
         supportingContent = supporting?.let { { Text(it) } },
         leadingContent = leading,

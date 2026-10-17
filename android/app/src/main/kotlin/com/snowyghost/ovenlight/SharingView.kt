@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -210,16 +211,19 @@ fun SharingView(model: AppModel, root: SharingPage, onClose: () -> Unit) = Shari
 fun SharingScreen(state: SharingState, root: SharingPage, onClose: () -> Unit, scope: CoroutineScope) {
     val pages = remember { mutableStateListOf(root) }
     val shots = remember { ScreenshotCache() }
+    // Each page keeps its place while others open over it, as Settings does under Acknowledgements.
+    val scrolls = remember { mutableMapOf<SharingPage, ScrollState>() }
     val open: (SharingPage) -> Unit = { pages += it }
     val back: () -> Unit = { if (pages.size > 1) pages.removeAt(pages.lastIndex) else onClose() }
     PageStack(pages) { page ->
+        val scroll = scrolls.getOrPut(page) { ScrollState(0) }
         when (page) {
-            SharingPage.List -> SharingListPage(state, open, back)
-            is SharingPage.App -> SharingAppPage(state, page, open, back, scope)
-            SharingPage.People -> SharingPeopleList(state, open, back, scope)
-            is SharingPage.Person -> SharingPersonView(state, page, back, scope)
-            is SharingPage.Feedback -> FeedbackInbox(state, page, shots, open, back)
-            is SharingPage.FeedbackItem -> FeedbackDetail(state, page, shots, back)
+            SharingPage.List -> SharingListPage(state, scroll, open, back)
+            is SharingPage.App -> SharingAppPage(state, page, scroll, open, back, scope)
+            SharingPage.People -> SharingPeopleList(state, scroll, open, back, scope)
+            is SharingPage.Person -> SharingPersonView(state, page, scroll, back, scope)
+            is SharingPage.Feedback -> FeedbackInbox(state, page, scroll, shots, open, back)
+            is SharingPage.FeedbackItem -> FeedbackDetail(state, page, scroll, shots, back)
         }
     }
 }
@@ -235,9 +239,10 @@ private fun <T : Any> PageStack(pages: SnapshotStateList<T>, content: @Composabl
     LaunchedEffect(top) { state.animateTo(top, screenCurve) }
     val scope = rememberCoroutineScope()
     PredictiveBackHandler(pages.size > 1) { events ->
+        // A page can go some other way mid-gesture (a person removed, say), so the one below is read each time.
         try {
-            events.collect { state.seekTo(it.progress, targetState = pages[pages.size - 2]) }
-            pages.removeAt(pages.lastIndex)
+            events.collect { event -> pages.getOrNull(pages.size - 2)?.let { state.seekTo(event.progress, targetState = it) } }
+            if (pages.size > 1) pages.removeAt(pages.lastIndex)
         } catch (cancelled: CancellationException) {
             scope.launch { state.animateTo(pages.last(), screenCurve) }
             throw cancelled
@@ -257,12 +262,12 @@ private fun <T : Any> PageStack(pages: SnapshotStateList<T>, content: @Composabl
 }
 
 @Composable
-private fun SharingListPage(state: SharingState, open: (SharingPage) -> Unit, back: () -> Unit) {
+private fun SharingListPage(state: SharingState, scroll: ScrollState, open: (SharingPage) -> Unit, back: () -> Unit) {
     val machines by state.machines.collectAsState()
     val feedbackCount = machines.sumOf { it.feedback.size }
     val peopleCount = machines.sumOf { GuestPerson.all(it.guests.guests).size }
     LaunchedEffect(Unit) { state.refresh() }
-    GroupedScreen(stringResource(R.string.launcher_people_sharing), onBack = back, scroll = rememberScrollState(), refresh = state.refresh) {
+    GroupedScreen(stringResource(R.string.launcher_people_sharing), onBack = back, scroll = scroll, refresh = state.refresh) {
         Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
             when {
                 !state.isAvailable -> Unavailable(stringResource(R.string.sharing_not_connected), stringResource(R.string.sharing_not_connected_detail))
@@ -376,7 +381,7 @@ internal fun RowMenu(label: String, items: @Composable ColumnScope.(close: () ->
 
 /** One app: share it, and see and remove the people it's shared with. */
 @Composable
-private fun SharingAppPage(state: SharingState, page: SharingPage.App, open: (SharingPage) -> Unit, back: () -> Unit, scope: CoroutineScope) {
+private fun SharingAppPage(state: SharingState, page: SharingPage.App, scroll: ScrollState, open: (SharingPage) -> Unit, back: () -> Unit, scope: CoroutineScope) {
     val machines by state.machines.collectAsState()
     val machine = machines.firstOrNull { it.id == page.machineID }
     val app = machine?.apps?.firstOrNull { it.slug == page.slug }
@@ -384,7 +389,7 @@ private fun SharingAppPage(state: SharingState, page: SharingPage.App, open: (Sh
     var error by remember { mutableStateOf<String?>(null) }
     val resources = LocalResources.current
     LaunchedEffect(Unit) { state.refreshIfStale() }
-    GroupedScreen(app?.name ?: stringResource(R.string.sharing_app), onBack = back, scroll = rememberScrollState(), refresh = state.refresh) {
+    GroupedScreen(app?.name ?: stringResource(R.string.sharing_app), onBack = back, scroll = scroll, refresh = state.refresh) {
         Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
             if (machine == null || app == null) return@Column Unavailable(stringResource(R.string.sharing_app_not_found))
             val people = GuestPerson.all(machine.guests.guests.filter { it.app == page.slug })
@@ -576,7 +581,8 @@ private fun InviteForm(composer: InviteComposer, sharing: SharingState, scope: C
     }
     val target = composer.person
     GroupedScreen(
-        stringResource(R.string.sharing_share_title, app.name), onBack = onDismiss, scroll = rememberScrollState(),
+        // Not while the invite is made, whose link shows only here.
+        stringResource(R.string.sharing_share_title, app.name), onBack = { if (!composer.working) onDismiss() }, scroll = rememberScrollState(),
         navigationIcon = R.drawable.ic_close, navigationLabel = stringResource(R.string.sharing_close),
         actions = {
             if (composer.working) {
@@ -750,12 +756,12 @@ object QRCode {
 
 /** Notes and screenshots people sent from Ovenlight, newest first, across computers or for one app. */
 @Composable
-private fun FeedbackInbox(state: SharingState, page: SharingPage.Feedback, shots: ScreenshotCache, open: (SharingPage) -> Unit, back: () -> Unit) {
+private fun FeedbackInbox(state: SharingState, page: SharingPage.Feedback, scroll: ScrollState, shots: ScreenshotCache, open: (SharingPage) -> Unit, back: () -> Unit) {
     val machines by state.machines.collectAsState()
     val items = machines.flatMap { machine -> machine.feedback.map { machine to it } }
         .filter { (machine, item) -> page.machineID == null || (machine.id == page.machineID && item.app == page.slug) }
         .sortedByDescending { it.second.at }
-    GroupedScreen(stringResource(R.string.sharing_feedback), onBack = back, scroll = rememberScrollState()) {
+    GroupedScreen(stringResource(R.string.sharing_feedback), onBack = back, scroll = scroll) {
         if (items.isEmpty()) return@GroupedScreen Unavailable(stringResource(R.string.feedback_inbox_none), stringResource(R.string.feedback_inbox_none_detail))
         SettingsGroup {
             for ((machine, item) in items) {
@@ -763,7 +769,7 @@ private fun FeedbackInbox(state: SharingState, page: SharingPage.Feedback, shots
                     SettingsRow(
                         shape, item.note.ifEmpty { stringResource(R.string.feedback_inbox_screenshot_only) },
                         supporting = feedbackMeta(machine, item),
-                        color = if (item.note.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant else Color.Unspecified,
+                        color = if (item.note.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant else Color.Unspecified, maxLines = 3,
                         leading = if (item.hasScreenshot) ({ Thumbnail(state, machine, item, shots) }) else null,
                         onClick = { open(SharingPage.FeedbackItem(machine.id, item.id)) },
                     )
@@ -797,14 +803,14 @@ private fun feedbackMeta(machine: OwnerSharing.Machine, item: AdminFeedback): St
 
 /** One piece of feedback: the note, who sent it from where, and the screenshot. */
 @Composable
-private fun FeedbackDetail(state: SharingState, page: SharingPage.FeedbackItem, shots: ScreenshotCache, back: () -> Unit) {
+private fun FeedbackDetail(state: SharingState, page: SharingPage.FeedbackItem, scroll: ScrollState, shots: ScreenshotCache, back: () -> Unit) {
     val machines by state.machines.collectAsState()
     val machine = machines.firstOrNull { it.id == page.machineID }
     val item = machine?.feedback?.firstOrNull { it.id == page.id }
     val context = LocalContext.current
     LaunchedEffect(item?.id) { if (machine != null && item != null) shots.load(item.id, ScreenshotCache.Size.Screen, state.client(machine)) }
     val title = item?.let { found -> machine.apps.firstOrNull { it.slug == found.app }?.name ?: found.app }.orEmpty()
-    GroupedScreen(title, onBack = back, scroll = rememberScrollState()) {
+    GroupedScreen(title, onBack = back, scroll = scroll) {
         if (item == null) return@GroupedScreen
         Column(Modifier.padding(horizontal = 4.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             if (item.note.isNotEmpty()) SelectionContainer { Text(item.note, style = MaterialTheme.typography.bodyLarge) }
