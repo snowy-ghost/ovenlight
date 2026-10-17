@@ -38,6 +38,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -128,6 +129,12 @@ class AppModel(context: Context) {
             }
         }
         scope.launch { nodes.owner.discovered.collect { registry.mergeDiscovered(it) } }
+        // A pinned shortcut follows its app's name and icon: Rename, Refresh icon, a new manifest.
+        scope.launch {
+            combine(registry.appsFlow, registry.iconRevisions) { apps, revisions -> apps to apps.map { listOf(it.id, it.name, it.themeColorHex, revisions[it.id]) } }
+                .distinctUntilChangedBy { it.second }.drop(1)
+                .collectLatest { (apps) -> withContext(Dispatchers.IO) { HomeShortcuts.update(context, apps) { IconDecoder.load(registry.iconFile(it)) } } }
+        }
         nodes.onOwnerForgotten = {
             // As access ending closes a guest's app: one open as it goes closes first.
             router.openApp.value?.let { if (it.discovered && !it.isShared) router.openApp.value = null }
@@ -212,7 +219,7 @@ class AppModel(context: Context) {
 
 /**
  * What the root presents: the open app over the launcher, and one sheet at a time. Links
- * (`ovenlight://open?app=<name>` and invites) land here, and show only once Ovenlight is
+ * (`ovenlight://open` and invites) land here, and show only once Ovenlight is
  * unlocked, since the lock covers everything. An app a link opens waits for the unlock, so its
  * page can't run under the lock.
  *
@@ -224,8 +231,11 @@ class Router(private val isLocked: () -> Boolean = { false }) {
     val openApp = MutableStateFlow<WebApp?>(null)
     val sheet = MutableStateFlow<RootSheet?>(null)
 
-    /** A linked app that isn't listed yet (discovery may add it in a moment), or that waits for Ovenlight to unlock. */
-    private var pendingName: String? = null
+    /**
+     * The linked app, by name or by ID, that isn't listed yet (discovery may add it in a moment),
+     * or that waits for Ovenlight to unlock.
+     */
+    private var pending: ((WebApp) -> Boolean)? = null
 
     /** True from the moment the app or a sheet shows until it has finished closing. */
     private var appOnScreen = false
@@ -297,26 +307,35 @@ class Router(private val isLocked: () -> Boolean = { false }) {
         actions.forEach { it() }
     }
 
-    /** A link, whichever way it arrived: an invite, or `ovenlight://open?app=<name>`. */
+    /**
+     * A link, whichever way it arrived: an invite, `ovenlight://open?app=<name>`, or a home screen
+     * shortcut's `ovenlight://open?id=<app ID>` (Android only, since names can change).
+     */
     fun handle(url: URI, apps: List<WebApp>) {
         if (InviteLink.isInvite(url)) {
             present(RootSheet.Join(JoinRequest(url)))
             return
         }
         if (url.scheme?.lowercase() != InviteLink.scheme || url.host?.lowercase() != "open") return
-        // The first `app` item's value, decoded as iOS's URLComponents decodes query items.
-        val name = url.rawQuery?.split('&')?.map { it.split('=', limit = 2) }
-            ?.firstOrNull { removingPercentEncoding(it[0]) == "app" }?.getOrNull(1)?.let(::removingPercentEncoding) ?: return
-        pendingName = name
+        // The first item's value, decoded as iOS's URLComponents decodes query items.
+        val items = url.rawQuery?.split('&')?.map { it.split('=', limit = 2) } ?: return
+        fun item(key: String) = items.firstOrNull { removingPercentEncoding(it[0]) == key }?.getOrNull(1)?.let(::removingPercentEncoding)
+        val id = item("id")
+        val name = item("app")
+        pending = when {
+            id != null -> { app -> app.id.toString() == id }
+            name != null -> { app -> sameName(app.name, name) }
+            else -> return
+        }
         appsChanged(apps)
     }
 
     /** Also called on unlock, for an app a link asked for while locked. */
     fun appsChanged(apps: List<WebApp>) {
         if (isLocked()) return
-        val name = pendingName ?: return
-        val app = apps.firstOrNull { sameName(it.name, name) } ?: return
-        pendingName = null
+        val wanted = pending ?: return
+        val app = apps.firstOrNull(wanted) ?: return
+        pending = null
         open(app)
     }
 }

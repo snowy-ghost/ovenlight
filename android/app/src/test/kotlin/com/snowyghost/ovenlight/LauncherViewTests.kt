@@ -271,6 +271,7 @@ class LauncherViewTests {
         tile("Recipe Box").performTouchInput { longClick() }
         composeRule.onNodeWithText(recipes.host).assertIsDisplayed()
         for (item in listOf("Rename", "Refresh icon", "Sign out and clear data", "Remove app")) composeRule.onNodeWithText(item).assertIsDisplayed()
+        composeRule.onNodeWithText("Add to Home screen").assertDoesNotExist()
         composeRule.onNodeWithText(ConnectionCopy.reportProblem).assertDoesNotExist()
         composeRule.onNodeWithText(ConnectionCopy.leaveApps("Riley")).assertDoesNotExist()
     }
@@ -479,6 +480,15 @@ class LauncherViewTests {
         tile("Garden Log").performTouchInput { longClick() }
         composeRule.onNodeWithText("Refresh icon").performClick()
         assertEquals(listOf(garden.id), refreshed)
+    }
+
+    @Test
+    fun testAddToHomeScreen() {
+        val pinned = mutableListOf<WebApp>()
+        show(LauncherState(apps = apps, addToHomeScreen = { pinned += it }))
+        tile("Garden Log").performTouchInput { longClick() }
+        composeRule.onNodeWithText("Add to Home screen").performClick()
+        assertEquals(listOf(garden), pinned)
     }
 
     @Test

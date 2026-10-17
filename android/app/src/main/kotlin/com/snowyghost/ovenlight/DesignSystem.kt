@@ -101,7 +101,7 @@ data class OvenColors(
     val success: Color,
 )
 
-private val lightOven = OvenColors(
+internal val lightOven = OvenColors(
     ember = Color(0xFFA8400C),
     ovenInterior = Color(0xFFFBF7F3),
     lampCore = Color(0xFFFFBB77),

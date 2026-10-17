@@ -2,6 +2,7 @@ package com.snowyghost.ovenlight
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.net.URI
+import java.util.UUID
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -79,6 +80,18 @@ class RouterTests {
         assertNull("nothing opens under the lock screen", router.openApp.value)
         locked = false
         router.appsChanged(listOf(app))
+        assertEquals(app.id, router.openApp.value?.id)
+    }
+
+    /** Android only: a home screen shortcut opens its app by ID, which a rename doesn't change. */
+    @Test
+    fun testAShortcutOpensItsAppByID() {
+        val router = Router()
+        val app = WebApp(name = "Coach", startURL = URI("https://coach.example.com/"))
+        val namedLikeIt = WebApp(name = app.id.toString(), startURL = URI("https://other.example.com/"))
+        router.handle(URI("ovenlight://open?id=${UUID.randomUUID()}"), apps = listOf(app, namedLikeIt))
+        assertNull("a removed app's shortcut opens nothing", router.openApp.value)
+        router.handle(URI("ovenlight://open?id=${app.id}"), apps = listOf(namedLikeIt, app.copy(name = "Renamed")))
         assertEquals(app.id, router.openApp.value?.id)
     }
 
