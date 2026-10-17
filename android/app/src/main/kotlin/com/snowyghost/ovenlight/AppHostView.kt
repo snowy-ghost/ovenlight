@@ -11,6 +11,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,8 +30,8 @@ import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.tappableElement
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -55,8 +56,10 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -64,6 +67,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.WindowCompat
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -144,10 +148,11 @@ private fun AppPageView(model: AppModel, page: AppPage, onClose: () -> Unit) {
 
     val plain = MaterialTheme.colorScheme.background
     val color = { css: String? -> css?.let(StatusBarTint::opaqueHex)?.let(::themeColor) }
-    Box(Modifier.backShrink(back).fillMaxSize().background(if (look.cover) plain else color(look.header) ?: tint ?: plain)) {
-        if (!look.cover) {
-            Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().windowInsetsBottomHeight(WindowInsets.tappableElement).background(color(look.background) ?: plain))
-        }
+    // What sits under the status bar and the handle: the page's header, or the one from its last load.
+    val header = color(look.header) ?: tint
+    StatusBarIcons(if (look.cover) null else header ?: plain)
+    Box(Modifier.backShrink(back).fillMaxSize().background(if (look.cover) plain else color(look.background) ?: plain)) {
+        if (!look.cover) Box(Modifier.fillMaxWidth().windowInsetsTopHeight(insideBars).background(header ?: plain))
         AndroidView(
             factory = { page.view.also { (it.parent as? ViewGroup)?.removeView(it) } },
             modifier = if (look.cover) Modifier.fillMaxSize() else Modifier.fillMaxSize().windowInsetsPadding(insideBars),
@@ -189,7 +194,7 @@ private fun AppPageView(model: AppModel, page: AppPage, onClose: () -> Unit) {
                 }
             }
         }
-        AppChromeHost(model, page, icon, onClose)
+        AppChromeHost(model, page, icon, header, onClose)
         // Last, so full screen covers everything else and its Back comes first.
         PageEdgesLayer(page.edges)
     }
@@ -206,6 +211,23 @@ private fun AppPageView(model: AppModel, page: AppPage, onClose: () -> Unit) {
 }
 
 private enum class Cover { None, Placeholder, CantReach, Error, Node }
+
+/**
+ * The status bar's icons over [strip], the color Ovenlight paints behind them for a page that
+ * doesn't cover the screen; with none, they follow the phone's light or dark mode.
+ */
+@Composable
+private fun StatusBarIcons(strip: Color?) {
+    val view = LocalView.current
+    val dark = isSystemInDarkTheme()
+    // enableEdgeToEdge sets the icons again on a configuration change, so they're set after it.
+    val configuration = LocalConfiguration.current
+    DisposableEffect(strip, dark, configuration) {
+        val bars = view.context.componentActivity()?.window?.let { WindowCompat.getInsetsController(it, view) }
+        if (strip != null) bars?.isAppearanceLightStatusBars = strip.isLight()
+        onDispose { bars?.isAppearanceLightStatusBars = !dark }
+    }
+}
 
 /**
  * Where a page that doesn't cover the screen sits: below the status bar, inside the cutout and

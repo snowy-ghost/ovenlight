@@ -86,6 +86,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -363,6 +364,9 @@ data class PageLook(val cover: Boolean = true, val header: String? = null, val b
     }
 }
 
+/** Whether dark marks read better than light ones on this color: lighter than where black and white contrast with it equally. */
+fun Color.isLight(): Boolean = luminance() > 0.179f
+
 /** The app's remembered status bar color in the current appearance, for its launch placeholder. */
 @Composable
 fun rememberStatusBarTint(app: WebApp): Color? {
@@ -476,6 +480,8 @@ fun AppChrome(
     isLoaded: Boolean,
     actions: AppChromeActions,
     controller: ChromeController,
+    /** The color under the handle, which takes the tone that reads on it. */
+    header: Color? = null,
     touchExploration: Boolean = rememberTouchExploration(),
 ) {
     // Tucked away the moment the page appears, so it never sits over the page on its own.
@@ -501,7 +507,7 @@ fun AppChrome(
             enter = fadeIn(),
             exit = fadeOut(),
         ) {
-            ChromeHandle { controller.reveal() }
+            ChromeHandle(header) { controller.reveal() }
         }
     }
 }
@@ -605,7 +611,7 @@ private fun AppMenuItems(app: WebApp, actions: AppChromeActions, close: () -> Un
  * however the page scrolls. 120 by 20 dp, the strip the building guide tells apps to keep clear.
  */
 @Composable
-private fun ChromeHandle(reveal: () -> Unit) {
+private fun ChromeHandle(header: Color?, reveal: () -> Unit) {
     val label = stringResource(R.string.chrome_show_menu)
     Box(
         Modifier
@@ -614,7 +620,8 @@ private fun ChromeHandle(reveal: () -> Unit) {
             .semantics { contentDescription = label },
         contentAlignment = Alignment.Center,
     ) {
-        Box(Modifier.size(width = 32.dp, height = 4.dp).background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f), CircleShape))
+        val mark = header?.let { if (it.isLight()) Color.Black else Color.White } ?: MaterialTheme.colorScheme.onSurface
+        Box(Modifier.size(width = 32.dp, height = 4.dp).background(mark.copy(alpha = 0.3f), CircleShape))
     }
 }
 
@@ -678,11 +685,11 @@ private suspend fun WebView.evaluate(script: String): String? = suspendCancellab
 
 /**
  * The chrome over one open app, from the model: the pill and its menu, the page watched for the
- * pill to follow, the theme color remembered after the first load, Send feedback, Report a
+ * pill to follow, the header color remembered as each load reads it, Send feedback, Report a
  * problem and Leave.
  */
 @Composable
-fun AppChromeHost(model: AppModel, page: AppPage, icon: Bitmap?, onClose: () -> Unit) {
+fun AppChromeHost(model: AppModel, page: AppPage, icon: Bitmap?, header: Color?, onClose: () -> Unit) {
     val app = page.app
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -696,13 +703,13 @@ fun AppChromeHost(model: AppModel, page: AppPage, icon: Bitmap?, onClose: () -> 
     val dark = isSystemInDarkTheme()
 
     WatchPage(page.view, controller)
-    // After the first load, each time the app opens loaded, and in the other appearance: the
-    // page's colors now.
-    LaunchedEffect(page, loaded, dark) {
-        if (!loaded) return@LaunchedEffect
-        val look = PageLook.decoded(page.view.evaluate(PageLook.script))
-        page.look.value = look
-        StatusBarTint(PreferencesStore(context)).remember(look.header, app, dark)
+    val look by page.look.collectAsState()
+    // The header for the next launch, as each load reads it.
+    LaunchedEffect(look, dark) { StatusBarTint(PreferencesStore(context)).remember(look.header, app, dark) }
+    // Read again in the other appearance, and on opening an app that's loaded, which may have
+    // switched while it was closed.
+    LaunchedEffect(page, dark) {
+        if (page.hasLoadedOnce.value) page.look.value = PageLook.decoded(page.view.evaluate(PageLook.script))
     }
 
     val membership = memberships.firstOrNull { it.id == app.membershipID }
@@ -735,6 +742,7 @@ fun AppChromeHost(model: AppModel, page: AppPage, icon: Bitmap?, onClose: () -> 
             lock = model.lock::lock,
         ),
         controller,
+        header,
     )
 
     feedback?.let { draft ->
