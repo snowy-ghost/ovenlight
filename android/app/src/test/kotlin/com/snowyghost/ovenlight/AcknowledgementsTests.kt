@@ -31,10 +31,19 @@ class AcknowledgementsTests {
         assertEquals(listOf("The licenses are missing from this build."), Acknowledgements.paragraphs(null))
         assertEquals(listOf("A", "B"), Acknowledgements.paragraphs("\nA\n\n\n\nB\n"))
         assertEquals("a CRLF file's returns go too", listOf("A", "B"), Acknowledgements.paragraphs("A\r\n\n\r\n\nB\r\n"))
-        assertEquals("an indent wraps with its line", listOf("Apache:\n\u00A0\u00A0androidx.core:core:1.19.1"), Acknowledgements.paragraphs("Apache:\n  androidx.core:core:1.19.1"))
+        assertNull("text that isn't UTF-8 counts as missing", Acknowledgements.notices { java.io.ByteArrayInputStream(byteArrayOf(0xC3.toByte(), 0x28)) })
+    }
+
+    /** A section's title shows as a heading, and each line wraps under its own indent. */
+    @Test
+    fun testEachLineHangsUnderItsOwnIndent() {
         assertEquals("Go standard library", Acknowledgements.heading("Go standard library\n==================="))
         assertNull(Acknowledgements.heading("Copyright 2009 The Go Authors."))
         assertNull("only = underlines a heading", Acknowledgements.heading("Source Serif\n------------"))
-        assertNull("text that isn't UTF-8 counts as missing", Acknowledgements.notices { java.io.ByteArrayInputStream(byteArrayOf(0xC3.toByte(), 0x28)) })
+        assertEquals(listOf("Apache:\n  androidx.core:core:1.19.1"), Acknowledgements.paragraphs("Apache:\n  androidx.core:core:1.19.1"))
+        assertEquals(
+            listOf(0 to "Apache:", 2 to "androidx.core:core:1.19.1", 6 to "\"License\" shall mean"),
+            Acknowledgements.lines("Apache:\n  androidx.core:core:1.19.1\n      \"License\" shall mean"),
+        )
     }
 }

@@ -916,4 +916,14 @@ final class AcknowledgementsTests: XCTestCase {
         XCTAssertTrue(notices.contains("Go standard library"))
         XCTAssertTrue(notices.contains("github.com/tailscale/libtailscale"))
     }
+
+    /// A section's title shows as a heading, and each line wraps under its own indent.
+    func testEachLineHangsUnderItsOwnIndent() {
+        XCTAssertEqual(AcknowledgementsView.heading("Go standard library\n==================="), "Go standard library")
+        XCTAssertNil(AcknowledgementsView.heading("Copyright 2009 The Go Authors."))
+        XCTAssertNil(AcknowledgementsView.heading("Source Serif\n------------"), "only = underlines a heading")
+        let lines = AcknowledgementsView.lines("Apache:\n  androidx.core:core:1.19.1\n      \"License\" shall mean")
+        XCTAssertEqual(lines.map(\.indent), [0, 2, 6])
+        XCTAssertEqual(lines.map(\.text), ["Apache:", "androidx.core:core:1.19.1", "\"License\" shall mean"])
+    }
 }

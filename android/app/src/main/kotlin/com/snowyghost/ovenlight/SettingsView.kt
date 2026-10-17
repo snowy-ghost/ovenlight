@@ -62,6 +62,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -70,10 +71,13 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.ParagraphStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextIndent
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.em
 import java.net.URI
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -362,6 +366,10 @@ private fun OwnerGroups(owner: OwnerSettings, state: SettingsState, onSignOut: (
 private fun AcknowledgementsScreen(notices: suspend () -> String?, onBack: () -> Unit) {
     // Read off the main thread: the text runs to thousands of lines.
     val paragraphs by produceState(emptyList<String>()) { value = Acknowledgements.paragraphs(notices()) }
+    val style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace)
+    val measurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    val space = remember(style, density) { with(density) { (measurer.measure("0".repeat(10), style).size.width / 10f).toSp() } }
     GroupedScreen(stringResource(R.string.settings_acknowledgements), onBack = onBack) { padding ->
         LazyColumn(Modifier.fillMaxSize(), contentPadding = padding, verticalArrangement = Arrangement.spacedBy(12.dp)) {
             items(paragraphs) { paragraph ->
@@ -370,12 +378,16 @@ private fun AcknowledgementsScreen(notices: suspend () -> String?, onBack: () ->
                     if (heading != null) {
                         Text(heading, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp).semantics { heading() })
                     } else {
-                        Text(
-                            paragraph,
-                            // A line too long for the screen goes on under itself, indented past where it began.
-                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace, textIndent = TextIndent(restLine = 2.4.em)),
-                            modifier = Modifier.padding(horizontal = 16.dp),
-                        )
+                        // Each line its own paragraph, indented by its spaces, so a line too long for the
+                        // screen wraps under its own text. A paragraph style starts a new line by itself.
+                        val text = remember(paragraph, space) {
+                            buildAnnotatedString {
+                                for ((indent, line) in Acknowledgements.lines(paragraph)) {
+                                    withStyle(ParagraphStyle(textIndent = TextIndent(space * indent, space * indent))) { append(line) }
+                                }
+                            }
+                        }
+                        Text(text, style = style, modifier = Modifier.padding(horizontal = 16.dp))
                     }
                 }
             }

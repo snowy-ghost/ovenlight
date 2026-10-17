@@ -132,20 +132,52 @@ struct AcknowledgementsView: View {
     static let notices: String? = Bundle.main.privateFrameworksURL
         .flatMap { try? String(contentsOf: $0.appending(path: "TailscaleKit.framework/THIRD_PARTY_NOTICES.txt"), encoding: .utf8) }
 
-    // One Text per paragraph, laid out lazily: the whole text is thousands of lines.
+    // One entry per paragraph, laid out lazily: the whole text is thousands of lines.
     private let paragraphs = (notices ?? "The licenses are missing from this build.")
         .components(separatedBy: "\n\n")
         .map { $0.trimmingCharacters(in: .newlines) }
         .filter { !$0.isEmpty }
 
+    /// A title underlined with `=`, the heading of one module's licenses.
+    static func heading(_ paragraph: String) -> String? {
+        let lines = paragraph.components(separatedBy: "\n")
+        guard lines.count == 2, !lines[1].isEmpty, lines[1].allSatisfy({ $0 == "=" }) else { return nil }
+        return lines[0]
+    }
+
+    /// A paragraph's lines, each with the spaces that indent it, so a line too long for the
+    /// screen wraps under its own text.
+    static func lines(_ paragraph: String) -> [(indent: Int, text: String)] {
+        paragraph.components(separatedBy: "\n").map { line in
+            let indent = line.prefix { $0 == " " }.count
+            return (indent, String(line.dropFirst(indent)))
+        }
+    }
+
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 12) {
                 ForEach(paragraphs.indices, id: \.self) { i in
-                    Text(verbatim: paragraphs[i])
+                    if let heading = Self.heading(paragraphs[i]) {
+                        Text(verbatim: heading)
+                            .font(.subheadline.weight(.semibold))
+                            .accessibilityAddTraits(.isHeader)
+                            .padding(.top, 12)
+                    } else {
+                        VStack(alignment: .leading, spacing: 0) {
+                            ForEach(Array(Self.lines(paragraphs[i]).enumerated()), id: \.offset) { _, line in
+                                // Hidden zeros as wide as the indent, in the monospaced font.
+                                HStack(alignment: .firstTextBaseline, spacing: 0) {
+                                    Text(verbatim: String(repeating: "0", count: line.indent)).hidden()
+                                    Text(verbatim: line.text)
+                                }
+                            }
+                        }
+                        .font(.caption.monospaced())
+                        .accessibilityElement(children: .combine)
+                    }
                 }
             }
-            .font(.caption.monospaced())
             .textSelection(.enabled)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding()

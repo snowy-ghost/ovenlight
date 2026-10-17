@@ -146,14 +146,12 @@ object Acknowledgements {
         null
     }
 
-    /**
-     * One entry per paragraph, so a lazy list lays out only what shows: the text runs to thousands
-     * of lines. A line's indent is made of no-break spaces, so a line too long for the screen
-     * wraps with its text rather than leaving the indent alone on a line above it.
-     */
+    /** One entry per paragraph, so a lazy list lays out only what shows: the text runs to thousands of lines. */
     fun paragraphs(notices: String?): List<String> =
         (notices ?: "The licenses are missing from this build.").split("\n\n").map { it.trim(*newlines) }.filter { it.isNotEmpty() }
-            .map { paragraph -> paragraph.lines().joinToString("\n") { line -> line.takeWhile { it == ' ' }.replace(' ', '\u00A0') + line.trimStart(' ') } }
+
+    /** A paragraph's lines, each with the spaces that indent it, so a line too long for the screen wraps under its own text. */
+    fun lines(paragraph: String): List<Pair<Int, String>> = paragraph.lines().map { line -> line.takeWhile { it == ' ' }.length.let { it to line.drop(it) } }
 
     /** A title underlined with `=`, the heading of one library's or one file's licenses. */
     fun heading(paragraph: String): String? = paragraph.lines().takeIf { it.size == 2 && it[1].isNotEmpty() && it[1].all { c -> c == '=' } }?.first()
