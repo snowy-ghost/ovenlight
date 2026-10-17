@@ -298,13 +298,15 @@ the status bar sits on top of your page. Pad a fixed bottom tab bar with
 clear. A page without `viewport-fit=cover` starts below the status bar instead, as in a
 browser, and Ovenlight paints the strip behind the status bar with its `theme-color`, or
 its background without one. Its bottom still runs under the home indicator, and on
-Android stops above three-button navigation, on the page's background.
+Android stops above three-button navigation, on the page's background. It gets no inset to
+pad by, so a page with a fixed bottom bar needs `viewport-fit=cover`.
 
 **Ovenlight's chrome.** The only thing Ovenlight draws over the app is a small pill at the
 top center, just below the status bar, with the way home and the app's menu (Reload and
 Send Feedback among them). It tucks up under the status bar the moment your page appears,
 leaving a small handle just below it. Pulling down at the top of the page or tapping the
-handle brings it back, and scrolling down or tapping the page tucks it away again. So:
+handle brings it back, and scrolling down or tapping the page tucks it away again. It
+stays out while its one-time tip shows, and always while VoiceOver or TalkBack is on. So:
 
 - Put no controls in the strip at the top center just below the status bar, where the
   handle lives (120 by 20 points).
