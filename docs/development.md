@@ -406,11 +406,10 @@ an invite opens in either form.
 
 The Android app is native Kotlin and Jetpack Compose, in `android/`. It follows the iPhone
 app's structure: most Swift files have a Kotlin twin of the same name (`NodeManager.kt`
-does what `NodeManager.swift` does, under the same names), and the iPhone tests are
-ported under their own names. It runs on Android 10
-(API 29) or later and opens apps in Android System WebView 144 or later, the first that
-gives every web view its safe areas. On an older WebView it asks for an update and opens
-no app.
+for `NodeManager.swift`), and the iPhone tests are ported under their own names. It runs
+on Android 10 (API 29) or later and opens apps in Android System WebView 144 or later, the
+first that gives every web view its safe areas. On an older WebView it asks for an update
+and opens no app.
 
 Building it needs JDK 21 (`JAVA_HOME`), Go, and the Android SDK (`ANDROID_HOME`) with the
 platform, build tools and NDK that `android/gradle.properties` names. From the
@@ -473,7 +472,7 @@ as the iPhone app takes launch arguments:
 - `--ez sharingFixture true` fills in sample sharing data for screenshots.
 - `--ez fakeOldWebView true` shows the screen that asks for a WebView update.
 
-`DebugLaunch.kt` lists the rest, the lab that ran the first checks of the proxy and
+`DebugLaunch.kt` lists the rest, including the lab that first checked the proxy and
 profiles. As on iPhone, debug builds also accept an `http` control server on loopback in
 invites. To reach a Headscale on your own computer from an emulator, forward its port
 with `adb reverse`. Debug builds trust one more certificate authority, for the
@@ -492,11 +491,12 @@ folder, which `e2e.sh` makes, or else a throwaway one.
   Android 10's prompt can't fall back to the screen lock, so there a button opens the
   screen lock's own screen, at once when no fingerprint or face is enrolled
   (`UnlockPrompt.kt`). The lock screen is a window of its own (`LockWindow` in
-  `MainActivity.kt`), and its clock runs during pickers and the sign-in tab too.
+  `MainActivity.kt`).
 - **Coming and going.** A trip out that hands something back (the sign-in tab, a picker,
-  the lock's prompt) keeps nodes and pages running for five minutes. Leaving pauses
-  polling and pages' timers, and after a minute away closes every node, whose state stays
-  on disk. Coming back starts them again (`AppLifecycle.kt`).
+  the lock's prompt) keeps nodes and pages running for five minutes. Any other departure,
+  or a trip out past five minutes, pauses polling and pages' timers, and after a minute
+  closes every node, whose state stays on disk. Coming back starts them again
+  (`AppLifecycle.kt`).
 - **Tailscale's sign-in and Machines page** open in a Custom Tab, in the phone's browser,
   since Google refuses sign-ins inside web views. A Custom Tabs session keeps Ovenlight
   running behind the tab in the browser, so it comes back by itself once the phone is
@@ -504,10 +504,9 @@ folder, which `e2e.sh` makes, or else a throwaway one.
 - **Invites** open Ovenlight as App Links (the site's `assetlinks.json`), as
   `ovenlight://join` links with the fields in the query or the fragment, pasted, or
   scanned in Ovenlight with CameraX and ZXing.
-- **Pages.** Back goes back in the page, then to the launcher. Downloads are fetched again
-  through the proxy and open Ovenlight's own Save, Share and Open sheet, and a PDF is a
-  download. The page script (`assets/page.js`) hides service workers, speech recognition
-  and `BarcodeDetector`, and lets Ovenlight stop a page's microphone and camera.
+- **Pages.** Back goes back in the page, then to the launcher. The page script is
+  `assets/page.js`. [app-contract.md](app-contract.md#in-the-android-app) says what it and
+  downloads do.
 
 ### Shipping on Google Play
 
@@ -525,8 +524,9 @@ any track.
 ### Forking the Android app
 
 To build and sign your own copy, change `applicationId` in `android/app/build.gradle.kts`,
-`AppLinks` in `Support.kt`, and the App Link host in `AndroidManifest.xml` and
-`InviteLink.kt`, and serve your own `assetlinks.json` with your signing key. Android opens
-an App Link only in an app whose key the site lists, so in a fork's build an invite opens
-the join page, and its Open in Ovenlight opens the official app: `site/join.js` names its
-package.
+`AppLinks` in `Support.kt`, the App Link host in `AndroidManifest.xml` and
+`InviteLink.kt`, the invite host in `connector/invite.go`, and the package in
+`site/join.js`'s `intent:` link, and serve your own `assetlinks.json` with your signing
+key. On Android 12 and later, an App Link opens only an app whose key the site lists, so
+in a fork's build an invite opens the join page, whose Open in Ovenlight opens the app
+that `site/join.js` names.

@@ -78,12 +78,12 @@ Once your computer is [set up](#get-started) and your agent
   it.
 - **It opens like an app.** Full screen, from its own icon, in a launcher that works like
   your phone's home screen, with its storage kept apart from the others. One unlock, with
-  Face&nbsp;ID or a fingerprint, opens them all.
+  Face&nbsp;ID or your fingerprint, opens them all.
 - **Private, free and open source.** There's no Ovenlight account, no analytics and no
   ads. Phones reach your computer over a Tailscale connection built into Ovenlight, never
-  through servers of ours. No phone needs a VPN or the Tailscale app. The iPhone and
-  Android apps and the connector are free, under the Apache License 2.0. It's made by
-  Dimitri Cole at [Snowy Ghost](https://snowyghost.com).
+  through servers of ours. No phone needs a VPN or the Tailscale app. Ovenlight, for
+  iPhone and Android, and the connector are free, under the Apache License 2.0. It's made
+  by Dimitri Cole at [Snowy Ghost](https://snowyghost.com).
 
 ## Why not a VPN, a tunnel or the cloud?
 
@@ -143,9 +143,9 @@ When you share an app, your friend's phone joins your tailnet as a guest device.
   includes a set number and charges for more ([details](docs/connector.md#share-an-app)).
 
 [docs/connector.md](docs/connector.md#what-the-computer-needs) says how the connector runs
-on each system, including on a Mac without a display. To build the iPhone or Android app
-yourself, see [docs/development.md](docs/development.md#the-iphone-app) or
-[its Android section](docs/development.md#the-android-app). Headscale is supported for
+on each system, including on a Mac without a display. To build either app yourself, see
+docs/development.md ([iPhone](docs/development.md#the-iphone-app),
+[Android](docs/development.md#the-android-app)). Headscale is supported for
 [development](docs/development.md#local-headscale) only.
 
 ## Get started
@@ -394,14 +394,14 @@ what an app must do to stay safe.
   may rely on.
 - [docs/security.md](docs/security.md): the threat model, the tailnet policy change,
   logging and privacy.
-- [docs/protocol.md](docs/protocol.md): how Ovenlight on the phone and the connector talk.
+- [docs/protocol.md](docs/protocol.md): how Ovenlight and the connector talk.
 - [docs/development.md](docs/development.md): building the iPhone and Android apps, tests,
   local development, shipping and forking.
 
 ## License
 
-Snowy Ghost LLC licenses Ovenlight, this version and every earlier one, under the
-[Apache License 2.0](LICENSE); see also [NOTICE](NOTICE). The iPhone and Android apps and
+Snowy Ghost LLC licenses Ovenlight, this version and every earlier one, under the [Apache
+License 2.0](LICENSE); see also [NOTICE](NOTICE). Ovenlight, for iPhone and Android, and
 the connector include third-party code under their own licenses, listed in each release's
 `THIRD_PARTY_NOTICES.txt` and in the app under Settings, Acknowledgements.
 

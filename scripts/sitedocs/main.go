@@ -37,7 +37,7 @@ var docs = []struct{ name, summary string }{
 	{"building-apps", "Building an app that works and feels native in Ovenlight, for coding agents and people."},
 	{"app-contract", "What an app behind Ovenlight must do and may rely on."},
 	{"security", "The threat model, the tailnet policy change, logging and privacy."},
-	{"protocol", "How Ovenlight on the phone and the connector talk."},
+	{"protocol", "How Ovenlight and the connector talk."},
 	{"development", "Building the iPhone and Android apps, tests, local development, shipping and forking."},
 }
 

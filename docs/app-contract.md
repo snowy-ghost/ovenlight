@@ -165,13 +165,14 @@ None of this is required: an app without it is still listed, by name.
 
 - Each app runs full screen in its own WebView with its own profile: cookies, storage and
   cache apart from every other app's.
-- **User agent**: WebView's own as Android 17 sends it, with no phone model and
-  `Android 10` in place of the version, ending in `Ovenlight/<version>` (for example
+- **User agent**: WebView's own in Chrome's reduced form (`Linux; Android 10; K; wv`, so
+  no phone model or real Android version, and Chrome's major version only), ending in
+  `Ovenlight/<version>` (for example
   `... Chrome/145.0.0.0 Mobile Safari/537.36 Ovenlight/1.0.0`). Downloads, which Ovenlight
   fetches itself, carry it too, but its reachability checks and icon fetches don't. WebView
   also sends `X-Requested-With: com.snowyghost.ovenlight` with the page's requests.
-- **Downloads**: the same links and answers as on iPhone (a PDF among them, which WebView
-  can't show) open Ovenlight's Save, Share and Open sheet. Ovenlight fetches a file from
+- **Downloads**: the same links and answers as on iPhone open Ovenlight's Save, Share and
+  Open sheet, and so does a PDF, which WebView can't show. Ovenlight fetches a file from
   the app's address again, through its own connection, as a GET with the page's cookies,
   and follows no redirect, so a file that a form's POST answers doesn't arrive. A `blob:`
   or `data:` download needs an `<a download>` click in a frame of the app's own origin, up
@@ -182,9 +183,9 @@ None of this is required: an app without it is still listed, by name.
 - **Microphone and camera**: the same rules as on iPhone, with Android's permission asked
   once and Ovenlight's own prompt where iOS shows WebKit's. An Allow lasts for the page it
   was given to.
-- **Other websites**: as on iPhone, except they open in the phone's browser, over
-  Ovenlight, in a Custom Tab. A form's POST to another site has gone by the time
-  Ovenlight sees it: the view goes back, and the address opens in the browser.
+- **Other websites**: as on iPhone, except they open in a Custom Tab of the phone's
+  browser. A form's POST to another site is already sent by the time Ovenlight sees it:
+  the view goes back, and the address opens in the browser.
 - **Other apps**: as on iPhone, with `tel:` the only scheme that opens without the
   question, since the dialer waits for the person to call. `intent:` links are stripped of
   their component, selector, flags and any extra that names an address, and never reach

@@ -1,6 +1,6 @@
 # Protocol
 
-How Ovenlight on the phone and the connector talk. Everything runs over the tailnet,
+How Ovenlight and the connector talk. Everything runs over the tailnet,
 through the phone's embedded node, to an app's node:
 
 - **Port 443**: the app, plus a few paths the connector answers itself.
@@ -206,9 +206,10 @@ installed; otherwise the page offers Open in Ovenlight (the second form) and a w
 get the app.
 On Android, Open in Ovenlight hands the fields over as
 `intent://join#<fields>#Intent;scheme=ovenlight;package=com.snowyghost.ovenlight;end`,
-which reaches Ovenlight as `ovenlight://join#<fields>`: the package keeps any other app
-from taking the invite, and Android 10 to 12, which log a custom-scheme link with its
-query, log no fragment. Ovenlight on Android takes the fields from either part.
+which reaches Ovenlight as `ovenlight://join#<fields>`. Naming the package keeps any other
+app from taking the invite, and the fragment keeps the key out of the system log, which on
+Android 10 to 12 records a custom-scheme link's query. Ovenlight on Android takes the
+fields from either part.
 The fields are form-encoded (`+` is a space) and may come in any order: the connector
 sorts them by name.
 

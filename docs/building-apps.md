@@ -26,8 +26,8 @@ Ovenlight already does them, or they break inside it.
 - **Login, accounts, sessions, passwords.** Every request through Ovenlight arrives with
   the caller's identity, set by the connector. Use it (and guard the port, below).
   `check` warns when `/` leads to a password login.
-- **Sign in with Google, Apple or any OAuth provider.** The sign-in page opens in the
-  browser, over Ovenlight, and never returns to the app.
+- **Sign in with Google, Apple or any OAuth provider.** The sign-in page opens in a
+  browser on top of Ovenlight and never returns to the app.
 - **A cloud database, Docker, a cloud deploy, a domain, TLS.** The app runs on the
   computer, the connector does HTTPS, and the people using it number one to ten.
 
@@ -320,12 +320,12 @@ stays out while its one-time tip shows, and always while VoiceOver or TalkBack i
   (`overscroll-behavior: none` on the page): pulling down is how people reach the menu,
   and Reload is in it.
 
-**Navigation.** Swiping from the left edge goes back, as in Safari, and on Android so do
-the back gesture from either edge and the back button. Give each screen a real history
+**Navigation.** Back goes back: a swipe from the left edge on iPhone, as in Safari, and
+the back gesture (from either edge) or button on Android. Give each screen a real history
 entry (links, `history.pushState`, or `#/route` hashes) so it goes back a screen, not out
 of the app, and keep your own horizontal swipes away from the edges. On Android, Back
-skips an entry the page added without a tap (Chromium's rule), so add one as the person
-moves to a screen, not on load.
+skips a screen the person never tapped on before the page moved on by itself (Chromium's
+rule), so add an entry as the person moves to a screen, not on load.
 
 **Status bar and color.** The status bar's text turns light or dark to read on your
 header's color. Support both modes with `prefers-color-scheme` (a `theme-color` for each,
@@ -336,7 +336,8 @@ while the app next opens.
 
 **Type.** Use the system font at the reader's text size, and size the rest in `rem` so it
 scales. On iPhone, `-apple-system-body` follows Dynamic Type. Android's WebView ignores it
-and keeps the first line, and scales the page's text by the phone's font size on its own:
+and uses the plain font before it, and scales the text by the phone's font size on its
+own:
 
 ```css
 html { font: 17px/1.35 system-ui, sans-serif; font: -apple-system-body; }
@@ -360,10 +361,10 @@ chooses Refresh Icon.
 **Downloads.** A link with `download` (to the app's own address, or a `blob:` or `data:`
 URL the page made) and a page load answered with `Content-Disposition: attachment` open
 the share sheet, where the person saves or sends the file. On Android they open
-Ovenlight's own Save, Share and Open sheet, and a PDF is a download too. There, Ovenlight
-fetches a file from the app's address again, as a GET with the page's cookies, so serve
-downloads from GET links that answer the same twice, never as the answer to a form's
-POST. It takes a `blob:` file of up to 32 MB there, and a `data:` URL of up to 2 MB.
+Ovenlight's own Save, Share and Open sheet (a PDF too), and Ovenlight fetches the file
+again as a GET with the page's cookies: serve downloads from GET links that answer the
+same twice, never from a form's POST. A `blob:` file may be up to 32 MB, a `data:` URL up
+to 2 MB.
 
 **Telling it runs in Ovenlight.** The user agent ends in `Ovenlight/<version>`. Use it
 only to adjust presentation: anyone can send that string.
@@ -377,15 +378,15 @@ below, and wraps `getUserMedia`, `URL.createObjectURL` and clicks on
 
 - **Notifications.** No Web Push and no Notification API.
 - **Popups and `window.opener`.** `window.open` and `target="_blank"` to the app's own
-  address load in the same view; any other site opens in the browser, over Ovenlight.
+  address load in the same view; any other site opens in a browser on top of Ovenlight.
 - **Service workers and offline copies.** Ovenlight doesn't run them: assume the app is
   online.
 - **WebRTC.** Its traffic doesn't go through Ovenlight's connection to the computer; don't
   build calls or peer-to-peer features on it.
 - **Location.** Ovenlight doesn't ask the phone for location, so `navigator.geolocation`
   always fails with a permission error.
-- **Speech recognition and barcode detection.** `SpeechRecognition` and
-  `BarcodeDetector` don't work.
+- **Speech recognition and barcode detection.** Neither `SpeechRecognition` nor
+  `BarcodeDetector` is available.
 
 The microphone and camera work. The phone asks once whether Ovenlight may use them. The
 owner's own apps then get the microphone without a second prompt, while for the camera,

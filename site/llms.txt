@@ -108,8 +108,8 @@ then:
   Ovenlight must do and may rely on
 - [Security](https://ovenlight.app/docs/security.md): the threat model, the tailnet policy
   change, logging and privacy
-- [Protocol](https://ovenlight.app/docs/protocol.md): how Ovenlight on the phone and the
-  connector talk
+- [Protocol](https://ovenlight.app/docs/protocol.md): how Ovenlight and the connector
+  talk
 - [Development](https://ovenlight.app/docs/development.md): building the iPhone and Android
   apps, tests, local development, shipping and forking
 - [Ovenlight on GitHub](https://github.com/snowy-ghost/ovenlight): the source code and docs
