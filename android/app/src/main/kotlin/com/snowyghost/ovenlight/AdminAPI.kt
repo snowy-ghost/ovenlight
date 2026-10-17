@@ -16,6 +16,16 @@ import java.time.temporal.WeekFields
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.sign
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 import kotlinx.serialization.DeserializationStrategy
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
@@ -30,6 +40,8 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.longOrNull
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 
 // The owner's admin API on the connector: HTTPS on port 8443 of every app node, JSON, owner
 // only (WhoIs), closed to guests by policy. Changes need `X-Ovenlight-Request: 1`. Types mirror
@@ -583,12 +595,91 @@ sealed class AdminError : Exception() {
         }
 }
 
+/** Talks to one connector's admin API through the owner's own node. */
+class AdminClient(val host: String, private val session: Send) {
+    /** Sends a request and reads its answer with [decode]. */
+    private suspend fun <T> send(method: String, path: String, body: Map<String, String>? = null, decode: (ByteArray) -> T): T {
+        val data = raw(method, path, body)
+        return try {
+            decode(data)
+        } catch (_: Exception) {
+            throw AdminError.Failed("The Ovenlight connector on this computer sent a reply this version of the app doesn't understand. Update both to the latest version.")
+        }
+    }
+
+    /**
+     * Sends a request. A lost first WireGuard handshake shows up as no answer, which a GET asks
+     * again after. No answer can't say whether a change reached the computer, so a change is
+     * never sent twice.
+     */
+    suspend fun raw(method: String, path: String, body: Map<String, String>? = null): ByteArray {
+        val request = AdminAPI.request(host, method, path, body)?.let(::okhttp) ?: throw AdminError.Unreachable
+        var attempt = 0
+        while (true) {
+            attempt += 1
+            val response = session(request)
+            if (response == null) {
+                if (method == "GET" && attempt < 3) {
+                    delay(600L * attempt)
+                    continue
+                }
+                throw AdminError.Unreachable
+            }
+            when {
+                response.status == 200 -> return response.body
+                response.status == 403 && ConnectorError(response.header(ConnectorError.header), response.body) == ConnectorError.OwnerOnly -> throw AdminError.NotOwner
+                else -> throw AdminError.Failed(
+                    AdminAPI.errorMessage(response.body) ?: "The Ovenlight connector on this computer returned an error (${response.status}). Run ovenlight doctor there.",
+                )
+            }
+        }
+    }
+
+    private fun okhttp(request: AdminRequest): Request? = runCatching {
+        Request.Builder().url(request.url.toString()).apply {
+            request.headers.forEach { (name, value) -> header(name, value) }
+            method(request.method, request.body?.toRequestBody())
+        }.build()
+    }.getOrNull()
+
+    suspend fun apps(): List<AdminApp> = send("GET", "/v1/apps") { AdminAPI.decodeEach(AdminApp.decoder, it).elements }
+    suspend fun guests(): AdminGuestList = send("GET", "/v1/guests") { AdminAPI.decode(AdminGuestList.decoder, it) }
+    suspend fun feedback(limit: Int = 100): List<AdminFeedback> = send("GET", "/v1/feedback?limit=$limit") { AdminAPI.decodeEach(AdminFeedback.decoder, it).elements }
+    suspend fun screenshot(id: String): ByteArray = raw("GET", AdminAPI.path("/v1/feedback/", id) + "/screenshot")
+    suspend fun createInvite(to: String, app: String): AdminShareResult = send("POST", "/v1/invites", mapOf("to" to to, "app" to app), ::shareResult)
+
+    /** An invite for someone already shared with: another app, or another device. */
+    suspend fun createInvite(person: GuestPerson, app: String): AdminShareResult = send("POST", "/v1/invites", mapOf("person" to person.id, "app" to app), ::shareResult)
+
+    suspend fun cancelInvite(id: String): AdminInvite = send("DELETE", AdminAPI.path("/v1/invites/", id)) { AdminAPI.decode(AdminInvite.decoder, it) }
+
+    /** Removes a person from one app, every device of theirs. */
+    suspend fun removeGuest(person: GuestPerson, app: String): AdminRevokeResult = revoke(AdminAPI.path("/v1/guests/", person.id) + "?app=$app&by=person")
+
+    /** Removes a person from every app: all their devices, and their unused invites. */
+    suspend fun removePerson(id: String): AdminRevokeResult = revoke(AdminAPI.path("/v1/guests/", id) + "?by=person")
+
+    /** Removes one device from every app. */
+    suspend fun removeDevice(id: String): AdminRevokeResult = revoke(AdminAPI.path("/v1/guests/", id))
+
+    private fun shareResult(data: ByteArray) = AdminAPI.decode(AdminShareResult.decoder, data)
+
+    private suspend fun revoke(path: String) = send("DELETE", path) { AdminAPI.decode(AdminRevokeResult.decoder, it) }
+}
+
 /**
- * What the owner's connectors report, for the Sharing screen and the app menu's Share. One
- * connector serves the same admin API on each of its app nodes, so Ovenlight asks one node per
- * computer once it knows which hosts share a computer.
+ * What the owner's connectors report, for People & sharing and the menus' Share. One connector
+ * serves the same admin API on each of its app nodes, so Ovenlight asks one node per computer
+ * once it knows which hosts share a computer (see [load]). Its state belongs to [scope]'s
+ * dispatcher, the main thread in the app.
  */
-object OwnerSharing {
+class OwnerSharing(
+    private val nodes: NodeManager,
+    private val scope: CoroutineScope,
+    /** Milliseconds on a clock that counts while the phone sleeps. */
+    private val now: () -> Long,
+    private val log: (String) -> Unit,
+) {
     data class Machine(
         /** The app node Ovenlight talks to. */
         val adminHost: String,
@@ -602,33 +693,172 @@ object OwnerSharing {
     /** One computer's listing, as [vouched] keeps it. */
     data class Listing(val apps: List<AdminApp>, val covered: Set<String>)
 
-    /** Candidate hosts: the owner's apps found through connectors, only among [ownersHosts] (the ones online now). */
-    fun candidateHosts(apps: List<WebApp>, discovered: List<DiscoveredApp>, ownersHosts: Set<String>): List<String> {
-        val hosts = apps.filter { !it.isShared && it.discovered }.map { Discovery.normalizedHost(it.host) } +
-            discovered.map { Discovery.normalizedHost(it.host) }
-        return hosts.toSet().filter { it in ownersHosts }.sorted()
+    private val mutableMachines = MutableStateFlow<List<Machine>>(emptyList())
+    val machines: StateFlow<List<Machine>> = mutableMachines
+    private val mutableLoading = MutableStateFlow(false)
+    val isLoading: StateFlow<Boolean> = mutableLoading
+    private val mutableProblem = MutableStateFlow<String?>(null)
+    val problem: StateFlow<String?> = mutableProblem
+    private var lastRefresh: Long? = null
+
+    /** The refresh under way, and whether someone asked for another while it ran. */
+    private var loading: Job? = null
+    private var again = false
+    private var latestApps = emptyList<WebApp>()
+
+    /** The admin API goes over the owner's node, so it needs the owner connected. */
+    val isAvailable: Boolean get() = nodes.ownerIsConnected
+
+    /** A client for [machine]'s admin API, through the owner's node. */
+    fun client(machine: Machine): AdminClient? = nodes.owner.makeSession(timeoutMillis = 30_000)?.let { AdminClient(machine.adminHost, it) }
+
+    /** The connector's view of one of the owner's apps, by host. */
+    fun info(app: WebApp): Pair<Machine, AdminApp>? {
+        if (app.isShared) return null
+        val host = Discovery.normalizedHost(app.host)
+        for (machine in mutableMachines.value) {
+            machine.apps.firstOrNull { it.host == host }?.let { return machine to it }
+        }
+        return null
     }
 
     /**
-     * One computer's listing, without apps on hosts it can't vouch for (any but the owner's own
-     * computers: a connector can list any name), and the hosts it covers so no other computer is
-     * asked about them.
+     * Lists every computer's apps, guests and feedback. Asked while a refresh runs (after a
+     * change, say), it runs once more after that one, for everyone who asked meanwhile. The
+     * refresh belongs to [scope], so a screen that closes doesn't cut it short.
      */
-    fun vouched(listed: List<AdminApp>, ownersHosts: Set<String>): Listing {
-        val covered = listed.mapNotNull { it.host }.toSet().intersect(ownersHosts)
-        return Listing(listed.filter { app -> app.host?.let { it in covered } ?: true }, covered)
+    suspend fun refresh(apps: List<WebApp>) {
+        if (!isAvailable) return
+        latestApps = apps
+        loading?.let {
+            again = true
+            return it.join()
+        }
+        val job = scope.launch {
+            do {
+                again = false
+                load(latestApps)
+            } while (again)
+            loading = null
+            mutableLoading.value = false
+        }
+        loading = job
+        mutableLoading.value = true
+        job.join()
+    }
+
+    /** Everything, unless it was read in the last few seconds or is being read: for the launcher's menus and an open app's Share. */
+    suspend fun refreshIfStale(apps: List<WebApp>) {
+        loading?.let { return it.join() }
+        lastRefresh?.let { if (now() - it < 15_000) return }
+        refresh(apps)
     }
 
     /**
-     * The hosts to ask first: each computer that answered last time, through the host it answered
-     * on, then every host none of those listed. Answers are taken in this order, so a computer
-     * keeps its admin host (and the screens showing it) while that answers.
+     * One pass over the owner's online computers, all at once. A connector lists all its apps on
+     * each app node, so after [firstRound] only hosts no answer listed are asked, those a
+     * computer that didn't answer had listed last time.
      */
-    fun firstRound(candidates: List<String>, known: List<Machine>): List<String> {
-        val hosts = candidates.toSet()
-        val kept = known.filter { it.adminHost in hosts }
-        val listed = kept.flatMap { machine -> listOf(machine.adminHost) + machine.apps.mapNotNull { it.host } }.toSet()
-        return kept.map { it.adminHost }.sorted() + candidates.filter { it !in listed }
+    private suspend fun load(apps: List<WebApp>) {
+        val session = nodes.owner.makeSession(timeoutMillis = 15_000) ?: return
+        val owners = nodes.ownersHosts
+        val candidates = candidateHosts(apps, nodes.owner.discovered.value, nodes.ownersOnlineHosts)
+        val found = mutableListOf<Machine>()
+        val covered = mutableSetOf<String>()
+        val asked = mutableSetOf<String>()
+        val failures = mutableListOf<String>()
+        fun failed(host: String, error: AdminError) {
+            log("admin $host: $error")
+            failures += error.message
+        }
+        var round = firstRound(candidates, mutableMachines.value)
+        while (round.isNotEmpty()) {
+            asked += round
+            val listings = ask(round) { AdminClient(it, session).apps() }
+            val listed = mutableListOf<Machine>()
+            for (host in round) {
+                if (host in covered) continue
+                listings[host]?.fold(
+                    onSuccess = { listedApps ->
+                        val listing = vouched(listedApps, owners)
+                        covered += host
+                        covered += listing.covered
+                        listed += Machine(adminHost = host, apps = listing.apps)
+                    },
+                    onFailure = { failed(host, it as AdminError) },
+                )
+            }
+            val details = ask(listed.map { it.adminHost }) { host ->
+                coroutineScope {
+                    val client = AdminClient(host, session)
+                    val guests = async { client.guests() }
+                    val feedback = async { client.feedback() }
+                    guests.await() to feedback.await()
+                }
+            }
+            for (machine in listed) {
+                details[machine.adminHost]?.fold(
+                    onSuccess = { (guests, feedback) -> found += machine.copy(guests = guests, feedback = feedback) },
+                    onFailure = { failed(machine.adminHost, it as AdminError) },
+                )
+            }
+            round = candidates.filter { it !in covered && it !in asked }
+        }
+        mutableMachines.value = found
+        // A pass that only failed doesn't count as fresh: the next menu asks again.
+        if (found.isNotEmpty() || failures.isEmpty()) lastRefresh = now()
+        mutableProblem.value = if (found.isEmpty()) failures.firstOrNull() else null
+    }
+
+    /** Sends one request to each host at once; a failure is always an [AdminError]. */
+    private suspend fun <T> ask(hosts: List<String>, request: suspend (String) -> T): Map<String, Result<T>> = coroutineScope {
+        hosts.map { host ->
+            async {
+                host to try {
+                    Result.success(request(host))
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Result.failure(e as? AdminError ?: AdminError.Unreachable)
+                }
+            }
+        }.awaitAll().toMap()
+    }
+
+    /** Debug builds' `sharingFixture`: what a connector would report, for screenshots without one. */
+    fun useFixture(fixture: List<Machine>) {
+        mutableMachines.value = fixture
+    }
+
+    companion object {
+        /** Candidate hosts: the owner's apps found through connectors, only among [ownersHosts] (the ones online now). */
+        fun candidateHosts(apps: List<WebApp>, discovered: List<DiscoveredApp>, ownersHosts: Set<String>): List<String> {
+            val hosts = apps.filter { !it.isShared && it.discovered }.map { Discovery.normalizedHost(it.host) } +
+                discovered.map { Discovery.normalizedHost(it.host) }
+            return hosts.toSet().filter { it in ownersHosts }.sorted()
+        }
+
+        /**
+         * One computer's listing, without apps on hosts it can't vouch for (any but the owner's own
+         * computers: a connector can list any name), and the hosts it covers so no other computer is
+         * asked about them.
+         */
+        fun vouched(listed: List<AdminApp>, ownersHosts: Set<String>): Listing {
+            val covered = listed.mapNotNull { it.host }.toSet().intersect(ownersHosts)
+            return Listing(listed.filter { app -> app.host?.let { it in covered } ?: true }, covered)
+        }
+
+        /**
+         * The hosts to ask first: each computer that answered last time, through the host it answered
+         * on, then every host none of those listed. Answers are taken in this order, so a computer
+         * keeps its admin host (and the screens showing it) while that answers.
+         */
+        fun firstRound(candidates: List<String>, known: List<Machine>): List<String> {
+            val hosts = candidates.toSet()
+            val kept = known.filter { it.adminHost in hosts }
+            val listed = kept.flatMap { machine -> listOf(machine.adminHost) + machine.apps.mapNotNull { it.host } }.toSet()
+            return kept.map { it.adminHost }.sorted() + candidates.filter { it !in listed }
+        }
     }
 }
 
