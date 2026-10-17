@@ -129,7 +129,6 @@ private fun AppPageView(model: AppModel, page: AppPage, onClose: () -> Unit) {
     val look by page.look.collectAsState()
 
     DisposableEffect(page) {
-        page.attach(activity)
         model.pool.onScreen = app.id
         // Reopening an app that couldn't reach its computer, or couldn't load, tries again.
         page.reopened()
@@ -163,7 +162,10 @@ private fun AppPageView(model: AppModel, page: AppPage, onClose: () -> Unit) {
         Box(Modifier.fillMaxWidth().background(band).windowInsetsPadding(chromeTop).height(ChromeHandleHeight))
         Box(Modifier.fillMaxSize().windowInsetsPadding(chromeTop).padding(top = ChromeHandleHeight)) {
             AndroidView(
-                factory = { page.view.also { (it.parent as? ViewGroup)?.removeView(it) } },
+                // The activity's context before the view joins its window, where WebView registers its
+                // component callbacks through it: they come off through the same context as it leaves,
+                // or the application would hold every page ever shown.
+                factory = { page.attach(activity); page.view.also { (it.parent as? ViewGroup)?.removeView(it) } },
                 modifier = if (look.cover) Modifier.fillMaxSize() else Modifier.fillMaxSize().windowInsetsPadding(insideBars),
             )
             // The page takes no touches until it has loaded; the placeholder or overlay over it does.
