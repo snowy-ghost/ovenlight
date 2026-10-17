@@ -1,6 +1,7 @@
 package com.snowyghost.ovenlight
 
 import android.content.Context
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -53,7 +54,7 @@ class AppChromeTests {
 
     private fun show(app: WebApp, controller: ChromeController, actions: AppChromeActions = actions(), touchExploration: Boolean = false) {
         composeRule.setContent {
-            Looked(look.value) { AppChrome(app, icon = null, isLoaded = loaded, actions = actions, controller = controller, touchExploration = touchExploration) }
+            Looked(look.value) { AppChrome(app, icon = null, isLoaded = loaded, actions = actions, controller = controller, header = MaterialTheme.colorScheme.background, touchExploration = touchExploration) }
         }
     }
 

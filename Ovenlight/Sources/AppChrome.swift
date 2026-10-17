@@ -22,9 +22,9 @@ struct AppChromeActions {
 
 /// The open app's only native chrome: a small glass capsule at the top with the way home
 /// and the app's menu. It shows while the app opens, over the placeholder, and tucks up
-/// under the status bar as the page appears, leaving a small handle in the band just below it. Tapping
-/// the handle or pulling down at the top of the page brings it back; scrolling down or
-/// touching the page hides it again. With VoiceOver on it stays put.
+/// under the status bar as the page appears, leaving a small handle in the band just below
+/// it. Tapping the handle or pulling down at the top of the page brings it back; scrolling
+/// down or touching the page hides it again. With VoiceOver on it stays put.
 struct AppChrome: View {
     /// The handle's height, which the band at the top of the open app holds below the status
     /// bar (`AppPage`).

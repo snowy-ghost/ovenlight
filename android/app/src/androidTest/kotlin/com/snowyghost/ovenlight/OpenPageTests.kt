@@ -259,9 +259,10 @@ class OpenPageTests {
     /**
      * Every page starts below the band Ovenlight keeps at the top, the status bar's height and the
      * handle's, and sees no top inset, whether it asks for `viewport-fit=cover` or not, however it
-     * came on screen: opened, reopened from the pool, after the lock, on its side and back. At the
-     * bottom a page that doesn't cover the screen runs under the gesture handle, as on iOS, and
-     * stops above three-button navigation.
+     * came on screen: opened, reopened from the pool, after the lock, on its side and back. It stays
+     * put behind its own full screen, which hides the status bar. At the bottom a page that doesn't
+     * cover the screen runs under the gesture handle, as on iOS, and stops above three-button
+     * navigation.
      */
     @Test
     fun testEveryPageStartsBelowTheStatusBarAndTheHandle() {
@@ -295,6 +296,17 @@ class OpenPageTests {
             scenario.onActivity { it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED }
         }
         assertBelowTheBand("rotated and back")
+
+        evaluate("document.body.insertAdjacentHTML('beforeend', \"<button id=full style='position:fixed;left:0;top:45%;width:100%;height:96px' onclick='document.documentElement.requestFullscreen()'>Full</button>\")")
+        val top = viewTop()
+        tap(element("full"))
+        waitFor("full screen") { onMain { page.edges.fullscreen.value != null } }
+        instrumentation.waitForIdleSync()
+        Thread.sleep(1_000)
+        assertEquals("the page behind full screen stays where it was", top, viewTop())
+        onMain { page.edges.exitFullscreen() }
+        waitFor("full screen to end") { onMain { page.edges.fullscreen.value == null } }
+        assertBelowTheBand("after full screen")
 
         onMain { page.view.loadDataWithBaseURL(app.startURL.toString(), html, "text/html", "utf-8", null) }
         waitFor("the plain page") { onMain { !page.look.value.cover } }

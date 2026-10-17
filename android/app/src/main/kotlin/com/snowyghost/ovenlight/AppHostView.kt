@@ -25,8 +25,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.tappableElement
@@ -162,8 +160,8 @@ private fun AppPageView(model: AppModel, page: AppPage, onClose: () -> Unit) {
     StatusBarIcons(header ?: plain)
     Box(Modifier.backShrink(back).fillMaxSize().background(color(look.background) ?: plain)) {
         // No page runs under the status bar or the handle, which lives in this band.
-        Box(Modifier.fillMaxWidth().background(band).windowInsetsPadding(topBar).height(ChromeHandleHeight))
-        Box(Modifier.fillMaxSize().windowInsetsPadding(topBar).padding(top = ChromeHandleHeight)) {
+        Box(Modifier.fillMaxWidth().background(band).windowInsetsPadding(chromeTop).height(ChromeHandleHeight))
+        Box(Modifier.fillMaxSize().windowInsetsPadding(chromeTop).padding(top = ChromeHandleHeight)) {
             AndroidView(
                 factory = { page.view.also { (it.parent as? ViewGroup)?.removeView(it) } },
                 modifier = if (look.cover) Modifier.fillMaxSize() else Modifier.fillMaxSize().windowInsetsPadding(insideBars),
@@ -197,7 +195,7 @@ private fun AppPageView(model: AppModel, page: AppPage, onClose: () -> Unit) {
                 }
             }
         }
-        AppChromeHost(model, page, icon, header, onClose)
+        AppChromeHost(model, page, icon, header ?: plain, onClose)
         // Last, so full screen covers everything else and its Back comes first.
         PageEdgesLayer(page.edges)
     }
@@ -228,10 +226,6 @@ private fun StatusBarIcons(band: Color) {
         onDispose { bars?.isAppearanceLightStatusBars = !dark }
     }
 }
-
-/** What the band at the top reaches below: the status bar, or the cutout when it's deeper. As the chrome's handle sits. */
-private val topBar: WindowInsets
-    @Composable get() = WindowInsets.safeDrawing.only(WindowInsetsSides.Top)
 
 /**
  * Where a page that doesn't cover the screen sits below the band: inside the cutout and side bars,

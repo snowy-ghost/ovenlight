@@ -38,9 +38,11 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -48,6 +50,8 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsIgnoringVisibility
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
@@ -368,7 +372,7 @@ data class PageLook(val cover: Boolean = true, val header: String? = null, val b
 /** Whether dark marks read better than light ones on this color: lighter than where black and white contrast with it equally. */
 fun Color.isLight(): Boolean = luminance() > 0.179f
 
-/** The app's remembered status bar color in the current appearance, for its launch placeholder. */
+/** The app's remembered header color in the current appearance, for the band at the top until its first page loads. */
 @Composable
 fun rememberStatusBarTint(app: WebApp): Color? {
     val context = LocalContext.current
@@ -471,8 +475,8 @@ private fun rememberTouchExploration(): Boolean {
 /**
  * The open app's only native chrome: a small floating toolbar at the top with the way home and
  * the app's menu, tucked up under the status bar while the person uses the app, leaving a small
- * handle in the band just below it. With TalkBack on it stays put and the handle never shows. Remove
- * animations zeroes Compose's durations, so then it comes and goes at once.
+ * handle in the band just below it. With TalkBack on it stays put and the handle never shows.
+ * Remove animations zeroes Compose's durations, so then it comes and goes at once.
  */
 @Composable
 fun AppChrome(
@@ -482,7 +486,7 @@ fun AppChrome(
     actions: AppChromeActions,
     controller: ChromeController,
     /** The color under the handle, which takes the tone that reads on it. */
-    header: Color? = null,
+    header: Color,
     touchExploration: Boolean = rememberTouchExploration(),
 ) {
     // Tucked away the moment the page appears, so it never sits over the page on its own.
@@ -492,7 +496,7 @@ fun AppChrome(
     // Gone at once for the frame a snapshot takes, mid-animation or not. Back, it shows as it
     // was without animating in: AnimatedVisibility doesn't animate what is visible from the start.
     if (controller.hiddenForSnapshot) return
-    Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))) {
+    Box(Modifier.fillMaxSize().windowInsetsPadding(chromeTop.union(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)))) {
         AnimatedVisibility(
             visible = controller.isShown || touchExploration,
             modifier = Modifier.align(Alignment.TopCenter).padding(top = 4.dp, start = 16.dp, end = 16.dp),
@@ -606,8 +610,17 @@ private fun AppMenuItems(app: WebApp, actions: AppChromeActions, close: () -> Un
     AppMenuItem(close, stringResource(R.string.chrome_lock), R.drawable.ic_lock, action = actions.lock)
 }
 
-/** The handle's height, which the band at the top of an open app holds below the status bar (AppHostView). */
+/** The handle's height, which the band at the top of an open app holds below [chromeTop] (AppHostView). */
 val ChromeHandleHeight = 20.dp
+
+/**
+ * Where the band at the top of an open app and the handle in it start: below the status bar, or
+ * the cutout when it's deeper. The same with the bars hidden for a page's full screen, so the page
+ * behind it doesn't move.
+ */
+val chromeTop: WindowInsets
+    @OptIn(ExperimentalLayoutApi::class)
+    @Composable get() = WindowInsets.statusBarsIgnoringVisibility.union(WindowInsets.displayCutout).only(WindowInsetsSides.Top)
 
 /**
  * What stays of the chrome while it's tucked away: a small handle at the top center, in the band
@@ -615,7 +628,7 @@ val ChromeHandleHeight = 20.dp
  * any page, however the page scrolls.
  */
 @Composable
-private fun ChromeHandle(header: Color?, reveal: () -> Unit) {
+private fun ChromeHandle(header: Color, reveal: () -> Unit) {
     val label = stringResource(R.string.chrome_show_menu)
     Box(
         Modifier
@@ -624,7 +637,7 @@ private fun ChromeHandle(header: Color?, reveal: () -> Unit) {
             .semantics { contentDescription = label },
         contentAlignment = Alignment.Center,
     ) {
-        val mark = header?.let { if (it.isLight()) Color.Black else Color.White } ?: MaterialTheme.colorScheme.onSurface
+        val mark = if (header.isLight()) Color.Black else Color.White
         Box(Modifier.size(width = 32.dp, height = 4.dp).background(mark.copy(alpha = 0.3f), CircleShape))
     }
 }
@@ -693,7 +706,7 @@ private suspend fun WebView.evaluate(script: String): String? = suspendCancellab
  * problem and Leave.
  */
 @Composable
-fun AppChromeHost(model: AppModel, page: AppPage, icon: Bitmap?, header: Color?, onClose: () -> Unit) {
+fun AppChromeHost(model: AppModel, page: AppPage, icon: Bitmap?, header: Color, onClose: () -> Unit) {
     val app = page.app
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
