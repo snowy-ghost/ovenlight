@@ -15,8 +15,7 @@ final class WebViewPool: ObservableObject {
     private var recent: [UUID] = []
     private let maxLive = 4
     /// Files that finished while their app was off screen or locked, oldest first, until
-    /// its page shows them. They outlive the app's view; those of an app that's removed go
-    /// at the next launch.
+    /// its page shows them. They outlive the app's view, not the app or its data.
     var waitingDownloads: [UUID: [URL]] = [:]
 
     private init() {
@@ -27,6 +26,11 @@ final class WebViewPool: ObservableObject {
                                                object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.trim(keeping: 1) }
         }
+    }
+
+    /// Drops the app's waiting files and deletes them, when the app goes or its data does.
+    func dropWaitingDownloads(of id: UUID) {
+        for file in waitingDownloads.removeValue(forKey: id) ?? [] { DownloadPolicy.removeFolder(of: file) }
     }
 
     func webView(for app: WebApp) -> (WKWebView, WebCoordinator) {
