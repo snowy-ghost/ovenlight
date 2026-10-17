@@ -994,10 +994,15 @@ final class NodeManagerTests: XCTestCase {
         let directory = NodeManager.stateDirectory(for: membership.id)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 
-        // Twice at once, as Leave and the orphan sweep can: one removal.
+        // Twice at once, as Leave and the orphan sweep can: one removal, so one deletion of the
+        // membership (each deletion publishes the list, removing something or not).
+        var deletions = 0
+        let watch = nodes.memberships.$memberships.dropFirst().sink { _ in deletions += 1 }
+        defer { watch.cancel() }
         async let first: Void = nodes.removeGuest(membership.id)
         async let second: Void = nodes.removeGuest(membership.id)
         _ = await (first, second)
+        XCTAssertEqual(deletions, 1)
         XCTAssertNil(nodes.guests[membership.id])
         XCTAssertNil(nodes.memberships[membership.id])
         XCTAssertFalse(FileManager.default.fileExists(atPath: directory.path))
