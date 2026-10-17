@@ -2,6 +2,7 @@ package com.snowyghost.ovenlight
 
 import android.app.Application
 import android.content.Context
+import android.content.res.Configuration
 import android.icu.text.Normalizer2
 import android.os.SystemClock
 import androidx.compose.animation.AnimatedVisibility
@@ -55,6 +56,11 @@ class OvenlightApp : Application() {
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
         model.pool.trimMemory(level, away = model.lifecycle.isAway)
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        model.pool.fontScaleChanged(newConfig.fontScale)
     }
 
     companion object {

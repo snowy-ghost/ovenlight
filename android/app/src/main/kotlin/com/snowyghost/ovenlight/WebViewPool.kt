@@ -97,6 +97,9 @@ class WebViewPool(
         if (level >= ComponentCallbacks2.TRIM_MEMORY_BACKGROUND || (level == ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN && away)) trim(keeping = 1)
     }
 
+    /** The phone's font size changed: every live page's text follows it. */
+    fun fontScaleChanged(fontScale: Float) = pages.values.forEach { WebViewSetup.followTextSize(it.view, fontScale) }
+
     /** Where opening the app got, while it has a page, for Report a Problem. */
     fun gate(id: UUID): AppLoadGate? = pages[id]?.gate?.value
 

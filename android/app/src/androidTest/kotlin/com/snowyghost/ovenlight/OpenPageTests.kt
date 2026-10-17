@@ -122,6 +122,10 @@ class OpenPageTests {
         return result.poll(5, TimeUnit.SECONDS)
     }
 
+    /** Runs a shell command and waits for it to finish. */
+    private fun shell(command: String) =
+        ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand(command)).use { it.readBytes() }
+
     // A read that fails fails the test, so a comparison of two failed reads can't pass.
     private fun number(script: String): Double =
         evaluate(script)?.toDoubleOrNull() ?: throw AssertionError("no number from $script")
@@ -260,6 +264,21 @@ class OpenPageTests {
         page.view.rootView.height - (at[1] + page.view.height)
     }
 
+    /** An open page's text follows the phone's font size, as in Chrome. */
+    @Test
+    fun testAPagesTextFollowsTheFontSize() {
+        evaluate("document.body.insertAdjacentHTML('beforeend', \"<span id=sample style='font-size:16px'>Sample text</span>\")")
+        val height = { number("document.getElementById('sample').getBoundingClientRect().height") }
+        val normal = height()
+        try {
+            shell("settings put system font_scale 2.0")
+            waitFor("the text at twice the size") { height() > normal * 1.5 }
+        } finally {
+            shell("settings put system font_scale 1.0")
+        }
+        waitFor("the text back to its size") { height() == normal }
+    }
+
     /**
      * Every page starts below the band Ovenlight keeps at the top, the status bar's height and the
      * handle's, and sees no top inset, whether it asks for `viewport-fit=cover` or not, however it
@@ -292,7 +311,6 @@ class OpenPageTests {
 
         // The display turned, as a person turns the phone: Android 16 ignores an app's requested
         // orientation on a tablet.
-        val shell = { command: String -> ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand(command)).use { it.readBytes() } }
         val wide = { onMain { page.view.width > page.view.height } }
         val upright = wide()
         try {
