@@ -458,7 +458,7 @@ private const val SCREEN_MILLIS = 350
  */
 fun <T> screenTween(): FiniteAnimationSpec<T> = tween(SCREEN_MILLIS, easing = LinearEasing)
 
-private val screenCurve: FiniteAnimationSpec<Float> = tween(SCREEN_MILLIS, easing = FastOutSlowInEasing)
+internal val screenCurve: FiniteAnimationSpec<Float> = tween(SCREEN_MILLIS, easing = FastOutSlowInEasing)
 
 /** Whether TalkBack (or another touch exploration service) is on, kept current. */
 @Composable
@@ -716,6 +716,10 @@ fun AppChromeHost(model: AppModel, page: AppPage, icon: Bitmap?, header: Color, 
     val memberships by model.nodes.memberships.membershipsFlow.collectAsState()
     val controller = remember(page) { ChromeController(PreferencesStore(context)) }
     val feedback by page.feedback.collectAsState()
+    // Whether Share applies comes from the owner's connector.
+    val machines by model.sharing.machines.collectAsState()
+    val shareable = remember(machines, app) { model.sharing.info(app)?.takeIf { it.second.shareable } }
+    LaunchedEffect(app.id) { if (!app.isShared && app.discovered) model.sharing.refreshIfStale(model.registry.apps) }
     var noMailApp by remember { mutableStateOf(false) }
     var leaving by remember { mutableStateOf<Membership?>(null) }
     val density = LocalDensity.current.density
@@ -743,8 +747,7 @@ fun AppChromeHost(model: AppModel, page: AppPage, icon: Bitmap?, header: Color, 
         AppChromeActions(
             home = onClose,
             reload = page::reload,
-            // Share… comes with the owner's sharing info in Phase 6 (iOS's shareAction).
-            share = null,
+            share = shareable?.let { (machine, admin) -> { model.composer.value = InviteComposer(machine, admin) } },
             sendFeedback = if (app.hasConnector && loaded) {
                 {
                     scope.launch {

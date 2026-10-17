@@ -96,6 +96,7 @@ abstract class Acknowledgements : DefaultTask() {
     // Modules whose POM leaves the license to a parent POM, each checked by hand.
     private val inherited = mapOf(
         "com.google.guava:listenablefuture" to "Apache License 2.0", // guava-parent
+        "com.google.zxing:core" to "Apache License 2.0", // zxing-parent
     )
 
     @TaskAction
@@ -256,6 +257,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.okhttp)
     implementation(libs.kotlinx.serialization.json)
+    implementation(libs.zxing.core)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlin.test.junit)

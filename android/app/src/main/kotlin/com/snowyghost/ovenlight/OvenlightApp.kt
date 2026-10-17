@@ -31,6 +31,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -99,6 +102,10 @@ class AppModel(context: Context) {
     )
     val guests = GuestManager(nodes, registry, router, scope, SystemClock::elapsedRealtime, log = { OvenlightLog.i(it) })
         .also { pool.guests = it }
+    val sharing = OwnerSharing(nodes, scope, SystemClock::elapsedRealtime, log = { OvenlightLog.i(it) })
+
+    /** The invite composer, over whatever opened it (see [InviteComposer]). */
+    val composer = MutableStateFlow<InviteComposer?>(null)
     /** The router's sheet showing in a Custom Tab, kept with the process so a recreated activity returns from it. */
     var openTab: RootSheet? = null
     val lifecycle = AppLifecycle(
@@ -143,6 +150,12 @@ class AppModel(context: Context) {
             }
         }
         scope.launch { lock.isLocked.collect { locked -> if (locked) pool.stopCapture() } }
+        // Which apps can be shared follows the owner's computers: ask again once the connection is
+        // up and whenever a computer comes or goes.
+        scope.launch {
+            combine(nodes.ownerEnabled, nodes.owner.state, nodes.owner.status) { _, _, _ -> if (nodes.ownerIsConnected) nodes.ownersOnlineHosts else null }
+                .distinctUntilChanged().collectLatest { if (it != null) refreshSharing(force = true) }
+        }
         // An app a link asked for while locked opens once Ovenlight unlocks.
         scope.launch { lock.isLocked.drop(1).collect { locked -> if (!locked) router.appsChanged(registry.apps) } }
         scope.launch {
@@ -176,6 +189,17 @@ class AppModel(context: Context) {
         // to the front instead.
         nodes.rediscover()
         registry.refreshAllMissingIcons()
+        refreshSharing()
+    }
+
+    /**
+     * The owner's guests and shareable apps, for the menus. [force] asks even when the last answer
+     * is recent, since a computer came or went since.
+     */
+    suspend fun refreshSharing(force: Boolean = false) {
+        if (SharingFixture.isOn) return sharing.useFixture(SharingFixture.machines(registry.apps))
+        if (!nodes.ownerIsConnected || registry.apps.none { !it.isShared && it.discovered }) return
+        if (force) sharing.refresh(registry.apps) else sharing.refreshIfStale(registry.apps)
     }
 }
 
@@ -308,7 +332,7 @@ sealed class RootSheet {
      * Shown as a screen over the launcher by RootView. The sign-in and Machines pages show in a
      * Custom Tab instead (see MainActivity), and the rest arrive with their phases.
      */
-    val isScreen: Boolean get() = this == Settings
+    val isScreen: Boolean get() = this == Settings || this == Sharing || this is People
 
     /** An invite link, or the Join with Invite entry. */
     data class Join(val request: JoinRequest) : RootSheet() {
@@ -338,10 +362,7 @@ sealed class RootSheet {
         override val id: String get() = "settings"
     }
 
-    data class Invite(val machine: OwnerSharing.Machine, val app: AdminApp) : RootSheet() {
-        override val id: String get() = "invite ${machine.id} ${app.slug}"
-    }
-
+    /** One app's people, from its menu. */
     data class People(val machineID: String, val slug: String) : RootSheet() {
         override val id: String get() = "people $machineID $slug"
     }
@@ -359,6 +380,7 @@ fun RootView(model: AppModel) {
         LauncherView(model)
         AppLayer(model)
         ScreenLayer(model)
+        InviteComposerLayer(model)
     }
 }
 
@@ -418,7 +440,9 @@ private fun ScreenLayer(model: AppModel) {
             ScreenBack(shownState, shown = screen != null, back = close)
             when (shown) {
                 RootSheet.Settings -> SettingsView(model, onClose = close)
-                // The rest arrive with their phases: Add App and Join with Phase 5, sharing with Phase 6.
+                RootSheet.Sharing -> SharingView(model, SharingPage.List, onClose = close)
+                is RootSheet.People -> SharingView(model, SharingPage.App(shown.machineID, shown.slug), onClose = close)
+                // The rest arrive with their phases: Add App and Join with Phase 5.
                 else -> Unit
             }
         }

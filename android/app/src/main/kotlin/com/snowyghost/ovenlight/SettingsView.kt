@@ -11,11 +11,13 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
@@ -48,6 +50,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -55,6 +58,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -402,13 +406,23 @@ private fun AcknowledgementsScreen(notices: suspend () -> String?, onBack: () ->
 
 /**
  * A full-screen destination on the grouped background, which its top app bar shares, with a
- * back arrow. With [scroll] the content scrolls in a centered column; without, it gets the
- * bars' padding and scrolls itself. Its title names the pane for TalkBack, since it replaces
- * another screen in the same window.
+ * back arrow (or [navigationIcon]) and [actions]. With [scroll] the content scrolls in a
+ * centered column, and [refresh] adds a pull to refresh; without, it gets the bars' padding and
+ * scrolls itself. Its title names the pane for TalkBack, since it replaces another screen in
+ * the same window.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun GroupedScreen(title: String, onBack: () -> Unit, scroll: ScrollState? = null, content: @Composable (PaddingValues) -> Unit) {
+internal fun GroupedScreen(
+    title: String,
+    onBack: () -> Unit,
+    scroll: ScrollState? = null,
+    @DrawableRes navigationIcon: Int = R.drawable.ic_arrow_back,
+    navigationLabel: String = stringResource(R.string.settings_back),
+    actions: @Composable RowScope.() -> Unit = {},
+    refresh: (suspend () -> Unit)? = null,
+    content: @Composable (PaddingValues) -> Unit,
+) {
     val background = LocalOvenColors.current.groupedBackground
     val direction = LocalLayoutDirection.current
     Scaffold(
@@ -419,9 +433,10 @@ private fun GroupedScreen(title: String, onBack: () -> Unit, scroll: ScrollState
                 title = { Text(title) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(painterResource(R.drawable.ic_arrow_back), contentDescription = stringResource(R.string.settings_back))
+                        Icon(painterResource(navigationIcon), contentDescription = navigationLabel)
                     }
                 },
+                actions = actions,
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = background, scrolledContainerColor = background),
             )
         },
@@ -432,18 +447,37 @@ private fun GroupedScreen(title: String, onBack: () -> Unit, scroll: ScrollState
         if (scroll == null) {
             return@Scaffold content(PaddingValues(start = start, top = bars.calculateTopPadding() + 8.dp, end = end, bottom = bars.calculateBottomPadding() + 16.dp))
         }
-        Box(Modifier.fillMaxSize().padding(start = start, top = bars.calculateTopPadding(), end = end), contentAlignment = Alignment.TopCenter) {
+        val modifier = Modifier.fillMaxSize().padding(start = start, top = bars.calculateTopPadding(), end = end)
+        val column = @Composable {
             Column(Modifier.widthIn(max = 640.dp).fillMaxWidth().verticalScroll(scroll).padding(horizontal = 16.dp)) {
                 Spacer(Modifier.height(8.dp))
                 content(PaddingValues())
                 Spacer(Modifier.height(bars.calculateBottomPadding() + 24.dp))
             }
         }
+        if (refresh == null) return@Scaffold Box(modifier, contentAlignment = Alignment.TopCenter) { column() }
+        val scope = rememberCoroutineScope()
+        var refreshing by remember { mutableStateOf(false) }
+        PullToRefreshBox(
+            isRefreshing = refreshing,
+            onRefresh = {
+                scope.launch {
+                    refreshing = true
+                    try {
+                        refresh()
+                    } finally {
+                        refreshing = false
+                    }
+                }
+            },
+            modifier = modifier,
+            contentAlignment = Alignment.TopCenter,
+        ) { column() }
     }
 }
 
 /** Collects a group's rows, so each can take its place's shape. */
-private class GroupRows {
+internal class GroupRows {
     val rows = mutableListOf<@Composable (Shape) -> Unit>()
 
     fun row(content: @Composable (Shape) -> Unit) {
@@ -457,7 +491,7 @@ private class GroupRows {
  * SegmentedListItem yet, so it is built from ListItem.
  */
 @Composable
-private fun SettingsGroup(header: String? = null, footer: (@Composable () -> Unit)? = null, rows: GroupRows.() -> Unit) {
+internal fun SettingsGroup(header: String? = null, footer: (@Composable () -> Unit)? = null, rows: GroupRows.() -> Unit) {
     val items = GroupRows().apply(rows).rows
     Column {
         header?.let {
@@ -484,30 +518,36 @@ private fun segmentShape(index: Int, count: Int, outer: CornerBasedShape, inner:
 }
 
 @Composable
-private fun Footer(text: String) {
+internal fun Footer(text: String) {
     Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp))
 }
 
 /**
- * One row: a headline, maybe with a value or detail under it, a monochrome icon and a
- * trailing control. A row without [onClick] reads as one element.
+ * One row: a headline, maybe with a value or detail under it, a monochrome icon (or another
+ * [leading] view) and a trailing control. A row without [onClick] reads as one element.
  */
 @Composable
-private fun SettingsRow(
+internal fun SettingsRow(
     shape: Shape,
     headline: String,
     supporting: String? = null,
     @DrawableRes icon: Int? = null,
     color: Color = Color.Unspecified,
+    leading: (@Composable () -> Unit)? = icon?.let { { Icon(painterResource(it), contentDescription = null) } },
     trailing: (@Composable () -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null,
     onClick: (() -> Unit)? = null,
 ) {
-    val action = if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier.semantics(mergeDescendants = true) {}
+    val action = when {
+        onClick != null && onLongClick != null -> Modifier.combinedClickable(role = Role.Button, onLongClick = onLongClick, onClick = onClick)
+        onClick != null -> Modifier.clickable(role = Role.Button, onClick = onClick)
+        else -> Modifier.semantics(mergeDescendants = true) {}
+    }
     ListItem(
         headlineContent = { Text(headline, color = color) },
         modifier = Modifier.clip(shape).then(action),
         supportingContent = supporting?.let { { Text(it) } },
-        leadingContent = icon?.let { { Icon(painterResource(it), contentDescription = null) } },
+        leadingContent = leading,
         trailingContent = trailing,
         colors = ListItemDefaults.colors(containerColor = LocalOvenColors.current.groupedRow, leadingIconColor = MaterialTheme.colorScheme.onSurfaceVariant),
     )

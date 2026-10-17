@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- People & sharing, the invite composer and the feedback inbox: the owner's alone. -->
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <string name="sharing_back">Back</string>
+    <string name="sharing_close">Close</string>
+    <string name="sharing_remove">Remove</string>
+    <string name="sharing_options">%1$s options</string>
+    <string name="sharing_share">Share…</string>
+
+    <string name="sharing_not_connected">Not connected</string>
+    <string name="sharing_not_connected_detail">Ovenlight needs to be connected to your computers to manage sharing.</string>
+    <string name="sharing_no_computers">No computers answered</string>
+    <string name="sharing_no_computers_detail">Check that the Ovenlight connector is running on your computers.</string>
+    <string name="sharing_apps">Apps</string>
+    <string name="sharing_online">Online</string>
+    <string name="sharing_offline">Offline</string>
+    <string name="sharing_only_you">%1$s · Only you</string>
+    <string name="sharing_not_shared_yet">%1$s · Not shared yet</string>
+    <plurals name="sharing_people_count">
+        <item quantity="one">%1$s · 1 person</item>
+        <item quantity="other">%1$s · %2$d people</item>
+    </plurals>
+    <string name="sharing_people">People</string>
+    <string name="sharing_feedback">Feedback</string>
+    <string name="sharing_learn_more">Learn more</string>
+
+    <string name="sharing_app">App</string>
+    <string name="sharing_app_not_found">App not found</string>
+    <string name="sharing_share_app">Share %1$s…</string>
+    <string name="sharing_only_for_you">%1$s is only for you.</string>
+    <string name="sharing_share_footer">Each invite is a link that works once, on one phone, for 7 days. Guests reach only this app.</string>
+    <string name="sharing_not_shareable_footer" tools:ignore="TypographyDashes">To share it, run this on its computer: ovenlight publish --slug %1$s --shareable</string>
+    <string name="sharing_no_one_yet">No one yet</string>
+    <string name="sharing_add_device_for">Add a device for %1$s</string>
+    <string name="sharing_remove_person">Remove %1$s</string>
+    <string name="sharing_open_invites">Open invites</string>
+    <string name="sharing_invite_for">For %1$s</string>
+    <string name="sharing_unused">Unused, expires %1$s</string>
+    <string name="sharing_review_unused">Review invite, unused, expires %1$s</string>
+    <string name="sharing_cancel_invite">Cancel invite</string>
+    <string name="sharing_remove_title">Remove %1$s?</string>
+    <string name="sharing_remove_from_app_message">%1$s can\'t open %2$s anymore, on any device. Each of their devices is also removed from your Tailscale network unless it has another of your apps.</string>
+
+    <string name="sharing_share_title">Share %1$s</string>
+    <string name="sharing_create">Create</string>
+    <string name="sharing_creating">Creating the invite</string>
+    <string name="sharing_someone_new">Someone new</string>
+    <string name="sharing_their_name">Their name, like Sam</string>
+    <string name="sharing_new_footer_they">They see this name on the invite, and %1$s knows them by it. You send the invite yourself next, by message or QR code. It works once, on one phone, for 7 days.</string>
+    <string name="sharing_new_footer_named">%1$s sees this name on the invite, and %2$s knows them by it. You send the invite yourself next, by message or QR code. It works once, on one phone, for 7 days.</string>
+    <string name="sharing_namesake_listed">%1$s is already in the list below. Choose them there, or use a name that tells them apart, like %1$s L.</string>
+    <string name="sharing_namesake_invited">%1$s already has an invite. Use a name that tells them apart, like %1$s L.</string>
+    <string name="sharing_shared_with">Someone you\'ve shared with</string>
+    <string name="sharing_shared_with_footer">Choose someone here and your apps see them as one person, on every device.</string>
+    <string name="sharing_add_a_device">Add a device</string>
+    <string name="sharing_invited">Invited</string>
+    <string name="sharing_adds_a_phone">The invite adds a phone for %1$s: %2$s sees one person on all of them. It works once, on one phone, for 7 days.</string>
+    <string name="sharing_reason_share">Share %1$s with %2$s</string>
+
+    <string name="sharing_invite_title">Invite for %1$s</string>
+    <string name="sharing_invite_expires">Works once. Expires %1$s, at %2$s.</string>
+    <string name="sharing_invite_code">Invite code</string>
+    <string name="sharing_in_person">In person: they scan this with their phone\'s camera.</string>
+    <string name="sharing_send_invite">Send invite</string>
+    <string name="sharing_invite_subject">%1$s in Ovenlight</string>
+    <string name="sharing_copy_link">Copy link</string>
+    <string name="sharing_copied">Copied</string>
+    <string name="sharing_invite_link">Invite link</string>
+    <string name="sharing_invite_footer">%1$s can join without your approval and reaches only %2$s. Until it\'s used, the link works like a key, so send it privately.</string>
+
+    <string name="people_select">Select</string>
+    <plurals name="people_selected">
+        <item quantity="one">%1$d selected</item>
+        <item quantity="other">%1$d selected</item>
+    </plurals>
+    <string name="people_done_selecting">Done selecting</string>
+    <string name="people_no_one">People you share apps with appear here.</string>
+    <string name="people_recent_first">Those who opened your apps most recently come first.</string>
+    <string name="people_removing_footer">Removing someone also removes their devices from your Tailscale network.</string>
+    <plurals name="people_remove_several_title">
+        <item quantity="one">Remove %1$d person?</item>
+        <item quantity="other">Remove %1$d people?</item>
+    </plurals>
+    <string name="people_they">They</string>
+    <string name="people_them">Them</string>
+    <string name="people_remove_message">%1$s can\'t open your apps anymore, on any device, and their devices are removed from your Tailscale network.</string>
+    <string name="people_invites_canceled">Their unused invites are canceled too.</string>
+    <plurals name="people_reason_several">
+        <item quantity="one">Remove %1$d person</item>
+        <item quantity="other">Remove %1$d people</item>
+    </plurals>
+    <string name="people_removing">Removing</string>
+
+    <string name="person_not_shared">Not shared anymore</string>
+    <string name="person_devices">Devices</string>
+    <string name="person_joined">Joined %1$s</string>
+    <string name="person_devices_footer">Remove a device they no longer use, such as an old phone. It leaves your Tailscale network.</string>
+    <string name="person_remove_from_title">Remove %1$s from %2$s?</string>
+    <string name="person_remove_device_title">Remove this device?</string>
+    <string name="person_remove_device_message">%1$s can\'t open your apps on this device anymore, and it\'s removed from your Tailscale network.</string>
+    <string name="person_reason_from">Remove %1$s from %2$s</string>
+    <string name="person_reason_device">Remove %1$s\'s device</string>
+
+    <string name="feedback_inbox_none">No feedback yet</string>
+    <string name="feedback_inbox_none_detail">People send it with Send feedback in an open app\'s menu.</string>
+    <string name="feedback_inbox_screenshot_only">Screenshot only</string>
+    <string name="feedback_inbox_you">You</string>
+    <string name="feedback_inbox_from">From %1$s</string>
+    <string name="feedback_inbox_from_guest">From %1$s (guest)</string>
+    <string name="feedback_inbox_screenshot">Screenshot</string>
+</resources>
