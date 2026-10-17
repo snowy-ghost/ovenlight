@@ -2,6 +2,7 @@ package com.snowyghost.ovenlight
 
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.pm.ActivityInfo
+import android.content.res.Configuration
 import android.graphics.Rect
 import android.os.SystemClock
 import android.provider.Settings
@@ -320,7 +321,7 @@ class OpenPageTests {
         try {
             for (night in listOf(true, false)) {
                 shell("cmd uimode night ${if (night) "yes" else "no"}")
-                waitFor("night mode $night") { onMain { window.context.resources.configuration.isNightModeActive } == night }
+                waitFor("night mode $night") { onMain { window.context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES } == night }
                 instrumentation.waitForIdleSync()
                 Thread.sleep(1_000)
                 val darkIcons = onMain { WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars }
