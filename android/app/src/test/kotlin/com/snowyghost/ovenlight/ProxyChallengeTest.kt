@@ -35,10 +35,11 @@ class ProxyChallengeTest {
     }
 
     @Test
-    fun testTheWebViewFloorIsM140() {
-        assertTrue(WebViewSetup.meetsRequirement("140.0.7339.0"))
+    fun testTheWebViewFloorIsM144() {
+        assertTrue(WebViewSetup.meetsRequirement("144.0.7559.59"))
         assertTrue(WebViewSetup.meetsRequirement("145.0.7632.218"))
-        assertFalse(WebViewSetup.meetsRequirement("139.0.7258.158"))
+        // M140 to M143 pass the safe area only to a WebView they take for full screen.
+        assertFalse(WebViewSetup.meetsRequirement("143.0.7499.192"))
         assertFalse(WebViewSetup.meetsRequirement("91.0.4472.114"))
         assertFalse(WebViewSetup.meetsRequirement(null))
         assertFalse(WebViewSetup.meetsRequirement("garbage"))

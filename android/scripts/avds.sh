@@ -8,7 +8,7 @@
 #                                it, unlocks it, and prints its serial and pid
 #   avds.sh stop <port>          stops the emulator this script started on that port
 #   avds.sh webview <port>       prints the running emulator's WebView version
-#   avds.sh snapshot <avd>       boots with fresh data, brings WebView to M140 or later, sets
+#   avds.sh snapshot <avd>       boots with fresh data, brings WebView to M144 or later, sets
 #                                the PIN 1111, enrolls fingerprint 1, turns animations off and
 #                                saves the snapshot "ready"; OVENLIGHT_KEEP_DATA=1 keeps the
 #                                data, after a step by hand in a window
@@ -18,7 +18,7 @@
 # Ports are even, 5554 to 5582, in the range adb looks in; snapshot and window use 5584. Set OVENLIGHT_AVD_FLAGS=-read-only
 # to boot an AVD another session already has open.
 #
-# Ovenlight needs WebView M140 or later, and the API 36 images ship M133. snapshot installs
+# Ovenlight needs WebView M144 or later, and the API 36 images ship M133. snapshot installs
 # Google's own WebView from webview/ beside the SDK (pulled from the API 37 image, which
 # Android accepts only with Google's signature). Its build needs API 32 or later, so the
 # API 29 AVD uses the Play image instead, updated once through the Play Store after a
@@ -182,7 +182,7 @@ snapshot() { # avd
 	unlock
 	sdk=$(sh_ getprop ro.build.version.sdk | tr -d '\r')
 
-	if [ "$(webview_major)" -lt 140 ] && [ "$sdk" -ge 32 ]; then
+	if [ "$(webview_major)" -lt 144 ] && [ "$sdk" -ge 32 ]; then
 		# The package manager may still be settling just after boot, so try a few times.
 		for apk in "$webviews"/*.apk; do
 			[ -f "$apk" ] || continue
@@ -193,10 +193,10 @@ snapshot() { # avd
 			done
 		done
 		i=0
-		while [ "$(webview_major)" -lt 140 ] && [ "$i" -lt 20 ]; do sleep 1; i=$((i + 1)); done
+		while [ "$(webview_major)" -lt 144 ] && [ "$i" -lt 20 ]; do sleep 1; i=$((i + 1)); done
 	fi
 	major=$(webview_major)
-	if [ "$major" -lt 140 ]; then
+	if [ "$major" -lt 144 ]; then
 		[ "$sdk" -lt 32 ] || die "$avd has WebView M$major and no APK in $webviews installed; pull one from the API 37 AVD (see the top of this script)"
 		by_hand "$avd has WebView M$major" "sign in to the Play Store and update Android System WebView"
 	fi

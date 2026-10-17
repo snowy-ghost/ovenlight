@@ -37,7 +37,8 @@ object WebViewSetup {
         data object Ready : State
     }
 
-    const val MINIMUM_MAJOR_VERSION = 140
+    /** The first WebView to pass the safe area to every page, not only to one it takes for full screen. */
+    const val MINIMUM_MAJOR_VERSION = 144
     val requiredFeatures = listOf(
         WebViewFeature.PROXY_OVERRIDE,
         WebViewFeature.MULTI_PROFILE,
