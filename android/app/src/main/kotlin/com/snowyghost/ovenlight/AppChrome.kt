@@ -705,7 +705,7 @@ fun AppChromeHost(model: AppModel, page: AppPage, icon: Bitmap?, header: Color?,
     WatchPage(page.view, controller)
     val look by page.look.collectAsState()
     // The header for the next launch, as each load reads it.
-    LaunchedEffect(look, dark) { StatusBarTint(PreferencesStore(context)).remember(look.header, app, dark) }
+    LaunchedEffect(look) { StatusBarTint(PreferencesStore(context)).remember(look.header, app, dark) }
     // Read again in the other appearance, and on opening an app that's loaded, which may have
     // switched while it was closed.
     LaunchedEffect(page, dark) {
