@@ -1,8 +1,8 @@
 #!/bin/bash
 # Checks a release bundle against what Play and the plan require: the SDK level, the
-# Go core's three ABIs aligned to 16 KB pages, the license notices, no advertising ID or
-# media permissions, the camera and microphone not required, WebView metrics and Safe Browsing
-# off, and nothing backed up or transferred.
+# Go core's three ABIs aligned to 16 KB pages and built without a peerAPI server, the
+# license notices, no advertising ID or media permissions, the camera and microphone not
+# required, WebView metrics and Safe Browsing off, and nothing backed up or transferred.
 # ship-play runs it as VERIFY_CMD, against the exact file it then uploads.
 #
 #   android/scripts/verify-bundle.sh <app-release.aab>
@@ -40,6 +40,15 @@ for so in "$work"/libs/base/lib/*/*.so; do
   for align in $aligns; do
     [ $((align)) -ge 16384 ] || fail "${so#"$work"/libs/} has a LOAD segment aligned to $align"
   done
+done
+# The Go core's build tags (scripts/build-android-core.sh): no peerAPI server, whose DNS
+# endpoint would answer an inviter from the phone's own networks.
+for so in "$work"/libs/base/lib/*/libgojni.so; do
+  tags="$(go version -m "$so" | awk '$1 == "build" && $2 ~ /^-tags=/ { print $2 }')"
+  case ",${tags#-tags=}," in
+    *,ts_omit_peerapiserver,*) ;;
+    *) fail "${so#"$work"/libs/} was built without ts_omit_peerapiserver (tags: ${tags:-none})" ;;
+  esac
 done
 # The APKs Play makes from the bundle, as bundletool makes them (signed with the debug key).
 bundletool build-apks --bundle="$aab" --output="$work/app.apks" > /dev/null
