@@ -158,6 +158,7 @@ internal fun SharingPeopleList(state: SharingState, scroll: ScrollState, open: (
                             SettingsRow(
                                 shape, person.name, supporting = person.summary(machine.guests.openedSince),
                                 leading = if (selecting) ({ Checkbox(checked = selected, onCheckedChange = null, enabled = selectable) }) else null,
+                                selected = if (selecting) selected else null,
                                 trailing = if (selecting) {
                                     null
                                 } else {
@@ -173,12 +174,10 @@ internal fun SharingPeopleList(state: SharingState, scroll: ScrollState, open: (
                                     selecting = true
                                     selection += ref
                                 }) else null,
-                                onClick = {
-                                    when {
-                                        !selecting -> open(SharingPage.Person(machine.id, person.id))
-                                        selected -> selection -= ref
-                                        selectable -> selection += ref
-                                    }
+                                onClick = when {
+                                    !selecting -> ({ open(SharingPage.Person(machine.id, person.id)) })
+                                    selectable -> ({ if (selected) selection -= ref else selection += ref })
+                                    else -> null
                                 },
                             )
                         }

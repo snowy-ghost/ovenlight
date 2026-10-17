@@ -34,6 +34,7 @@ import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CornerBasedShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
@@ -422,12 +423,13 @@ internal fun GroupedScreen(
     navigationLabel: String = stringResource(R.string.settings_back),
     actions: @Composable RowScope.() -> Unit = {},
     refresh: (suspend () -> Unit)? = null,
+    paneTitle: String = title,
     content: @Composable (PaddingValues) -> Unit,
 ) {
     val background = LocalOvenColors.current.groupedBackground
     val direction = LocalLayoutDirection.current
     Scaffold(
-        modifier = Modifier.semantics { paneTitle = title },
+        modifier = Modifier.semantics { this.paneTitle = paneTitle },
         containerColor = background,
         topBar = {
             TopAppBar(
@@ -512,7 +514,7 @@ internal fun SettingsGroup(header: String? = null, footer: (@Composable () -> Un
     }
 }
 
-private fun segmentShape(index: Int, count: Int, outer: CornerBasedShape, inner: CornerBasedShape): Shape {
+internal fun segmentShape(index: Int, count: Int, outer: CornerBasedShape, inner: CornerBasedShape): Shape {
     val top = if (index == 0) outer else inner
     val bottom = if (index == count - 1) outer else inner
     return inner.copy(topStart = top.topStart, topEnd = top.topEnd, bottomStart = bottom.bottomStart, bottomEnd = bottom.bottomEnd)
@@ -538,9 +540,12 @@ internal fun SettingsRow(
     leading: (@Composable () -> Unit)? = icon?.let { { Icon(painterResource(it), contentDescription = null) } },
     trailing: (@Composable () -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
+    /** A row that's selected or not, read as a checkbox; [onClick] toggles it, and without one it can't be. */
+    selected: Boolean? = null,
     onClick: (() -> Unit)? = null,
 ) {
     val action = when {
+        selected != null -> Modifier.toggleable(selected, enabled = onClick != null, role = Role.Checkbox) { onClick?.invoke() }
         onClick != null && onLongClick != null -> Modifier.combinedClickable(role = Role.Button, onLongClick = onLongClick, onClick = onClick)
         onClick != null -> Modifier.clickable(role = Role.Button, onClick = onClick)
         else -> Modifier.semantics(mergeDescendants = true) {}

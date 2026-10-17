@@ -108,4 +108,5 @@
     <string name="feedback_inbox_from">From %1$s</string>
     <string name="feedback_inbox_from_guest">From %1$s (guest)</string>
     <string name="feedback_inbox_screenshot">Screenshot</string>
+    <string name="feedback_inbox_screenshot_failed">Couldn\'t load the screenshot.</string>
 </resources>

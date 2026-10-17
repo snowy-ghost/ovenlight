@@ -8,7 +8,11 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasText
@@ -202,6 +206,8 @@ class SharingViewTests {
         text("Those who opened your apps most recently come first. Removing someone also removes their devices from your Tailscale network.").assertIsDisplayed()
         composeRule.onNodeWithText("Kim").performTouchInput { longClick() }
         composeRule.onNodeWithText("1 selected").assertIsDisplayed()
+        composeRule.onNode(hasText("Kim") and isToggleable()).assertIsOn()
+        composeRule.onNode(hasText("App Review") and isToggleable()).assertIsNotEnabled()
         composeRule.onNodeWithText("Sam").performClick()
         composeRule.onNodeWithText("App Review").performClick()
         composeRule.onNodeWithText("2 selected").assertIsDisplayed()
@@ -273,6 +279,7 @@ class SharingViewTests {
         assertEquals(mapOf("to" to "Jo", "app" to "book-club"), body.mapValues { it.value.jsonPrimitive.content })
 
         inDialog("Invite for Jo").assertIsDisplayed()
+        composeRule.onNode(SemanticsMatcher.expectValue(SemanticsProperties.PaneTitle, "Invite for Jo")).assertExists()
         composeRule.onNodeWithContentDescription("Invite code").assertIsDisplayed()
         inDialog("Jo can join without your approval and reaches only Book Club. Until it's used, the link works like a key, so send it privately.").assertIsDisplayed()
         inDialog("Send invite").performClick()
@@ -290,6 +297,14 @@ class SharingViewTests {
         assertEquals(link, clip.getItemAt(0).text)
         assertTrue("marked sensitive, so Android's preview hides the key", clip.description.extras!!.getBoolean(ClipDescription.EXTRA_IS_SENSITIVE))
         assertEquals("one invite", 1, requests.size)
+    }
+
+    @Test
+    fun testAScreenshotThatWontLoadSaysSo() {
+        answer = { FetchResponse(404, """{"error":"no screenshot","code":"not_found"}""".toByteArray()) }
+        show(state(), SharingPage.FeedbackItem(machine.id, "f1"))
+        text("Couldn't load the screenshot.").assertIsDisplayed()
+        assertEquals(listOf("GET /v1/feedback/f1/screenshot"), requests.map { it.line() })
     }
 
     @Test

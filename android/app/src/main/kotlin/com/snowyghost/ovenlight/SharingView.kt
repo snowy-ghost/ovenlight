@@ -23,6 +23,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -33,6 +37,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -74,6 +81,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
@@ -214,16 +222,19 @@ fun SharingScreen(state: SharingState, root: SharingPage, onClose: () -> Unit, s
     // Each page keeps its place while others open over it, as Settings does under Acknowledgements.
     val scrolls = remember { mutableMapOf<SharingPage, ScrollState>() }
     val open: (SharingPage) -> Unit = { pages += it }
-    val back: () -> Unit = { if (pages.size > 1) pages.removeAt(pages.lastIndex) else onClose() }
+    val back = { if (pages.size > 1) pages.removeAt(pages.lastIndex) else onClose() }
+    val lists = remember { mutableMapOf<SharingPage, LazyListState>() }
     PageStack(pages) { page ->
         val scroll = scrolls.getOrPut(page) { ScrollState(0) }
+        // Only while it's on top: a removal's round trip can end after the page was left.
+        val leave = { if (pages.lastOrNull() == page) back() }
         when (page) {
-            SharingPage.List -> SharingListPage(state, scroll, open, back)
-            is SharingPage.App -> SharingAppPage(state, page, scroll, open, back, scope)
-            SharingPage.People -> SharingPeopleList(state, scroll, open, back, scope)
-            is SharingPage.Person -> SharingPersonView(state, page, scroll, back, scope)
-            is SharingPage.Feedback -> FeedbackInbox(state, page, scroll, shots, open, back)
-            is SharingPage.FeedbackItem -> FeedbackDetail(state, page, scroll, shots, back)
+            SharingPage.List -> SharingListPage(state, scroll, open, leave)
+            is SharingPage.App -> SharingAppPage(state, page, scroll, open, leave, scope)
+            SharingPage.People -> SharingPeopleList(state, scroll, open, leave, scope)
+            is SharingPage.Person -> SharingPersonView(state, page, scroll, leave, scope)
+            is SharingPage.Feedback -> FeedbackInbox(state, page, lists.getOrPut(page) { LazyListState() }, shots, open, leave)
+            is SharingPage.FeedbackItem -> FeedbackDetail(state, page, scroll, shots, leave)
         }
     }
 }
@@ -672,7 +683,11 @@ private fun InviteResultView(result: AdminShareResult, appName: String, onDismis
     val clipLabel = stringResource(R.string.sharing_invite_link)
     val code = remember(result.link) { result.link?.let(QRCode::image) }
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
-    GroupedScreen("", onBack = onDismiss, scroll = rememberScrollState(), navigationIcon = R.drawable.ic_close, navigationLabel = stringResource(R.string.sharing_close)) {
+    // No title in the bar, which the display title says below; TalkBack still hears it as the pane changes.
+    GroupedScreen(
+        "", onBack = onDismiss, scroll = rememberScrollState(), navigationIcon = R.drawable.ic_close, navigationLabel = stringResource(R.string.sharing_close),
+        paneTitle = stringResource(R.string.sharing_invite_title, invite.to),
+    ) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(20.dp)) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(stringResource(R.string.sharing_invite_title, invite.to), style = OvenType.displayTitle, textAlign = TextAlign.Center)
@@ -756,21 +771,37 @@ object QRCode {
 
 /** Notes and screenshots people sent from Ovenlight, newest first, across computers or for one app. */
 @Composable
-private fun FeedbackInbox(state: SharingState, page: SharingPage.Feedback, scroll: ScrollState, shots: ScreenshotCache, open: (SharingPage) -> Unit, back: () -> Unit) {
+private fun FeedbackInbox(state: SharingState, page: SharingPage.Feedback, list: LazyListState, shots: ScreenshotCache, open: (SharingPage) -> Unit, back: () -> Unit) {
     val machines by state.machines.collectAsState()
     val items = machines.flatMap { machine -> machine.feedback.map { machine to it } }
         .filter { (machine, item) -> page.machineID == null || (machine.id == page.machineID && item.app == page.slug) }
         .sortedByDescending { it.second.at }
-    GroupedScreen(stringResource(R.string.sharing_feedback), onBack = back, scroll = scroll) {
-        if (items.isEmpty()) return@GroupedScreen Unavailable(stringResource(R.string.feedback_inbox_none), stringResource(R.string.feedback_inbox_none_detail))
-        SettingsGroup {
-            for ((machine, item) in items) {
-                row { shape ->
+    // Up to a hundred a computer: each row's thumbnail is fetched as it comes into view, through
+    // one client a computer.
+    val clients = remember(machines) { machines.associate { it.id to state.client(it) } }
+    val direction = LocalLayoutDirection.current
+    GroupedScreen(stringResource(R.string.sharing_feedback), onBack = back) { padding ->
+        if (items.isEmpty()) {
+            return@GroupedScreen Column(Modifier.padding(padding)) { Unavailable(stringResource(R.string.feedback_inbox_none), stringResource(R.string.feedback_inbox_none_detail)) }
+        }
+        val outer = MaterialTheme.shapes.large
+        val inner = MaterialTheme.shapes.extraSmall
+        LazyColumn(
+            Modifier.fillMaxSize(), state = list,
+            contentPadding = PaddingValues(
+                start = padding.calculateStartPadding(direction) + 16.dp, top = padding.calculateTopPadding(),
+                end = padding.calculateEndPadding(direction) + 16.dp, bottom = padding.calculateBottomPadding(),
+            ),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            itemsIndexed(items, key = { _, (machine, item) -> "${machine.id}/${item.id}" }) { index, (machine, item) ->
+                Box(Modifier.widthIn(max = 640.dp).fillMaxWidth()) {
                     SettingsRow(
-                        shape, item.note.ifEmpty { stringResource(R.string.feedback_inbox_screenshot_only) },
+                        segmentShape(index, items.size, outer, inner), item.note.ifEmpty { stringResource(R.string.feedback_inbox_screenshot_only) },
                         supporting = feedbackMeta(machine, item),
                         color = if (item.note.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant else Color.Unspecified, maxLines = 3,
-                        leading = if (item.hasScreenshot) ({ Thumbnail(state, machine, item, shots) }) else null,
+                        leading = if (item.hasScreenshot) ({ Thumbnail(item, shots, clients[machine.id]) }) else null,
                         onClick = { open(SharingPage.FeedbackItem(machine.id, item.id)) },
                     )
                 }
@@ -780,8 +811,8 @@ private fun FeedbackInbox(state: SharingState, page: SharingPage.Feedback, scrol
 }
 
 @Composable
-private fun Thumbnail(state: SharingState, machine: OwnerSharing.Machine, item: AdminFeedback, shots: ScreenshotCache) {
-    LaunchedEffect(item.id) { shots.load(item.id, ScreenshotCache.Size.Thumbnail, state.client(machine)) }
+private fun Thumbnail(item: AdminFeedback, shots: ScreenshotCache, client: AdminClient?) {
+    LaunchedEffect(item.id) { shots.load(item.id, ScreenshotCache.Size.Thumbnail, client) }
     val shape = RoundedCornerShape(6.dp)
     val image = shots.image(item.id, ScreenshotCache.Size.Thumbnail)
     val bitmap = remember(image) { image?.asImageBitmap() }
@@ -834,7 +865,13 @@ private fun FeedbackDetail(state: SharingState, page: SharingPage.FeedbackItem, 
                         modifier = Modifier.fillMaxWidth().clip(shape).border(0.5.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f), shape),
                     )
                 } else {
-                    Box(Modifier.fillMaxWidth().heightIn(min = 200.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                    Box(Modifier.fillMaxWidth().heightIn(min = 200.dp), contentAlignment = Alignment.Center) {
+                        if (shots.failed(item.id, ScreenshotCache.Size.Screen)) {
+                            Text(stringResource(R.string.feedback_inbox_screenshot_failed), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        } else {
+                            CircularProgressIndicator()
+                        }
+                    }
                 }
             }
         }
@@ -860,22 +897,33 @@ class ScreenshotCache {
 
     private val images = mutableStateMapOf<Pair<String, Size>, Bitmap>()
     private val loading = mutableSetOf<Pair<String, Size>>()
+    private val failures = mutableStateListOf<Pair<String, Size>>()
 
     fun image(id: String, size: Size): Bitmap? = images[id to size]
+
+    /** The last try to fetch or decode it failed. */
+    fun failed(id: String, size: Size): Boolean = (id to size) in failures
 
     suspend fun load(id: String, size: Size, client: AdminClient?) {
         val key = id to size
         if (key in images || key in loading || client == null) return
         loading += key
+        failures -= key
         try {
             val data = try {
                 client.screenshot(id)
             } catch (_: AdminError) {
-                return
+                null
             }
-            withContext(Dispatchers.Default) { IconDecoder.decode(data, size.pixels) }?.let { images[key] = it }
+            val image = data?.let { withContext(Dispatchers.Default) { IconDecoder.decode(it, size.pixels, maxSide = MAX_SIDE) } }
+            if (image != null) images[key] = image else failures += key
         } finally {
             loading -= key
         }
+    }
+
+    private companion object {
+        /** The longest side the connector stores (connector/feedback.go); decoding samples it down, never at full size. */
+        const val MAX_SIDE = 8192
     }
 }
