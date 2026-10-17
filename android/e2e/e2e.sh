@@ -5,7 +5,7 @@
 # connector runs from this run's folder with its own HOME, config and state, logs in only to
 # the local Headscale, and stops by its recorded pid.
 #
-#   android/e2e/e2e.sh [gates | owner | signin [seconds] | screens | app | chrome | downloads | upload | return | guests | sharing | shortcuts] [avd]
+#   android/e2e/e2e.sh [gates | owner | signin [seconds] | screens | app | chrome | downloads | upload | return | guests | sharing | shortcuts | conditions | perf] [avd]
 #
 # gates runs Phase 1's checks G2 to G5 through the debug lab. owner signs the owner's node in
 # with a preauth key and waits for the launcher to show both test apps. signin goes through
@@ -50,11 +50,24 @@
 # and with the lock at Immediately opens it from there through the lock, warm and after Android
 # ends Ovenlight's process. A rename reaches the shortcut, Remove app disables it so a tap opens
 # nothing, and a link to the removed app's ID opens no app.
+# conditions keeps Recipes open while the phone changes under it: rotation, dark mode, the
+# largest font and three-button navigation leave the same page working; with Wi-Fi off and
+# back on it still reaches Recipes; after more than a minute at Home the nodes have closed and
+# the page works again once back; and after Android ends the process in the background, Recents
+# brings Ovenlight back locked, with no app open, and Recipes opens again.
+# perf records cold start over ten launches, memory once four apps have opened (the pool keeps
+# two pages live on a phone of 4 GB or less, four above), that opening, closing and rotating
+# leaves one activity and no more web views than the pool keeps, and, at Home, that
+# Ovenlight holds no wake lock, with its alarms, jobs, freezer state and CPU time over two
+# minutes. On a debuggable build: ORG_GRADLE_PROJECT_minify=true comes nearer a release.
 # Each writes what it saw to
 # android/e2e/out/: gates.txt, logs and screenshots.
 #
 # OVENLIGHT_E2E_PORTS limits the emulator ports tried (5554 to 5582 by default), for a run
-# beside another session's emulators.
+# beside another session's emulators. OVENLIGHT_E2E_CONDITION runs a scenario in dark mode
+# (dark), at the largest font (font), with three-button navigation (threebutton) or in
+# landscape (landscape). ORG_GRADLE_PROJECT_minify=true runs it on the debug build with R8 on,
+# as a release build is shrunk (-Pminify).
 # Needs Headscale v0.29.4 (docs/development.md#local-headscale) and the fixed AVD set
 # (android/scripts/avds.sh). The test CA lives in test-ca/ beside the SDK, made on the first
 # run, and the debug build trusts it, so this builds the app itself.
@@ -131,7 +144,8 @@ until_ok() {
 }
 
 [[ -x $HS ]] || fail "no headscale at $HS"
-[[ $SCENARIO =~ ^(gates|owner|signin|screens|app|chrome|downloads|upload|return|guests|sharing|shortcuts)$ ]] || fail "unknown scenario $SCENARIO"
+[[ $SCENARIO =~ ^(gates|owner|signin|screens|app|chrome|downloads|upload|return|guests|sharing|shortcuts|conditions|perf)$ ]] || fail "unknown scenario $SCENARIO"
+[[ -z ${OVENLIGHT_E2E_CONDITION:-} || $OVENLIGHT_E2E_CONDITION =~ ^(dark|font|threebutton|landscape)$ ]] || fail "unknown condition $OVENLIGHT_E2E_CONDITION"
 
 say "the test CA in $CA, made once, and a *.$BASE certificate for this run"
 if [[ ! -f $CA/ca.pem ]]; then
@@ -239,13 +253,19 @@ EOF
 printf '%s\n' 'body { background: #fbf4ea; }' > $D/pantry/style.css
 printf '%s\n' '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2 2"><circle cx="1" cy="1" r="1" fill="#c0392b"/></svg>' > $D/pantry/dot.svg
 printf '%s\n' '<!doctype html><meta charset="utf-8"><title>Pantry</title><h1>Pantry</h1>' > $D/pantry/index.html
+apps="recipes:Recipes pantry:Pantry"
+# perf opens four apps.
+if [[ $SCENARIO == perf ]]; then
+  apps="$apps garden:Garden notes:Notes"
+  for app in garden notes; do mkdir -p $D/$app; printf '<!doctype html><meta charset="utf-8"><title>%s</title><h1>%s</h1>\n' $app $app > $D/$app/index.html; done
+fi
 
 say "the connector, built from the tree, with its own HOME, config and state"
 export GOCACHE="$(go env GOCACHE)" GOMODCACHE="$(go env GOMODCACHE)"
 go -C $ROOT/connector build -o $D/ovenlight .
 mkdir -p $D/home
 c() { env HOME=$D/home OVENLIGHT_DEV=1 TS_NO_LOGS_NO_SUPPORT=1 $D/ovenlight "$@"; }
-for app in recipes:Recipes pantry:Pantry; do
+for app in $apps; do
   name=${app#*:} app=${app%%:*}
   c publish --config $D/config.json --state $D/st --port $(port) --name "$name" --slug $app \
     --run "python3 $ROOT/android/e2e/app.py" --dir "$D/$app" >> $D/publish.log 2>&1 || fail "publish $app: $(cat $D/publish.log)"
@@ -254,8 +274,8 @@ done
     --control-url $CTRL --auth-key $KEY --dev-tls-cert $D/leaf.pem --dev-tls-key $D/leaf.key \
     --dev-headscale $HS --dev-headscale-config $D/headscale.yaml >> $D/connector.log 2>&1 ) &
 connector_pid=$!
-until_ok 120 sh -c "env HOME=$D/home $D/ovenlight status --config $D/config.json --state $D/st --json | grep -c '\"state\": \"serving\"' | grep -qx 2" ||
-  fail "the connector didn't serve both apps"
+until_ok 120 sh -c "env HOME=$D/home $D/ovenlight status --config $D/config.json --state $D/st --json | grep -c '\"state\": \"serving\"' | grep -qx $(wc -w <<<"$apps" | tr -d ' ')" ||
+  fail "the connector didn't serve every app"
 
 say "$AVD, booted from ready with a network capture, and the app"
 for p in ${OVENLIGHT_E2E_PORTS:-$(seq 5554 2 5582)}; do
@@ -366,6 +386,8 @@ await_text() {
 }
 
 night() { a shell cmd uimode night $1 >/dev/null; sleep 3; }
+nav() { a shell cmd overlay enable-exclusive --category com.android.internal.systemui.navbar.$1 >/dev/null; sleep 3; }
+rotate() { a shell settings put system accelerometer_rotation 0; a shell settings put system user_rotation $1; sleep 3; }
 locked() { screen_text | grep -qxE 'Unlock Ovenlight|Ovenlight is locked'; }
 # Locks Ovenlight where it is. The activity pauses and resumes for the intent, so the system's
 # unlock prompt ("Unlock Ovenlight") opens over the lock screen at once, as on a return; its
@@ -429,6 +451,13 @@ owner_launcher() {
   a shell "am start -W -n $PKG/.MainActivity --es controlURL $CTRL --es authKey $KEY" >/dev/null
   await_text 90 Recipes Pantry || fail "the launcher never showed both apps: $(screen_text | tr '\n' '|')"
 }
+
+case ${OVENLIGHT_E2E_CONDITION:-} in
+dark) say "in dark mode"; night yes ;;
+font) say "at the largest font"; a shell settings put system font_scale 2.0; sleep 3 ;;
+threebutton) say "with three-button navigation"; nav threebutton ;;
+landscape) say "in landscape"; rotate 1 ;;
+esac
 
 if [[ $SCENARIO == guests ]]; then
   say "sharing: Owen owns the connector, and Recipes runs as a shareable app node"
@@ -523,7 +552,8 @@ PY2
     a shell input keycombination KEYCODE_CTRL_LEFT KEYCODE_C
     a shell input keyevent KEYCODE_DEL
     sleep 1
-    tap_text Paste
+    # On a phone on its side the keyboard takes the whole screen; Back puts it away.
+    tap_text Paste || { a shell input keyevent KEYCODE_BACK; sleep 1; tap_text Paste; }
     how="pasted"
   else
     tap_text Continue
@@ -558,6 +588,11 @@ sys.exit(0 if nodes and not live else 1)'
   # The emulator's camera can't be pointed at a code once booted from its snapshot (it keeps the
   # snapshot's camera), so this checks the way in and out; InviteScannerTests reads a code.
   tap_text "Join with invite"
+  # On a phone on its side it's below the fold, a swipe up.
+  if ! await_text 5 "Scan invite code"; then
+    w=$(a shell wm size | tail -1 | sed 's/.*: //' | tr -d '\r'); w=${w%x*}
+    a shell input swipe $((w / 2)) $((w * 3 / 4)) $((w / 2)) $((w / 4)) 300
+  fi
   await_text 10 "Scan invite code" || fail "no Scan invite code: $(screen_text | tr '\n' '|')"
   tap_text "Scan invite code"
   # Android asks for the camera the first time.
@@ -655,8 +690,9 @@ if [[ $SCENARIO == chrome ]]; then
   size=$(a shell wm size | tail -1 | sed 's/.*: //' | tr -d '\r')
   # The note, the page and a PNG as wide as the screen. Its column at 60 percent across runs
   # through the pill and the handle, right of the page's heading: from the top to the pill's
-  # bottom it must be all the page's own white.
-  python3 - "$size" "$OUT/chrome-feedback.json" "${pill[3]}" <<'PY' || fail "the connector's feedback isn't as sent: $inbox"
+  # bottom it must be all the page's own white. In landscape or at the largest font the screen's
+  # shape and the heading move, so only the note, the page and the PNG are checked there.
+  python3 - "$size" "$OUT/chrome-feedback.json" "${pill[3]}" "${OVENLIGHT_E2E_CONDITION:-}" <<'PY' || fail "the connector's feedback isn't as sent: $inbox"
 import json, struct, sys, zlib
 width, height = map(int, sys.argv[1].split("x"))
 bottom = int(sys.argv[3])
@@ -667,6 +703,9 @@ assert item["note"] == "e2e note from the app menu", item
 assert item["pageUrl"].startswith("https://recipes.e2e.ts.net/"), item
 data = open(item["screenshotPath"], "rb").read()
 assert data[:8] == b"\x89PNG\r\n\x1a\n", "not a PNG"
+if sys.argv[4] in ("landscape", "font"):
+    print("feedback: %s, a PNG" % item["note"])
+    sys.exit(0)
 chunks, i = {}, 8
 while i < len(data):
     n, kind = struct.unpack(">I4s", data[i:i + 8])
@@ -697,7 +736,11 @@ column = {tuple(rows[y][at:at + 3]) for y in range(min(h, bottom))}
 assert column == {(255, 255, 255)}, "the screenshot shows more than the page under the pill: %s" % sorted(column)[:5]
 print("feedback: %s, %dx%d PNG, no chrome in it" % (item["note"], w, h))
 PY
-  note "the connector has the note, the page and a $size PNG with no pill or handle in it"
+  if [[ ${OVENLIGHT_E2E_CONDITION:-} =~ ^(landscape|font)$ ]]; then
+    note "the connector has the note, the page and a PNG"
+  else
+    note "the connector has the note, the page and a $size PNG with no pill or handle in it"
+  fi
   say "PASSED"
   exit 0
 fi
@@ -1287,6 +1330,169 @@ sys.exit(0 if ok else 1)'; }
   exit 0
 fi
 
+if [[ $SCENARIO == conditions ]]; then
+  say "conditions: Recipes stays the same page through rotation, dark mode, the largest font and three-button navigation"
+  cat > $D/recipes/index.html <<'EOF'
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Conditions</title>
+<style>button, p { display: block; margin: 16px; font-size: 20px; } button { padding: 12px; }</style></head>
+<body><h1>Recipe Box conditions</h1><p id="load"></p><p id="fetch">no fetch</p><button onclick="ask()">Fetch</button>
+<script>
+document.getElementById("load").textContent = "load " + String(Math.random()).slice(2, 8);
+let fetches = 0;
+function ask() {
+  const n = ++fetches, show = text => document.getElementById("fetch").textContent = "fetch " + n + " " + text;
+  show("waiting");
+  fetch("/?n=" + n, { cache: "no-store" }).then(r => show(r.ok ? "ok" : "refused"), () => show("failed"));
+}
+</script></body></html>
+EOF
+  load_id() { screen_text | grep -m1 -E '^load [0-9]+$' || true; }
+  # Taps Fetch until the page's own fetch of Recipes answers, within $2 seconds.
+  fetches_within() { # what seconds
+    local start=$SECONDS n line
+    while (( SECONDS - start < $2 )); do
+      n=$(( $(screen_text | sed -n -E 's/^fetch ([0-9]+) .*/\1/p' | head -1) + 1 ))
+      tap_text Fetch || fail "$1: no Fetch button: $(screen_text | tr '\n' '|')"
+      for i in $(seq 1 15); do
+        line=$(screen_text | grep -m1 -E "^fetch $n " || true)
+        [[ $line == "fetch $n ok" ]] && { note "$1: the page reached Recipes after $((SECONDS - start)) s"; return 0; }
+        [[ -n $line && $line != "fetch $n waiting" ]] && break
+        sleep 1
+      done
+    done
+    fail "$1: the page never reached Recipes in $2 s: $(screen_text | tr '\n' '|')"
+  }
+  same_page() { # what
+    [[ $(load_id) == "$loaded" ]] || fail "$1: the page reloaded ($(load_id), was $loaded)"
+    fetches_within "$1" 20
+  }
+  owner_launcher
+  tap_text Recipes
+  close_tip
+  await_text 40 "Recipe Box conditions" Fetch || { shot conditions-failed; fail "the page never loaded: $(screen_text | tr '\n' '|')"; }
+  loaded=$(load_id)
+  fetches_within "opened" 20
+  rotate 1; shot conditions-landscape; same_page "landscape"
+  rotate 0; same_page "portrait again"
+  night yes; shot conditions-dark; same_page "dark mode"
+  night no
+  a shell settings put system font_scale 2.0; sleep 3; shot conditions-largest-font; same_page "the largest font"
+  a shell settings put system font_scale 1.0; sleep 3
+  nav threebutton; shot conditions-three-button; same_page "three-button navigation"
+  tap_text "Show app menu" || fail "no handle with three-button navigation: $(screen_text | tr '\n' '|')"
+  await_text 5 "All apps" "Recipes options" || fail "the handle didn't bring the pill back with three-button navigation: $(screen_text | tr '\n' '|')"
+  shot conditions-three-button-pill
+  a shell input keyevent KEYCODE_BACK; sleep 2
+  await_text 10 Pantry || fail "Back didn't close the app with three-button navigation: $(screen_text | tr '\n' '|')"
+  tap_text Recipes
+  await_text 10 "Recipe Box conditions" || fail "Recipes didn't reopen with three-button navigation"
+  same_page "reopened from the pool"
+  nav gestural
+
+  say "conditions: Wi-Fi off and back on, with Recipes open"
+  a shell svc wifi disable; sleep 3
+  fetches_within "Wi-Fi off (cellular)" 60
+  a shell svc wifi enable; sleep 3
+  fetches_within "Wi-Fi back" 60
+
+  say "conditions: Home for more than a minute, which closes the nodes, then back"
+  home_at=$(a shell "date '+%m-%d %H:%M:%S.000'" | tr -d '\r')
+  a shell input keyevent KEYCODE_HOME
+  sleep 75
+  # Were Ovenlight frozen meanwhile, the close comes due and finishes as it returns (AppLifecycle).
+  states() { a logcat -d -T "$home_at" -s Ovenlight 2>/dev/null | LC_ALL=C grep -E 'owner: state' | LC_ALL=C sed 's/.*owner: state //' | tr '\n' ',' || true; }
+  away_states=$(states)
+  note "the owner's node while away: ${away_states:-no change}"
+  a shell monkey -p $PKG -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
+  await_text 40 "Recipe Box conditions" || { shot conditions-failed; fail "Recipes isn't on screen after the time away: $(screen_text | tr '\n' '|')"; }
+  fetches_within "back after 75 s away" 60
+  note "the owner's node from Home to back: $(states)"
+  [[ $(states) == *"-> idle"*"-> starting"* ]] || fail "the owner's node didn't close and start again: $(states)"
+  [[ $(load_id) == "$loaded" ]] || note "the page loaded again ($(load_id), was $loaded)"
+
+  say "conditions: Android ends Ovenlight's process in the background, and Recents brings it back"
+  a shell input keyevent KEYCODE_HOME; sleep 2
+  a shell am kill $PKG
+  until_ok 10 sh -c "[ -z \"\$(adb -s $S shell pidof $PKG)\" ]" || fail "Ovenlight's process didn't end"
+  a shell input keyevent KEYCODE_APP_SWITCH; sleep 3
+  size=$(a shell wm size | tail -1 | sed 's/.*: //' | tr -d '\r'); w=${size%x*}; h=${size#*x}
+  a shell input tap $((w / 2)) $((h / 2)); sleep 3
+  locked || fail "Recents brought Ovenlight back without the lock: $(screen_text | tr '\n' '|')"
+  unlock_now
+  await_text 60 Recipes Pantry || { shot conditions-failed; fail "no launcher after the restart: $(screen_text | tr '\n' '|')"; }
+  ! screen_text | grep -qxF "Recipe Box conditions" || fail "the page came back from the ended process"
+  note "back from Recents locked, then the launcher with no app open"
+  tap_text Recipes
+  await_text 40 "Recipe Box conditions" || { shot conditions-failed; fail "Recipes didn't open after the restart: $(screen_text | tr '\n' '|')"; }
+  fetches_within "after the restart" 30
+  say "PASSED"
+  exit 0
+fi
+
+if [[ $SCENARIO == perf ]]; then
+  say "perf: cold start, ten launches from a stopped process to the lock"
+  owner_launcher
+  times=()
+  for i in $(seq 1 10); do
+    times+=($(a shell "am start-activity -W -S -n $PKG/.MainActivity" | tr -d '\r' | sed -n 's/^TotalTime: //p'))
+    sleep 3
+  done
+  sorted=($(printf '%s\n' "${times[@]}" | sort -n))
+  note "TotalTime ms: ${times[*]}; median $(( (sorted[4] + sorted[5]) / 2 )), fastest ${sorted[0]}, slowest ${sorted[9]}"
+
+  say "perf: memory once four apps have opened"
+  owner_launcher
+  open_and_close() { # name
+    tap_text $1 || fail "no $1 tile"
+    close_tip 5
+    await_text 40 "Show app menu" || fail "$1 never loaded: $(screen_text | tr '\n' '|')"
+    a shell input keyevent KEYCODE_BACK
+    await_text 10 Recipes Notes || fail "Back didn't close $1: $(screen_text | tr '\n' '|')"
+  }
+  for name in Recipes Pantry Garden Notes; do open_and_close $name; done
+  sleep 5
+  a shell dumpsys meminfo $PKG > $OUT/perf-meminfo.log
+  a shell dumpsys meminfo > $OUT/perf-meminfo-all.log
+  note "Ovenlight: $(grep -E 'TOTAL PSS' $OUT/perf-meminfo.log | tr -s ' ')"
+  renderers=$(sed -n '/^Total PSS by process/,/^$/p' $OUT/perf-meminfo-all.log | LC_ALL=C grep 'sandboxed_process' | sed 's/(pid.*//' | tr -s ' ' || true)
+  note "$(grep -c . <<<"$renderers") WebView renderer processes: $(tr '\n' ';' <<<"$renderers")"
+  # After a garbage collection (SIGUSR1 to a debuggable app), so a destroyed view isn't counted.
+  objects() {
+    a shell run-as $PKG kill -USR1 "$(a shell pidof $PKG | tr -d '\r')"; sleep 3
+    a shell dumpsys meminfo $PKG | tr -d '\r' | sed -n -E 's/.*Activities: +([0-9]+).*/\1/p; s/.*WebViews: +([0-9]+).*/\1/p' | tr '\n' ' '
+  }
+  note "objects (Activities, WebViews): $(objects)"
+  rotate 1; rotate 0
+  for name in Recipes Pantry Recipes; do open_and_close $name; done
+  sleep 5
+  counts=($(objects))
+  # The pool's own limit (WebViewPool.maxLive): one page on a low-RAM phone, two up to 4 GB, else four.
+  kb=$(a shell cat /proc/meminfo | tr -d '\r' | sed -n 's/^MemTotal: *\([0-9]*\) kB/\1/p')
+  if [[ $(a shell getprop ro.config.low_ram | tr -d '\r') == true ]]; then live=1; elif (( kb <= 4 * 1024 * 1024 )); then live=2; else live=4; fi
+  note "after rotating and opening apps again: Activities ${counts[0]}, WebViews ${counts[1]}, of $live the pool keeps"
+  (( counts[0] == 1 && counts[1] <= live )) || fail "an activity or web view outlived its use"
+
+  say "perf: at Home, with the nodes up and after they close"
+  uid=$(a shell pm list packages -U $PKG | tr -d '\r' | sed -n 's/.*uid://p')
+  pid=$(a shell pidof $PKG | tr -d '\r')
+  cpu() { a shell run-as $PKG cat /proc/$pid/stat | awk '{ print $14 + $15 }'; }
+  held() { a shell dumpsys power | LC_ALL=C grep -E "_WAKE_LOCK .*uid=$uid" || true; }
+  a shell input keyevent KEYCODE_HOME
+  sleep 10
+  start=$(cpu)
+  for at in 10 75 130; do
+    (( at == 10 )) || sleep $(( at - last ))
+    last=$at
+    [[ -z $(held) ]] || fail "$at s at Home, Ovenlight holds a wake lock: $(held)"
+    a shell dumpsys activity processes $PKG > $OUT/perf-processes-$at.log
+    note "$at s: no wake lock; alarms $(a shell dumpsys alarm | LC_ALL=C grep -c "$PKG" || true), jobs $(a shell dumpsys jobscheduler $PKG | LC_ALL=C grep -c -E '^ *JOB #' || true), $(LC_ALL=C grep -o -i -E 'frozen=[a-z]+|isFrozen=[a-z]+' $OUT/perf-processes-$at.log | head -1 || echo 'no freezer state')"
+  done
+  note "CPU from 10 s to 130 s at Home: $(( $(cpu) - start )) ticks of 10 ms"
+  say "PASSED"
+  exit 0
+fi
+
 if [[ $SCENARIO == owner ]]; then
   say "owner: the owner's node signs in with a preauth key"
   owner_launcher
@@ -1631,8 +1837,6 @@ insets() { # name
   note "$1: ${line#insets I: }"
   shot g5-$1
 }
-nav() { a shell cmd overlay enable-exclusive --category com.android.internal.systemui.navbar.$1 >/dev/null; sleep 3; }
-rotate() { a shell settings put system accelerometer_rotation 0; a shell settings put system user_rotation $1; sleep 3; }
 
 say "G5: env(safe-area-inset-*) beside Android's insets"
 nav gestural; rotate 0; insets portrait-gestures
