@@ -228,7 +228,8 @@ Sign Ovenlight in to the first with `-authKey`, and open the second owner's invi
   state and the remembered tailnet are forgotten, the apps found on the owner's computers
   go with their data (`AppRegistry.removeDiscovered`), and the launcher goes back to its
   welcome when nothing else is saved. Apps added by hand and shared ones stay, and
-  signing in again finds the owner's apps. Both close every app view that went through
+  signing in again finds the owner's apps. Sign Out asks first, and so does Stop Using My
+  Own Computers when it has apps to remove. Both close every app view that went through
   the owner's node, kept in the background included (`WebViewPool.discard(attachedTo:)`).
 - **Memberships.** One embedded node per network: the owner's own tailnet (state in
   `Application Support/Ovenlight/tailscale/owner`) and one guest node per owner whose

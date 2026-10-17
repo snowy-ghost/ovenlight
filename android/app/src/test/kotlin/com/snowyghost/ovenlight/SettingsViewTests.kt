@@ -219,6 +219,32 @@ class SettingsViewTests {
     }
 
     @Test
+    fun testStopUsingMyOwnComputersAsksFirstWhenItRemovesApps() {
+        var stopped = 0
+        var owner by mutableStateOf(
+            OwnerSettings(NodeState.NeedsLogin(URI("https://login.example.com/a/1234")), hasNoAccount = true, deviceName = "pixel-9", hasFoundApps = true),
+        )
+        show { SettingsState(owner = owner, stopUsingMyOwnComputers = { stopped++ }) }
+        inEveryLook {
+            row("Stop using my own computers").performClick()
+            inDialog("Sign out of your computers?").assertIsDisplayed()
+            inDialog("Signing out removes the apps found on your computers and everything they stored on this phone.").assertIsDisplayed()
+            composeRule.checkAccessibility()
+            inDialog("Cancel").performClick()
+            assertEquals(0, stopped)
+        }
+        row("Stop using my own computers").performClick()
+        inDialog("Stop using my own computers").performClick()
+        assertEquals(1, stopped)
+        composeRule.onNode(isDialog()).assertDoesNotExist()
+
+        owner = owner.copy(hasFoundApps = false)
+        row("Stop using my own computers").performClick()
+        assertEquals("with none to remove, one tap", 2, stopped)
+        composeRule.onNode(isDialog()).assertDoesNotExist()
+    }
+
+    @Test
     fun testWithNoScreenLockSettingsSaysSo() {
         var opened = false
         show { SettingsState(noScreenLock = true, setScreenLock = { opened = true }) }

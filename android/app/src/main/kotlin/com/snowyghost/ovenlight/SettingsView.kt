@@ -94,6 +94,8 @@ data class OwnerSettings(
     /** See [NodeManager.ownerHasNoAccount]: Use my own computers can still be taken back. */
     val hasNoAccount: Boolean = false,
     val deviceName: String = "",
+    /** Apps found on the owner's computers, which Sign out and Stop using my own computers remove, so either asks first. */
+    val hasFoundApps: Boolean = false,
 ) {
     /** Who "Connected as" names: only once connected with an account. */
     val connectedAs: String?
@@ -150,6 +152,7 @@ fun SettingsView(model: AppModel, onClose: () -> Unit) {
             tailnet = status?.tailnet?.name?.takeIf { it.isNotEmpty() },
             hasNoAccount = nodes.ownerHasNoAccount,
             deviceName = nodes.deviceName,
+            hasFoundApps = apps.any { !it.isShared && it.discovered },
         ),
         version = version,
         setLockAfter = { seconds ->
@@ -215,7 +218,8 @@ private val lockDelays = listOf(
 private fun SettingsList(state: SettingsState, scroll: ScrollState, onClose: () -> Unit, onAcknowledgements: () -> Unit) {
     var choosingDelay by remember { mutableStateOf(false) }
     var leaving by remember { mutableStateOf<SharedOwner?>(null) }
-    var confirmingSignOut by remember { mutableStateOf(false) }
+    /** The row asking first, by its name, which the dialog's button repeats. */
+    var confirming by remember { mutableStateOf<Int?>(null) }
     var noEmailApp by remember { mutableStateOf(false) }
     val error = MaterialTheme.colorScheme.error
     val primary = MaterialTheme.colorScheme.primary
@@ -268,7 +272,7 @@ private fun SettingsList(state: SettingsState, scroll: ScrollState, onClose: () 
                     row { shape -> SettingsRow(shape, stringResource(R.string.settings_use_my_own_computers), color = primary, onClick = state.useMyOwnComputers) }
                 }
             } else {
-                OwnerGroups(owner, state, onSignOut = { confirmingSignOut = true })
+                OwnerGroups(owner, state, confirm = { confirming = it })
             }
             SettingsGroup(header = stringResource(R.string.settings_support)) {
                 row { shape ->
@@ -312,10 +316,10 @@ private fun SettingsList(state: SettingsState, scroll: ScrollState, onClose: () 
     leaving?.let { owner ->
         LeaveConfirmation(owner.ownerName, onDismiss = { leaving = null }) { state.leave(owner.membershipID) }
     }
-    if (confirmingSignOut) {
+    confirming?.let { row ->
         Confirmation(
-            stringResource(R.string.settings_sign_out_title), stringResource(R.string.settings_sign_out_detail), stringResource(R.string.settings_sign_out),
-            onDismiss = { confirmingSignOut = false }, action = state.stopUsingMyOwnComputers,
+            stringResource(R.string.settings_sign_out_title), stringResource(R.string.settings_sign_out_detail), stringResource(row),
+            onDismiss = { confirming = null }, action = state.stopUsingMyOwnComputers,
         )
     }
     if (noEmailApp) NoEmailAppDialog(onDismiss = { noEmailApp = false })
@@ -327,7 +331,7 @@ private fun SettingsList(state: SettingsState, scroll: ScrollState, onClose: () 
  * A guest never sees either.
  */
 @Composable
-private fun OwnerGroups(owner: OwnerSettings, state: SettingsState, onSignOut: () -> Unit) {
+private fun OwnerGroups(owner: OwnerSettings, state: SettingsState, confirm: (Int) -> Unit) {
     val primary = MaterialTheme.colorScheme.primary
     SettingsGroup {
         val login = owner.state as? NodeState.NeedsLogin
@@ -344,12 +348,13 @@ private fun OwnerGroups(owner: OwnerSettings, state: SettingsState, onSignOut: (
                 row { shape -> SettingsRow(shape, stringResource(R.string.settings_approve), color = primary, onClick = state.approve) }
             }
             if (owner.account != null) {
-                row { shape -> SettingsRow(shape, stringResource(R.string.settings_sign_out), color = MaterialTheme.colorScheme.error, onClick = onSignOut) }
+                row { shape -> SettingsRow(shape, stringResource(R.string.settings_sign_out), color = MaterialTheme.colorScheme.error, onClick = { confirm(R.string.settings_sign_out) }) }
             }
         }
         // While no account is signed in, Use my own computers can still be taken back.
         if (owner.hasNoAccount) {
-            row { shape -> SettingsRow(shape, stringResource(R.string.settings_stop_using_my_own_computers), color = primary, onClick = state.stopUsingMyOwnComputers) }
+            val stop = R.string.settings_stop_using_my_own_computers
+            row { shape -> SettingsRow(shape, stringResource(stop), color = primary, onClick = { if (owner.hasFoundApps) confirm(stop) else state.stopUsingMyOwnComputers() }) }
         }
     }
     SettingsGroup(header = stringResource(R.string.settings_advanced)) {
