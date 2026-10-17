@@ -64,11 +64,9 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.heading
-import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -531,14 +529,7 @@ fun AddAppDialog(
                 placeholder = { Text("my-app.$ownerSuffix") },
                 lineLimits = TextFieldLineLimits.SingleLine,
                 isError = warning != null,
-                supportingText = {
-                    if (warning == null) return@OutlinedTextField Text(stringResource(R.string.add_app_footer))
-                    // Under the field, away from TalkBack's focus, so it's announced.
-                    Row(Modifier.semantics { liveRegion = LiveRegionMode.Polite }, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Icon(painterResource(R.drawable.ic_warning), contentDescription = null, modifier = Modifier.size(16.dp))
-                        Text(warning)
-                    }
-                },
+                supportingText = { if (warning == null) Text(stringResource(R.string.add_app_footer)) else FieldWarning(warning) },
                 keyboardOptions = KeyboardOptions(
                     capitalization = KeyboardCapitalization.None, autoCorrectEnabled = false, keyboardType = KeyboardType.Uri, imeAction = ImeAction.Done,
                 ),

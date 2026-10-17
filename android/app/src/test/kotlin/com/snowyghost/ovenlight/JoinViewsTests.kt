@@ -50,8 +50,11 @@ class JoinViewsTests {
     private val invite = InviteLink.parse(URI(link))
     private val echo = WebApp(name = "Echo Board", startURL = URI("https://echo-board.taildef456.ts.net/"), membershipID = "m1", sharedBy = "Riley")
 
+    /** Whether the screen is composed: the lock takes it away, and the router's request brings it back. */
+    private var showing by mutableStateOf(true)
+
     private fun show(request: JoinRequest = JoinRequest(Result.success(invite))) {
-        composeRule.setContent { Looked(look.value) { JoinFlowScreen(request, state, onClose = { closed += 1 }) } }
+        composeRule.setContent { Looked(look.value) { if (showing) JoinFlowScreen(request, state, onClose = { closed += 1 }) } }
     }
 
     private fun shownText(): List<String> {
@@ -71,7 +74,7 @@ class JoinViewsTests {
     private fun tap(text: String) = composeRule.onNodeWithText(text).performScrollTo().performClick()
 
     @Test
-    fun testTheEntryFindsAnInviteInAPastedMessage() {
+    fun testTheEntryFindsAnInviteInAPastedMessageAndTheLockKeepsIt() {
         val clipboard = ApplicationProvider.getApplicationContext<Context>().getSystemService(ClipboardManager::class.java)
         state = JoinState(canScan = true)
         show(JoinRequest())
@@ -81,6 +84,10 @@ class JoinViewsTests {
         clipboard.setPrimaryClip(ClipData.newPlainText(null, "Pizza night? Here's Echo Board: $link"))
         tap("Paste")
         inEveryLook(ConnectionCopy.joinTitle("Riley", "Echo Board"), "Join", "Not now")
+        showing = false
+        composeRule.waitForIdle()
+        showing = true
+        inEveryLook(ConnectionCopy.joinTitle("Riley", "Echo Board"))
     }
 
     @Test

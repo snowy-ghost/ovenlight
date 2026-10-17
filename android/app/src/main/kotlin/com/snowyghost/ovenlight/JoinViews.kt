@@ -117,12 +117,17 @@ import java.net.URI
 import java.util.UUID
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.launch
 
-/** An invite to show in the join sheet: read from a link, or null for the Join with Invite entry. */
-class JoinRequest(val invite: Result<InviteLink>? = null) {
+/**
+ * An invite to show in the join sheet: read from a link, or null for the Join with Invite entry
+ * until it finds one. The router holds it, so the lock, which takes the screen apart, keeps it.
+ */
+class JoinRequest(invite: Result<InviteLink>? = null) {
     val id: UUID = UUID.randomUUID()
+    var invite by mutableStateOf(invite)
 
     /** The link's invite, or why it isn't one ([InviteLink.ParseError]). */
     constructor(url: URI) : this(
@@ -199,7 +204,6 @@ fun JoinFlowView(model: AppModel, request: JoinRequest, onClose: () -> Unit) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun JoinFlowScreen(request: JoinRequest, state: JoinState, onClose: () -> Unit) {
-    var invite by remember(request.id) { mutableStateOf(request.invite) }
     val background = LocalOvenColors.current.groupedBackground
     val title = ConnectionCopy.joinWithInvite
     Scaffold(
@@ -207,7 +211,7 @@ fun JoinFlowScreen(request: JoinRequest, state: JoinState, onClose: () -> Unit) 
         containerColor = background,
         topBar = {
             TopAppBar(
-                title = { if (invite == null) Text(title) },
+                title = { if (request.invite == null) Text(title) },
                 navigationIcon = {
                     IconButton(onClick = onClose) {
                         Icon(painterResource(R.drawable.ic_close), contentDescription = stringResource(R.string.join_close))
@@ -218,11 +222,11 @@ fun JoinFlowScreen(request: JoinRequest, state: JoinState, onClose: () -> Unit) 
         },
     ) { bars ->
         Box(Modifier.fillMaxSize().padding(bars).consumeWindowInsets(bars).imePadding(), contentAlignment = Alignment.TopCenter) {
-            val current = invite
+            val current = request.invite
             when {
-                current == null -> InviteEntry(state.canScan, found = { invite = Result.success(it) })
+                current == null -> InviteEntry(state.canScan, found = { request.invite = Result.success(it) })
                 current.isSuccess -> JoinInvite(current.getOrThrow(), state, onClose)
-                else -> CantUseInvite(current.exceptionOrNull()?.message.orEmpty(), tryAnother = { invite = null })
+                else -> CantUseInvite(current.exceptionOrNull()?.message.orEmpty(), tryAnother = { request.invite = null })
             }
         }
     }
@@ -265,15 +269,7 @@ private fun InviteEntry(canScan: Boolean, found: (InviteLink) -> Unit) {
                 textStyle = monospace,
                 lineLimits = TextFieldLineLimits.MultiLine(maxHeightInLines = 4),
                 isError = error != null,
-                supportingText = error?.let { message ->
-                    {
-                        // Under the field, away from TalkBack's focus, so it's announced.
-                        Row(Modifier.semantics { liveRegion = LiveRegionMode.Polite }, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Icon(painterResource(R.drawable.ic_warning), contentDescription = null, modifier = Modifier.size(16.dp))
-                            Text(message)
-                        }
-                    }
-                },
+                supportingText = error?.let { message -> { FieldWarning(message) } },
                 keyboardOptions = KeyboardOptions(
                     capitalization = KeyboardCapitalization.None, autoCorrectEnabled = false, keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go,
                 ),
@@ -287,9 +283,16 @@ private fun InviteEntry(canScan: Boolean, found: (InviteLink) -> Unit) {
         if (canScan) {
             OutlinedButton(
                 onClick = {
+                    val activity = context.componentActivity()
+                    val rationale = { activity?.shouldShowRequestPermissionRationale(Manifest.permission.CAMERA) == true }
+                    val before = rationale()
+                    val askedBefore = cameraAsked
                     RuntimePermissions.request(context, listOf(Manifest.permission.CAMERA)) { granted ->
-                        // Turned off for good, the scanner says so, with the way to Settings.
-                        if (granted || context.componentActivity()?.shouldShowRequestPermissionRationale(Manifest.permission.CAMERA) == false) scanning = true
+                        cameraAsked = true
+                        // Turned off for good, the scanner says so, with the way to Settings. Android
+                        // gives no rationale both before the first question and after a dismissed one,
+                        // so only a refusal of a question asked before counts.
+                        if (granted || (askedBefore && !before && !rationale())) scanning = true
                     }
                 },
                 modifier = Modifier.fillMaxWidth().height(56.dp),
@@ -310,17 +313,21 @@ private fun InviteEntry(canScan: Boolean, found: (InviteLink) -> Unit) {
     }
 }
 
-/** What's on the clipboard as text, or nothing. */
+/** Whether this process asked for the camera already, for telling a refusal for good from a first one. */
+private var cameraAsked = false
+
+/** What's on the clipboard as plain text, or nothing: never a copied file, which reading would open. */
 private fun clipboardText(context: Context): String {
     val clip = context.getSystemService(ClipboardManager::class.java)?.primaryClip ?: return ""
-    return if (clip.itemCount == 0) "" else clip.getItemAt(0).coerceToText(context).toString()
+    return if (clip.itemCount == 0) "" else clip.getItemAt(0).text?.toString().orEmpty()
 }
 
 /** A link that isn't an invite Ovenlight can use, and why. */
 @Composable
-private fun CantUseInvite(message: String, tryAnother: () -> Unit) {
+private fun CantUseInvite(message: String, tryAnother: () -> Unit) = BoxWithConstraints(Modifier.fillMaxSize()) {
+    // Centered, scrolling only when the largest font sizes don't fit.
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(32.dp),
+        Modifier.verticalScroll(rememberScrollState()).heightIn(min = maxHeight).fillMaxWidth().padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
@@ -389,7 +396,11 @@ private fun JoinInvite(invite: InviteLink, state: JoinState, close: () -> Unit) 
                     )
                 }
             }
-            Column(Modifier.padding(bottom = 32.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            // Announced as the join goes along.
+            Column(
+                Modifier.padding(bottom = 32.dp).semantics { liveRegion = LiveRegionMode.Polite },
+                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
                 @Composable
                 fun title(text: String) = Text(text, Modifier.semantics { heading() }, style = OvenType.displayTitle, color = colors.onSurface, textAlign = TextAlign.Center)
 
@@ -467,8 +478,8 @@ private fun JoinInvite(invite: InviteLink, state: JoinState, close: () -> Unit) 
 
 /**
  * Scans an invite's QR code with the camera, full screen (InviteScannerView). Only an invite
- * link counts. With the camera turned off for Ovenlight for good, it says so, with the way to
- * Settings, and starts once the camera is allowed there.
+ * link counts. With the camera turned off for Ovenlight for good, or none that opens, it says
+ * so, with the way to Settings, and starts once the camera is allowed there.
  */
 @Composable
 private fun InviteScannerView(found: (String) -> Unit, cancel: () -> Unit) {
@@ -477,13 +488,15 @@ private fun InviteScannerView(found: (String) -> Unit, cancel: () -> Unit) {
         val context = LocalContext.current
         val allowed = { ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED }
         var permitted by remember { mutableStateOf(allowed()) }
+        // No camera to use, or one that wouldn't open.
+        var unavailable by remember { mutableStateOf(false) }
         LifecycleResumeEffect(Unit) {
             permitted = allowed()
             onPauseOrDispose {}
         }
         Box(Modifier.fillMaxSize().background(Color.Black)) {
-            if (permitted) {
-                CameraScanner(found)
+            if (permitted && !unavailable) {
+                CameraScanner(found, unavailable = { unavailable = true })
             } else {
                 Column(
                     Modifier.align(Alignment.Center).padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally,
@@ -507,17 +520,26 @@ private fun InviteScannerView(found: (String) -> Unit, cancel: () -> Unit) {
     }
 }
 
-/** The camera's picture, read for an invite code until one is found. The back camera, or the front one where there's no other. */
+/**
+ * The camera's picture, read for an invite code until one is found. The back camera, or the
+ * front one where there's no other; with neither, or one that won't open, [unavailable].
+ */
 @Composable
-private fun CameraScanner(found: (String) -> Unit) {
+private fun CameraScanner(found: (String) -> Unit, unavailable: () -> Unit) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current
     val currentFound by rememberUpdatedState(found)
     var picture by remember { mutableStateOf<SurfaceRequest?>(null) }
     LaunchedEffect(lifecycle) {
-        val provider = ProcessCameraProvider.awaitInstance(context)
+        val provider = try {
+            ProcessCameraProvider.awaitInstance(context)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            return@LaunchedEffect unavailable()
+        }
         val camera = listOf(CameraSelector.DEFAULT_BACK_CAMERA, CameraSelector.DEFAULT_FRONT_CAMERA)
-            .firstOrNull { runCatching { provider.hasCamera(it) }.getOrDefault(false) } ?: return@LaunchedEffect
+            .firstOrNull { runCatching { provider.hasCamera(it) }.getOrDefault(false) } ?: return@LaunchedEffect unavailable()
         val preview = Preview.Builder().build().also { it.setSurfaceProvider { request -> picture = request } }
         val analysis = ImageAnalysis.Builder().setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST).build()
         val frames = Executors.newSingleThreadExecutor()
@@ -530,6 +552,10 @@ private fun CameraScanner(found: (String) -> Unit) {
         try {
             provider.bindToLifecycle(lifecycle, camera, preview, analysis)
             awaitCancellation()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            unavailable()
         } finally {
             provider.unbind(preview, analysis)
             frames.shutdown()

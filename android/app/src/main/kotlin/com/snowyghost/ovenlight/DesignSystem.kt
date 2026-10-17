@@ -76,6 +76,13 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.window.DialogWindowProvider
 import androidx.core.view.WindowCompat
+import androidx.compose.foundation.layout.Row
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 
 /**
  * Ovenlight's brand, as iOS's asset catalog has it: the ember accent on warm paper, and
@@ -454,5 +461,17 @@ fun FullScreenDialogBars() {
             }
         }
         onDispose {}
+    }
+}
+
+/**
+ * A field's warning, in its supporting text: below the field, away from TalkBack's focus, so it's
+ * announced as it appears.
+ */
+@Composable
+fun FieldWarning(message: String) {
+    Row(Modifier.semantics { liveRegion = LiveRegionMode.Polite }, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Icon(painterResource(R.drawable.ic_warning), contentDescription = null, modifier = Modifier.size(16.dp))
+        Text(message)
     }
 }
