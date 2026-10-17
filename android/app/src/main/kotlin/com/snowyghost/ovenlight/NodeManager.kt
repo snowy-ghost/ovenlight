@@ -684,6 +684,12 @@ class NodeManager(
     /** The owner's own computers (see [Discovery.ownersHosts]). */
     val ownersHosts: Set<String> get() = Discovery.ownersHosts(owner.status.value)
 
+    /** The owner's computers online now that could run a connector (see [Discovery.candidateHosts]). */
+    val ownersOnlineHosts: Set<String> get() = Discovery.candidateHosts(owner.status.value).toSet()
+
+    /** The owner can manage sharing: signed in and connected. */
+    val ownerIsConnected: Boolean get() = mutableOwnerEnabled.value && owner.state.value == NodeState.Ready
+
     /**
      * Owner mode is on and no account is signed in: the node asks for a login, or it has never
      * been in a tailnet. A signed-in node has no status while it restarts, but its tailnet is

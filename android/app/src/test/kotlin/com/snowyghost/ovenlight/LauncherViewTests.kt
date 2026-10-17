@@ -20,6 +20,9 @@ import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isFocused
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.longClick
@@ -270,6 +273,43 @@ class LauncherViewTests {
         for (item in listOf("Rename", "Refresh icon", "Sign out and clear data", "Remove app")) composeRule.onNodeWithText(item).assertIsDisplayed()
         composeRule.onNodeWithText(ConnectionCopy.reportProblem).assertDoesNotExist()
         composeRule.onNodeWithText(ConnectionCopy.leaveApps("Riley")).assertDoesNotExist()
+    }
+
+    @Test
+    fun testMenuSharesAShareableApp() {
+        val shareable = AdminApp("recipe-box", "Recipe Box", recipes.startURL.toString(), online = true, shareable = true, guests = 1)
+        val sam = AdminGuest("n1", "p1", "Sam", "recipe-box", "ovenlight-4k2x9q", claimedAt = Instant.ofEpochSecond(1_000))
+        val machine = OwnerSharing.Machine(recipes.host, listOf(shareable), AdminGuestList(guests = listOf(sam)))
+        var refreshed = 0
+        var shared: AdminApp? = null
+        val presented = mutableListOf<RootSheet>()
+        show(
+            LauncherState(
+                apps = apps, sharing = { if (it.id == recipes.id) machine to shareable else null }, refreshSharing = { refreshed += 1 },
+                share = { _, app -> shared = app }, present = { presented += it },
+            ),
+        )
+        tile("Recipe Box").performTouchInput { longClick() }
+        composeRule.waitForIdle()
+        assertEquals("the menu brings its Share and People up to date", 1, refreshed)
+        composeRule.onNodeWithText("Share…").performClick()
+        assertEquals(shareable, shared)
+        tile("Recipe Box").performTouchInput { longClick() }
+        composeRule.onNodeWithText("People (1)").performClick()
+        assertEquals(RootSheet.People(machine.id, "recipe-box"), presented.single())
+        tile(sharedTile).performTouchInput { longClick() }
+        composeRule.onNodeWithText("Share…").assertDoesNotExist()
+    }
+
+    @Test
+    fun testMenuSaysHowToMakeAnAppShareable() {
+        val unshared = AdminApp("recipe-box", "Recipe Box", recipes.startURL.toString(), online = true, shareable = false)
+        val machine = OwnerSharing.Machine(recipes.host, listOf(unshared))
+        show(LauncherState(apps = apps, sharing = { if (it.id == recipes.id) machine to unshared else null }))
+        tile("Recipe Box").performTouchInput { longClick() }
+        composeRule.onNodeWithText(AppMenuPlan.notShareableDetail, useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNode(hasText("Share…", substring = true) and hasClickAction()).assertIsNotEnabled()
+        composeRule.onNodeWithText("People", substring = true).assertDoesNotExist()
     }
 
     @Test

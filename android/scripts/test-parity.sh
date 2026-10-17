@@ -12,13 +12,11 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 spec="${OVENLIGHT_SWIFT_SPEC:-origin/app-1.0.2}"
 
-# Swift tests with no Kotlin twin, each with its reason. Pending ones land with their feature,
-# and none is pending after Phase 6.
+# Swift tests with no Kotlin twin, each with its reason.
 excluded() {
   sed 's/#.*//' <<'EOF' | awk 'NF { print $1 }'
 testTheShareSheetClosesOnce              # iOS presentation only: Android has its own Save, Share and Open sheet
 testOnlyAShownSheetTakesItsFiles         # iOS presentation only, as above
-testScreenshotsAreDecodedSmall           # pending, Phase 6: Android's Bitmap, with the feedback inbox
 testAppReplacedByAppStaysOnScreen        # SwiftUI only: a replaced cover's onDismiss
 testSheetsReplaceEachOther               # SwiftUI only: a replaced sheet's onDismiss
 testOnlyTheAppsOwnPagesPopUpAPost        # Android opens no popups: setSupportMultipleWindows(false)

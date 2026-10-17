@@ -2,6 +2,11 @@ package com.snowyghost.ovenlight
 
 import java.io.File
 import java.net.URI
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
@@ -16,9 +21,15 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class AdminAPITests {
+    @get:Rule
+    val temp = TemporaryFolder()
+
     /**
      * The connector's own examples of everything Ovenlight reads (connector/wire.go writes
      * them): each must decode in full, and a new one needs a line here.
@@ -171,5 +182,124 @@ class AdminAPITests {
         assertEquals(1_790_629_380.999, AdminAPI.parseDate("2026-09-28T21:03:00.999999999Z")!!.toEpochMilli() / 1000.0, 0.001)
         assertEquals(1_790_629_380.5, AdminAPI.parseDate("2026-09-28T21:03:00.5Z")!!.toEpochMilli() / 1000.0, 0.001)
         assertNull(AdminAPI.parseDate("yesterday"))
+    }
+
+    // Android only from here: iOS doesn't unit test its admin client and refresh.
+
+    @Test
+    fun testAGetAsksAgainAfterNoAnswerAndAChangeIsSentOnce() = runTest {
+        val sent = mutableListOf<String>()
+        val client = AdminClient("echo.t.ts.net") { request ->
+            sent += "${request.method} ${request.url}"
+            null
+        }
+        assertEquals(AdminError.Unreachable, runCatching { client.guests() }.exceptionOrNull())
+        assertEquals("a lost first handshake gets two more tries", 3, sent.size)
+        sent.clear()
+        assertEquals(AdminError.Unreachable, runCatching { client.createInvite(to = "Sam", app = "echo") }.exceptionOrNull())
+        assertEquals("a change that may have arrived isn't sent again", listOf("POST https://echo.t.ts.net:8443/v1/invites"), sent)
+    }
+
+    @Test
+    fun testTheConnectorsAnswers() = runTest {
+        var answer = FetchResponse(403, """{"error":"the admin API is for the owner only","code":"owner_only"}""".toByteArray())
+        val requests = mutableListOf<okhttp3.Request>()
+        val client = AdminClient("echo.t.ts.net") { request ->
+            requests += request
+            answer
+        }
+        assertEquals(AdminError.NotOwner, runCatching { client.apps() }.exceptionOrNull())
+        answer = FetchResponse(400, """{"error":"that name is taken","code":"bad_request"}""".toByteArray())
+        assertEquals("That name is taken", runCatching { client.createInvite(to = "Sam", app = "echo") }.exceptionOrNull()?.message)
+        answer = FetchResponse(502)
+        assertEquals(
+            "The Ovenlight connector on this computer returned an error (502). Run ovenlight doctor there.",
+            runCatching { client.cancelInvite("i1") }.exceptionOrNull()?.message,
+        )
+        answer = FetchResponse(200, "<html>".toByteArray())
+        assertEquals(
+            "The Ovenlight connector on this computer sent a reply this version of the app doesn't understand. Update both to the latest version.",
+            runCatching { client.guests() }.exceptionOrNull()?.message,
+        )
+        answer = FetchResponse(200, """{"removed":[],"errors":["couldn't remove one device"]}""".toByteArray())
+        assertEquals(listOf("couldn't remove one device"), client.removeGuest(GuestPerson("p 1", "Sam", emptyList()), "echo").errors)
+        val removal = requests.last()
+        assertEquals("DELETE", removal.method)
+        assertEquals("https://echo.t.ts.net:8443/v1/guests/p%201?app=echo&by=person", removal.url.toString())
+        assertEquals("1", removal.header(AdminAPI.header))
+    }
+
+    private val appNodes = listOf("coach", "notes").joinToString(",") {
+        """"$it":{"HostName":"$it","DNSName":"$it.tailabc123.ts.net.","OS":"linux","Online":true,"Tags":["tag:ovenlight-app-$it"]}"""
+    }
+    private val ownApps = listOf("coach", "notes").map { WebApp(name = it, startURL = URI("https://$it.tailabc123.ts.net/"), discovered = true) }
+
+    /**
+     * The owner signed in, with two app nodes on one computer, whose connector's admin API answers
+     * with [respond]. The apps themselves answer, so the node counts as connected.
+     */
+    private fun TestScope.connectedOwner(respond: (okhttp3.Request) -> FetchResponse?): NodeManager {
+        val clients = FakeClients()
+        val self = """"Self":{"HostName":"phone","DNSName":"pixel-ab12.tailabc123.ts.net.","OS":"android","Online":true,"UserID":1},"""
+        clients.status[Membership.ownerID] = status("Running", self = self, peers = appNodes)
+        clients.respond = { if (it.url.port == AdminAPI.port) respond(it) else FetchResponse(404) }
+        val nodes = NodeManager(
+            clients, MemoryStore(), MembershipStore(File(temp.root, "Ovenlight").apply { mkdirs() }), File(temp.root, "tailscale"),
+            backgroundScope, StandardTestDispatcher(testScheduler), { testScheduler.currentTime }, {},
+        )
+        nodes.enableOwner()
+        advanceTimeBy(2_500)
+        assertTrue(nodes.ownerIsConnected)
+        return nodes
+    }
+
+    @Test
+    fun testOneComputerAnswersForAllItsApps() = runTest {
+        val asked = mutableListOf<String>()
+        val nodes = connectedOwner { request ->
+            asked += "${request.url.host}${request.url.encodedPath}"
+            when (request.url.encodedPath) {
+                "/v1/apps" -> FetchResponse(200, """[{"slug":"coach","name":"Coach","url":"https://coach.tailabc123.ts.net/","shareable":true},{"slug":"notes","name":"Notes","url":"https://notes.tailabc123.ts.net/"}]""".toByteArray())
+                "/v1/guests" -> FetchResponse(200, """{"guests":[{"deviceId":"7","person":"p1","name":"Sam","app":"coach","claimedAt":"2026-09-28T17:05:00Z"}]}""".toByteArray())
+                else -> FetchResponse(200, "[]".toByteArray())
+            }
+        }
+        val sharing = OwnerSharing(nodes, backgroundScope, { testScheduler.currentTime }, {})
+        sharing.refresh(ownApps)
+        val machine = sharing.machines.value.single()
+        assertEquals("coach.tailabc123.ts.net", machine.adminHost)
+        assertEquals(listOf("coach", "notes"), machine.apps.map { it.slug })
+        assertEquals(listOf("Sam"), machine.guests.guests.map { it.name })
+        assertEquals("the other app's node isn't asked for the computer's details", listOf("coach.tailabc123.ts.net"), asked.filter { "/v1/guests" in it }.map { it.substringBefore('/') })
+        assertEquals(machine to machine.apps[0], sharing.info(ownApps[0]))
+
+        asked.clear()
+        sharing.refreshIfStale(ownApps)
+        assertEquals("fresh for 15 seconds", emptyList<String>(), asked)
+        advanceTimeBy(15_000)
+        sharing.refreshIfStale(ownApps)
+        assertEquals("then asked again, through the host that answered", setOf("coach.tailabc123.ts.net"), asked.map { it.substringBefore('/') }.toSet())
+
+        sharing.forget()
+        assertEquals("signing out forgets it all", emptyList<OwnerSharing.Machine>(), sharing.machines.value)
+        asked.clear()
+        sharing.refreshIfStale(ownApps)
+        assertTrue("and the next menu asks afresh", asked.isNotEmpty())
+    }
+
+    @Test
+    fun testARefreshThatOnlyFailedSaysWhyAndIsntFresh() = runTest {
+        var asked = 0
+        val nodes = connectedOwner {
+            asked += 1
+            null
+        }
+        val sharing = OwnerSharing(nodes, backgroundScope, { testScheduler.currentTime }, {})
+        sharing.refresh(ownApps)
+        assertEquals(emptyList<OwnerSharing.Machine>(), sharing.machines.value)
+        assertEquals(AdminError.Unreachable.message, sharing.problem.value)
+        val before = asked
+        sharing.refreshIfStale(ownApps)
+        assertTrue("the next menu asks again", asked > before)
     }
 }

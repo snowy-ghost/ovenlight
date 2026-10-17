@@ -79,7 +79,11 @@ object IconDecoder {
     /** A saved icon, decoded small again: it may come from a build that saved it as the server sent it. */
     fun load(file: File?): Bitmap? = file?.let { runCatching { it.readBytes() }.getOrNull() }?.let(::decode)
 
-    fun decode(data: ByteArray): Bitmap? {
+    /**
+     * The image at most [maxPixels] on its longer side, without making the full-size bitmap
+     * first, or null over [maxSide]; feedback screenshots come this way too.
+     */
+    fun decode(data: ByteArray, maxPixels: Int = this.maxPixels, maxSide: Int = this.maxSide): Bitmap? {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(data, 0, data.size, bounds)
         val width = bounds.outWidth

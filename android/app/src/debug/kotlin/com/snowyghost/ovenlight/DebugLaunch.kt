@@ -70,6 +70,7 @@ import okhttp3.Request
  *   --es joinInvite <ovenlight://join?...>     opens an invite
  *   --es openApp <name>                        opens an app by name
  *   --ez lockNow true                          locks Ovenlight where it is, as Lock Ovenlight does
+ *   --ez sharingFixture true                   sample sharing data for screenshots (see SharingFixture)
  *
  * Results go to logcat under OvenlightLab, never a secret or a sign-in link. Commands wait
  * until WebViewSetup is Ready, which means it found every WebView feature they use.
@@ -121,6 +122,10 @@ object DebugLaunch {
         if (intent.hasExtra("authKey")) model.nodes.enableOwner()
         intent.getStringExtra("joinInvite")?.let { link -> runCatching { URI(link) }.getOrNull()?.let { model.router.handle(it, model.registry.apps) } }
         if (intent.getBooleanExtra("lockNow", false)) model.lock.lock()
+        if (intent.hasExtra("sharingFixture")) {
+            SharingFixture.isOn = intent.getBooleanExtra("sharingFixture", false)
+            model.scope.launch { model.refreshSharing() }
+        }
         intent.getStringExtra("openApp")?.let { name ->
             model.router.handle(URI("ovenlight", "open", null, "app=$name", null), model.registry.apps)
         }

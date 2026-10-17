@@ -26,6 +26,9 @@ object AppLinks {
     const val supportEmail = "team@snowyghost.com"
     val privacyPolicy = URI("https://ovenlight.app/privacy")
 
+    /** What Tailscale's plans include, tagged devices among them. */
+    val tailscalePricing = URI("https://tailscale.com/pricing")
+
     /** How to publish apps from your own computers. */
     const val ownComputersHelp = "https://ovenlight.app/support#own-computer"
 }

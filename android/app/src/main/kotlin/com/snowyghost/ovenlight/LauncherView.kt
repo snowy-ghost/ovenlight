@@ -118,6 +118,11 @@ data class LauncherState(
     val leave: (String) -> Unit = {},
     val problemReport: (WebApp) -> MailDraft? = { null },
     val openLink: (String) -> Unit = {},
+    /** The connector's view of one of the owner's apps (see [OwnerSharing.info]), for its menu's Share and People. */
+    val sharing: (WebApp) -> Pair<OwnerSharing.Machine, AdminApp>? = { null },
+    /** A menu opened: its People count and Share come up to date. */
+    val refreshSharing: () -> Unit = {},
+    val share: (OwnerSharing.Machine, AdminApp) -> Unit = { _, _ -> },
 ) {
     /** Nothing saved yet: the welcome, in place of the grid. */
     val showsWelcome: Boolean get() = apps.isEmpty() && !ownerEnabled && memberships.isEmpty()
@@ -146,6 +151,8 @@ fun LauncherView(model: AppModel) {
     val phases by model.guests.phases.collectAsState()
     val iconRevisions by registry.iconRevisions.collectAsState()
     val sheet by model.router.sheet.collectAsState()
+    // The menus' Share and People follow what the connectors report.
+    val machines by model.sharing.machines.collectAsState()
     val reachability = remember(apps, ownerState, ownerStatus, ownerAnswers, guestStates) {
         apps.mapNotNull { app -> nodes.reachability(app)?.let { app.id to it } }.toMap()
     }
@@ -176,6 +183,9 @@ fun LauncherView(model: AppModel) {
             leave = { scope.launch { model.guests.leave(it) } },
             problemReport = { app -> MailDraft.problemReport(context, nodes, model.pool, app) },
             openLink = { CustomTabs.open(context, URI(it), model.lifecycle) },
+            sharing = remember(machines) { { app: WebApp -> model.sharing.info(app) } },
+            refreshSharing = { scope.launch { model.refreshSharing() } },
+            share = { machine, app -> model.composer.value = InviteComposer(machine, app) },
         ),
     )
 }
@@ -226,7 +236,7 @@ fun LauncherView(state: LauncherState) {
                         },
                     ) { app, close ->
                         AppMenu(
-                            app, close,
+                            SharingFixture.apply(app), close, state,
                             rename = { renaming = app },
                             refreshIcon = { state.refreshIcon(app.id) },
                             reportProblem = { state.problemReport(app)?.let { if (!it.send(context)) noMailApp = true } },
@@ -395,6 +405,7 @@ private fun LauncherCard(icon: Int, title: String, body: AnnotatedString, button
 private fun ColumnScope.AppMenu(
     app: WebApp,
     close: () -> Unit,
+    state: LauncherState,
     rename: () -> Unit,
     refreshIcon: () -> Unit,
     reportProblem: () -> Unit,
@@ -403,8 +414,10 @@ private fun ColumnScope.AppMenu(
     remove: () -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
-    // Share and People come with the owner's sharing; until then an own app's plan is empty.
-    val plan = AppMenuPlan.plan(app, admin = null)
+    // The menu is open: bring its People count and Share up to date.
+    LaunchedEffect(Unit) { if (!app.isShared) state.refreshSharing() }
+    val info = state.sharing(app)
+    val plan = AppMenuPlan.plan(app, admin = info?.let { (machine, admin) -> admin to machine.guests })
     Column(Modifier.widthIn(max = 280.dp).padding(horizontal = 12.dp, vertical = 8.dp).semantics(mergeDescendants = true) { heading() }) {
         Text(app.name, style = MaterialTheme.typography.titleSmall, color = colors.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
         Text(
@@ -415,9 +428,29 @@ private fun ColumnScope.AppMenu(
     // Add to Home screen comes first here, with Phase 7's pinned shortcuts.
     AppMenuItem(close, stringResource(R.string.launcher_rename), R.drawable.ic_edit, action = rename)
     AppMenuItem(close, stringResource(R.string.launcher_refresh_icon), R.drawable.ic_refresh, action = refreshIcon)
-    // Share… and People (n) open this section for the owner's apps, with Phase 6.
-    if (plan.reportProblem || plan.leaveOwner != null) {
+    if (plan != AppMenuPlan()) {
         HorizontalDivider()
+        when (plan.share) {
+            AppMenuPlan.Share.Available -> info?.let { (machine, admin) ->
+                AppMenuItem(close, stringResource(R.string.sharing_share), R.drawable.ic_share) { state.share(machine, admin) }
+            }
+            AppMenuPlan.Share.NotShareable -> DropdownMenuItem(
+                text = {
+                    Column {
+                        Text(stringResource(R.string.sharing_share))
+                        Text(AppMenuPlan.notShareableDetail, style = MaterialTheme.typography.bodySmall)
+                    }
+                },
+                leadingIcon = { Icon(painterResource(R.drawable.ic_share), contentDescription = null) },
+                onClick = {},
+                enabled = false,
+            )
+            AppMenuPlan.Share.Hidden -> Unit
+        }
+        val people = plan.people
+        if (people != null && info != null) {
+            AppMenuItem(close, AppMenuPlan.peopleTitle(people), R.drawable.ic_group) { state.present(RootSheet.People(info.first.id, info.second.slug)) }
+        }
         if (plan.reportProblem) AppMenuItem(close, ConnectionCopy.reportProblem, R.drawable.ic_flag, action = reportProblem)
         plan.leaveOwner?.let { AppMenuItem(close, ConnectionCopy.leaveApps(it), R.drawable.ic_logout, destructive = true, action = leave) }
     }
