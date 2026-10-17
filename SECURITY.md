@@ -11,18 +11,19 @@ a public issue for a vulnerability. You'll get a reply within a few days.
 Test only on installations and tailnets of your own, never on other people's data, devices
 or apps, and give us reasonable time to fix a problem before you make it public. If you
 work in good faith within those limits, we won't bring or support legal action against
-you. We can't speak for Tailscale or Apple, whose services have their own rules.
+you. We can't speak for Tailscale, Apple or Google, whose services have their own rules.
 
 ## Supported versions
 
-The latest connector release and the current version of the Ovenlight iPhone app.
+The latest connector release and the current versions of the Ovenlight apps for iPhone
+and Android.
 
 ## How fixes reach you
 
 A connector fix comes as a new release, and `ovenlight doctor` then fails on any earlier
 release with the problem, saying what to install. A build from source doesn't check:
-pull and run the install script again for fixes. An iPhone app fix comes in an app
-update.
+pull and run the install script again for fixes. A fix to either phone app comes in an
+app update.
 
 [docs/security.md](docs/security.md) has the threat model, and what to do when something
 goes wrong.
