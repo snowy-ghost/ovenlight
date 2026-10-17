@@ -36,8 +36,17 @@ class UnlockPrompt(
     private var credentialAnswer: CompletableDeferred<Boolean>? = null
     private val credentialScreen = activity.registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         val confirmed = it.resultCode == Activity.RESULT_OK
-        if (confirming) confirmAnswered(confirmed)
         val waiting = credentialAnswer
+        val wasConfirming = confirming
+        // The screen's own state ends with its answer, before anything the answer sets off (the
+        // lock, then its own prompt) can open another screen, whose state the waiting call's
+        // later cleanup must not take.
+        credentialAnswer = null
+        showingCredentialScreen = false
+        if (wasConfirming) {
+            confirmation = null
+            confirmAnswered(confirmed)
+        }
         // Nothing waits when Android ended Ovenlight's process while the screen lock's screen was
         // up, and this activity is the one it made again. The yes is still the screen lock's own:
         // Android hands a result only to the activity that asked, under this launcher's key, which
@@ -50,9 +59,9 @@ class UnlockPrompt(
     var showingCredentialScreen = false
         private set
 
-    /** True from the start of [confirm] until it answers. */
-    var confirming = false
-        private set
+    /** The [confirm] under way, from its start until it answers. */
+    private var confirmation: Any? = null
+    val confirming: Boolean get() = confirmation != null
 
     override suspend fun authenticate(): Authenticator.Result = authenticate(activity.getString(R.string.unlock_prompt_title))
 
@@ -64,12 +73,12 @@ class UnlockPrompt(
     suspend fun confirm(reason: String): Boolean {
         // A second tap before the prompt covers the screen asks nothing more.
         if (confirming) return false
-        confirming = true
+        val mine = Any().also { confirmation = it }
         try {
             val result = authenticate(reason)
             return result == Authenticator.Result.Success || result == Authenticator.Result.NoScreenLock
         } finally {
-            confirming = false
+            if (confirmation === mine) confirmation = null
         }
     }
 
@@ -130,8 +139,11 @@ class UnlockPrompt(
             credentialScreen.launch(intent)
             return if (answer.await()) Authenticator.Result.Success else Authenticator.Result.Canceled
         } finally {
-            showingCredentialScreen = false
-            credentialAnswer = null
+            // Only its own: the answer already cleared it, and another screen may be up by now.
+            if (credentialAnswer === answer) {
+                showingCredentialScreen = false
+                credentialAnswer = null
+            }
         }
     }
 }
