@@ -228,11 +228,12 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-          for avd in ci:android-36:5554 webview:android-37.0:5556; do
-            IFS=: read -r name api port <<< "$avd"
+          # ci gets 4 GB, as the mini's AVDs: the web view pool keeps as many pages as it does there.
+          for avd in "ci:android-36:5554:-memory 4096" webview:android-37.0:5556:; do
+            IFS=: read -r name api port memory <<< "$avd"
             echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd -n "$name" -k "system-images;$api;google_apis;x86_64" -d pixel_9
-            # 4 GB, as the mini's: the web view pool keeps as many pages as it does there.
-            nohup "$ANDROID_HOME/emulator/emulator" -avd "$name" -port "$port" -memory 4096 -no-window -no-audio -no-boot-anim -no-metrics -gpu swiftshader_indirect -no-snapshot > "$RUNNER_TEMP/$name.log" 2>&1 &
+            # shellcheck disable=SC2086
+            nohup "$ANDROID_HOME/emulator/emulator" -avd "$name" -port "$port" $memory -no-window -no-audio -no-boot-anim -no-metrics -gpu swiftshader_indirect -no-snapshot > "$RUNNER_TEMP/$name.log" 2>&1 &
           done
       # The release set of ABIs, which debug builds take too: the runner's emulator is x86_64.
       - name: Core library
