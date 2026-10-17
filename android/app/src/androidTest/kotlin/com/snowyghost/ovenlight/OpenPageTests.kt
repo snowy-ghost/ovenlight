@@ -18,6 +18,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.filters.SdkSuppress
 import androidx.test.platform.app.InstrumentationRegistry
 import java.net.URI
 import java.util.concurrent.ArrayBlockingQueue
@@ -309,8 +310,12 @@ class OpenPageTests {
         }
     }
 
-    /** A cover page's status bar icons follow a switch to dark mode and back: light icons on the page gone dark. */
+    /**
+     * A cover page's status bar icons follow a switch to dark mode and back: light icons on the
+     * page gone dark. From Android 11, the first whose `cmd uimode night` switches the mode.
+     */
     @Test
+    @SdkSuppress(minSdkVersion = 30)
     fun testACoverPagesStatusBarIconsFollowTheMode() {
         val cover = html.replace("initial-scale=1", "initial-scale=1, viewport-fit=cover").replace("<title>", "<meta name=color-scheme content='light dark'><title>")
         onMain { page.view.loadDataWithBaseURL(app.startURL.toString(), cover, "text/html", "utf-8", null) }
