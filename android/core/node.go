@@ -116,7 +116,8 @@ var logsDirOnce sync.Once
 
 // Start starts the node and returns once its backend runs. Signing in, or
 // joining with the auth key, carries on after it returns.
-func (n *Node) Start() error {
+func (n *Node) Start() (err error) {
+	defer bindable(&err)
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	if n.closed.Load() {
@@ -140,7 +141,8 @@ func (n *Node) Start() error {
 // WaitUp waits until the node is Running. It returns tsnet's error text as it
 // is, "timed out waiting for the node" when the time runs out, and "node closed"
 // when Close ends the wait.
-func (n *Node) WaitUp(timeoutMillis int64) error {
+func (n *Node) WaitUp(timeoutMillis int64) (err error) {
+	defer bindable(&err)
 	if err := n.Start(); err != nil {
 		return err
 	}
@@ -153,7 +155,7 @@ func (n *Node) WaitUp(timeoutMillis int64) error {
 		case <-ctx.Done():
 		}
 	}()
-	_, err := n.srv.Up(ctx)
+	_, err = n.srv.Up(ctx)
 	select {
 	case <-n.closing:
 		return errNodeClosed
@@ -168,6 +170,16 @@ func (n *Node) WaitUp(timeoutMillis int64) error {
 	return err
 }
 
+// bindable makes *err an error gomobile can hand to Kotlin, keeping its text. gomobile
+// keeps each Go value it passes in a map, and an error that can't be a map key panics the
+// process: tailscale.com/client/local's errors for an answer other than 200 carry the
+// answer's headers (a logout refused by control, say).
+func bindable(err *error) {
+	if *err != nil {
+		*err = errors.New((*err).Error())
+	}
+}
+
 func (n *Node) client() (*local.Client, error) {
 	if n.closed.Load() {
 		return nil, errNodeClosed
@@ -180,7 +192,8 @@ func (n *Node) client() (*local.Client, error) {
 }
 
 // StatusJSON is the node's ipnstate.Status, with peers, as JSON.
-func (n *Node) StatusJSON() (string, error) {
+func (n *Node) StatusJSON() (_ string, err error) {
+	defer bindable(&err)
 	lc, err := n.client()
 	if err != nil {
 		return "", err
@@ -198,7 +211,8 @@ func (n *Node) StatusJSON() (string, error) {
 
 // LoginInteractive asks control for a sign-in link, which status then carries
 // as AuthURL.
-func (n *Node) LoginInteractive() error {
+func (n *Node) LoginInteractive() (err error) {
+	defer bindable(&err)
 	lc, err := n.client()
 	if err != nil {
 		return err
@@ -209,7 +223,8 @@ func (n *Node) LoginInteractive() error {
 }
 
 // Logout signs the node out of its network.
-func (n *Node) Logout() error {
+func (n *Node) Logout() (err error) {
+	defer bindable(&err)
 	lc, err := n.client()
 	if err != nil {
 		return err
@@ -222,7 +237,8 @@ func (n *Node) Logout() error {
 
 // Close stops the node, keeping its state on disk. It waits for a Start in
 // progress, and ends a WaitUp.
-func (n *Node) Close() error {
+func (n *Node) Close() (err error) {
+	defer bindable(&err)
 	n.closeOnce.Do(func() { close(n.closing) })
 	n.mu.Lock()
 	defer n.mu.Unlock()

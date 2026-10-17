@@ -73,6 +73,8 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
@@ -446,6 +448,105 @@ private fun RenameDialog(app: WebApp, onDismiss: () -> Unit, save: (String) -> U
         },
         confirmButton = { TextButton(onClick = done, enabled = name.text.isNotEmpty()) { Text(stringResource(R.string.launcher_save)) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.launcher_cancel)) } },
+    )
+}
+
+/** Add app (AddAppView in LauncherView.swift), from the model. */
+@Composable
+fun AddAppView(model: AppModel, onClose: () -> Unit) {
+    val nodes = model.nodes
+    val registry = model.registry
+    val ownerEnabled by nodes.ownerEnabled.collectAsState()
+    val ownerState by nodes.owner.state.collectAsState()
+    val ownerStatus by nodes.owner.status.collectAsState()
+    // The owner's tailnet, the only place Add app opens apps from. Null until they sign in.
+    val ownerSuffix = remember(ownerEnabled, ownerStatus) { if (ownerEnabled) nodes.owner.magicDNSSuffixSeen else null }
+    AddAppDialog(
+        ownerSuffix, ownerEnabled, ownerState,
+        add = { url ->
+            registry.add(url)
+            // An app discovery already found (one removed, then added back) joins it at once.
+            model.scope.launch { registry.mergeDiscovered(nodes.owner.discovered.value) }
+        },
+        useOwnComputers = nodes::enableOwner, present = model.router::present, onClose = onClose,
+    )
+}
+
+/**
+ * Add app: an https address on the owner's own computers, once they're connected to them.
+ * Before that it says to connect first, with the next step; apps anywhere else come by invite.
+ */
+@Composable
+fun AddAppDialog(
+    ownerSuffix: String?,
+    ownerEnabled: Boolean,
+    ownerState: NodeState,
+    add: (URI) -> Unit,
+    useOwnComputers: () -> Unit,
+    present: (RootSheet) -> Unit,
+    onClose: () -> Unit,
+) {
+    val field = rememberTextFieldState()
+    val text = field.text.toString()
+    // The address Add was tapped with that isn't on the owner's own computers, until it's changed.
+    var refused by remember { mutableStateOf<String?>(null) }
+    val haptics = LocalHapticFeedback.current
+    val submit = {
+        val url = AppAddress.url(text, ownerSuffix)
+        if (url == null) {
+            refused = text.takeIf { AppAddress.url(it) != null }
+        } else {
+            add(url)
+            haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+            onClose()
+        }
+    }
+    // Before the owner is connected, the way there.
+    val next: Pair<String, () -> Unit>? = when {
+        ownerSuffix != null -> null
+        !ownerEnabled -> stringResource(R.string.launcher_use_own_computers) to {
+            useOwnComputers()
+            onClose()
+        }
+        ownerState is NodeState.NeedsLogin -> stringResource(R.string.add_app_sign_in) to { present(RootSheet.Login(ownerState.url)) }
+        ownerState == NodeState.AwaitingApproval -> stringResource(R.string.add_app_approve) to { present(RootSheet.Approve) }
+        else -> null
+    }
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text(stringResource(R.string.launcher_add_app)) },
+        text = {
+            if (ownerSuffix == null) return@AlertDialog Text(AppAddress.signInFirst)
+            val warning = when {
+                text.trimmingWhitespace().lowercase().startsWith("http://") -> stringResource(R.string.add_app_insecure)
+                refused == text -> AppAddress.notYourComputer
+                else -> null
+            }
+            val focus = remember { FocusRequester() }
+            OutlinedTextField(
+                field,
+                label = { Text(stringResource(R.string.add_app_address)) },
+                placeholder = { Text("my-app.$ownerSuffix") },
+                lineLimits = TextFieldLineLimits.SingleLine,
+                isError = warning != null,
+                supportingText = { if (warning == null) Text(stringResource(R.string.add_app_footer)) else FieldWarning(warning) },
+                keyboardOptions = KeyboardOptions(
+                    capitalization = KeyboardCapitalization.None, autoCorrectEnabled = false, keyboardType = KeyboardType.Uri, imeAction = ImeAction.Done,
+                ),
+                onKeyboardAction = { submit() },
+                modifier = Modifier.focusRequester(focus),
+            )
+            // Here, in the dialog's own window, so the field is there to take focus.
+            LaunchedEffect(Unit) { focus.requestFocus() }
+        },
+        confirmButton = {
+            if (ownerSuffix != null) {
+                TextButton(onClick = submit, enabled = AppAddress.url(text) != null) { Text(stringResource(R.string.add_app_add)) }
+            } else {
+                next?.let { (label, action) -> TextButton(onClick = action) { Text(label) } }
+            }
+        },
+        dismissButton = { TextButton(onClick = onClose) { Text(stringResource(R.string.launcher_cancel)) } },
     )
 }
 

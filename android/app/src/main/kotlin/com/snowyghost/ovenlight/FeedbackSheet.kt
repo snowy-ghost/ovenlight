@@ -213,10 +213,7 @@ private fun FeedbackForm(
             supportingText = {
                 // A failure takes the footer's place, where it shows above the keyboard.
                 if (failure != null) {
-                    Row(Modifier.semantics { liveRegion = LiveRegionMode.Polite }, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Icon(painterResource(R.drawable.ic_warning), contentDescription = null, modifier = Modifier.size(16.dp))
-                        Text(failure)
-                    }
+                    FieldWarning(failure)
                 } else {
                     Text(
                         app.sharedBy?.let { stringResource(R.string.feedback_goes_to, it, app.name) } ?: stringResource(R.string.feedback_goes_to_you),

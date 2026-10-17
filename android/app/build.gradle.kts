@@ -96,6 +96,8 @@ abstract class Acknowledgements : DefaultTask() {
     // Modules whose POM leaves the license to a parent POM, each checked by hand.
     private val inherited = mapOf(
         "com.google.guava:listenablefuture" to "Apache License 2.0", // guava-parent
+        "com.google.auto.value:auto-value-annotations" to "Apache License 2.0", // auto-parent
+        "com.google.zxing:core" to "Apache License 2.0", // zxing-parent
     )
 
     @TaskAction
@@ -252,6 +254,11 @@ dependencies {
     implementation(libs.compose.material3)
     implementation(libs.androidx.webkit)
     implementation(libs.androidx.browser)
+    // The invite scanner: CameraX's picture, read with ZXing (decision 6).
+    implementation(libs.androidx.camera.camera2)
+    implementation(libs.androidx.camera.lifecycle)
+    implementation(libs.androidx.camera.compose)
+    implementation(libs.zxing.core)
     implementation(libs.androidx.lifecycle.process)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.okhttp)

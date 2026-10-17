@@ -177,6 +177,34 @@ class ScreenAccessibilityTests {
     }
 
     @Test
+    fun testJoinWithInvite() = check { JoinFlowScreen(JoinRequest(), JoinState(canScan = true), onClose = {}) }
+
+    @Test
+    fun testTheJoinQuestionWithAnotherConnectionServer() = check {
+        JoinFlowScreen(JoinRequest(Result.success(invite.copy(control = URI("https://hs.example.com")))), JoinState(), onClose = {})
+    }
+
+    @Test
+    fun testAJoinThatCantReachTheApp() = check {
+        JoinFlowScreen(JoinRequest(Result.success(invite)), JoinState(phases = mapOf("i1" to JoinPhase.Failed(JoinError.Network))), onClose = {})
+    }
+
+    @Test
+    fun testAJoinedApp() = check {
+        JoinFlowScreen(JoinRequest(Result.success(invite)), JoinState(phases = mapOf("i1" to JoinPhase.Joined(guide.id)), apps = listOf(guide)), onClose = {})
+    }
+
+    @Test
+    fun testAddAppBeforeSignIn() = check {
+        AddAppDialog(ownerSuffix = null, ownerEnabled = false, ownerState = NodeState.Idle, add = {}, useOwnComputers = {}, present = {}, onClose = {})
+    }
+
+    @Test
+    fun testAddApp() = check {
+        AddAppDialog(ownerSuffix = "tail1.ts.net", ownerEnabled = true, ownerState = NodeState.Ready, add = {}, useOwnComputers = {}, present = {}, onClose = {})
+    }
+
+    @Test
     fun testTheLockScreen() = check { LockScreen(isLocked = true, isAuthenticating = false, lastError = null, onUnlock = {}) }
 
     @Test
