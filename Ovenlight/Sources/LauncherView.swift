@@ -435,12 +435,15 @@ struct AddAppView: View {
 
 struct SettingsView: View {
     @EnvironmentObject private var node: NodeManager
+    @EnvironmentObject private var registry: AppRegistry
     @EnvironmentObject private var router: Router
     @EnvironmentObject private var lock: LockManager
     @Environment(\.dismiss) private var dismiss
     @AppStorage(LockManager.lockAfterKey) private var lockAfterSeconds = LockManager.defaultLockAfter
     @Environment(\.dynamicTypeSize) private var typeSize
-    @State private var confirmingSignOut = false
+    /// Sign Out, or Stop Using My Own Computers with apps to remove, asks first: the row's
+    /// name, which the dialog's button repeats.
+    @State private var confirming: String?
     @State private var mail: MailDraft?
     @State private var showingPrivacyPolicy = false
 
@@ -479,24 +482,26 @@ struct SettingsView: View {
                                 Button("Approve This iPhone") { router.present(.approve) }
                             }
                             if node.status?.account != nil {
-                                Button("Sign Out", role: .destructive) { confirmingSignOut = true }
+                                Button("Sign Out", role: .destructive) { confirming = "Sign Out" }
                             }
                         }
                         // While no account is signed in, "Use My Own Computers" can still be taken back.
                         if node.ownerHasNoAccount {
                             Button("Stop Using My Own Computers") {
-                                Task { await node.disableOwner() }
-                                dismiss()
+                                if registry.apps.contains(where: { !$0.isShared && $0.discovered }) {
+                                    confirming = "Stop Using My Own Computers"
+                                } else {
+                                    stopUsingMyOwnComputers()
+                                }
                             }
                         }
                     }
                     .ovenlightRows()
-                    .confirmationDialog("Sign out of your computers?", isPresented: $confirmingSignOut, titleVisibility: .visible) {
-                        Button("Sign Out", role: .destructive) {
-                            Task { await node.disableOwner() }
-                            dismiss()
-                        }
-                    } message: {
+                    .confirmationDialog("Sign out of your computers?",
+                                        isPresented: Binding { confirming != nil } set: { if !$0 { confirming = nil } },
+                                        titleVisibility: .visible, presenting: confirming) { label in
+                        Button(label, role: .destructive) { stopUsingMyOwnComputers() }
+                    } message: { _ in
                         Text("Signing out removes the apps found on your computers and everything they stored on this iPhone.")
                     }
                     Section {
@@ -557,6 +562,12 @@ struct SettingsView: View {
             return "Connected as \(account.displayName.isEmpty ? account.loginName : account.displayName)"
         }
         return node.state.summary
+    }
+
+    /// Sign Out and Stop Using My Own Computers, one action (see `NodeManager.disableOwner`).
+    private func stopUsingMyOwnComputers() {
+        Task { await node.disableOwner() }
+        dismiss()
     }
 }
 
