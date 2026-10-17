@@ -148,11 +148,12 @@ class AppModel(context: Context) {
 
     /**
      * Connected to the browser while a sign-in or approval tab may come next, and not once the
-     * phone is connected (see [CustomTabs.connect]).
+     * sign-in is over (see [CustomTabs.connect]).
      */
     private fun connectBrowser(context: Context, state: NodeState) {
         if (state is NodeState.NeedsLogin || state == NodeState.AwaitingApproval) CustomTabs.connect(context)
-        if (state == NodeState.Ready) CustomTabs.disconnect(context)
+        // Idle too, turned off or closed while away: a sign-in that carries on connects again at NeedsLogin.
+        if (state.endsSignIn || state == NodeState.Idle) CustomTabs.disconnect(context)
     }
 
     /** Ovenlight came to the front (see [AppLifecycle]). */

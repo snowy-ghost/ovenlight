@@ -59,9 +59,9 @@ object CustomTabs {
     }
 
     /**
-     * Lets the browser go once the phone is connected, so a binding that lives with the process
-     * can't start the browser again after Android ends it. A tab still open keeps its keep-alive,
-     * which the browser holds for the session.
+     * Lets the browser go once the sign-in is over or the node stops, so a binding that lives
+     * with the process can't start the browser again after Android ends it. A tab still open
+     * keeps its keep-alive, which the browser holds for the session.
      */
     fun disconnect(context: Context) {
         connection?.let { systemCall("disconnect from $connected", Unit) { context.applicationContext.unbindService(it) } }
