@@ -200,6 +200,15 @@ android {
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
+        // -Pminify shrinks the debug build as release is shrunk, so the e2e harness can run
+        // what R8 leaves with src/debug's launch extras and test CA.
+        debug {
+            if (providers.gradleProperty("minify").isPresent) {
+                isMinifyEnabled = true
+                isShrinkResources = true
+                proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            }
+        }
     }
 
     compileOptions {
