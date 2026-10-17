@@ -45,7 +45,7 @@
 # from the menu, where the owner cancels the invite and removes a guest who joined from a
 # phone of their own (guest.go), checked on the connector. On Android 10 it confirms an invite
 # on the screen lock's own screen, and leaves that screen for Home. A second owner on a second
-# Headscale invites the phone, which joins once Phase 5's join sheet is in the tree.
+# Headscale invites the phone, which joins from the link.
 # Each writes what it saw to
 # android/e2e/out/: gates.txt, logs and screenshots.
 #
@@ -1266,22 +1266,18 @@ sys.exit(0 if ok else 1)'; }
   rm $B/share.log
   [[ $riley_link == *"control=http%3A%2F%2F127.0.0.1%3A$HSPORT_B"* ]] || fail "Riley's invite doesn't name Riley's Headscale"
   note "Riley's connector serves Garden, shareable, and made an invite for this phone"
-  if grep -q 'fun JoinFlowView' $ROOT/android/app/src/main/kotlin/com/snowyghost/ovenlight/JoinViews.kt; then
-    a reverse tcp:$HSPORT_B tcp:$HSPORT_B >/dev/null
-    # Quoted whole for the device's shell, which reads # as a comment and & as background.
-    a shell "am start -n $PKG/.MainActivity -a android.intent.action.VIEW -d '$riley_link'" >/dev/null
-    await_text 20 "Join Riley's Garden?" || { shot sharing-failed; fail "the invite didn't ask to join: $(screen_text | tr '\n' '|')"; }
-    tap_text Join
-    await_text 90 "Garden is ready" || { shot sharing-failed; fail "the phone didn't join Riley's Garden: $(screen_text | tr '\n' '|')"; }
-    tap_text "Open Garden"
-    close_tip
-    await_text 40 "Garden beds" || { shot sharing-failed; fail "Garden didn't open: $(screen_text | tr '\n' '|')"; }
-    cr guests --json | python3 -c 'import json, sys; sys.exit(0 if any(g["name"] == "Dimitri" and not g.get("removedAt") for g in json.load(sys.stdin)["guests"]) else 1)' ||
-      fail "Riley's connector has no guest Dimitri"
-    note "the phone joined Riley's Garden from its link, and Riley's connector has it as a guest"
-  else
-    note "joining Riley's invite waits for Phase 5's join sheet (JoinFlowView): skipped"
-  fi
+  a reverse tcp:$HSPORT_B tcp:$HSPORT_B >/dev/null
+  # Quoted whole for the device's shell, which reads # as a comment and & as background.
+  a shell "am start -n $PKG/.MainActivity -a android.intent.action.VIEW -d '$riley_link'" >/dev/null
+  await_text 20 "Join Riley's Garden?" || { shot sharing-failed; fail "the invite didn't ask to join: $(screen_text | tr '\n' '|')"; }
+  tap_text Join
+  await_text 90 "Garden is ready" || { shot sharing-failed; fail "the phone didn't join Riley's Garden: $(screen_text | tr '\n' '|')"; }
+  tap_text "Open Garden"
+  close_tip
+  await_text 40 "Garden beds" || { shot sharing-failed; fail "Garden didn't open: $(screen_text | tr '\n' '|')"; }
+  cr guests --json | python3 -c 'import json, sys; sys.exit(0 if any(g["name"] == "Dimitri" and not g.get("removedAt") for g in json.load(sys.stdin)["guests"]) else 1)' ||
+    fail "Riley's connector has no guest Dimitri"
+  note "the phone joined Riley's Garden from its link, and Riley's connector has it as a guest"
   say "PASSED"
   exit 0
 fi

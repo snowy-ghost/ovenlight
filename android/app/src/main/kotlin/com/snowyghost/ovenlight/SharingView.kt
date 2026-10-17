@@ -812,7 +812,7 @@ private fun FeedbackInbox(state: SharingState, page: SharingPage.Feedback, list:
 
 @Composable
 private fun Thumbnail(item: AdminFeedback, shots: ScreenshotCache, client: AdminClient?) {
-    LaunchedEffect(item.id) { shots.load(item.id, ScreenshotCache.Size.Thumbnail, client) }
+    LaunchedEffect(item.id, client != null) { shots.load(item.id, ScreenshotCache.Size.Thumbnail, client) }
     val shape = RoundedCornerShape(6.dp)
     val image = shots.image(item.id, ScreenshotCache.Size.Thumbnail)
     val bitmap = remember(image) { image?.asImageBitmap() }
@@ -839,7 +839,8 @@ private fun FeedbackDetail(state: SharingState, page: SharingPage.FeedbackItem, 
     val machine = machines.firstOrNull { it.id == page.machineID }
     val item = machine?.feedback?.firstOrNull { it.id == page.id }
     val context = LocalContext.current
-    LaunchedEffect(item?.id) { if (machine != null && item != null) shots.load(item.id, ScreenshotCache.Size.Screen, state.client(machine)) }
+    val client = remember(machine) { machine?.let { state.client(it) } }
+    LaunchedEffect(item?.id, client != null) { if (item != null) shots.load(item.id, ScreenshotCache.Size.Screen, client) }
     val title = item?.let { found -> machine.apps.firstOrNull { it.slug == found.app }?.name ?: found.app }.orEmpty()
     GroupedScreen(title, onBack = back, scroll = scroll) {
         if (item == null) return@GroupedScreen
@@ -906,7 +907,12 @@ class ScreenshotCache {
 
     suspend fun load(id: String, size: Size, client: AdminClient?) {
         val key = id to size
-        if (key in images || key in loading || client == null) return
+        if (key in images || key in loading) return
+        // No route to the computer for now: it fails, and the screen tries again once there is one.
+        if (client == null) {
+            if (key !in failures) failures += key
+            return
+        }
         loading += key
         failures -= key
         try {
