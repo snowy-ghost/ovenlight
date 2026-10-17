@@ -704,13 +704,19 @@ fun AppChromeHost(model: AppModel, page: AppPage, icon: Bitmap?, header: Color?,
     val dark = isSystemInDarkTheme()
 
     WatchPage(page.view, controller)
-    // The header for the next launch, as each read finds it, saved under the appearance it was
-    // read in: never the look already there, which an app reopened after a switch read in the other.
-    LaunchedEffect(page, dark) { page.look.drop(1).collect { StatusBarTint(PreferencesStore(context)).remember(it.header, app, dark) } }
+    // The header for the next launch, saved under the appearance it was read in: from each load
+    // while the app is open, never from the look already there, which an app reopened after a
+    // switch read in the other.
+    val tint = remember { StatusBarTint(PreferencesStore(context)) }
+    LaunchedEffect(page, dark) { page.look.drop(1).collect { tint.remember(it.header, app, dark) } }
     // Read again in the other appearance, and on opening an app that's loaded, which may have
-    // switched while it was closed.
+    // switched while it was closed. Saved here too, since a look equal to the last one doesn't
+    // reach the collector.
     LaunchedEffect(page, dark) {
-        if (page.hasLoadedOnce.value) page.look.value = PageLook.decoded(page.view.evaluate(PageLook.script))
+        if (!page.hasLoadedOnce.value) return@LaunchedEffect
+        val read = PageLook.decoded(page.view.evaluate(PageLook.script))
+        page.look.value = read
+        tint.remember(read.header, app, dark)
     }
 
     val membership = memberships.firstOrNull { it.id == app.membershipID }
