@@ -1,6 +1,8 @@
 package core
 
 import (
+	"errors"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sync"
@@ -35,7 +37,7 @@ func TestAClosedNodeNeverStarts(t *testing.T) {
 	if err := n.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if err := n.Start(); err != errNodeClosed {
+	if err := n.Start(); err == nil || err.Error() != "node closed" {
 		t.Errorf("Start after Close: %v", err)
 	}
 	if err := n.WaitUp(100); err == nil || err.Error() != "node closed" {
@@ -49,4 +51,24 @@ func TestAClosedNodeNeverStarts(t *testing.T) {
 		t.Fatalf("a new node for the same membership: %v", err)
 	}
 	again.Close()
+}
+
+// unhashable stands for tailscale.com/client/local's error for an answer other than 200.
+type unhashable struct {
+	error
+	Header http.Header
+}
+
+func TestErrorsReachKotlinAsTheirText(t *testing.T) {
+	err := error(unhashable{errors.New("500 Internal Server Error: authkey expired"), http.Header{}})
+	bindable(&err)
+	// gomobile keeps each value it hands over in a map, as here.
+	refs := map[any]int{err: 1}
+	if refs[err] != 1 || err.Error() != "500 Internal Server Error: authkey expired" {
+		t.Errorf("bindable gave %v", err)
+	}
+	var none error
+	if bindable(&none); none != nil {
+		t.Errorf("no error became %v", none)
+	}
 }
