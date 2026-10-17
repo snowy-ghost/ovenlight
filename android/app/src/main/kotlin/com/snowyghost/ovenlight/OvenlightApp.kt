@@ -106,7 +106,7 @@ class AppModel(context: Context) {
             nodes.pollingPaused = it
             pool.timersPaused = it
         }, closeNodes = nodes::closeAll,
-        cameToFront = ::didBecomeActive,
+        cameToFront = { didBecomeActive(context) },
     )
 
     init {
@@ -128,8 +128,7 @@ class AppModel(context: Context) {
         // The sign-in page closes once the sign-in is over (see NodeState.endsSignIn).
         scope.launch {
             nodes.owner.state.collect { state ->
-                // A sign-in or approval tab may come next.
-                if (state is NodeState.NeedsLogin || state == NodeState.AwaitingApproval) CustomTabs.connect(context)
+                connectBrowser(context, state)
                 val sheet = router.sheet.value
                 if (state.endsSignIn && sheet is RootSheet.Login) router.sheet.value = null
                 // Android only: the Machines page is a Custom Tab over Ovenlight, so once the phone
@@ -147,8 +146,19 @@ class AppModel(context: Context) {
         }
     }
 
+    /**
+     * Connected to the browser while a sign-in or approval tab may come next, and not once the
+     * phone is connected (see [CustomTabs.connect]).
+     */
+    private fun connectBrowser(context: Context, state: NodeState) {
+        if (state is NodeState.NeedsLogin || state == NodeState.AwaitingApproval) CustomTabs.connect(context)
+        if (state == NodeState.Ready) CustomTabs.disconnect(context)
+    }
+
     /** Ovenlight came to the front (see [AppLifecycle]). */
-    private suspend fun didBecomeActive() {
+    private suspend fun didBecomeActive(context: Context) {
+        // Again after a browser update ended the connection, which no state change follows.
+        connectBrowser(context, nodes.owner.state.value)
         // A launch before the first unlock after a reboot couldn't read the saved lists.
         registry.reloadIfFailed()
         nodes.memberships.reloadIfFailed()

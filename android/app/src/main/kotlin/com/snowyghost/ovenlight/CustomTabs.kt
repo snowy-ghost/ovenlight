@@ -24,20 +24,21 @@ import java.net.URI
 object CustomTabs {
     private var chosen: String? = null
 
-    /** The browser [connect] bound to, and the session it gave, once it answers. */
+    /** The browser [connect] bound to, how, and the session it gave, once it answers. */
     private var connected: String? = null
+    private var connection: CustomTabsServiceConnection? = null
     private var session: CustomTabsSession? = null
 
     /**
      * Connects to the browser ahead of a sign-in or approval. A tab opened with the session it
-     * gives keeps Ovenlight running while the tab is in front (see [TabKeepAlive]). Without it
-     * Android freezes Ovenlight about a minute after the tab covers it, and the node can't see
-     * the phone connect until the tab closes.
+     * gives (which [open] uses for those pages alone) keeps Ovenlight running while the tab is in
+     * front (see [TabKeepAlive]). Without it Android freezes Ovenlight about a minute after the
+     * tab covers it, and the node can't see the phone connect until the tab closes.
      */
     fun connect(context: Context) {
         val browser = browser(context) ?: return
         if (connected == browser || CustomTabsClient.getPackageName(context, listOf(browser), true) != browser) return
-        connected = browser
+        disconnect(context)
         val app = context.applicationContext
         val connection = object : CustomTabsServiceConnection() {
             override fun onCustomTabsServiceConnected(name: ComponentName, client: CustomTabsClient) {
@@ -48,29 +49,42 @@ object CustomTabs {
                 session = null
             }
 
-            // The browser was updated or force-stopped: the owner's next sign-in or approval connects again.
-            override fun onBindingDied(name: ComponentName) {
-                session = null
-                connected = null
-                app.unbindService(this)
-            }
+            // The browser was updated or force-stopped: Ovenlight connects again as it comes to the front.
+            override fun onBindingDied(name: ComponentName) = disconnect(app)
         }
-        if (!systemCall("connect to $browser", false) { CustomTabsClient.bindCustomTabsService(app, browser, connection) }) connected = null
+        if (systemCall("connect to $browser", false) { CustomTabsClient.bindCustomTabsService(app, browser, connection) }) {
+            connected = browser
+            this.connection = connection
+        }
+    }
+
+    /**
+     * Lets the browser go once the phone is connected, so a binding that lives with the process
+     * can't start the browser again after Android ends it. A tab still open keeps its keep-alive,
+     * which the browser holds for the session.
+     */
+    fun disconnect(context: Context) {
+        connection?.let { systemCall("disconnect from $connected", Unit) { context.applicationContext.unbindService(it) } }
+        connected = null
+        connection = null
+        session = null
     }
 
     /**
      * Opens [url]; false when nothing on the phone can show it. Ovenlight's own tab is an
      * excursion (see AppLifecycle), which opening one begins, so a sign-in or a page read in it
-     * finds everything as it left it.
+     * finds everything as it left it. Only the sign-in and Machines pages, [keepAlive], go with
+     * Ovenlight's session: any other page would get Ovenlight as its referrer, and keep
+     * Ovenlight running behind someone else's site.
      */
-    fun open(context: Context, url: URI, lifecycle: AppLifecycle): Boolean {
+    fun open(context: Context, url: URI, lifecycle: AppLifecycle, keepAlive: Boolean = false): Boolean {
         val uri = url.toString().toUri()
         val browser = browser(context)
         // With no browser to name, Android would hand Ovenlight's own App Link back to Ovenlight.
         if (browser == null && NavigationPolicy.isOvenlightLink(url)) return false
         val tabs = browser != null && CustomTabsClient.getPackageName(context, listOf(browser), true) == browser
         val intent = if (tabs) {
-            val session = session?.takeIf { connected == browser }
+            val session = session?.takeIf { keepAlive && connected == browser }
             CustomTabsIntent.Builder(session).setShowTitle(true).setShareState(CustomTabsIntent.SHARE_STATE_OFF).build().intent.setData(uri).apply {
                 if (session != null) putExtra(EXTRA_KEEP_ALIVE, Intent(context, TabKeepAlive::class.java))
             }

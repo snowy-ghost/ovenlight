@@ -142,7 +142,7 @@ class MainActivity : ComponentActivity() {
         if (model.openTab != null || locked || !started) return
         model.openTab = sheet
         model.router.sheetAppeared()
-        if (!CustomTabs.open(this, url, model.lifecycle)) {
+        if (!CustomTabs.open(this, url, model.lifecycle, keepAlive = true)) {
             model.openTab = null
             model.router.sheet.value = null
             model.router.sheetDismissed()
