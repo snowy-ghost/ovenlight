@@ -1,9 +1,11 @@
 import SwiftUI
 import WebKit
 
-/// Full-screen host for one app: its web view edge to edge, with the tuck-away chrome from
-/// `AppChrome` as the only thing Ovenlight draws over it. A page that doesn't ask for
-/// `viewport-fit=cover` sits below the status bar instead, its header color behind the bar.
+/// Full-screen host for one app: a band at the top in the page's header color, behind the
+/// status bar and the chrome's handle, and its web view below, with the tuck-away chrome from
+/// `AppChrome` as the only thing Ovenlight draws over it. A page that asks for
+/// `viewport-fit=cover` runs to the bottom and side edges; one that doesn't stays inside the
+/// side safe areas.
 struct AppHostView: View {
     let app: WebApp
     let onClose: () -> Void
@@ -56,74 +58,75 @@ private struct AppPage: View {
 
     var body: some View {
         let icon = registry.icon(for: app)
+        // The page's header once it has loaded, and the one from its last load until then.
+        let band = (coordinator.hasLoadedOnce ? coordinator.headerColor.map(Color.init) : StatusBarTint.color(for: app, in: colorScheme))
+            ?? Color(.systemBackground)
         ZStack {
-            (coordinator.fitsCover ? Color(.systemBackground) : Color(uiColor: coordinator.underPageColor ?? .systemBackground))
+            Color(uiColor: coordinator.underPageColor ?? .systemBackground)
                 .ignoresSafeArea()
-            // Only the strip behind the status bar takes the header color: a phone on its side
-            // has none, and its sides show the page's background.
-            if !coordinator.fitsCover {
-                VStack(spacing: 0) {
-                    Color(uiColor: coordinator.headerColor ?? .systemBackground)
-                        .ignoresSafeArea(edges: .top)
-                        .frame(height: 0)
-                    Spacer(minLength: 0)
-                }
-            }
-            // Files that finished while the person was back in the launcher, once the page
-            // is in a window to present over (it isn't yet as the view appears). The page
-            // stays visible under the opaque placeholder, which fades out over it, and takes
-            // no touches until it has loaded.
-            WebViewContainer(webView: webView, onWindow: { coordinator.appeared() })
-                .ignoresSafeArea(edges: coordinator.fitsCover ? .all : .bottom)
-                // Moves at once, under the placeholder, rather than with its fade.
-                .transaction { $0.animation = nil }
-                .allowsHitTesting(coordinator.hasLoadedOnce)
-            // A zIndex keeps each of these over the page as it fades out: without one, SwiftUI
-            // draws a view leaving a ZStack behind its siblings.
-            if !coordinator.hasLoadedOnce && coordinator.loadError == nil {
-                if let appNode = coordinator.node, let action = NodeActionOverlay.action(for: appNode.state, app: app, ownerEnabled: node.ownerEnabled) {
-                    NodeActionOverlay(appName: app.name, action: action) {
-                        if case .needsLogin(let url) = node.state {
-                            sheet = .login(url)
-                        } else if node.state == .awaitingApproval {
-                            sheet = .approve
-                        } else if !node.ownerEnabled {
-                            node.enableOwner()
+            VStack(spacing: 0) {
+                // No page runs under the status bar or the handle, which lives in this band.
+                band
+                    .ignoresSafeArea(edges: [.top, .horizontal])
+                    .frame(height: AppChrome.handleHeight)
+                ZStack {
+                    // Files that finished while the person was back in the launcher, once the
+                    // page is in a window to present over (it isn't yet as the view appears).
+                    // The page stays visible under the opaque placeholder, which fades out over
+                    // it, and takes no touches until it has loaded.
+                    WebViewContainer(webView: webView, onWindow: { coordinator.appeared() })
+                        .ignoresSafeArea(edges: coordinator.fitsCover ? [.bottom, .horizontal] : .bottom)
+                        // Moves at once, under the placeholder, rather than with its fade.
+                        .transaction { $0.animation = nil }
+                        .allowsHitTesting(coordinator.hasLoadedOnce)
+                    // A zIndex keeps each of these over the page as it fades out: without one,
+                    // SwiftUI draws a view leaving a ZStack behind its siblings.
+                    if !coordinator.hasLoadedOnce && coordinator.loadError == nil {
+                        if let appNode = coordinator.node, let action = NodeActionOverlay.action(for: appNode.state, app: app, ownerEnabled: node.ownerEnabled) {
+                            NodeActionOverlay(appName: app.name, action: action) {
+                                if case .needsLogin(let url) = node.state {
+                                    sheet = .login(url)
+                                } else if node.state == .awaitingApproval {
+                                    sheet = .approve
+                                } else if !node.ownerEnabled {
+                                    node.enableOwner()
+                                }
+                            } retry: {
+                                Task { await appNode.restart() }
+                            } close: {
+                                onClose()
+                            }
+                            .zIndex(1)
+                        } else if coordinator.gate == .unreachable {
+                            LoadErrorView(title: ConnectionCopy.cantReach(app.name), message: ConnectionCopy.cantReachDetail,
+                                          retry: { coordinator.reload() }, close: onClose)
+                                .transition(.opacity)
+                                .zIndex(1)
+                        } else if coordinator.gate == .offline {
+                            LoadErrorView(title: ConnectionCopy.offline, message: ConnectionCopy.offlineDetail,
+                                          retry: { coordinator.reload() }, close: onClose)
+                                .transition(.opacity)
+                                .zIndex(1)
+                        } else {
+                            LaunchPlaceholder(app: app, icon: icon, caption: ConnectionCopy.connecting)
+                                .transition(.opacity)
+                                .zIndex(1)
                         }
-                    } retry: {
-                        Task { await appNode.restart() }
-                    } close: {
-                        onClose()
                     }
-                    .zIndex(1)
-                } else if coordinator.gate == .unreachable {
-                    LoadErrorView(title: ConnectionCopy.cantReach(app.name), message: ConnectionCopy.cantReachDetail,
-                                  retry: { coordinator.reload() }, close: onClose)
-                        .transition(.opacity)
-                        .zIndex(1)
-                } else if coordinator.gate == .offline {
-                    LoadErrorView(title: ConnectionCopy.offline, message: ConnectionCopy.offlineDetail,
-                                  retry: { coordinator.reload() }, close: onClose)
-                        .transition(.opacity)
-                        .zIndex(1)
-                } else {
-                    LaunchPlaceholder(app: app, icon: icon, caption: ConnectionCopy.connecting)
-                        .transition(.opacity)
-                        .zIndex(1)
+                    if let error = coordinator.loadError {
+                        LoadErrorView(title: ConnectionCopy.cantOpen(app.name), message: error,
+                                      retry: { coordinator.reload() }, close: onClose)
+                            .transition(.opacity)
+                            .zIndex(1)
+                    }
                 }
-            }
-            if let error = coordinator.loadError {
-                LoadErrorView(title: ConnectionCopy.cantOpen(app.name), message: error,
-                              retry: { coordinator.reload() }, close: onClose)
-                    .transition(.opacity)
-                    .zIndex(1)
             }
             AppChrome(
                 app: app,
                 icon: icon,
                 webView: webView,
                 isLoaded: coordinator.hasLoadedOnce,
-                header: coordinator.headerColor.map(Color.init) ?? StatusBarTint.color(for: app, in: colorScheme),
+                header: band,
                 actions: AppChromeActions(
                     home: onClose,
                     reload: { coordinator.reload() },
@@ -164,6 +167,7 @@ private struct AppPage: View {
             if let header { StatusBarTint.remember(header, for: app, in: colorScheme) }
         }
         .statusBarHidden(false)
+        .background(StatusBarTone(over: band))
         .sheet(item: $sheet) { sheet in
             switch sheet {
             case .login(let url):
@@ -214,6 +218,26 @@ private struct AppPage: View {
     private func captureFeedback() async {
         let image = try? await webView.takeSnapshot(configuration: WKSnapshotConfiguration())
         feedback = FeedbackCapture(image: image, pageURL: webView.url)
+    }
+}
+
+/// The status bar's tone over the band. iOS 26 reads what is under the bar, but earlier
+/// versions follow light or dark mode, which would hide it on a dark band in light mode. The
+/// app's hosting controller asks this child controller for its style.
+private struct StatusBarTone: UIViewControllerRepresentable {
+    let over: Color
+
+    func makeUIViewController(context: Context) -> Controller { Controller() }
+
+    func updateUIViewController(_ controller: Controller, context: Context) {
+        controller.style = over.isLight(in: context.environment) ? .darkContent : .lightContent
+    }
+
+    final class Controller: UIViewController {
+        var style = UIStatusBarStyle.default {
+            didSet { if style != oldValue { setNeedsStatusBarAppearanceUpdate() } }
+        }
+        override var preferredStatusBarStyle: UIStatusBarStyle { style }
     }
 }
 
