@@ -844,6 +844,7 @@ final class NodeManager: ObservableObject {
     func enableOwner() {
         ownerEnabled = true
         UserDefaults.standard.set(true, forKey: Self.ownerEnabledKey)
+        UserDefaults.standard.removeObject(forKey: Self.signOutPendingKey)
         Task { await owner.ensureRunning() }
     }
 
@@ -857,11 +858,30 @@ final class NodeManager: ObservableObject {
     /// else is saved. Guest nodes are untouched.
     func disableOwner() async {
         ownerEnabled = false
+        UserDefaults.standard.set(true, forKey: Self.signOutPendingKey)
         UserDefaults.standard.removeObject(forKey: Self.ownerEnabledKey)
         await owner.logOutAndForget()
-        MembershipNode.rememberOwnerSuffix(nil)
         // Once the node has stopped, so no discovery from before can bring them back.
+        await forgetOwner()
+    }
+
+    private func forgetOwner() async {
+        MembershipNode.rememberOwnerSuffix(nil)
         await onOwnerForgotten()
+        UserDefaults.standard.removeObject(forKey: Self.signOutPendingKey)
+    }
+
+    /// Set from the start of a Sign Out to its end. Apps found before an earlier version's
+    /// Sign Out, which kept them, have no such mark and stay.
+    static let signOutPendingKey = "ownerSignOutPending"
+
+    /// Finishes a Sign Out that Ovenlight quit during, at launch: the owner's node state and
+    /// the apps found on the owner's computers go. Before the first unlock the mark reads as
+    /// unset, and the next launch finishes it.
+    func finishSignOut() async {
+        guard !ownerEnabled, UserDefaults.standard.bool(forKey: Self.signOutPendingKey) else { return }
+        try? FileManager.default.removeItem(at: Self.stateDirectory(for: Membership.ownerID))
+        await forgetOwner()
     }
 
     // MARK: Lifecycle

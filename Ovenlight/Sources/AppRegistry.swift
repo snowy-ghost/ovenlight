@@ -161,8 +161,13 @@ final class AppRegistry: ObservableObject {
     }
 
     /// Removes the apps found on the owner's computers, and everything they stored, as the
-    /// owner signs out. Signing in again finds them.
+    /// owner signs out. The tailnet is forgotten, so its dismissals go too: signing in again
+    /// finds them all.
     func removeDiscovered() async {
+        if !dismissedHosts.isEmpty {
+            dismissedHosts = []
+            save()
+        }
         await remove(apps.filter { $0.discovered && !$0.isShared })
     }
 

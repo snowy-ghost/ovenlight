@@ -359,7 +359,7 @@ final class AppRegistryTests: XCTestCase {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: dir) }
         let defaults = UserDefaults.standard
-        let keys = ["ownTailnetEnabled", MembershipNode.ownerSuffixKey]
+        let keys = ["ownTailnetEnabled", MembershipNode.ownerSuffixKey, NodeManager.signOutPendingKey]
         let saved = keys.map { defaults.object(forKey: $0) }
         defer { for (key, value) in zip(keys, saved) { defaults.set(value, forKey: key) } }
         let nodes = NodeManager.shared
@@ -375,7 +375,9 @@ final class AppRegistryTests: XCTestCase {
 
         let coach = DiscoveredApp(host: "interview-coach.tailabc123.ts.net",
                                   manifest: OvenlightManifest(name: "Interview Coach", version: 1))
-        await registry.mergeDiscovered([coach])
+        let recipes = DiscoveredApp(host: "recipe-box.tailabc123.ts.net", manifest: OvenlightManifest(name: "Recipe Box", version: 1))
+        await registry.mergeDiscovered([coach, recipes])
+        await registry.remove(try XCTUnwrap(registry.apps.first { $0.name == "Recipe Box" }).id)
         let handAdded = registry.add(url: URL(string: "https://notes.tailabc123.ts.net/")!)
         let shared = registry.addShared(name: "Echo Board", host: "echo-board.taildef456.ts.net", slug: "echo-board",
                                         membershipID: "m1", sharedBy: "Riley")
@@ -396,8 +398,20 @@ final class AppRegistryTests: XCTestCase {
         let after = await stores()
         XCTAssertFalse(after.contains(found.dataStoreID), "its data store is deleted")
 
-        await registry.mergeDiscovered([coach])
-        XCTAssertEqual(registry.apps.filter(\.discovered).map(\.name), ["Interview Coach"], "signing in again finds it")
+        await registry.mergeDiscovered([coach, recipes])
+        XCTAssertEqual(registry.apps.filter(\.discovered).map(\.name), ["Interview Coach", "Recipe Box"],
+                       "signing in again finds them all")
+
+        // Apps found before an earlier version's Sign Out, which kept them, stay at launch.
+        try FileManager.default.createDirectory(at: state, withIntermediateDirectories: true)
+        await nodes.finishSignOut()
+        XCTAssertEqual(registry.apps.filter(\.discovered).count, 2)
+
+        // Ovenlight quit during a Sign Out: launch finishes it.
+        UserDefaults.standard.set(true, forKey: NodeManager.signOutPendingKey)
+        await nodes.finishSignOut()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: state.path), "its login doesn't come back")
+        XCTAssertEqual(registry.apps.map(\.id), [handAdded.id, shared.id])
     }
 
     func testAMissingFileIsEmptyAndSaves() throws {
