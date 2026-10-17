@@ -230,12 +230,16 @@ jobs:
           sudo udevadm trigger --name-match=kvm
           # ci gets 4 GB, as the mini's AVDs: the web view pool keeps as many pages as it does there.
           # The runner's avdmanager has no pixel_9; pixel_7 has the same 412 by 915 dp screen.
+          # avdmanager and the emulator look for AVDs in different places by default.
+          export ANDROID_AVD_HOME="$HOME/.android/avd"
+          mkdir -p "$ANDROID_AVD_HOME"
           for avd in "ci:android-36:5554:-memory 4096" webview:android-37.0:5556:; do
             IFS=: read -r name api port memory <<< "$avd"
-            echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd -n "$name" -k "system-images;$api;google_apis;x86_64" -d pixel_7
+            echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd -n "$name" -k "system-images;$api;google_apis;x86_64" -d pixel_7 -p "$ANDROID_AVD_HOME/$name.avd"
             # shellcheck disable=SC2086
             nohup "$ANDROID_HOME/emulator/emulator" -avd "$name" -port "$port" $memory -no-window -no-audio -no-boot-anim -no-metrics -gpu swiftshader_indirect -no-snapshot > "$RUNNER_TEMP/$name.log" 2>&1 &
           done
+          "$ANDROID_HOME/emulator/emulator" -list-avds
       # The release set of ABIs, which debug builds take too: the runner's emulator is x86_64.
       - name: Core library
         run: ../scripts/build-android-core.sh
