@@ -323,11 +323,11 @@ screen, not out of the app, and keep your own horizontal swipes away from the ed
 
 **Status bar and color.** With `viewport-fit=cover`, the status bar's text follows the
 phone's light or dark mode, not your page, so keep the top of the page light in light mode
-and dark in dark mode. Without it, the text turns light or dark to read on the strip
-Ovenlight paints.
+and dark in dark mode. Without it, the text on Android turns light or dark to read on the
+strip Ovenlight paints.
 Support both with `prefers-color-scheme` and give `html` a background color, which also
 fills what shows when the page is pulled down. Ovenlight remembers the `theme-color` of
-the first page the app loads (its background without one), for light and dark mode, and
+the last page the app showed (its background without one), for light and dark mode, and
 paints it behind the status bar while the app next opens, so set it to your header's
 color.
 
