@@ -305,8 +305,8 @@ sealed class RootSheet {
     abstract val id: String
 
     /**
-     * Shown as a screen over the launcher by RootView. The sign-in and Machines pages show in a
-     * Custom Tab instead (see MainActivity), and the rest arrive with their phases.
+     * Shown as a screen over the launcher by RootView. Add App is a dialog, the sign-in and
+     * Machines pages show in a Custom Tab (see MainActivity), and the rest arrive with their phases.
      */
     val isScreen: Boolean get() = this == Settings
 
@@ -359,6 +359,7 @@ fun RootView(model: AppModel) {
         LauncherView(model)
         AppLayer(model)
         ScreenLayer(model)
+        DialogLayer(model)
     }
 }
 
@@ -418,9 +419,23 @@ private fun ScreenLayer(model: AppModel) {
             ScreenBack(shownState, shown = screen != null, back = close)
             when (shown) {
                 RootSheet.Settings -> SettingsView(model, onClose = close)
-                // The rest arrive with their phases: Add App and Join with Phase 5, sharing with Phase 6.
+                // The rest arrive with their phases: Join with Phase 5, sharing with Phase 6.
                 else -> Unit
             }
         }
+    }
+}
+
+/** The router's Add App, a dialog over the launcher that reports when it shows and goes as the screens do. */
+@Composable
+private fun DialogLayer(model: AppModel) {
+    val router = model.router
+    val sheet by router.sheet.collectAsState()
+    if (sheet == RootSheet.AddApp) {
+        DisposableEffect(Unit) {
+            router.sheetAppeared()
+            onDispose { router.sheetDismissed() }
+        }
+        AddAppView(model, onClose = { if (router.sheet.value == RootSheet.AddApp) router.sheet.value = null })
     }
 }

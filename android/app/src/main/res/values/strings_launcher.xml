@@ -19,6 +19,13 @@
     <string name="launcher_connector">Ovenlight connector</string>
     <string name="launcher_empty_footer">Apps you publish with the %1$s on your computers show up here.</string>
 
+    <string name="add_app_address">Address</string>
+    <string name="add_app_add">Add</string>
+    <string name="add_app_footer">Ovenlight fetches the app\'s name and icon from its web manifest. Each app gets its own private storage.</string>
+    <string name="add_app_insecure">Ovenlight only opens secure addresses that start with https.</string>
+    <string name="add_app_sign_in">Sign in to your computers</string>
+    <string name="add_app_approve">Approve this phone</string>
+
     <string name="launcher_new">New</string>
     <string name="launcher_open">Open</string>
     <string name="launcher_show_menu">Show menu</string>

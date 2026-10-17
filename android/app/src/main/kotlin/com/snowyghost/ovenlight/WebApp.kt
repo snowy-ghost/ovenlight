@@ -375,6 +375,6 @@ object AppAddress {
     }
 
     // Guests can open Add App too, so none of this names the network underneath.
-    const val signInFirst = "Add App opens apps on your own computers. Connect to them first, then add an app by its address."
+    const val signInFirst = "Add app opens apps on your own computers. Connect to them first, then add an app by its address."
     const val notYourComputer = "Ovenlight opens apps on your own computers. Publish this app with the Ovenlight connector, or ask its owner for an invite."
 }

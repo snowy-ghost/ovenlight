@@ -177,6 +177,16 @@ class ScreenAccessibilityTests {
     }
 
     @Test
+    fun testAddAppBeforeSignIn() = check {
+        AddAppDialog(ownerSuffix = null, ownerEnabled = false, ownerState = NodeState.Idle, add = {}, useOwnComputers = {}, present = {}, onClose = {})
+    }
+
+    @Test
+    fun testAddApp() = check {
+        AddAppDialog(ownerSuffix = "tail1.ts.net", ownerEnabled = true, ownerState = NodeState.Ready, add = {}, useOwnComputers = {}, present = {}, onClose = {})
+    }
+
+    @Test
     fun testTheLockScreen() = check { LockScreen(isLocked = true, isAuthenticating = false, lastError = null, onUnlock = {}) }
 
     @Test
