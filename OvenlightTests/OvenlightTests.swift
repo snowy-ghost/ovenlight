@@ -981,3 +981,25 @@ final class AcknowledgementsTests: XCTestCase {
         XCTAssertEqual(lines.map(\.text), ["Apache:", "androidx.core:core:1.19.1", "\"License\" shall mean"])
     }
 }
+
+@MainActor
+final class NodeManagerTests: XCTestCase {
+    func testRemovingAGuestLogsOutAndForgetsItsRoute() async throws {
+        let nodes = NodeManager.shared
+        let invite = InviteLink(control: URL(string: "https://controlplane.tailscale.com")!, key: "tskey-1", owner: "Riley",
+                                app: "echo-board", invite: UUID().uuidString, host: "echo-board.taildef456.ts.net", name: "Echo Board", to: "Sam")
+        let membership = Membership(invite: invite)
+        nodes.memberships.upsert(membership)
+        XCTAssertNotNil(nodes.guests[membership.id])
+        let directory = NodeManager.stateDirectory(for: membership.id)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+
+        // Twice at once, as Leave and the orphan sweep can: one removal.
+        async let first: Void = nodes.removeGuest(membership.id)
+        async let second: Void = nodes.removeGuest(membership.id)
+        _ = await (first, second)
+        XCTAssertNil(nodes.guests[membership.id])
+        XCTAssertNil(nodes.memberships[membership.id])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: directory.path))
+    }
+}
