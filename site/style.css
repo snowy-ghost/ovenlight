@@ -280,9 +280,13 @@ a:hover { text-decoration-thickness: 2px; }
   line-height: 1.45;
 }
 
-/* Apple's official badge artwork, unmodified (black on light pages, white on dark). */
-.store { display: inline-block; margin-top: 2rem; border-radius: 0.6rem; line-height: 0; }
+/* Apple's and Google's official badges, unmodified (Apple's black on light pages, white on
+   dark). Google's image carries its clear space, a quarter of the badge's height on each side,
+   and is sized so the badge stands as tall as Apple's. */
+.stores { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; margin-top: 2rem; }
+.store { display: inline-block; border-radius: 0.6rem; line-height: 0; }
 .store img { width: 9.375rem; height: auto; }
+.store img.play { width: 12.125rem; }
 .store-note { margin-top: 0.85rem; color: var(--ink-soft); font-size: var(--step--1); }
 
 .hero-shot {
@@ -561,7 +565,7 @@ a:hover { text-decoration-thickness: 2px; }
   border-radius: 1.3rem;
   box-shadow: 0 1.25rem 2.5rem -0.75rem rgba(var(--glow), 0.6);
 }
-.closing .store { margin-top: 1.75rem; }
+.closing .stores { margin-top: 1.75rem; }
 
 /* Long-form pages: support, privacy and the docs */
 
