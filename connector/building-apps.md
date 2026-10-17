@@ -385,8 +385,8 @@ below, and wraps `getUserMedia`, `URL.createObjectURL` and clicks on
   build calls or peer-to-peer features on it.
 - **Location.** Ovenlight doesn't ask the phone for location, so `navigator.geolocation`
   always fails with a permission error.
-- **Speech recognition and barcode detection.** Neither `SpeechRecognition` nor
-  `BarcodeDetector` is available.
+- **Speech recognition and barcode detection.** On Android, `SpeechRecognition` and
+  `BarcodeDetector` aren't available.
 
 The microphone and camera work. The phone asks once whether Ovenlight may use them. The
 owner's own apps then get the microphone without a second prompt, while for the camera,
