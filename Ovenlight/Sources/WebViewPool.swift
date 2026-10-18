@@ -1095,17 +1095,12 @@ enum LocalAddressRules {
             return nil
         }
     }
-    private static let installed = NSHashTable<WKUserContentController>.weakObjects()
-
     /// Adds the rules to a view before its first load. False if they couldn't be compiled:
-    /// the view then loads nothing.
+    /// the view then loads nothing. A controller keeps one list per identifier, so adding
+    /// it again, as each reload does, changes nothing.
     static func install(in view: WKWebView) async -> Bool {
         guard let list = await compiled.value else { return false }
-        let controller = view.configuration.userContentController
-        if !installed.contains(controller) {
-            controller.add(list)
-            installed.add(controller)
-        }
+        view.configuration.userContentController.add(list)
         return true
     }
 }
