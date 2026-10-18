@@ -534,6 +534,45 @@ final class LockTimingTests: XCTestCase {
         XCTAssertFalse(lock.lockIsDue, "back in front")
     }
 
+    /// Quit in the background (by iOS, to free memory, or by the person), Ovenlight launches
+    /// unlocked only within the delay, on the same boot, and never set to Immediately.
+    func testALaunchLocksUnlessQuitInTheBackgroundWithinTheDelay() throws {
+        let suite = "LockTimingTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        var now = ContinuousClock.now
+        var boot = 1_000
+        var saved = false
+        func launch() -> LockManager { LockManager(hasSavedData: { saved }, now: { now }, boot: { boot }, defaults: defaults) }
+        let first = launch()
+        let previous = first.lockAfterSeconds
+        defer { first.lockAfterSeconds = previous }
+        first.lockAfterSeconds = 60
+        saved = true
+        XCTAssertTrue(launch().isLocked, "never in the background yet")
+
+        first.didEnterBackground()
+        now += .seconds(30)
+        let inBackground = launch()
+        XCTAssertFalse(inBackground.isLocked, "quit 30 seconds after it left the front")
+        inBackground.didEnterBackground()
+        now += .seconds(30)
+        XCTAssertTrue(launch().isLocked, "a launch in the background doesn't start the delay over")
+
+        now -= .seconds(30)
+        boot += 1
+        XCTAssertTrue(launch().isLocked, "the iPhone restarted")
+        boot -= 1
+        first.lockAfterSeconds = 0
+        XCTAssertTrue(launch().isLocked, "Immediately")
+        first.lockAfterSeconds = 60
+
+        let relaunched = launch()
+        XCTAssertFalse(relaunched.isLocked)
+        relaunched.willBecomeActive()
+        XCTAssertTrue(launch().isLocked, "quit in front: no time in the background to go by")
+    }
+
     func testAnEmptyNodeFolderOrListIsNothingToLock() throws {
         let base = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         defer { try? FileManager.default.removeItem(at: base) }
