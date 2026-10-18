@@ -49,7 +49,7 @@ class PageDownloadsTests {
             .header("Content-Disposition", "attachment; filename=\"export.csv\"").body(body.toResponseBody()).build()
     }.build()
     /** The names of downloads that said they failed. */
-    private val failures = java.util.concurrent.CopyOnWriteArrayList<String>()
+    private val failures = java.util.concurrent.CopyOnWriteArrayList<String?>()
     // Made in the test, once the folder is.
     private val downloads by lazy {
         PageDownloads(
@@ -268,10 +268,14 @@ class PageDownloadsTests {
         start("data:text/plain,hello")
         repeat(200) { if (failures.size < 2) Thread.sleep(10) }
         assertEquals(listOf("export.csv", "a.txt"), failures)
+        downloads.clicked("data:text/plain,goodbye", "", host)
+        start("data:text/plain,goodbye")
+        repeat(200) { if (failures.size < 3) Thread.sleep(10) }
+        assertEquals("no real name, so the file", listOf("export.csv", "a.txt", null), failures)
 
         onScreen = false
         start("https://$host/export.csv")
         Thread.sleep(100)
-        assertEquals("nobody could have clicked", 2, failures.size)
+        assertEquals("nobody could have clicked", 3, failures.size)
     }
 }

@@ -4,6 +4,7 @@ import com.snowyghost.ovenlight.DownloadPolicy.ResponseAction
 import java.net.URI
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -77,5 +78,15 @@ class DownloadPolicyTests {
         assertEquals("no-break-space-thin.apk", DownloadPolicy.fileName("no\u00A0break\u2009space\u202Fthin.apk"))
         assertEquals("pdf-----.apk", DownloadPolicy.fileName("pdf\u2800\u3164\u115F\u1160\uFFA0.apk"))
         assertEquals("an ordinary space stays", "Recipes export.csv", DownloadPolicy.fileName("Recipes export.csv"))
+    }
+
+    /** The notice's name: the toast says "Couldn't download the file" when there is none. */
+    @Test
+    fun testAFailedDownloadIsNamedOnlyByARealFileName() {
+        assertEquals("report.pdf", DownloadPolicy.name("https://coach.example.com/exports/report.pdf"))
+        assertNull("no path", DownloadPolicy.name("https://coach.example.com/"))
+        assertNull(DownloadPolicy.name("https://coach.example.com"))
+        assertNull(DownloadPolicy.name("blob:https://coach.example.com/6f1c2b3a-0d4e-4f5a-9b8c-7d6e5f4a3b2c"))
+        assertNull(DownloadPolicy.name("data:text/csv;base64,YSxi"))
     }
 }

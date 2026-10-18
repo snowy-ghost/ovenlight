@@ -95,7 +95,7 @@ class PageDownloads(
     /** Downloads are under way; the pool keeps such a page (see [AppPage.isDownloading]). */
     private val busy: (Boolean) -> Unit = {},
     /** A download the person started on the page didn't make a file: says so, with its name. */
-    private val failed: (String) -> Unit = {},
+    private val failed: (String?) -> Unit = {},
     private val now: () -> Long = SystemClock::elapsedRealtime,
 ) : DownloadListener {
     private class Started(val type: String, val at: Long)
@@ -230,7 +230,7 @@ class PageDownloads(
 
     private fun fetch(url: String, userAgent: String?, disposition: String?, type: String?, length: Long) {
         var name: String? = null
-        val shownName = { name?.ifEmpty { null } ?: URLUtilCompat.guessFileName(url, disposition, type) }
+        val shownName = { name?.ifEmpty { null }?.let(DownloadPolicy::fileName) ?: DownloadPolicy.name(url) }
         if (jobs.size >= CONCURRENT) return refused(shownName(), "$CONCURRENT already under way")
         val client = client()
         val named: suspend () -> Boolean = {
@@ -271,24 +271,25 @@ class PageDownloads(
 
     /** An empty [name] names the file after its type. */
     private fun save(name: String, decode: () -> DataURL.Decoded?) {
-        if (jobs.size >= CONCURRENT) return refused(name, "$CONCURRENT already under way")
-        track({ name }) {
+        val shownName = { name.ifEmpty { null }?.let(DownloadPolicy::fileName) }
+        if (jobs.size >= CONCURRENT) return refused(shownName(), "$CONCURRENT already under way")
+        track(shownName) {
             val decoded = decode() ?: return@track null
             write(name.ifEmpty { guessedName(decoded.type) }, decoded.bytes.size.toLong(), decoded.bytes.inputStream())
         }
     }
 
     /** A download refused while its page is on screen and unlocked: the person hears of it. */
-    private fun refused(name: String, why: String) {
+    private fun refused(name: String?, why: String) {
         log("refused a download: $why")
-        failed(DownloadPolicy.fileName(name))
+        failed(name)
     }
 
     /**
      * Runs a download off the main thread, after [first] (on the page's own thread) says go; a
-     * file it makes waits for the sheet. One that fails says so under its [name].
+     * file it makes waits for the sheet. One that fails says so, under its [name] when it has one.
      */
-    private fun track(name: () -> String, first: suspend () -> Boolean = { true }, work: suspend () -> File?) {
+    private fun track(name: () -> String?, first: suspend () -> Boolean = { true }, work: suspend () -> File?) {
         val job = scope.launch {
             try {
                 if (!first()) return@launch
@@ -307,7 +308,7 @@ class PageDownloads(
                 log("a download failed: ${e.message}")
                 // Not one its page ended as it went (see cancel), whose call fails as it stops, nor
                 // over the lock or another app.
-                if (isActive && mayStart()) failed(DownloadPolicy.fileName(name()))
+                if (isActive && mayStart()) failed(name())
             }
         }
         jobs += job

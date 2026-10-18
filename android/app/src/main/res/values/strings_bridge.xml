@@ -18,4 +18,5 @@
 
     <!-- A download the person started made no file. -->
     <string name="download_failed">Couldn\'t download %1$s</string>
+    <string name="download_failed_file">Couldn\'t download the file</string>
 </resources>

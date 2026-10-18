@@ -287,6 +287,16 @@ object DownloadPolicy {
         return name.ifEmpty { "Download" }
     }
 
+    /**
+     * A file's name from its address, for the notice when it fails: the last part of an http or
+     * https path. A blob or data URL, or one with no path, has none.
+     */
+    fun name(url: String): String? {
+        val uri = NavigationPolicy.pageURI(url)?.takeIf { it.scheme?.lowercase() in setOf("http", "https") } ?: return null
+        val last = uri.path.orEmpty().substringAfterLast('/').ifEmpty { return null }
+        return fileName(last)
+    }
+
     /** Well under the 255 bytes ext4 and f2fs allow, as on iOS. */
     const val maxFileNameBytes = 200
 
