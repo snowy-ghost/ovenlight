@@ -1,10 +1,10 @@
 package com.snowyghost.ovenlight
 
 import java.net.URI
-import kotlin.test.assertFailsWith
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -79,7 +79,7 @@ class InviteLinkTests {
         // The old address is no longer an App Link, in a message or on its own.
         for (old in listOf("https://snowyghost.com/ovenlight/join#", "https://www.snowyghost.com/ovenlight/join#")) {
             assertEquals(old, InviteLink.ParseError.NotAnInvite, error(old + fields))
-            assertFailsWith<InviteLink.ParseError> { InviteLink.parse(text = "Open this link: ${old + fields}", allowLocalHTTP = false) }
+            assertThrows(InviteLink.ParseError::class.java) { InviteLink.parse(text = "Open this link: ${old + fields}", allowLocalHTTP = false) }
         }
     }
 
@@ -89,7 +89,7 @@ class InviteLinkTests {
         assertEquals("3f9a1c2b7e", InviteLink.parse(text = message, allowLocalHTTP = false).invite)
         val universal = "Riley shared Echo Board with you in Ovenlight. Open this link on your iPhone: $universalLink\n"
         assertEquals("3f9a1c2b7e", InviteLink.parse(text = universal, allowLocalHTTP = false).invite)
-        assertFailsWith<InviteLink.ParseError> { InviteLink.parse(text = "no link here", allowLocalHTTP = false) }
+        assertThrows(InviteLink.ParseError::class.java) { InviteLink.parse(text = "no link here", allowLocalHTTP = false) }
     }
 
     @Test

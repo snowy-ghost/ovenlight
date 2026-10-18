@@ -1,7 +1,6 @@
 package com.snowyghost.ovenlight
 
 import java.net.URI
-import kotlin.test.assertNotNull
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -61,7 +60,7 @@ class SupportMailTests {
     @Test
     fun testMailtoFallbackCarriesSubjectAndBody() {
         val draft = report(appName = "Echo & Notes+", host = "echo.example.com", sharedBy = "Riley", connection = null, version = "1.0 (1)")
-        val url = assertNotNull(draft.mailtoURL)
+        val url = checkNotNull(draft.mailtoURL)
         assertEquals("mailto", url.scheme)
         val (path, query) = url.rawSchemeSpecificPart.split('?', limit = 2)
         assertEquals("team@snowyghost.com", path)

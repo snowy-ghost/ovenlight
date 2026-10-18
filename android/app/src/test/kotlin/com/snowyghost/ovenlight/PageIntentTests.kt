@@ -2,8 +2,8 @@ package com.snowyghost.ovenlight
 
 import android.content.Intent
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import kotlin.test.assertNotNull
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -21,7 +21,7 @@ class PageIntentTests {
         val link = "intent://scan/#Intent;scheme=zxing;package=com.google.zxing.client.android;" +
             "component=com.google.zxing.client.android/.CaptureActivity;launchFlags=0x10000003;" +
             "S.browser_fallback_url=https%3A%2F%2Fevil.example%2F;S.output=content%3A%2F%2Fmedia%2F1;S.label=hello;i.count=3;end"
-        val intent = assertNotNull(intent(link))
+        val intent = checkNotNull(intent(link))
         assertEquals(Intent.ACTION_VIEW, intent.action)
         assertEquals("zxing://scan/", intent.dataString)
         assertEquals("com.google.zxing.client.android", intent.`package`)
@@ -37,7 +37,7 @@ class PageIntentTests {
 
     @Test
     fun testASelectorGoes() {
-        val intent = assertNotNull(intent("intent://example.com/#Intent;scheme=https;SEL;component=com.example/.Hidden;end"))
+        val intent = checkNotNull(intent("intent://example.com/#Intent;scheme=https;SEL;component=com.example/.Hidden;end"))
         assertNull(intent.selector)
         assertNull(intent.component)
     }
