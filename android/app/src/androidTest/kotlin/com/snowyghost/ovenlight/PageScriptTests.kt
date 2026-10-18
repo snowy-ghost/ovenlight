@@ -220,6 +220,41 @@ class PageScriptTests {
         assertEquals("in the app's own frames too", "[]", eval("JSON.stringify($names.filter(n => n in document.querySelector('iframe').contentWindow))"))
     }
 
+    /** WebRTC's UDP would go around the proxy, so it's gone from the page, its frames, and a fresh about:blank frame as it's made. */
+    @Test
+    fun testWebRTCIsRemoved() {
+        open(
+            """
+            <!doctype html><meta charset="utf-8"><title>page</title>
+            <iframe id="blank" src="about:blank"></iframe>
+            <iframe id="srcdoc" srcdoc="<p>inside</p>"></iframe>
+            <script>
+            const made = document.createElement("iframe");
+            made.id = "made";
+            document.body.appendChild(made);
+            window.madeAtOnce = typeof made.contentWindow.RTCPeerConnection;
+            const early = document.createElement("iframe");
+            early.id = "early";
+            early.src = "frame.html";
+            document.body.appendChild(early);
+            window.earlyAtOnce = typeof early.contentWindow.RTCPeerConnection;
+            </script>
+            """.trimIndent(),
+        )
+        val left = "(w => JSON.stringify(Object.getOwnPropertyNames(w).filter(n => n.startsWith('RTC') || n.startsWith('webkitRTC'))))"
+        assertEquals("[]", eval("$left(window)"))
+        assertEquals("undefined", eval("typeof RTCPeerConnection"))
+        assertEquals("as the page made it", "undefined", eval("window.madeAtOnce"))
+        waitFor("the frames load") { eval("document.getElementById('srcdoc').contentDocument.readyState") == "complete" }
+        for (id in listOf("blank", "srcdoc", "made")) assertEquals(id, "[]", eval("$left(document.getElementById('$id').contentWindow)"))
+        eval("document.body.appendChild(document.createElement('iframe')).id = 'fresh'")
+        assertEquals("a fresh about:blank frame", "undefined", eval("typeof document.getElementById('fresh').contentWindow.RTCPeerConnection"))
+        // The way left: a frame's first, empty document, reached before its src loads.
+        assertEquals("function", eval("window.earlyAtOnce"))
+        waitFor("its src loads") { eval("String(document.getElementById('early').contentDocument.title)") == "frame" }
+        assertEquals("[]", eval("$left(document.getElementById('early').contentWindow)"))
+    }
+
     /** WebView's media integrity check, which Play services answers with Ovenlight's identity, is off for every frame. */
     @Test
     fun testMediaIntegrityIsOff() {
