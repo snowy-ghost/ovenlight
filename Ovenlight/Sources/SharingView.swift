@@ -6,8 +6,18 @@ import SwiftUI
 /// Face ID (or the passcode) before anything that changes who can open an app. An iPhone
 /// with no passcode has nothing to ask for, and Ovenlight already opens without one there
 /// (see `LockManager`).
+@MainActor
 enum OwnerAuth {
+    /// The prompt is up. It makes Ovenlight inactive, which is no reason for the privacy
+    /// cover over the sheet that asked.
+    private(set) static var isAsking = false
+
     static func confirm(_ reason: String) async -> Bool {
+        isAsking = true
+        defer {
+            isAsking = false
+            OverlayPresenter.ownerAuthEnded()
+        }
         do {
             return try await LAContext().evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason)
         } catch {

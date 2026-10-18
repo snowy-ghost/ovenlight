@@ -242,11 +242,11 @@ struct RootView: View {
                 }
             default: break
             }
-            overlay.update(isLocked: lock.isLocked, isActive: phase == .active)
+            overlay.update(isLocked: lock.isLocked, isActive: Self.countsAsActive(phase))
             if phase == .active { Task { await lock.didBecomeActive() } }
         }
         .onChange(of: lock.isLocked) { _, locked in
-            overlay.update(isLocked: locked, isActive: scenePhase == .active)
+            overlay.update(isLocked: locked, isActive: Self.countsAsActive(scenePhase))
             if locked { WebViewPool.shared.stopCapture() }
             // Only the page on top shows its files. One a pending link opens shows them as it
             // appears; the page it replaces is going, and its files wait for it.
@@ -287,6 +287,13 @@ struct RootView: View {
         } message: { notice in
             Text(notice.message)
         }
+    }
+
+    /// For the privacy cover: Face ID's prompt for an owner's change makes Ovenlight inactive,
+    /// with no app switcher to hide from, so the sheet that asked stays in sight. In the
+    /// background the cover is always up.
+    private static func countsAsActive(_ phase: ScenePhase) -> Bool {
+        phase == .active || phase == .inactive && OwnerAuth.isAsking
     }
 
     @ViewBuilder
@@ -355,6 +362,18 @@ final class OverlayPresenter: ObservableObject {
         window.rootViewController = host
         self.window = window
         apply()
+    }
+
+    /// Face ID's prompt for an owner's change held the cover back (see `RootView`). One the
+    /// person left for the app switcher leaves Ovenlight inactive, with no phase change to
+    /// bring the cover: it goes up a moment later, once a prompt that succeeded has had time
+    /// to make Ovenlight active again.
+    static func ownerAuthEnded() {
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(500))
+            guard let installed, !OwnerAuth.isAsking, UIApplication.shared.applicationState == .inactive else { return }
+            installed.update(isLocked: installed.isLocked, isActive: false)
+        }
     }
 
     func update(isLocked: Bool, isActive: Bool) {
