@@ -111,6 +111,21 @@ enum Claim {
 
     static let path = "/__ovenlight/claim"
 
+    /// How long a claim keeps trying, in all.
+    static let budget: Duration = .seconds(25)
+
+    /// One try's timeout: 8 s, or what's left of the budget, but never under 2 s.
+    static func tryTimeout(left: Duration) -> Duration {
+        max(min(left, .seconds(8)), .seconds(2))
+    }
+
+    /// The wait before the next try, doubling from half a second up to 4 s, and no longer
+    /// than what's left of the budget. Nil once it's spent.
+    static func wait(after attempt: Int, left: Duration) -> Duration? {
+        guard left > .zero else { return nil }
+        return min(.milliseconds(500) * (1 << min(attempt, 3)), left)
+    }
+
     enum Landing: Equatable {
         case inNetwork
         /// The node couldn't say (it was just replaced, or didn't answer): try again later.
@@ -430,26 +445,31 @@ final class GuestManager: ObservableObject {
     }
 
     /// Posts the invite's key to the app's connector. Right after joining, the connector
-    /// may not know the device yet, so connection failures and "Unknown caller" retry, up to
-    /// `claimAttempts` times, about 25 s of waits between them. Counted in attempts, not
-    /// time, so a suspension in the middle doesn't use them up, and each attempt takes a new
-    /// session from the node, which may have been replaced meanwhile.
+    /// may not know the device yet, so connection failures and "Unknown caller" retry for up
+    /// to `Claim.budget` in all (docs/protocol.md), each try with a new session from the node,
+    /// which may have been replaced meanwhile. The budget is kept on a clock that stops while
+    /// the phone sleeps, and a try always follows a wait, so a suspension by itself doesn't
+    /// fail the claim.
     private func claim(_ invite: InviteLink, through node: MembershipNode) async -> Claim.Step {
-        for attempt in 0..<Self.claimAttempts {
-            if attempt > 0 { try? await Task.sleep(for: .seconds(min(0.5 * pow(2, Double(attempt - 1)), 4))) }
-            guard let session = node.makeSession(timeout: 8) else { continue }
-            defer { session.invalidateAndCancel() }
-            if let (data, response) = try? await session.data(for: Claim.request(for: invite)),
-               let http = response as? HTTPURLResponse {
-                let step = Claim.interpret(status: http.statusCode, header: http.value(forHTTPHeaderField: ConnectorError.header), body: data)
-                if step != .retry { return step }
-                log.info("claim answered \(http.statusCode), trying again")
+        let clock = SuspendingClock()
+        let deadline = clock.now.advanced(by: Claim.budget)
+        var attempt = 0
+        while true {
+            let timeout = Claim.tryTimeout(left: clock.now.duration(to: deadline)) / .seconds(1)
+            if let session = node.makeSession(timeout: timeout, resource: timeout) {
+                defer { session.invalidateAndCancel() }
+                if let (data, response) = try? await session.data(for: Claim.request(for: invite)),
+                   let http = response as? HTTPURLResponse {
+                    let step = Claim.interpret(status: http.statusCode, header: http.value(forHTTPHeaderField: ConnectorError.header), body: data)
+                    if step != .retry { return step }
+                    log.info("claim answered \(http.statusCode), trying again")
+                }
             }
+            guard let wait = Claim.wait(after: attempt, left: clock.now.duration(to: deadline)) else { return .retry }
+            try? await Task.sleep(for: wait, clock: clock)
+            attempt += 1
         }
-        return .retry
     }
-
-    static let claimAttempts = 9
 
     // MARK: Access ending
 

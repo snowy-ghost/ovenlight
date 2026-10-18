@@ -355,6 +355,24 @@ final class GuestCleanupTests: XCTestCase {
         XCTAssertFalse(GuestCleanup.isRegistering(membership("a", claiming: [echo]), with: "i0"), "a joined node keeps the owner's apps")
     }
 
+    /// A claim keeps trying for 25 s in all (docs/protocol.md): waits double from half a
+    /// second to 4 s, and neither a wait nor a try's timeout runs past what's left.
+    func testAClaimTriesWithinItsBudget() {
+        var left = Claim.budget
+        var waits: [Duration] = []
+        var attempt = 0
+        while let wait = Claim.wait(after: attempt, left: left) {
+            waits.append(wait)
+            left -= wait
+            attempt += 1
+        }
+        XCTAssertEqual(Array(waits.prefix(5)), [.milliseconds(500), .seconds(1), .seconds(2), .seconds(4), .seconds(4)])
+        XCTAssertEqual(waits.reduce(.zero, +), Claim.budget, "the waits alone end at the budget")
+        XCTAssertEqual(Claim.tryTimeout(left: .seconds(20)), .seconds(8))
+        XCTAssertEqual(Claim.tryTimeout(left: .seconds(5)), .seconds(5), "no longer than what's left")
+        XCTAssertEqual(Claim.tryTimeout(left: .zero), .seconds(2), "the try after a last wait still gets a moment")
+    }
+
     func testClaimAnswerNamesAreCleanedLikeTheInvites() {
         let invite = InviteLink(control: URL(string: "https://c.example")!, key: "k", owner: "Riley", app: "echo-board", invite: "i",
                                 host: echo, name: "Echo Board", to: "Sam")
