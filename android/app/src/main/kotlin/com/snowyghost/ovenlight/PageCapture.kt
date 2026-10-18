@@ -34,9 +34,9 @@ import kotlinx.coroutines.launch
  * stop). WebView has no prompt of its own, so Ovenlight asks, after Android's own runtime
  * permission, and remembers an Allow only for the page's current document. WebView can't stop a
  * stream either: on lock and on closing to the launcher the page script stops the tracks it
- * kept, and half a second later Ovenlight asks the system whether it still records or holds a
- * camera. If so, a page granted capture since its last load is destroyed, since a page can
- * capture where the script doesn't reach. Main thread only.
+ * kept, and Ovenlight asks the system whether it still records or holds a camera until it lets
+ * go, for up to two seconds. If it still does, a page granted capture since its last load is
+ * destroyed, since a page can capture where the script doesn't reach. Main thread only.
  */
 @SuppressLint("RequiresFeature") // WebViewSetup is Ready only once it found every feature used here.
 class PageCapture(
@@ -128,11 +128,14 @@ class PageCapture(
         dropPending()
         if (!granted) return
         scope.launch {
-            delay(CHECK_AFTER_MILLIS)
-            if (!isOnScreen() && stillCapturing()) {
-                OvenlightLog.w("${app.host}: still capturing after the stop, so its view goes")
-                destroy()
+            // A camera takes a moment to close once its tracks stop (half a second on the
+            // emulator), and the system lists it until then.
+            repeat((STOP_WAIT_MILLIS / CHECK_EVERY_MILLIS).toInt()) {
+                delay(CHECK_EVERY_MILLIS)
+                if (isOnScreen() || !stillCapturing()) return@launch
             }
+            OvenlightLog.w("${app.host}: still capturing after the stop, so its view goes")
+            destroy()
         }
     }
 
@@ -154,7 +157,8 @@ class PageCapture(
         host?.takeIf { Discovery.normalizedHost(it) != Discovery.normalizedHost(app.host) }
 
     companion object {
-        const val CHECK_AFTER_MILLIS = 500L
+        const val CHECK_EVERY_MILLIS = 250L
+        const val STOP_WAIT_MILLIS = 2_000L
 
         fun typeOf(resources: Set<String>): MediaCaptureType? {
             val audio = PermissionRequest.RESOURCE_AUDIO_CAPTURE in resources
