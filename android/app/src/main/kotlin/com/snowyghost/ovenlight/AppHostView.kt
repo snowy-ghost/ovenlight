@@ -152,6 +152,7 @@ private fun AppPageView(model: AppModel, page: AppPage, onClose: () -> Unit) {
     val showing = when {
         error != null -> Cover.Error
         loaded -> Cover.None
+        gate == AppLoadGate.Offline -> Cover.Offline
         action != null -> Cover.Node
         gate == AppLoadGate.Unreachable -> Cover.CantReach
         else -> Cover.Placeholder
@@ -179,6 +180,7 @@ private fun AppPageView(model: AppModel, page: AppPage, onClose: () -> Unit) {
                     Cover.None -> Unit
                     Cover.Placeholder -> LaunchPlaceholder(app, icon)
                     Cover.CantReach -> LoadErrorView(ConnectionCopy.cantReach(app.name), ConnectionCopy.cantReachDetail, page::reload, onClose)
+                    Cover.Offline -> LoadErrorView(ConnectionCopy.offline, ConnectionCopy.offlineDetail, page::reload, onClose)
                     Cover.Error -> LoadErrorView(stringResource(R.string.app_cant_open, app.name), error.orEmpty(), page::reload, onClose)
                     Cover.Node -> action?.let {
                         NodeActionCard(
@@ -213,7 +215,7 @@ private fun AppPageView(model: AppModel, page: AppPage, onClose: () -> Unit) {
     DownloadSheet(model, page)
 }
 
-private enum class Cover { None, Placeholder, CantReach, Error, Node }
+private enum class Cover { None, Placeholder, CantReach, Offline, Error, Node }
 
 /** The status bar's icons over [band], the color Ovenlight paints behind them. */
 @Composable

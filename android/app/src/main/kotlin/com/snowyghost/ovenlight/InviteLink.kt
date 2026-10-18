@@ -295,8 +295,10 @@ internal fun removingPercentEncoding(text: String): String? {
             bytes.write(high * 16 + low)
             i += 3
         } else {
-            bytes.write(c.toString().toByteArray(Charsets.UTF_8))
-            i++
+            // The run up to the next escape whole, so a character outside the BMP keeps both halves.
+            val end = text.indexOf('%', i).let { if (it < 0) text.length else it }
+            bytes.write(text.substring(i, end).toByteArray(Charsets.UTF_8))
+            i = end
         }
     }
     return try {

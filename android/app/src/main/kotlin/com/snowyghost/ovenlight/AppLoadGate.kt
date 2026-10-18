@@ -21,6 +21,9 @@ enum class AppLoadGate {
 
     /** The host didn't answer in time. */
     Unreachable,
+
+    /** Android only: the phone has no working network, so nothing was tried; it tries again when one comes. */
+    Offline,
     ;
 
     enum class Event {
@@ -37,6 +40,12 @@ enum class AppLoadGate {
 
         /** The app's computer, listed offline when the gate gave up, answered a quiet retry. */
         Woke,
+
+        /** Android only: the phone has no working network. */
+        PhoneOffline,
+
+        /** Android only: the phone has a working network again. */
+        PhoneOnline,
     }
 
     /** Written as iOS writes the gate, for Report a Problem's Opening line. */
@@ -46,8 +55,11 @@ enum class AppLoadGate {
         event == Event.Retry -> Waiting
         this == Ready && event == Event.LoadFailed -> Waiting
         this == Unreachable && event == Event.Woke -> Ready
-        // A loaded page stays put through node restarts; a gate that gave up waits for Retry.
-        this == Ready || this == Unreachable -> this
+        this == Offline && event == Event.PhoneOnline -> Waiting
+        // A loaded page stays put through node restarts; a gate that gave up waits for Retry,
+        // and one that found the phone offline for Retry or a network.
+        this == Ready || this == Unreachable || this == Offline -> this
+        event == Event.PhoneOffline -> Offline
         this == Waiting && event == Event.NodeReady -> Probing
         this == Probing && event == Event.NodeNotReady -> Waiting
         this == Probing && event == Event.Reached -> Ready
@@ -95,6 +107,8 @@ object ConnectionCopy {
     fun connecting(to: String) = "Connecting to $to…"
     fun cantReach(app: String) = "Can't reach $app"
     const val cantReachDetail = "Its computer may be asleep or offline. Try again in a moment."
+    const val offline = "You're offline"
+    const val offlineDetail = "Connect to Wi-Fi or mobile data, and Ovenlight tries again."
     fun notResponding(app: String) = "$app isn't responding on its computer right now. Try again in a moment."
     const val pageFailed = "This page couldn't load. Try again in a moment."
     fun signIn(toOpen: String) = "Sign in to open $toOpen"

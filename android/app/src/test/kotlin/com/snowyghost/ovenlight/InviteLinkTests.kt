@@ -202,4 +202,11 @@ class InviteLinkTests {
         )
         for (message in errors.map { it.message }) CopyRules.assertNeutral(message)
     }
+
+    /** Android only: a character outside the BMP, written raw, decodes whole, as Swift's removingPercentEncoding does. */
+    @Test
+    fun testARawEmojiSurvivesDecoding() {
+        assertEquals("\uD83C\uDF73 Pantry", removingPercentEncoding("\uD83C\uDF73%20Pantry"))
+        assertEquals("Riley \uD83C\uDF73", parse(connectorLink.replace("owner=Riley", "owner=Riley+\uD83C\uDF73")).owner)
+    }
 }

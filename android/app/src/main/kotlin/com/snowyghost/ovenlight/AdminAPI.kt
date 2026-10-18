@@ -469,11 +469,6 @@ data class AdminFeedback(
     }
 }
 
-/** A request to the admin API, for the OkHttp layer to send through the owner's node. */
-class AdminRequest(val url: URI, val method: String, val headers: Map<String, String>, val body: ByteArray?) {
-    fun header(name: String): String? = headers.entries.firstOrNull { it.key.equals(name, ignoreCase = true) }?.value
-}
-
 object AdminAPI {
     const val port = 8443
     const val header = "X-Ovenlight-Request"
@@ -513,13 +508,15 @@ object AdminAPI {
      * Builds a request. Anything that changes something carries the header the connector
      * requires, which a web page can't add without a CORS preflight.
      */
-    fun request(host: String, method: String, path: String, body: Map<String, String>? = null): AdminRequest? {
+    fun request(host: String, method: String, path: String, body: Map<String, String>? = null): Request? {
         val url = url(host, path) ?: return null
-        val headers = mutableMapOf<String, String>()
-        if (method != "GET") headers[header] = "1"
-        if (body != null) headers["Content-Type"] = "application/json"
         val bytes = body?.let { ovenlightJSON.encodeToString(MapSerializer(String.serializer(), String.serializer()), it).toByteArray() }
-        return AdminRequest(url, method, headers, bytes)
+        return runCatching {
+            val request = Request.Builder().url(url.toString()).method(method, bytes?.toRequestBody())
+            if (method != "GET") request.header(header, "1")
+            if (body != null) request.header("Content-Type", "application/json")
+            request.build()
+        }.getOrNull()
     }
 
     /** [base] plus [component] percent-encoded as one path segment, its `/` escaped too. */
@@ -616,7 +613,7 @@ class AdminClient(val host: String, private val session: Send) {
      * never sent twice.
      */
     suspend fun raw(method: String, path: String, body: Map<String, String>? = null): ByteArray {
-        val request = AdminAPI.request(host, method, path, body)?.let(::okhttp) ?: throw AdminError.Unreachable
+        val request = AdminAPI.request(host, method, path, body) ?: throw AdminError.Unreachable
         var attempt = 0
         while (true) {
             attempt += 1
@@ -639,13 +636,6 @@ class AdminClient(val host: String, private val session: Send) {
             }
         }
     }
-
-    private fun okhttp(request: AdminRequest): Request? = runCatching {
-        Request.Builder().url(request.url.toString()).apply {
-            request.headers.forEach { (name, value) -> header(name, value) }
-            method(request.method, request.body?.toRequestBody())
-        }.build()
-    }.getOrNull()
 
     suspend fun apps(): List<AdminApp> = send("GET", "/v1/apps") { AdminAPI.decodeEach(AdminApp.decoder, it).elements }
     suspend fun guests(): AdminGuestList = send("GET", "/v1/guests") { AdminAPI.decode(AdminGuestList.decoder, it) }

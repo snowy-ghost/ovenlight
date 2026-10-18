@@ -54,7 +54,7 @@
 # largest font and three-button navigation leave the same page working; with Wi-Fi off and
 # back on it still reaches Recipes; after more than a minute at Home the nodes have closed and
 # the page works again once back; and after Android ends the process in the background, Recents
-# brings Ovenlight back locked, with no app open, and Recipes opens again.
+# brings Ovenlight back unlocked within the lock's time, with no app open, and Recipes opens again.
 # perf records cold start over ten launches, memory once four apps have opened (the pool keeps
 # two pages live on a phone of 4 GB or less, four above), that opening, closing and rotating
 # leaves one activity and no more web views than the pool keeps, and, at Home, that
@@ -1418,11 +1418,11 @@ EOF
   a shell input keyevent KEYCODE_APP_SWITCH; sleep 3
   size=$(a shell wm size | tail -1 | sed 's/.*: //' | tr -d '\r'); w=${size%x*}; h=${size#*x}
   a shell input tap $((w / 2)) $((h / 2)); sleep 3
-  locked || fail "Recents brought Ovenlight back without the lock: $(screen_text | tr '\n' '|')"
-  unlock_now
+  # Back within the lock's minute: the time it went to the background outlives the process.
+  ! locked || fail "Recents brought Ovenlight back locked within the lock's time: $(screen_text | tr '\n' '|')"
   await_text 60 Recipes Pantry || { shot conditions-failed; fail "no launcher after the restart: $(screen_text | tr '\n' '|')"; }
   ! screen_text | grep -qxF "Recipe Box conditions" || fail "the page came back from the ended process"
-  note "back from Recents locked, then the launcher with no app open"
+  note "back from Recents unlocked, within the lock's time, to the launcher with no app open"
   tap_text Recipes
   await_text 40 "Recipe Box conditions" || { shot conditions-failed; fail "Recipes didn't open after the restart: $(screen_text | tr '\n' '|')"; }
   fetches_within "after the restart" 30

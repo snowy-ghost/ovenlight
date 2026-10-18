@@ -491,10 +491,8 @@ class PageEdges(
         }) { result ->
             lifecycle.excursionEnded()
             val picked = files(result) ?: return@launchOnce answer.dropped()
-            // After the unlock: a return from a picker may lock first.
             scope.launch {
-                val state = activity.lifecycle.currentStateFlow.first { it.isAtLeast(Lifecycle.State.STARTED) || it == Lifecycle.State.DESTROYED }
-                if (state != Lifecycle.State.DESTROYED) isLocked.first { !it }
+                afterReturnAndUnlock(activity, isLocked)
                 withContext(Dispatchers.IO) { picked.forEach { ready(activity, it) } }
                 answer(picked)
             }
@@ -640,6 +638,16 @@ class PageEdges(
             return intent
         }
     }
+}
+
+/**
+ * Waits for Ovenlight's return from a picker, which may lock first as it starts again, then for
+ * the unlock, even when the activity that opened the picker went meanwhile: a picked or saved
+ * file never moves while Ovenlight is locked.
+ */
+internal suspend fun afterReturnAndUnlock(activity: ComponentActivity, isLocked: StateFlow<Boolean>) {
+    activity.lifecycle.currentStateFlow.first { it.isAtLeast(Lifecycle.State.STARTED) || it == Lifecycle.State.DESTROYED }
+    isLocked.first { !it }
 }
 
 /**

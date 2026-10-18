@@ -5,6 +5,7 @@ import java.net.URI
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -301,15 +302,18 @@ class AppRegistry(
             SavedJSON.write(png, File(iconsDirectory, name))
         } catch (e: Exception) {
             SavedJSON.problem("icons: couldn't save: $e")
+            // Without its file the app has no icon, and the next look fetches it again.
+            return
         }
         update(id) { it.copy(iconFile = name) }
         save()
         icons.value += id to ((icons.value[id] ?: 0) + 1)
     }
 
-    suspend fun refreshAllMissingIcons() {
-        for (app in apps) {
-            if (app.iconFile == null) refreshMetadata(app.id)
+    /** Each app's missing icon, once [reachable] says its node can carry the fetch. */
+    suspend fun refreshAllMissingIcons(reachable: suspend (WebApp) -> Boolean) = coroutineScope {
+        for (app in apps.filter { it.iconFile == null }) {
+            launch { if (reachable(app) && apps.firstOrNull { it.id == app.id }?.iconFile == null) refreshMetadata(app.id) }
         }
     }
 

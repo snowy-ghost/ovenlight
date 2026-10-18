@@ -184,4 +184,26 @@ class AppLifecycleTests {
         assertEquals("still inside its five minutes", 0, r.closes)
         assertFalse(r.paused)
     }
+
+    /** A close from an earlier time away says nothing about the next one. */
+    @Test
+    fun testAnExcursionFrozenPastSixMinutesClosesAfterAnEarlierClose() = runTest {
+        val r = Recorder()
+        var now = 0L
+        val life = lifecycle(r) { now }
+        life.activityStopped()
+        now = 61_000
+        advanceTimeBy(61_000)
+        assertEquals(1, r.closes)
+        life.activityStarted()
+        advanceTimeBy(2_000)
+        life.beginExcursion()
+        life.activityStopped()
+        // Frozen: seven minutes pass on the clock while no timer fires.
+        now += 7 * 60_000
+        life.activityStarted()
+        advanceTimeBy(2_000)
+        assertEquals("the close came due at six minutes", 2, r.closes)
+        assertEquals(2, r.closed)
+    }
 }

@@ -35,6 +35,9 @@ class AppLifecycle(
 
     /** Away, by the leaving rules: an excursion's first five minutes don't count. */
     val isAway: Boolean get() = leftAt != null
+
+    /** On a trip out that hands something back, within its five minutes. */
+    val inExcursion: Boolean get() = excursionStartedAt != null && leftAt == null
     private var away: Job? = null
 
     /** Ovenlight is about to send the person somewhere that hands a result back. */
@@ -67,6 +70,8 @@ class AppLifecycle(
     /** The activity stopped, not for a configuration change. */
     fun activityStopped() {
         away?.cancel()
+        // A close from an earlier time away says nothing about this one.
+        closing = false
         val excursion = excursionStartedAt
         if (excursion == null) {
             leave(from = now())
@@ -81,7 +86,6 @@ class AppLifecycle(
 
     private fun leave(from: Long) {
         leftAt = from
-        closing = false
         setAway(true)
         away = scope.launch {
             // A frozen process wakes here late or not at all, so the clock decides, not the timer.

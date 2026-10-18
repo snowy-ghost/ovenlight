@@ -48,11 +48,13 @@ class PageDownloadsTests {
             .apply { if (code in 300..399) header("Location", "https://pantry.tail0000.ts.net/secret") }
             .header("Content-Disposition", "attachment; filename=\"export.csv\"").body(body.toResponseBody()).build()
     }.build()
+    /** The names of downloads that said they failed. */
+    private val failures = java.util.concurrent.CopyOnWriteArrayList<String>()
     // Made in the test, once the folder is.
     private val downloads by lazy {
         PageDownloads(
             app, host, folder, scope, mayStart = { onScreen && !locked }, isLocked = { locked },
-            client = { server }, freeBytes = { free }, now = { clock },
+            client = { server }, freeBytes = { free }, failed = { failures += it }, now = { clock },
         )
     }
 
@@ -251,5 +253,25 @@ class PageDownloadsTests {
         }
         assertEquals(PageDownloads.WAITING_FILES, shelf(PageDownloads.WAITING_FILES + 1).size)
         assertEquals("the refused file left nothing behind", PageDownloads.WAITING_FILES, folder.listFiles()!!.size)
+    }
+
+    /** Android only: a download the person started that makes no file says so, under its name; a hidden page's attempt doesn't. */
+    @Test
+    fun testADownloadThatMakesNoFileSaysSo() {
+        answer = 302 to "elsewhere"
+        start("https://$host/export.csv")
+        repeat(200) { if (failures.isEmpty()) Thread.sleep(10) }
+        assertEquals(listOf("export.csv"), failures)
+
+        free = PageDownloads.FREE_SPACE_FLOOR + 4
+        downloads.clicked("data:text/plain,hello", "a.txt", host)
+        start("data:text/plain,hello")
+        repeat(200) { if (failures.size < 2) Thread.sleep(10) }
+        assertEquals(listOf("export.csv", "a.txt"), failures)
+
+        onScreen = false
+        start("https://$host/export.csv")
+        Thread.sleep(100)
+        assertEquals("nobody could have clicked", 2, failures.size)
     }
 }

@@ -42,8 +42,23 @@ class LockManager(
      * lock.
      */
     private val now: () -> Long,
+    /** Android only: the phone's count of boots (Settings.Global.BOOT_COUNT), since [now] starts again at each. */
+    private val bootCount: () -> Int = { 0 },
 ) {
-    private val locked = MutableStateFlow(hasSavedData())
+    /**
+     * When Ovenlight went to the background unlocked, kept on disk: Android ends a background
+     * Ovenlight within minutes, and the next launch locks by the same rule as a return. Gone
+     * after a reboot, which always locks.
+     */
+    private var backgroundedAt: Long? = store.getString(BACKGROUNDED_AT_KEY)?.split(' ')
+        ?.takeIf { it.size == 2 && it[0].toIntOrNull() == bootCount() }?.get(1)?.toLongOrNull()
+        set(value) {
+            field = value
+            if (value == null) store.remove(BACKGROUNDED_AT_KEY) else store.putString(BACKGROUNDED_AT_KEY, "${bootCount()} $value")
+        }
+
+    /** A launch locks unless Ovenlight went to the background unlocked within the timeout. */
+    private val locked = MutableStateFlow(hasSavedData() && (backgroundedAt == null || lockIsDue))
     val isLocked: StateFlow<Boolean> = locked
 
     private val authenticating = MutableStateFlow(false)
@@ -59,8 +74,6 @@ class LockManager(
     var lockAfterSeconds: Int
         get() = store.getInt(LOCK_AFTER_KEY, DEFAULT_LOCK_AFTER)
         set(value) = store.putInt(LOCK_AFTER_KEY, value)
-
-    private var backgroundedAt: Long? = null
 
     /**
      * The prompt opens by itself at launch and on each return from the background, never
@@ -145,6 +158,7 @@ class LockManager(
 
     companion object {
         const val LOCK_AFTER_KEY = "lockAfterSeconds"
+        const val BACKGROUNDED_AT_KEY = "lockBackgroundedAt"
         const val DEFAULT_LOCK_AFTER = 60
     }
 }
