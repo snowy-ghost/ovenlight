@@ -58,6 +58,7 @@ struct JoinFlowView: View {
 private struct InviteEntryView: View {
     let found: (Result<InviteLink, InviteLink.ParseError>) -> Void
 
+    @EnvironmentObject private var lock: LockManager
     @State private var text = ""
     @State private var error: String?
     @State private var scanning = false
@@ -120,6 +121,8 @@ private struct InviteEntryView: View {
                 scanning = false
             }
         }
+        // The camera stops when the lock comes: nothing runs under it.
+        .onChange(of: lock.isLocked) { _, locked in if locked { scanning = false } }
     }
 
     private func use(_ text: String) {

@@ -44,6 +44,10 @@ struct AppChrome: View {
     @State private var autoHides = true
     // Known from the start, so a loaded app reopened while the tip is due doesn't hide first.
     @State private var tipShowing = ChromeTip().shouldDisplay
+    /// The tip's popover is up. However it goes, by its close button or a tap outside, the
+    /// tip is closed for good: a popover tapped away would otherwise leave the tip due and the
+    /// pill out for the rest of the session.
+    @State private var tipPresented = false
     @State private var revealCount = 0
     private let tip = ChromeTip()
 
@@ -85,10 +89,15 @@ struct AppChrome: View {
                     tipShowing = true
                     // While the tip is due, the chrome shows, so the tip can point at it.
                     if !isShown { withAnimation(.spring(duration: 0.35, bounce: 0.2)) { isShown = true } }
+                    tipPresented = true
                 } else {
                     tipShowing = false
+                    tipPresented = false
                 }
             }
+        }
+        .onChange(of: tipPresented) { _, presented in
+            if !presented, tipShowing { tip.invalidate(reason: .tipClosed) }
         }
     }
 
@@ -153,7 +162,12 @@ struct AppChrome: View {
         // Stops growing where the system's bars do. The tip, outside the cap, keeps the
         // reader's size.
         .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
-        .popoverTip(tip, arrowEdge: .top)
+        .popover(isPresented: $tipPresented, arrowEdge: .top) {
+            TipView(tip)
+                .tipBackground(.clear)
+                .frame(idealWidth: 360)
+                .presentationCompactAdaptation(.popover)
+        }
         .frame(maxWidth: 320)
     }
 

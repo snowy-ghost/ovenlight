@@ -107,7 +107,8 @@ struct LauncherView: View {
         let app = SharingFixture.apply(to: app)
         #endif
         let info = sharing.info(for: app)
-        let plan = AppMenuPlan.plan(for: app, admin: info.map { ($0.app, $0.machine.guests) })
+        let plan = AppMenuPlan.plan(for: app, admin: info.map { ($0.app, $0.machine.guests) },
+                                    ownersApps: registry.apps.filter { $0.isShared && $0.membershipID == app.membershipID }.count)
         Section {
             Button { router.open(app) } label: { Label("Open", systemImage: "arrow.up.forward.app") }
             Button { renameText = app.name; renaming = app } label: { Label("Rename", systemImage: "pencil") }

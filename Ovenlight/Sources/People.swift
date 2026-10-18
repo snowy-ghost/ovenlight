@@ -46,14 +46,19 @@ struct SharingPeopleList: View {
     var body: some View {
         let groups = groups
         List(selection: $selection) {
-            if let error {
-                Section { Label(error, systemImage: "exclamationmark.triangle.fill").labelStyle(.warning) }
+            // With no one to list, the problem shows in the list's place instead.
+            if let error = error ?? (groups.isEmpty && sharing.problem != nil ? nil : sharing.machines.lazy.compactMap(\.problem).first) {
+                Section { ProblemLabel(error) }
                     .ovenlightRows()
             }
             if groups.isEmpty {
-                ContentUnavailableView("No One Yet", systemImage: "person.2",
-                                       description: Text("People you share apps with appear here."))
-                    .ovenlightRows()
+                if let problem = sharing.problem {
+                    SharingProblemView(problem: problem)
+                } else {
+                    ContentUnavailableView("No One Yet", systemImage: "person.2",
+                                           description: Text("People you share apps with appear here."))
+                        .ovenlightRows()
+                }
             }
             ForEach(groups) { group in
                 Section {
@@ -214,8 +219,8 @@ struct SharingPersonView: View {
 
     var body: some View {
         List {
-            if let error {
-                Section { Label(error, systemImage: "exclamationmark.triangle.fill").labelStyle(.warning) }
+            if let error = error ?? machine?.problem {
+                Section { ProblemLabel(error) }
                     .ovenlightRows()
             }
             if let machine, let person {
@@ -259,6 +264,8 @@ struct SharingPersonView: View {
                     }
                 }
                 .ovenlightRows()
+            } else if let problem = sharing.problem {
+                SharingProblemView(problem: problem)
             } else if !working {
                 ContentUnavailableView("Not Shared Anymore", systemImage: "person.slash")
                     .ovenlightRows()

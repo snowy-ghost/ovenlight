@@ -529,6 +529,8 @@ final class OwnerSharing: ObservableObject {
         var apps: [AdminApp]
         var guests = AdminGuestList()
         var feedback: [AdminFeedback] = []
+        /// Why the last refresh couldn't read this machine, which then shows as it was before.
+        var problem: String?
         var id: String { adminHost }
     }
 
@@ -628,9 +630,11 @@ final class OwnerSharing: ObservableObject {
         var covered = Set<String>()
         var asked = Set<String>()
         var failures: [String] = []
+        var failedHosts: [String: String] = [:]
         func failed(_ host: String, _ error: AdminError) {
             log.info("admin \(host, privacy: .public): \(String(describing: error), privacy: .public)")
             failures.append(error.message)
+            failedHosts[host] = error.message
         }
         var round = Self.firstRound(candidates, known: machines)
         while !round.isEmpty {
@@ -666,10 +670,23 @@ final class OwnerSharing: ObservableObject {
             }
             round = candidates.filter { !covered.contains($0) && !asked.contains($0) }
         }
-        machines = found
+        machines = Self.keepingFailed(found, failed: failedHosts, previous: machines)
         // A pass that only failed doesn't count as fresh: the next menu asks again.
         if !found.isEmpty || failures.isEmpty { lastRefresh = .now }
         problem = found.isEmpty ? failures.first : nil
+    }
+
+    /// This pass's machines, then each machine from before whose host failed this time and
+    /// no answer covers, as it was, with why: a computer that didn't answer once keeps its apps
+    /// and people rather than showing none.
+    nonisolated static func keepingFailed(_ found: [Machine], failed: [String: String], previous: [Machine]) -> [Machine] {
+        let covered = Set(found.flatMap { [$0.adminHost] + $0.apps.compactMap(\.host) })
+        return found + previous.compactMap { machine in
+            guard let problem = failed[machine.adminHost], !covered.contains(machine.adminHost) else { return nil }
+            var kept = machine
+            kept.problem = problem
+            return kept
+        }
     }
 
     /// Sends one request to each host at once.

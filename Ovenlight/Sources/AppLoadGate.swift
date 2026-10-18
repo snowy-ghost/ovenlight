@@ -36,6 +36,23 @@ enum AppLoadGate: Equatable {
     static let reachTimeout: TimeInterval = 10
     /// How long to wait for the node itself before giving up on this app.
     static let nodeTimeout: TimeInterval = 30
+    /// When an app waiting on a node that isn't ready gives up: `nodeTimeout` after the node
+    /// turned busy (starting, connecting, retrying), counted again after each wait for the
+    /// owner at sign-in or approval, so a slow sign-in doesn't end on Can't Reach. A moment of
+    /// ready between retries doesn't start it over.
+    static func nodeDeadline(busySince: inout Date?, state: NodeState, now: Date) -> Date? {
+        switch state {
+        case .needsLogin, .awaitingApproval:
+            busySince = nil
+            return nil
+        default:
+            guard state.isBusy else { return nil }
+        }
+        let since = busySince ?? now
+        busySince = since
+        return since.addingTimeInterval(nodeTimeout)
+    }
+
     /// Between quiet retries of an app whose computer is listed offline.
     static let quietRetryInterval: TimeInterval = 3
 
@@ -130,7 +147,7 @@ enum ConnectionCopy {
     static let feedbackNetwork = "Ovenlight couldn’t reach the app’s computer. Try again in a moment."
     static let reportProblem = "Report a Problem"
     static func leaveApps(_ owner: String) -> String { "Leave \(owner)’s Apps" }
-    static func leaveTitle(_ owner: String) -> String { "Leave \(owner)’s apps?" }
+    static func leaveTitle(_ owner: String) -> String { "Leave \(owner)’s Apps?" }
     static func leaveDetail(_ owner: String) -> String {
         "\(owner)’s apps and everything they stored on this iPhone will be removed. You’ll need a new invite from \(owner) to open them again."
     }

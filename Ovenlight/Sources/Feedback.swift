@@ -170,6 +170,7 @@ struct FeedbackSheet: View {
                 }
             }
             .interactiveDismissDisabled(sending || hasDraft)
+            .holdingLinks(sending || hasDraft)
             .background(DismissAttempt { if hasDraft, !sending { confirmingDiscard = true } })
             .alert("Discard Feedback?", isPresented: $confirmingDiscard) {
                 Button("Keep Editing", role: .cancel) {}

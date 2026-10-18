@@ -134,7 +134,25 @@ final class Router: ObservableObject {
         actions.forEach { $0() }
     }
 
+    /// Sheets with work a link would lose (an invite being made or not yet sent, a note in
+    /// Send Feedback) hold links until they close; the last link waits.
+    private var holds: Set<UUID> = []
+    private var heldLink: (url: URL, apps: [WebApp])?
+
+    func hold(_ id: UUID, _ held: Bool) {
+        if held {
+            holds.insert(id)
+        } else if holds.remove(id) != nil, holds.isEmpty, let link = heldLink {
+            heldLink = nil
+            handle(link.url, apps: link.apps)
+        }
+    }
+
     func handle(_ url: URL, apps: [WebApp]) {
+        guard holds.isEmpty else {
+            heldLink = (url, apps)
+            return
+        }
         let scheme = url.scheme?.lowercased() ?? ""
         if InviteLink.isInvite(url) {
             present(.join(JoinRequest(url: url)))
@@ -156,6 +174,25 @@ final class Router: ObservableObject {
         pendingName = nil
         defer { open(app) }
         return openApp?.id != app.id
+    }
+}
+
+extension View {
+    /// While `held`, a deep link waits instead of closing this sheet (see `Router.hold`).
+    func holdingLinks(_ held: Bool) -> some View { modifier(LinkHold(held: held)) }
+}
+
+private struct LinkHold: ViewModifier {
+    let held: Bool
+    @EnvironmentObject private var router: Router
+    @State private var id = UUID()
+
+    func body(content: Content) -> some View {
+        content
+            .onChange(of: held, initial: true) { _, held in router.hold(id, held) }
+            // A turn later: a sheet that replaces this one (the composer's result) takes its
+            // hold first, so no link slips through between them.
+            .onDisappear { Task { @MainActor in router.hold(id, false) } }
     }
 }
 

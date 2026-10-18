@@ -14,14 +14,16 @@ struct AppMenuPlan: Equatable {
     /// People and how many have it, when the owner can share the app.
     var people: Int?
     var reportProblem = false
-    /// Whose apps a guest can leave.
+    /// Whose apps a guest can leave: only when they shared more than this one, since Remove
+    /// App does the same for one.
     var leaveOwner: String?
 
     static let notShareableDetail = "Make it shareable on your computer first"
 
-    static func plan(for app: WebApp, admin: (app: AdminApp, guests: AdminGuestList)?) -> AppMenuPlan {
+    /// `ownersApps`: how many apps on this phone the app's owner shared.
+    static func plan(for app: WebApp, admin: (app: AdminApp, guests: AdminGuestList)?, ownersApps: Int = 1) -> AppMenuPlan {
         if app.isShared {
-            return AppMenuPlan(reportProblem: true, leaveOwner: app.sharedBy ?? "Its Owner")
+            return AppMenuPlan(reportProblem: true, leaveOwner: ownersApps > 1 ? app.sharedBy ?? "Its Owner" : nil)
         }
         guard let admin else { return AppMenuPlan() }
         guard admin.app.shareable else { return AppMenuPlan(share: .notShareable) }

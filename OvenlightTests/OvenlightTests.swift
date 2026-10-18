@@ -1120,6 +1120,24 @@ final class AppHostViewTests: XCTestCase {
 }
 
 final class AppLoadGateTests: XCTestCase {
+    /// Only busy time counts toward giving up: a slow sign-in or approval, which waits for the
+    /// owner, doesn't end on Can't Reach once the node starts again.
+    func testTheNodeDeadlineCountsOnlyBusyTime() {
+        let t0 = Date(timeIntervalSince1970: 1_790_000_000)
+        var since: Date?
+        XCTAssertEqual(AppLoadGate.nodeDeadline(busySince: &since, state: .starting, now: t0), t0.addingTimeInterval(30))
+        XCTAssertEqual(AppLoadGate.nodeDeadline(busySince: &since, state: .connecting, now: t0.addingTimeInterval(10)),
+                       t0.addingTimeInterval(30), "still the same busy stretch")
+        XCTAssertNil(AppLoadGate.nodeDeadline(busySince: &since, state: .ready, now: t0.addingTimeInterval(12)))
+        XCTAssertEqual(AppLoadGate.nodeDeadline(busySince: &since, state: .retrying(attempt: 1), now: t0.addingTimeInterval(14)),
+                       t0.addingTimeInterval(30), "a moment of ready between retries doesn't start it over")
+        XCTAssertNil(AppLoadGate.nodeDeadline(busySince: &since, state: .needsLogin(URL(string: "https://login.example.com")!),
+                                              now: t0.addingTimeInterval(25)))
+        XCTAssertNil(AppLoadGate.nodeDeadline(busySince: &since, state: .awaitingApproval, now: t0.addingTimeInterval(90)))
+        XCTAssertEqual(AppLoadGate.nodeDeadline(busySince: &since, state: .connecting, now: t0.addingTimeInterval(120)),
+                       t0.addingTimeInterval(150), "a new busy stretch after the sign-in")
+    }
+
     private func run(_ events: [AppLoadGate.Event], from gate: AppLoadGate = .waiting) -> AppLoadGate {
         events.reduce(gate) { $0.next($1) }
     }

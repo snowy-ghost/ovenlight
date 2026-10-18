@@ -323,7 +323,7 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
             Self.log.notice("\(self.app.host, privacy: .public): on no known tailnet, refused")
             return giveUp()
         }
-        let opened = Date.now
+        var busySince: Date? = .now
         var probingSince: Date?
         while !Task.isCancelled, gate == .waiting || gate == .probing {
             // Not even a probe goes through a node the app's route no longer names.
@@ -336,6 +336,7 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
                 guard !Task.isCancelled, gate == .offline else { return }
                 advance(.online)
                 probingSince = nil
+                busySince = .now
                 continue
             }
             // An app at localhost in a debug build has no node to wait for.
@@ -370,7 +371,7 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
                 probingSince = nil
                 // Sign-in and node failures have their own screens and wait for the owner.
                 guard let node else { return }
-                let deadline = node.state.isBusy ? opened.addingTimeInterval(AppLoadGate.nodeTimeout) : nil
+                let deadline = AppLoadGate.nodeDeadline(busySince: &busySince, state: node.state, now: .now)
                 if let deadline, Date.now >= deadline { return giveUp() }
                 await Self.change(of: node, before: deadline)
             }

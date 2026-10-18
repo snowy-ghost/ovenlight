@@ -43,6 +43,28 @@ struct LauncherShareMenuItems: View {
     }
 }
 
+/// None of the owner's computers answered, and why, where a list would be.
+struct SharingProblemView: View {
+    let problem: String?
+
+    var body: some View {
+        ContentUnavailableView("No Computers Answered", systemImage: "desktopcomputer.trianglebadge.exclamationmark",
+                               description: Text(problem ?? "Check that the Ovenlight connector is running on your computers."))
+            .ovenlightRows()
+    }
+}
+
+/// A failure in a sharing list's row or footer.
+struct ProblemLabel: View {
+    let text: String
+    init(_ text: String) { self.text = text }
+
+    var body: some View {
+        Label(text, systemImage: "exclamationmark.triangle.fill").labelStyle(.warning)
+    }
+}
+
+
 /// The owner's controls for their connectors: apps and who they're shared with, and
 /// feedback. Admin credentials never leave the machines; Ovenlight asks each connector
 /// over the owner's own node.
@@ -64,13 +86,11 @@ struct SharingList: View {
                 if sharing.isLoading {
                     HStack { Spacer(); ProgressView(); Spacer() }.listRowBackground(Color.clear)
                 } else {
-                    ContentUnavailableView("No Computers Answered", systemImage: "desktopcomputer.trianglebadge.exclamationmark",
-                                           description: Text(sharing.problem ?? "Check that the Ovenlight connector is running on your computers."))
-                        .ovenlightRows()
+                    SharingProblemView(problem: sharing.problem)
                 }
             }
             ForEach(sharing.machines) { machine in
-                Section(sharing.machines.count > 1 ? machine.adminHost : "Apps") {
+                Section {
                     ForEach(machine.apps) { app in
                         NavigationLink {
                             SharingAppView(machineID: machine.id, slug: app.slug)
@@ -78,6 +98,10 @@ struct SharingList: View {
                             SharingAppRow(app: app)
                         }
                     }
+                } header: {
+                    Text(sharing.machines.count > 1 ? machine.adminHost : "Apps")
+                } footer: {
+                    if let problem = machine.problem { ProblemLabel(problem) }
                 }
                 .ovenlightRows()
             }
@@ -199,14 +223,16 @@ struct SharingAppView: View {
 
     var body: some View {
         List {
+            // Above everything, so a failed Cancel or Remove says so even when the app or its
+            // computer is gone from the list.
+            if let error = error ?? machine?.problem {
+                Section { ProblemLabel(error) }
+                    .ovenlightRows()
+            }
             if let app, let machine {
                 let people = GuestPerson.all(machine.guests.guests.filter { $0.app == slug })
                 let invites = machine.guests.invites.filter { $0.app == slug && $0.state == AdminInvite.sent }
                 let feedback = machine.feedback.filter { $0.app == slug }.count
-                if let error {
-                    Section { Label(error, systemImage: "exclamationmark.triangle.fill").labelStyle(.warning) }
-                        .ovenlightRows()
-                }
                 Section {
                     if app.shareable {
                         Button { compose(.anyone) } label: {
@@ -283,6 +309,8 @@ struct SharingAppView: View {
                     }
                 }
                 .ovenlightRows()
+            } else if let problem = sharing.problem {
+                SharingProblemView(problem: problem)
             } else {
                 ContentUnavailableView("App Not Found", systemImage: "questionmark.app")
                     .ovenlightRows()
@@ -420,6 +448,7 @@ struct InviteComposer: View {
                 .onAppear { if case .anyone = target { focused = true } }
             }
             .presentationDetents(choices.isEmpty ? [.medium] : [.medium, .large])
+            .holdingLinks(working)
         }
     }
 
@@ -457,14 +486,15 @@ struct InviteComposer: View {
         error = nil
         let who = person?.name ?? trimmed
         guard !who.isEmpty, person != nil || namesake == nil, !working else { return }
+        // From the first tap, so a second one during Face ID can't make a second invite.
+        working = true
+        defer { working = false }
         guard await OwnerAuth.confirm("Share \(app.name) with \(who)") else { return }
         guard let client = OwnerSharing.shared.client(for: machine) else {
             error = AdminError.unreachable.message
             return
         }
         defer { client.session.finishTasksAndInvalidate() }
-        working = true
-        defer { working = false }
         do {
             let shared = if let person {
                 try await client.createInvite(person: person.id, app: app.slug)
@@ -573,6 +603,7 @@ struct InviteResultView: View {
             }
         }
         .interactiveDismissDisabled(!sent)
+        .holdingLinks(!sent)
     }
 }
 

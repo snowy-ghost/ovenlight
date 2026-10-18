@@ -657,6 +657,26 @@ final class AdminAPITests: XCTestCase {
                        "the host a machine answered on first, and hosts no machine still online listed")
     }
 
+    /// A computer that failed this pass keeps what it had, with why, rather than showing
+    /// no one and no apps; one an answer covers, or that wasn't asked, doesn't.
+    func testAFailedRefreshKeepsTheMachineAsItWas() {
+        func app(_ slug: String) -> AdminApp {
+            AdminApp(slug: slug, name: slug, url: "https://\(slug).t.ts.net/", online: true, shareable: true, guests: 0)
+        }
+        let coach = OwnerSharing.Machine(adminHost: "coach.t.ts.net", apps: [app("coach")],
+                                         guests: AdminGuestList(guests: [AdminGuest(deviceId: "n1", person: "p1", name: "Sam", app: "coach",
+                                                                                    deviceName: "sam", claimedAt: .now)]))
+        let notes = OwnerSharing.Machine(adminHost: "notes.t.ts.net", apps: [app("notes")])
+        let gone = OwnerSharing.Machine(adminHost: "gone.t.ts.net", apps: [app("gone")])
+        let echo = OwnerSharing.Machine(adminHost: "echo.t.ts.net", apps: [app("echo"), app("notes")])
+        let kept = OwnerSharing.keepingFailed([echo], failed: ["coach.t.ts.net": "Couldn’t reach the computer.", "notes.t.ts.net": "x"],
+                                              previous: [coach, notes, gone])
+        XCTAssertEqual(kept.map(\.adminHost), ["echo.t.ts.net", "coach.t.ts.net"])
+        XCTAssertEqual(kept[1].guests, coach.guests)
+        XCTAssertEqual(kept[1].problem, "Couldn’t reach the computer.")
+        XCTAssertNil(kept[0].problem)
+    }
+
     func testGoTimestamps() {
         XCTAssertNotNil(AdminAPI.parseDate("2026-09-28T17:03:00Z"))
         XCTAssertNotNil(AdminAPI.parseDate("2026-09-28T17:03:00-04:00"))
@@ -781,6 +801,24 @@ final class RouterTests: XCTestCase {
         XCTAssertNil(router.sheet, "a sheet can't present while the cover is closing")
         router.appDismissed()
         XCTAssertEqual(try join(router)?.invite?.get().invite, "3f9a1c2b7e")
+    }
+
+    /// An invite being made or not yet sent, or a note in Send Feedback, keeps its sheet:
+    /// a link waits until it closes.
+    func testALinkWaitsForUnsentWork() throws {
+        let router = Router()
+        let app = WebApp(name: "Coach", startURL: URL(string: "https://coach.example.com/")!)
+        router.open(app)
+        router.appAppeared()
+        let composer = UUID()
+        router.hold(composer, true)
+        router.handle(URL(string: universalLink)!, apps: [])
+        XCTAssertEqual(router.openApp?.id, app.id, "the app and its sheet stay")
+        XCTAssertNil(router.sheet)
+        router.hold(composer, false)
+        XCTAssertNil(router.openApp)
+        router.appDismissed()
+        XCTAssertEqual(try join(router)?.invite?.get().invite, "3f9a1c2b7e", "then the link goes on")
     }
 
     func testOpeningAnAppFromASheetWaitsForItToClose() {
@@ -1013,8 +1051,10 @@ final class AppMenuPlanTests: XCTestCase {
         app.membershipID = "m1"
         app.sharedBy = "Riley"
         // Even if the owner's view of a same-host app were at hand.
-        let plan = AppMenuPlan.plan(for: app, admin: (admin(shareable: true), AdminGuestList()))
+        let plan = AppMenuPlan.plan(for: app, admin: (admin(shareable: true), AdminGuestList()), ownersApps: 2)
         XCTAssertEqual(plan, AppMenuPlan(reportProblem: true, leaveOwner: "Riley"))
+        XCTAssertEqual(AppMenuPlan.plan(for: app, admin: nil, ownersApps: 1), AppMenuPlan(reportProblem: true),
+                       "with one app from Riley, Remove App is the way out")
     }
 
     func testInviteChoicesLeaveOutAppReview() {

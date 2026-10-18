@@ -7,6 +7,7 @@ struct SharedSettingsSections: View {
     @EnvironmentObject private var node: NodeManager
     @EnvironmentObject private var registry: AppRegistry
     @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var guests = GuestManager.shared
     @State private var leaving: Membership?
 
     var body: some View {
@@ -18,7 +19,7 @@ struct SharedSettingsSections: View {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(membership.ownerName)
-                            Text(apps.isEmpty ? "Joining…" : ListFormatter.localizedString(byJoining: apps.map(\.name)))
+                            Text(apps.isEmpty ? joinDetail(membership) : ListFormatter.localizedString(byJoining: apps.map(\.name)))
                                 .font(.caption)
                                 .foregroundStyle(Color.secondaryText)
                         }
@@ -47,5 +48,15 @@ struct SharedSettingsSections: View {
             }
             .ovenlightRows()
         }
+    }
+
+    /// A membership with no apps yet: the app its invite is for, and how joining it went, as
+    /// the join screen says it.
+    private func joinDetail(_ membership: Membership) -> String {
+        guard let invite = membership.pendingClaims.first?.invite else { return "Joining…" }
+        if case .failed(let error) = guests.phases[invite.invite] {
+            return error.title(owner: membership.ownerName, app: invite.name)
+        }
+        return "\(invite.name), joining…"
     }
 }
