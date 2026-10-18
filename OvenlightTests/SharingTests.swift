@@ -826,7 +826,7 @@ final class RouterTests: XCTestCase {
     func testALinkedAppWaitsWhileTheLockIsDue() {
         var now = ContinuousClock.now
         var saved = false
-        let lock = LockManager(hasSavedData: { saved }, now: { now })
+        let lock = LockManager(hasSavedData: { saved }, now: { now }, defaults: .throwaway(for: self))
         let previous = lock.lockAfterSeconds
         defer { lock.lockAfterSeconds = previous }
         lock.lockAfterSeconds = 60
@@ -1030,7 +1030,7 @@ final class AppMenuPlanTests: XCTestCase {
 final class LockManagerTests: XCTestCase {
     func testLocksOnlyOnceSomethingIsSaved() {
         var saved = false
-        let lock = LockManager { saved }
+        let lock = LockManager(hasSavedData: { saved }, defaults: .throwaway(for: self))
         let previous = lock.lockAfterSeconds
         defer { lock.lockAfterSeconds = previous }
         lock.lockAfterSeconds = 0

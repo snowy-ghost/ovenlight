@@ -23,7 +23,7 @@ final class LockManager: ObservableObject {
     /// being quit in the background.
     private var backgroundedAt: ContinuousClock.Instant?
     private let now: () -> ContinuousClock.Instant
-    private let boot: () -> Int
+    private let boot: () -> String?
     private let defaults: UserDefaults
     static let backgroundedKey = "backgroundedAt"
     /// Face ID starts by itself at launch and on each return from the background, never
@@ -37,31 +37,32 @@ final class LockManager: ObservableObject {
     /// A launch locks unless Ovenlight was quit in the background within the lock delay,
     /// since this iPhone last started.
     init(hasSavedData: @escaping () -> Bool = { true }, now: @escaping () -> ContinuousClock.Instant = { .now },
-         boot: @escaping () -> Int = LockManager.bootTime, defaults: UserDefaults = .standard) {
+         boot: @escaping () -> String? = LockManager.bootSession, defaults: UserDefaults = .standard) {
         self.hasSavedData = hasSavedData
         self.now = now
         self.boot = boot
         self.defaults = defaults
         isLocked = hasSavedData()
         if let saved = defaults.data(forKey: Self.backgroundedKey),
-           let backgrounded = try? JSONDecoder().decode(Backgrounded.self, from: saved), backgrounded.boot == boot() {
+           let backgrounded = try? JSONDecoder().decode(Backgrounded.self, from: saved), let boot = boot(), backgrounded.boot == boot {
             backgroundedAt = backgrounded.at
         }
         if isLocked, backgroundedAt != nil, !lockIsDue { isLocked = false }
     }
 
     private struct Backgrounded: Codable {
-        var boot: Int
+        var boot: String
         var at: ContinuousClock.Instant
     }
 
-    /// When this iPhone started, in seconds since 1970. A restart changes it; so can setting
-    /// the time of day, which then locks too.
-    nonisolated static func bootTime() -> Int {
-        var time = timeval()
-        var size = MemoryLayout<timeval>.size
-        guard sysctlbyname("kern.boottime", &time, &size, nil, 0) == 0 else { return 0 }
-        return time.tv_sec
+    /// This boot of the iPhone: a UUID the kernel makes at each start. Nil if it can't be
+    /// read, and then a launch locks.
+    nonisolated static func bootSession() -> String? {
+        var size = 0
+        guard sysctlbyname("kern.bootsessionuuid", nil, &size, nil, 0) == 0, size > 1 else { return nil }
+        var buffer = [CChar](repeating: 0, count: size)
+        guard sysctlbyname("kern.bootsessionuuid", &buffer, &size, nil, 0) == 0 else { return nil }
+        return String(cString: buffer)
     }
 
     /// The first time since Ovenlight was last in front counts, so a launch in the background
@@ -70,7 +71,9 @@ final class LockManager: ObservableObject {
         if !isLocked, backgroundedAt == nil {
             let at = now()
             backgroundedAt = at
-            defaults.set(try? JSONEncoder().encode(Backgrounded(boot: boot(), at: at)), forKey: Self.backgroundedKey)
+            if let boot = boot() {
+                defaults.set(try? JSONEncoder().encode(Backgrounded(boot: boot, at: at)), forKey: Self.backgroundedKey)
+            }
         }
         promptsWhenActive = true
     }

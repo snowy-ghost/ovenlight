@@ -499,7 +499,7 @@ final class LockTimingTests: XCTestCase {
     func testLocksByTimeInTheBackgroundNotTheClock() {
         var now = ContinuousClock.now
         var saved = false
-        let lock = LockManager(hasSavedData: { saved }, now: { now })
+        let lock = LockManager(hasSavedData: { saved }, now: { now }, defaults: .throwaway(for: self))
         let previous = lock.lockAfterSeconds
         defer { lock.lockAfterSeconds = previous }
         saved = true
@@ -520,7 +520,7 @@ final class LockTimingTests: XCTestCase {
     func testLockIsDueByTheSameRule() {
         var now = ContinuousClock.now
         var saved = false
-        let lock = LockManager(hasSavedData: { saved }, now: { now })
+        let lock = LockManager(hasSavedData: { saved }, now: { now }, defaults: .throwaway(for: self))
         let previous = lock.lockAfterSeconds
         defer { lock.lockAfterSeconds = previous }
         lock.lockAfterSeconds = 60
@@ -545,12 +545,10 @@ final class LockTimingTests: XCTestCase {
 
     /// Quit in the background (by iOS, to free memory, or by the person), Ovenlight launches
     /// unlocked only within the delay, on the same boot, and never set to Immediately.
-    func testALaunchLocksUnlessQuitInTheBackgroundWithinTheDelay() throws {
-        let suite = "LockTimingTests.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
+    func testALaunchLocksUnlessQuitInTheBackgroundWithinTheDelay() {
+        let defaults = UserDefaults.throwaway(for: self)
         var now = ContinuousClock.now
-        var boot = 1_000
+        var boot: String? = "boot-1"
         var saved = false
         func launch() -> LockManager { LockManager(hasSavedData: { saved }, now: { now }, boot: { boot }, defaults: defaults) }
         let first = launch()
@@ -569,9 +567,12 @@ final class LockTimingTests: XCTestCase {
         XCTAssertTrue(launch().isLocked, "a launch in the background doesn't start the delay over")
 
         now -= .seconds(30)
-        boot += 1
+        boot = "boot-2"
         XCTAssertTrue(launch().isLocked, "the iPhone restarted")
-        boot -= 1
+        boot = nil
+        XCTAssertTrue(launch().isLocked, "this boot can't be told")
+        XCTAssertEqual(UUID(uuidString: LockManager.bootSession() ?? "")?.uuidString.isEmpty, false, "the kernel's boot session reads")
+        boot = "boot-1"
         first.lockAfterSeconds = 0
         XCTAssertTrue(launch().isLocked, "Immediately")
         first.lockAfterSeconds = 60
@@ -1166,5 +1167,15 @@ final class LocalAddressRulesTests: XCTestCase {
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let store = try XCTUnwrap(WKContentRuleListStore(url: dir))
         _ = try await store.compileContentRuleList(forIdentifier: "test", encodedContentRuleList: LocalAddressRules.json)
+    }
+}
+
+extension UserDefaults {
+    /// A suite of the test's own, so what it saves stays out of the app's defaults; gone
+    /// when the test ends.
+    static func throwaway(for test: XCTestCase) -> UserDefaults {
+        let name = "test.\(UUID().uuidString)"
+        test.addTeardownBlock { UserDefaults().removePersistentDomain(forName: name) }
+        return UserDefaults(suiteName: name)!
     }
 }
