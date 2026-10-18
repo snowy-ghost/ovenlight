@@ -94,7 +94,7 @@ struct FeedbackSheet: View {
     @State private var confirmingDiscard = false
     @FocusState private var focused: Bool
 
-    /// A note that a swipe down would lose.
+    /// A note that Cancel or a swipe down would lose.
     private var hasDraft: Bool {
         result != .sent && !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
@@ -142,7 +142,9 @@ struct FeedbackSheet: View {
             .navigationTitle("Send Feedback")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { if hasDraft { confirmingDiscard = true } else { dismiss() } }
+                }
                 ToolbarItem(placement: .confirmationAction) {
                     if sending {
                         ProgressView()
