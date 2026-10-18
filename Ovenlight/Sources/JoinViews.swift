@@ -432,7 +432,6 @@ struct PendingInvitesBanner: View {
 /// machines: a friend who got an invite starts here too, and never sees a sign-in.
 struct LauncherWelcome: View {
     @EnvironmentObject private var node: NodeManager
-    @Environment(\.colorScheme) private var colorScheme
     let join: () -> Void
 
     static let title = "Welcome to Ovenlight"
@@ -449,14 +448,6 @@ struct LauncherWelcome: View {
 
     private var content: some View {
         VStack(spacing: 10) {
-            // The empty rack, in the light, waiting for apps.
-            OvenRack(width: 250)
-                .background {
-                    Ellipse()
-                        .fill(EllipticalGradient(colors: [Color.lampGlow.opacity(colorScheme == .dark ? 0.25 : 0.2), .clear]))
-                        .frame(width: 270, height: 64)
-                }
-                .padding(.bottom, 30)
             Text(Self.title)
                 .font(.display(.title2))
             Text(Self.message)
