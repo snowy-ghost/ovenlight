@@ -896,16 +896,25 @@ final class NodeManager: ObservableObject {
         }
     }
 
+    /// Removals under way, so a second caller (Leave and the orphan sweep) waits for the first.
+    private var removals: [String: Task<Void, Never>] = [:]
+
     /// Logs a guest node out, deletes its state and forgets the membership.
     func removeGuest(_ membershipID: String) async {
-        if let node = guests[membershipID] {
-            await node.logOutAndForget()
-        } else {
-            try? FileManager.default.removeItem(at: Self.stateDirectory(for: membershipID))
+        if let removal = removals[membershipID] { return await removal.value }
+        let removal = Task {
+            if let node = guests[membershipID] {
+                await node.logOutAndForget()
+            } else {
+                try? FileManager.default.removeItem(at: Self.stateDirectory(for: membershipID))
+            }
+            guests[membershipID] = nil
+            observers[membershipID] = nil
+            memberships.delete(membershipID)
+            removals[membershipID] = nil
         }
-        guests[membershipID] = nil
-        observers[membershipID] = nil
-        memberships.delete(membershipID)
+        removals[membershipID] = removal
+        await removal.value
     }
 
     // MARK: Routing
