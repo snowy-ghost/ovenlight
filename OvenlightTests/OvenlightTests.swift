@@ -1111,6 +1111,13 @@ final class AcknowledgementsTests: XCTestCase {
         XCTAssertTrue(notices.contains("Go standard library"))
         XCTAssertTrue(notices.contains("github.com/tailscale/libtailscale"))
     }
+
+    /// A module's title underlined with `=` shows as a heading.
+    func testASectionTitleIsAHeading() {
+        XCTAssertEqual(AcknowledgementsView.heading("Go standard library\n==================="), "Go standard library")
+        XCTAssertNil(AcknowledgementsView.heading("Copyright 2009 The Go Authors."))
+        XCTAssertNil(AcknowledgementsView.heading("Source Serif\n------------"), "only = underlines a heading")
+    }
 }
 
 @MainActor

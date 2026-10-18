@@ -141,17 +141,27 @@ struct AcknowledgementsView: View {
         .flatMap { try? String(contentsOf: $0.appending(path: "TailscaleKit.framework/THIRD_PARTY_NOTICES.txt"), encoding: .utf8) }
 
     // One Text per paragraph, laid out lazily: the whole text is thousands of lines.
-    private let paragraphs = (notices ?? "The licenses are missing from this build.")
+    private let paragraphs: [(isHeading: Bool, text: String)] = (notices ?? "The licenses are missing from this build.")
         .components(separatedBy: "\n\n")
-        .map { AcknowledgementsView.reflow($0.trimmingCharacters(in: .newlines)) }
+        .map { $0.trimmingCharacters(in: .newlines) }
         .filter { !$0.isEmpty }
+        .map { paragraph in
+            AcknowledgementsView.heading(paragraph).map { (true, $0) } ?? (false, AcknowledgementsView.reflow(paragraph))
+        }
+
+    /// A title underlined with `=`, the heading of one module's licenses.
+    static func heading(_ paragraph: String) -> String? {
+        let lines = paragraph.components(separatedBy: "\n")
+        guard lines.count == 2, !lines[1].isEmpty, lines[1].allSatisfy({ $0 == "=" }) else { return nil }
+        return lines[0]
+    }
 
     /// A paragraph wrapped for 80 columns, rejoined so it wraps to the screen: each line runs
-    /// on from the one before, except the rule under a heading and a list item's first line.
+    /// on from the one before, except a rule of dashes and a list item's first line.
     static func reflow(_ paragraph: String) -> String {
         paragraph.components(separatedBy: "\n").reduce(into: "") { text, line in
             let trimmed = line.trimmingCharacters(in: .whitespaces)
-            let breaks = text.isEmpty || trimmed.allSatisfy { $0 == "=" || $0 == "-" }
+            let breaks = text.isEmpty || trimmed.allSatisfy { $0 == "-" }
                 || trimmed.hasPrefix("* ") || trimmed.hasPrefix("- ") || trimmed.range(of: #"^\(?(\d+|[a-z])[.)] "#, options: .regularExpression) != nil
             text += (text.isEmpty ? "" : breaks ? "\n" : " ") + trimmed
         }
@@ -161,7 +171,14 @@ struct AcknowledgementsView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 12) {
                 ForEach(paragraphs.indices, id: \.self) { i in
-                    Text(verbatim: paragraphs[i])
+                    if paragraphs[i].isHeading {
+                        Text(verbatim: paragraphs[i].text)
+                            .font(.subheadline.weight(.semibold))
+                            .accessibilityAddTraits(.isHeader)
+                            .padding(.top, 12)
+                    } else {
+                        Text(verbatim: paragraphs[i].text)
+                    }
                 }
             }
             .font(.caption.monospaced())
