@@ -443,13 +443,17 @@ website open in this computer's browser, can choose.
   carries names on that known tailnet. Until the tailnet is known, a `*.ts.net` app is
   routed to the owner's node and waits behind Sign In, loading nothing. The route is
   checked before every probe and load, and a view whose route changed is made again
-  through the right node, or refused. The remembered tailnet survives Sign Out and is
-  forgotten by Stop Using My Own Computers. A change of it closes every view whose route
-  it changed, and Sign Out and Stop Using My Own Computers close every view that went
-  through the owner's node, kept in the background or not. A closed view's data store is
-  set to a proxy that refuses every connection, as is a refused app's, and the app loads
-  again through its route, at once if it's on screen. A shared app always goes through
-  its owner's guest node.
+  through the right node, or refused. A change of the remembered tailnet closes every
+  view whose route it changed. Sign Out and Stop Using My Own Computers forget it, close
+  every view that went through the owner's node, kept in the background or not, and
+  remove the apps found on the owner's computers with their data. A closed view's data
+  store is set to a proxy that refuses every connection, as is a refused app's, and the
+  app loads again through its route, at once if it's on screen. A shared app always goes
+  through its owner's guest node.
+- Pages have no WebRTC. Its traffic wouldn't go through the node's proxy: through a TURN
+  relay a page could reach any address it names, the phone's own network included. A
+  script at the start of every document, in every frame, removes it, and WebKit runs it in
+  a frame's first `about:blank` document too, as the frame is made.
 - While Ovenlight is locked, no page gets the microphone or camera, and an app that an
   `ovenlight://open` link asks for waits for the unlock. Locking also stops any
   microphone or camera stream already running in an open app, on screen or kept in the

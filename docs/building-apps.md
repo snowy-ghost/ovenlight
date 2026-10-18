@@ -288,26 +288,30 @@ portrait and landscape) with no browser bar.
 <link rel="manifest" href="/manifest.webmanifest">
 ```
 
-**Safe areas.** The page runs edge to edge, under the status bar and the home indicator,
-and Ovenlight adds no insets. Pad with `env(safe-area-inset-top)`, `-bottom`, `-left` and
-`-right`, which need `viewport-fit=cover`. Paint the top safe area with your header's
-background: the status bar sits on top of your page. Pad a fixed bottom tab bar with
-`env(safe-area-inset-bottom)`, and the page's bottom by the bar's height so it scrolls
-clear.
+**The top of the screen.** Ovenlight keeps the top of the screen, down to just below its
+handle, in your header's color, and your page starts below it. Set `theme-color` to your
+header's color; without one, Ovenlight uses the page's background. Nothing of the page
+sits under the status bar, and `env(safe-area-inset-top)` is 0.
+
+**Safe areas.** `viewport-fit=cover` matters only for the bottom and the sides. With it
+the page runs to the bottom and side edges, under the home indicator, and Ovenlight adds
+no insets there: pad with `env(safe-area-inset-bottom)`, `-left` and `-right`. Pad a fixed
+bottom tab bar with `env(safe-area-inset-bottom)`, and the page's bottom by the bar's
+height so it scrolls clear. A page without `viewport-fit=cover` stays inside the safe
+areas at the sides. Its bottom still runs under the home indicator, on the page's
+background. It gets no inset to pad by, so a page with a fixed bottom bar needs
+`viewport-fit=cover`.
 
 **Ovenlight's chrome.** The only thing Ovenlight draws over the app is a small pill at the
 top center, just below the status bar, with the way home and the app's menu (Reload and
-Send Feedback among them). Apps open with it tucked up under the status bar, leaving a
-small handle just below it, so the page has the whole screen. The first time, the pill shows
-with a one-time tip about the handle until the tip is closed. Scrolling up, pulling down at the
-top, or tapping the handle brings it back. So:
+Send Feedback among them). It tucks up under the status bar the moment your page appears,
+leaving a small handle above your page. Pulling down at the top of the page or tapping the
+handle brings it back, and scrolling down or tapping the page tucks it away again. It
+stays out while its one-time tip shows, and always while VoiceOver is on. So:
 
-- Put no controls in the strip at the top center just below the status bar, where the
-  handle lives (120 by 20 points).
 - Let the page itself scroll, not a full-height inner container
   (`height: 100vh; overflow: auto`): Ovenlight watches the page's scrolling, so inside
-  such a container scrolling up and pulling down don't bring the menu back, and only the
-  handle does.
+  such a container pulling down doesn't bring the menu back, and only the handle does.
 - Don't build pull-to-refresh, and don't turn off the page's bounce
   (`overscroll-behavior: none` on the page): pulling down is how people reach the menu,
   and Reload is in it.
@@ -316,13 +320,12 @@ top, or tapping the handle brings it back. So:
 real history entry (links, `history.pushState`, or `#/route` hashes) so it goes back a
 screen, not out of the app, and keep your own horizontal swipes away from the edges.
 
-**Status bar and color.** The status bar's text follows the phone's light or dark mode,
-not your page, so keep the top of the page light in light mode and dark in dark mode.
-Support both with `prefers-color-scheme` and give `html` a background color, which also
-fills what shows when the page is pulled down. Ovenlight remembers the `theme-color` of
-the first page the app loads (its background without one), for light and dark mode, and
-paints it behind the status bar while the app next opens, so set it to your header's
-color.
+**Status bar and color.** The status bar's text turns light or dark to read on your
+header's color. Support both modes with `prefers-color-scheme` (a `theme-color` for each,
+as in the head above) and give `html` a background color, which also fills what shows when
+the page is pulled down. Ovenlight remembers the `theme-color` of the last page the app
+showed (its background without one), for light and dark mode, and paints the top with it
+while the app next opens.
 
 **Type.** Use the system font at the reader's Dynamic Type size, and size the rest in
 `rem` so it scales:
@@ -359,8 +362,9 @@ only to adjust presentation: anyone can send that string.
   address load in the same view; any other site opens in a Safari sheet.
 - **Service workers and offline copies.** Ovenlight doesn't run them: assume the app is
   online.
-- **WebRTC.** Its traffic doesn't go through Ovenlight's connection to the computer; don't
-  build calls or peer-to-peer features on it.
+- **WebRTC.** It isn't available: Ovenlight removes it from pages, since its traffic would
+  go around Ovenlight's connection to the computer. Don't build calls or peer-to-peer
+  features.
 - **Location.** Ovenlight doesn't ask iOS for location, so `navigator.geolocation`
   always fails with a permission error.
 
