@@ -62,7 +62,7 @@ private struct AppPage: View {
             // is in a window to present over (it isn't yet as the view appears). The page
             // stays visible under the opaque placeholder, which fades out over it, and takes
             // no touches until it has loaded.
-            WebViewContainer(webView: webView, onWindow: { coordinator.presentWaitingDownloads() })
+            WebViewContainer(webView: webView, onWindow: { coordinator.appeared() })
                 .ignoresSafeArea()
                 .allowsHitTesting(coordinator.hasLoadedOnce)
             // A zIndex keeps each of these over the page as it fades out: without one, SwiftUI
@@ -122,7 +122,27 @@ private struct AppPage: View {
                 )
             )
             .zIndex(2)
+            if let notice = coordinator.notice {
+                VStack {
+                    Spacer()
+                    Text(notice)
+                        .font(.footnote.weight(.medium))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .frame(minHeight: 34)
+                        .ovenlightGlass(in: Capsule())
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 12)
+                        // Announced as it shows.
+                        .accessibilityHidden(true)
+                }
+                .allowsHitTesting(false)
+                .transition(.opacity)
+                .zIndex(3)
+            }
         }
+        .animation(.easeOut(duration: 0.25), value: coordinator.notice)
         .animation(.easeOut(duration: 0.25), value: coordinator.hasLoadedOnce)
         .animation(.easeOut(duration: 0.25), value: coordinator.loadError)
         .animation(.easeOut(duration: 0.25), value: coordinator.gate)
