@@ -500,8 +500,8 @@ var wellKnownNAT64 = netip.MustParsePrefix("64:ff9b::/96")
 // address inside it. Nothing inside a network the phone is on passes, so its own
 // public addresses and its neighbors' global IPv6 addresses are refused too, and
 // neither does an endpoint of the route's node, so the home's public IPv4 behind
-// NAT, where many routers answer, is refused. isPeer has just refreshed the
-// node's status, and the node is running.
+// NAT, where many routers answer, is refused. isPeer has just read a status at
+// most peersFresh old, and the node is running.
 func (p *proxy) allowed(ctx context.Context, n upstream, ip netip.Addr, port uint16) (netip.AddrPort, error) {
 	ip = ip.Unmap().WithZone("")
 	if n.isPeer(ctx, ip) {

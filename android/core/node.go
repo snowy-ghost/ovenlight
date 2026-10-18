@@ -17,6 +17,7 @@ import (
 
 	"tailscale.com/client/local"
 	"tailscale.com/ipn/ipnstate"
+	"tailscale.com/net/tsaddr"
 	"tailscale.com/tsnet"
 )
 
@@ -335,9 +336,13 @@ func (n *Node) suffix(ctx context.Context) string {
 }
 
 // peer returns a peer that match accepts, from a status at most peersFresh old or, on
-// a miss, one at most peersRecheck old.
-func (n *Node) peer(ctx context.Context, match func(*ipnstate.PeerStatus) bool) *ipnstate.PeerStatus {
-	for _, maxAge := range []time.Duration{peersFresh, peersRecheck} {
+// a miss with recheck, one at most peersRecheck old.
+func (n *Node) peer(ctx context.Context, recheck bool, match func(*ipnstate.PeerStatus) bool) *ipnstate.PeerStatus {
+	ages := []time.Duration{peersFresh, peersRecheck}
+	if !recheck {
+		ages = ages[:1]
+	}
+	for _, maxAge := range ages {
 		if st := n.status(ctx, maxAge); st != nil {
 			for _, p := range st.Peer {
 				if match(p) {
@@ -350,7 +355,7 @@ func (n *Node) peer(ctx context.Context, match func(*ipnstate.PeerStatus) bool) 
 }
 
 func (n *Node) peerAddr(ctx context.Context, host string) (netip.Addr, bool) {
-	p := n.peer(ctx, func(p *ipnstate.PeerStatus) bool {
+	p := n.peer(ctx, true, func(p *ipnstate.PeerStatus) bool {
 		return len(p.TailscaleIPs) > 0 && lowerASCII(strings.TrimSuffix(p.DNSName, ".")) == host
 	})
 	if p == nil {
@@ -383,8 +388,11 @@ func (n *Node) endpoints() []netip.Prefix {
 	return out
 }
 
+// isPeer asks for a fresh status on a miss only for an address in Tailscale's ranges,
+// where a peer that just appeared would be: a public address costs no wait.
 func (n *Node) isPeer(ctx context.Context, ip netip.Addr) bool {
-	return n.peer(ctx, func(p *ipnstate.PeerStatus) bool { return slices.Contains(p.TailscaleIPs, ip) }) != nil
+	tailnet := tsaddr.CGNATRange().Contains(ip) || tsaddr.TailscaleULARange().Contains(ip)
+	return n.peer(ctx, tailnet, func(p *ipnstate.PeerStatus) bool { return slices.Contains(p.TailscaleIPs, ip) }) != nil
 }
 
 func (n *Node) dial(ctx context.Context, addr netip.AddrPort) (net.Conn, error) {
