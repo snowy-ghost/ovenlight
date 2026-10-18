@@ -20,31 +20,11 @@ extension Font {
     }
 }
 
-/// Whether an app's machine is reachable, for its launcher tile.
-enum AppReachability: Equatable {
-    case offline
-
-    /// Tiles only speak up when something is wrong: an app reached through Ovenlight's node
-    /// whose machine didn't answer the last probe, or wasn't online to be probed. Nothing
-    /// before the node is ready (the launcher shows that) or before the first probe.
-    static func forTile(host: String, route: Routing.Route, nodeState: NodeState,
-                        answers: [String: Bool]?) -> AppReachability? {
-        guard route == .tailnetNode, nodeState == .ready, let answers else { return nil }
-        return answers[Discovery.normalizedHost(host)] == true ? nil : .offline
-    }
-
-    var label: String { "Offline" }
-
-    var color: Color { Color(.systemGray) }
-}
-
-/// A small dot that sits on an icon's corner, ringed so it reads on any icon.
-struct ReachabilityBadge: View {
-    let status: AppReachability
-
+/// A small dot that sits on an offline app's icon corner, ringed so it reads on any icon.
+struct OfflineBadge: View {
     var body: some View {
         Circle()
-            .fill(status.color)
+            .fill(Color(.systemGray))
             .frame(width: 11, height: 11)
             .padding(2.5)
             .background(Circle().fill(Color(.systemBackground)))

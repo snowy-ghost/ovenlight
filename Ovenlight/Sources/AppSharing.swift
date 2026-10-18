@@ -75,11 +75,11 @@ enum SharingFixture {
         ])
         machine.guests = AdminGuestList(
             guests: [
-                AdminGuest(deviceId: "n1", person: "p1", name: "Sam", app: "book-club", deviceName: "ovenlight-4k2x9q", claimedAt: ago(days: 120),
+                AdminGuest(deviceId: "n1", person: "p1", name: "Sam", app: "book-club", claimedAt: ago(days: 120),
                            lastOpened: ago(days: 64)),
-                AdminGuest(deviceId: "n4", person: "p1", name: "Sam", app: "book-club", deviceName: "ovenlight-m7c1pw", claimedAt: ago(days: 63),
+                AdminGuest(deviceId: "n4", person: "p1", name: "Sam", app: "book-club", claimedAt: ago(days: 63),
                            lastOpened: ago(days: 0.1)),
-                AdminGuest(deviceId: "n2", person: "p2", name: "Kim", app: "book-club", deviceName: "ovenlight-r5j8de", claimedAt: ago(days: 30),
+                AdminGuest(deviceId: "n2", person: "p2", name: "Kim", app: "book-club", claimedAt: ago(days: 30),
                            lastOpened: ago(days: 1)),
             ],
             invites: [AdminInvite(id: "i3", to: "Lee", person: "p3", app: "book-club", state: AdminInvite.sent,

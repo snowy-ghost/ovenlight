@@ -103,7 +103,7 @@ private struct AppPage: View {
                                 .transition(.opacity)
                                 .zIndex(1)
                         } else {
-                            LaunchPlaceholder(app: app, icon: icon, caption: ConnectionCopy.connecting)
+                            LaunchPlaceholder(app: app, icon: icon)
                                 .transition(.opacity)
                                 .zIndex(1)
                         }

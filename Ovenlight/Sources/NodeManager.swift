@@ -914,11 +914,6 @@ final class NodeManager: ObservableObject {
         }
     }
 
-    /// Tries the owner's node again after a failure.
-    func restart() async {
-        await owner.restart()
-    }
-
     func rediscover() async {
         await withTaskGroup(of: Void.self) { group in
             group.addTask { await self.owner.rediscover() }
@@ -1004,28 +999,29 @@ final class NodeManager: ObservableObject {
         return URLSession(configuration: config)
     }
 
-    /// A session for the owner's admin API and uploads, with its own timeouts; the
-    /// caller invalidates it. Nil while the owner's node isn't up.
-    func ownerSession(timeout: TimeInterval) -> URLSession? {
-        owner.makeSession(timeout: timeout)
-    }
-
     func detach(_ appID: UUID) {
         owner.detach(appID)
         for node in guests.values { node.detach(appID) }
     }
 
-    /// What an app's launcher tile shows about its machine.
-    func reachability(of app: WebApp) -> AppReachability? {
-        guard let node = node(for: app) else { return nil }
-        return AppReachability.forTile(host: app.host, route: .tailnetNode, nodeState: node.state, answers: node.answers)
+    /// Whether an app's tile shows its machine offline.
+    func isOffline(_ app: WebApp) -> Bool {
+        guard let node = node(for: app) else { return false }
+        return Self.isOffline(host: app.host, nodeState: node.state, answers: node.answers)
+    }
+
+    /// Tiles only speak up when something is wrong: a machine that didn't answer the last
+    /// probe, or wasn't online to be probed. Nothing before the node is ready (the launcher
+    /// shows that) or before the first probe.
+    nonisolated static func isOffline(host: String, nodeState: NodeState, answers: [String: Bool]?) -> Bool {
+        guard nodeState == .ready, let answers else { return false }
+        return answers[Discovery.normalizedHost(host)] != true
     }
 
     // MARK: Configuration
 
     static func stateDirectory(for membershipID: String) -> URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Ovenlight/tailscale/\(membershipID)", isDirectory: true)
+        SavedJSON.directory.appendingPathComponent("tailscale/\(membershipID)", isDirectory: true)
     }
 
     /// Creates the node's state directory and keeps all of `tailscale/` out of backups:

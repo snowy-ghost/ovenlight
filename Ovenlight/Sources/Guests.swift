@@ -226,8 +226,9 @@ final class GuestManager: ObservableObject {
             accessEnded(for: gone)
         }
         node.onLoginLost = { [weak self] in
-            guard let self, let membership = store[id],
-                  GuestCleanup.isRemoved(membership) else { return }
+            // The owner removed this iPhone: only once it had joined, since a first join
+            // passes through NeedsLogin briefly. The node asks only after it held a moment.
+            guard let self, let membership = store[id], membership.joined else { return }
             log.notice("\(id, privacy: .public): the owner removed this device")
             store.update(id) { $0.pendingClaims = [] }
             let apps = (registry?.apps ?? []).filter { $0.membershipID == id }

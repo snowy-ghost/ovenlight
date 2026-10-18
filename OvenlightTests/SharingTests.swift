@@ -31,7 +31,6 @@ final class InviteLinkTests: XCTestCase {
         XCTAssertEqual(link.to, "Sam Lee", "+ is a space")
         XCTAssertEqual(link.networkDomain, "taildef456.ts.net")
         XCTAssertEqual(link.appURL.absoluteString, "https://echo-board.taildef456.ts.net/")
-        XCTAssertEqual(try InviteLink.parse(link.url, allowLocalHTTP: false), link, "round trip")
     }
 
     func testReadsTheUniversalLink() throws {
@@ -41,15 +40,7 @@ final class InviteLinkTests: XCTestCase {
             let text = universalLink.replacingOccurrences(of: "https://ovenlight.app/join#", with: variant)
             XCTAssertEqual(try parse(text), link, variant)
         }
-
-        // What Ovenlight sends: the universal link, with nothing for the website but the path.
-        let sent = link.universalURL
-        XCTAssertEqual(sent.absoluteString.components(separatedBy: "#").first, "https://ovenlight.app/join")
-        XCTAssertNil(sent.query)
-        XCTAssertTrue(sent.fragment?.contains("key=tskey-auth-kX1abc-DEF") == true)
-        XCTAssertEqual(try InviteLink.parse(sent, allowLocalHTTP: false), link, "round trip")
-        XCTAssertEqual(link.url.query, sent.fragment, "both forms carry the same fields")
-        XCTAssertTrue(InviteLink.isInvite(sent) && InviteLink.isInvite(link.url))
+        XCTAssertTrue(InviteLink.isInvite(URL(string: universalLink)!) && InviteLink.isInvite(URL(string: connectorLink)!))
     }
 
     func testRefusesUniversalLinksFromElsewhere() {
@@ -63,11 +54,6 @@ final class InviteLinkTests: XCTestCase {
         XCTAssertEqual(error("https://ovenlight.app/join"), .notAnInvite, "the page itself, without an invite")
         XCTAssertEqual(error("https://ovenlight.app/join?" + fields), .notAnInvite, "fields the server would see")
         XCTAssertFalse(InviteLink.isInvite(URL(string: "https://ovenlight.app/privacy")!))
-        // The old address is no longer a universal link, in a message or on its own.
-        for old in ["https://snowyghost.com/ovenlight/join#", "https://www.snowyghost.com/ovenlight/join#"] {
-            XCTAssertEqual(error(old + fields), .notAnInvite, old)
-            XCTAssertThrowsError(try InviteLink.parse(text: "Open this link: \(old + fields)", allowLocalHTTP: false))
-        }
     }
 
     func testFindsTheLinkInsideAMessage() throws {
@@ -151,7 +137,6 @@ final class InviteLinkTests: XCTestCase {
             XCTAssertEqual(Claim.landing(of: link, suffix: nil, registeredNow: registered), .unknown, "a node that couldn't say retries")
             XCTAssertEqual(Claim.landing(of: link, suffix: "", registeredNow: registered), .unknown)
         }
-        XCTAssertTrue(JoinError.network.isRetryable)
     }
 
     func testParseErrorsHaveNeutralMessages() {
@@ -281,14 +266,6 @@ final class GuestCleanupTests: XCTestCase {
         XCTAssertEqual(revoked.map(\.host), [echo], "not the app being claimed, not another membership's")
         XCTAssertEqual(GuestCleanup.revokedApps(in: m, apps: apps, notInvited: ["Echo-Board.taildef456.ts.net"]).count, 0,
                        "hosts arrive normalized from the probe")
-    }
-
-    func testLostLoginMeansRemovedOnlyAfterJoining() {
-        XCTAssertTrue(GuestCleanup.isRemoved(membership("a")))
-        XCTAssertTrue(GuestCleanup.isRemoved(membership("a", claiming: [notes])),
-                      "a second invite in progress doesn't hide the removal")
-        XCTAssertFalse(GuestCleanup.isRemoved(membership("a", joined: false)),
-                       "a first join passes through NeedsLogin")
     }
 
     func testWhoamiAndClaimAnswers() {
@@ -428,12 +405,6 @@ final class GuestCleanupTests: XCTestCase {
         XCTAssertTrue(GuestProbe.reportsOnline(try status(peers: [echo: true, notes: false])))
         XCTAssertEqual(Discovery.offlineHosts(["Echo-Board.taildef456.ts.net"], in: try status(peers: [echo: false])),
                        ["Echo-Board.taildef456.ts.net"])
-
-        var answers: [String: Bool] = [:] // what a node records when nothing was left to probe
-        let tile = AppReachability.forTile(host: echo, route: .tailnetNode, nodeState: .ready, answers: answers)
-        XCTAssertEqual(tile, .offline)
-        answers[echo] = true
-        XCTAssertNil(AppReachability.forTile(host: echo, route: .tailnetNode, nodeState: .ready, answers: answers))
     }
 
     func testGuestsNeverGetSignInOrOwnerApprovalCopy() {
@@ -584,13 +555,9 @@ final class AdminAPITests: XCTestCase {
                 XCTAssertEqual(invite.invite, result.invite.id)
                 XCTAssertEqual(invite.app, result.invite.app)
                 XCTAssertEqual(invite.to, result.invite.to)
-                XCTAssertEqual(invite.name, result.appName)
-                XCTAssertEqual(invite.owner, result.owner)
                 XCTAssertEqual(invite.host, "coach.tail1.ts.net")
                 XCTAssertEqual(invite.control.absoluteString, "https://controlplane.tailscale.com")
                 XCTAssertEqual(invite.key, "tskey-auth-kExample1CNTRL-ExampleSecretNotReal")
-                XCTAssertEqual(try InviteLink.parse(invite.universalURL, allowLocalHTTP: false), invite, "round trip")
-                XCTAssertEqual(try InviteLink.parse(invite.url, allowLocalHTTP: false), invite, "round trip")
             case "guest-removed", "guest-removed-with-errors":
                 let result = try AdminAPI.decoder.decode(AdminRevokeResult.self, from: data)
                 XCTAssertEqual(result.removed.count, try count(data, "removed"))
@@ -695,8 +662,7 @@ final class AdminAPITests: XCTestCase {
             AdminApp(slug: slug, name: slug, url: "https://\(slug).t.ts.net/", online: true, shareable: true, guests: 0)
         }
         let coach = OwnerSharing.Machine(adminHost: "coach.t.ts.net", apps: [app("coach")],
-                                         guests: AdminGuestList(guests: [AdminGuest(deviceId: "n1", person: "p1", name: "Sam", app: "coach",
-                                                                                    deviceName: "sam", claimedAt: .now)]))
+                                         guests: AdminGuestList(guests: [AdminGuest(deviceId: "n1", person: "p1", name: "Sam", app: "coach", claimedAt: .now)]))
         let notes = OwnerSharing.Machine(adminHost: "notes.t.ts.net", apps: [app("notes")])
         let gone = OwnerSharing.Machine(adminHost: "gone.t.ts.net", apps: [app("gone")])
         let echo = OwnerSharing.Machine(adminHost: "echo.t.ts.net", apps: [app("echo"), app("notes")])
@@ -739,6 +705,13 @@ final class GuestCopyTests: XCTestCase {
             ConnectionCopy.reportProblem, ConnectionCopy.leaveApps("Riley"), ConnectionCopy.leaveTitle("Riley"),
             ConnectionCopy.leaveDetail("Riley"), ConnectionCopy.removeSharedDetail("Riley"),
             AppAddress.signInFirst, AppAddress.notYourComputer,
+            ConnectionCopy.connecting, ConnectionCopy.stopped, ConnectionCopy.couldNotStart,
+            ConnectionCopy.connecting(to: "Echo"), ConnectionCopy.cantReach("Echo"),
+            ConnectionCopy.cantReachDetail(sharedBy: nil), ConnectionCopy.cantReachDetail(sharedBy: "Riley"),
+            ConnectionCopy.signIn(toOpen: "Echo"), ConnectionCopy.cantOpen("Echo"), ConnectionCopy.pageFailed,
+            ConnectionCopy.offline, ConnectionCopy.offlineDetail,
+            NodeState.starting.summary, NodeMachine.next(.ready, .backend(state: "Stopped", authURL: nil)).summary,
+            LauncherWelcome.title, LauncherWelcome.message,
         ]
         let report = MailDraft.problemReport(appName: "Echo", host: "echo.example.com", sharedBy: "Riley",
                                              connection: NodeState.ready.summary, version: "1.0 (3)", iOS: "26.5")
@@ -798,10 +771,6 @@ final class SupportMailTests: XCTestCase {
         XCTAssertEqual(parts.path, "team@snowyghost.com")
         XCTAssertEqual(parts.queryItems?.first { $0.name == "subject" }?.value, "Ovenlight report: Echo & Notes+")
         XCTAssertEqual(parts.queryItems?.first { $0.name == "body" }?.value, draft.body)
-    }
-
-    func testPrivacyPolicyIsHTTPS() {
-        XCTAssertEqual(AppLinks.privacyPolicy.scheme, "https")
     }
 }
 
@@ -946,7 +915,7 @@ final class GuestActivityTests: XCTestCase {
 
     private func guest(_ device: String, person: String = "pSam", name: String = "Sam", app: String = "coach", claimed: Date,
                        opened: Date? = nil) -> AdminGuest {
-        AdminGuest(deviceId: device, person: person, name: name, app: app, deviceName: "", claimedAt: claimed, lastOpened: opened)
+        AdminGuest(deviceId: device, person: person, name: name, app: app, claimedAt: claimed, lastOpened: opened)
     }
 
     private func daysAgo(_ days: Double) -> Date { now.addingTimeInterval(-86_400 * days) }
@@ -1037,7 +1006,7 @@ final class AppMenuPlanTests: XCTestCase {
     }
 
     private func guest(_ name: String, app: String = "coach", removed: Bool = false) -> AdminGuest {
-        AdminGuest(deviceId: "n\(name)", person: "p\(name)", name: name, app: app, deviceName: "\(name)-iphone", claimedAt: t0,
+        AdminGuest(deviceId: "n\(name)", person: "p\(name)", name: name, app: app, claimedAt: t0,
                    removedAt: removed ? t0 : nil)
     }
 

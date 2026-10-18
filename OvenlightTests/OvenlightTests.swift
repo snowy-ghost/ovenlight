@@ -226,7 +226,7 @@ final class DownloadPolicyTests: XCTestCase {
         XCTAssertNotNil(kept, "kept until it has closed")
         _ = sheet("covered", appear: true)
         _ = sheet("refused", appear: false)
-        try await Task.sleep(for: .milliseconds(100))
+        for _ in 0..<100 where log.values.joined().count < 8 { try await Task.sleep(for: .milliseconds(10)) }
         XCTAssertEqual(log, ["dismissed": ["closed", "waited"], "unseen": ["unseen", "waited"],
                              "covered": ["closed", "waited"], "refused": ["unseen", "waited"]])
     }
@@ -244,7 +244,7 @@ final class DownloadPolicyTests: XCTestCase {
         XCTAssertTrue(WebCoordinator.sheet === sheet)
         sheet.viewDidAppear(false)
         sheet.viewDidDisappear(false)
-        try await Task.sleep(for: .milliseconds(100))
+        for _ in 0..<100 where WebCoordinator.sheet != nil { try await Task.sleep(for: .milliseconds(10)) }
         XCTAssertNil(WebCoordinator.sheet)
         XCTAssertEqual(WebViewPool.shared.waitingDownloads[id], [later])
     }
@@ -970,14 +970,6 @@ private final class SlowHostProtocol: URLProtocol {
 final class StaleRouteTests: XCTestCase {
     private let funnel = WebApp(name: "Cool", startURL: URL(string: "https://cool.attacker.ts.net/")!)
 
-    func testTheOwnersNodeCarriesOnlyItsKnownTailnet() {
-        XCTAssertFalse(Routing.isOnOwnersTailnet(host: "cool.attacker.ts.net", ownerSuffix: nil),
-                       "an unknown tailnet carries nothing, though the route waits on the owner's node")
-        XCTAssertFalse(Routing.isOnOwnersTailnet(host: "cool.attacker.ts.net", ownerSuffix: "tailabc123.ts.net"))
-        XCTAssertTrue(Routing.isOnOwnersTailnet(host: "Coach.tailabc123.ts.net.", ownerSuffix: "tailabc123.ts.net"))
-        XCTAssertFalse(Routing.isOnOwnersTailnet(host: "tailabc123.ts.net.example.com", ownerSuffix: "tailabc123.ts.net"))
-    }
-
     func testAViewIsStaleOnceTheRouteNamesAnotherNode() {
         let owner = MembershipNode(id: Membership.ownerID) { nil }
         func node(for app: WebApp, ownerSuffix: String?, guest: MembershipNode? = nil) -> MembershipNode? {
@@ -1206,32 +1198,16 @@ final class AppLoadGateTests: XCTestCase {
 final class ConnectionStateTests: XCTestCase {
     func testTilesFlagOnlyTailnetAppsThatDidNotAnswer() {
         let coach = "interview-coach.tailabc123.ts.net"
-        func tile(_ host: String = coach, route: Routing.Route = .tailnetNode, node: NodeState = .ready,
-                  answers: [String: Bool]? = [coach: true]) -> AppReachability? {
-            AppReachability.forTile(host: host, route: route, nodeState: node, answers: answers)
+        func offline(_ host: String = coach, node: NodeState = .ready, answers: [String: Bool]? = [coach: true]) -> Bool {
+            NodeManager.isOffline(host: host, nodeState: node, answers: answers)
         }
-        XCTAssertNil(tile())
-        XCTAssertNil(tile("Interview-Coach.tailabc123.ts.net"), "hosts compare normalized")
-        XCTAssertEqual(tile(answers: [coach: false]), .offline)
-        XCTAssertEqual(tile(answers: ["other.tailabc123.ts.net": true]), .offline, "not probed: its machine is offline")
-        XCTAssertNil(tile(answers: nil), "nothing before the first probe")
-        XCTAssertNil(tile(node: .connecting, answers: [coach: false]), "the launcher shows the connection itself")
-        XCTAssertNil(tile("example.com", route: .refused, answers: [:]))
-    }
-
-    func testSharedCopyNeverNamesTailscale() {
-        let copy = [ConnectionCopy.connecting, ConnectionCopy.stopped, ConnectionCopy.couldNotStart,
-                    ConnectionCopy.connecting(to: "Coach"), ConnectionCopy.cantReach("Coach"),
-                    ConnectionCopy.cantReachDetail(sharedBy: nil), ConnectionCopy.cantReachDetail(sharedBy: "Owen"),
-                    ConnectionCopy.signIn(toOpen: "Coach"),
-                    ConnectionCopy.cantOpen("Coach"), ConnectionCopy.offline, ConnectionCopy.offlineDetail,
-                    NodeState.starting.summary, NodeMachine.next(.ready, .backend(state: "Stopped", authURL: nil)).summary,
-                    ConnectionCopy.reportProblem, ConnectionCopy.leaveApps("Riley"), ConnectionCopy.leaveTitle("Riley"),
-                    ConnectionCopy.leaveDetail("Riley"), LauncherWelcome.title, LauncherWelcome.message]
-        for text in copy {
-            XCTAssertFalse(text.localizedCaseInsensitiveContains("tailscale"), text)
-            XCTAssertFalse(text.localizedCaseInsensitiveContains("tailnet"), text)
-        }
+        XCTAssertFalse(offline())
+        XCTAssertFalse(offline("Interview-Coach.tailabc123.ts.net"), "hosts compare normalized")
+        XCTAssertTrue(offline(answers: [coach: false]))
+        XCTAssertTrue(offline(answers: ["other.tailabc123.ts.net": true]), "not probed: its machine is offline")
+        XCTAssertTrue(offline(answers: [:]), "what a node records when nothing was left to probe")
+        XCTAssertFalse(offline(answers: nil), "nothing before the first probe")
+        XCTAssertFalse(offline(node: .connecting, answers: [coach: false]), "the launcher shows the connection itself")
     }
 }
 

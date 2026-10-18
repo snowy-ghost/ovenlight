@@ -76,26 +76,6 @@ struct InviteLink: Codable, Equatable, Hashable {
     /// (Associated Domains); otherwise the page offers Ovenlight.
     static let joinPage = URL(string: "https://ovenlight.app/join")!
 
-    /// The fields in the connector's order, form-encoded: the query of `ovenlight://join`
-    /// and the fragment of the universal link.
-    private var encodedFields: String {
-        [("v", Self.version), ("control", control.absoluteString), ("key", key), ("owner", owner),
-         ("app", app), ("invite", invite), ("host", host), ("name", name), ("to", to)]
-            .map { "\($0.0)=\(Self.formEncode($0.1))" }.joined(separator: "&")
-    }
-
-    /// The link to send: the universal link, which opens Ovenlight when it's installed.
-    var universalURL: URL { URL(string: Self.joinPage.absoluteString + "#" + encodedFields)! }
-
-    /// The same invite as `ovenlight://join?...`, for when the universal link opens the page.
-    var url: URL {
-        var c = URLComponents()
-        c.scheme = Self.scheme
-        c.host = "join"
-        c.percentEncodedQuery = encodedFields
-        return c.url!
-    }
-
     /// Whether a link is an invite, in any form Ovenlight accepts, before checking its fields.
     static func isInvite(_ url: URL) -> Bool { encodedFields(of: url) != nil }
 
@@ -199,12 +179,6 @@ struct InviteLink: Codable, Equatable, Hashable {
             !label.isEmpty && label.count <= 63 && !label.hasPrefix("-") && !label.hasSuffix("-")
                 && label.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-") }
         }
-    }
-
-    private static func formEncode(_ text: String) -> String {
-        var allowed = CharacterSet.alphanumerics
-        allowed.insert(charactersIn: "-._~")
-        return (text.addingPercentEncoding(withAllowedCharacters: allowed) ?? text).replacingOccurrences(of: "%20", with: "+")
     }
 
     static var isDebugBuild: Bool {

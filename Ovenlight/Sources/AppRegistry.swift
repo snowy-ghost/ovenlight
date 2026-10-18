@@ -29,8 +29,7 @@ final class AppRegistry: ObservableObject {
     private let session: @MainActor (WebApp) -> URLSession?
 
     init(directory: URL? = nil, session: (@MainActor (WebApp) -> URLSession?)? = nil) {
-        let base = directory ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Ovenlight", isDirectory: true)
+        let base = directory ?? SavedJSON.directory
         self.directory = base
         self.session = session ?? { NodeManager.shared.session(for: $0) }
         try? FileManager.default.createDirectory(at: iconsDirectory, withIntermediateDirectories: true)
@@ -190,24 +189,18 @@ final class AppRegistry: ObservableObject {
 
     /// Deletes a data store's cookies, storage and caches. Always go through
     /// here: touching the default store first starts WebKit, and removing a store before
-    /// anything else has used it crashes the app when the removal completes (it did at
-    /// launch in build 3, when a store was removed before any web view existed).
+    /// anything else has used it crashes the app when the removal completes.
     ///
     /// A web view that is still closing keeps its store in use, and removing a store in
     /// use fails. So the data is cleared at once, and the store itself is removed once
     /// it's free: retried here, and swept at the next launch.
     private static func removeDataStore(_ id: UUID) async {
         _ = WKWebsiteDataStore.default()
-        await clearData(inStore: id)
+        await WKWebsiteDataStore(forIdentifier: id).removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast)
         for delay in [0.0, 1, 2, 4, 8] {
             try? await Task.sleep(for: .seconds(delay))
             if (try? await WKWebsiteDataStore.remove(forIdentifier: id)) != nil { return }
         }
-    }
-
-    private static func clearData(inStore id: UUID) async {
-        let store = WKWebsiteDataStore(forIdentifier: id)
-        await store.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast)
     }
 
     /// Removes data stores no app uses: ones a removal couldn't delete while a web view
@@ -271,7 +264,8 @@ final class AppRegistry: ObservableObject {
                 return
             }
         }
-        guard let (html, _) = try? await fetchString(app.startURL, session: session) else { return }
+        guard let (data, _) = try? await session.data(from: app.startURL) else { return }
+        let html = String(decoding: data, as: UTF8.self)
         let links = ManifestParser.links(inHTML: html, baseURL: app.startURL)
         var meta = ManifestParser.Metadata(name: ManifestParser.title(inHTML: html))
         if let manifestURL = links.manifest,
@@ -312,11 +306,6 @@ final class AppRegistry: ObservableObject {
         for app in apps where app.iconFile == nil {
             await refreshMetadata(for: app.id)
         }
-    }
-
-    private func fetchString(_ url: URL, session: URLSession) async throws -> (String, URLResponse) {
-        let (data, response) = try await session.data(from: url)
-        return (String(decoding: data, as: UTF8.self), response)
     }
 }
 

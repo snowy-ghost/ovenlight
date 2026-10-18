@@ -35,8 +35,7 @@ struct OvenlightApp: App {
     /// the files exist and their size, which iOS answers even before the first unlock after
     /// a restart, when a prewarmed launch can't read them.
     static func hasSavedData(in directory: URL? = nil) -> Bool {
-        let base = directory ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Ovenlight", isDirectory: true)
+        let base = directory ?? SavedJSON.directory
         let files = FileManager.default
         // A failed join, leaving the last network and removing the last app each leave an
         // empty list, `[]`; a file whose size can't be read still counts.

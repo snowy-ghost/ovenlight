@@ -95,8 +95,7 @@ final class MembershipStore: ObservableObject {
     private var reloadOnUnlock: AnyCancellable?
 
     init(directory: URL? = nil) {
-        let base = directory ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Ovenlight", isDirectory: true)
+        let base = directory ?? SavedJSON.directory
         try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
         fileURL = base.appendingPathComponent("memberships.json")
         load()
@@ -163,6 +162,10 @@ final class MembershipStore: ObservableObject {
 /// be read (before the first unlock after a restart, say) or decoded throws, and must never
 /// be taken for an empty one: the next save would write that over it.
 enum SavedJSON {
+    /// Where Ovenlight keeps its files: `Ovenlight` in Application Support.
+    static let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("Ovenlight", isDirectory: true)
+
     static let log = Logger(subsystem: "com.snowyghost.ovenlight", category: "storage")
 
     /// A saved list as read.
@@ -259,12 +262,5 @@ enum GuestCleanup {
                 && notInvited.contains(Discovery.normalizedHost($0.host))
                 && !claiming.contains(Discovery.normalizedHost($0.host))
         }
-    }
-
-    /// Whether a guest node that lost its login means the owner removed this iPhone: only
-    /// once it had joined, since a first join passes through NeedsLogin briefly. The caller
-    /// asks only after the state held for a moment.
-    static func isRemoved(_ membership: Membership) -> Bool {
-        membership.joined
     }
 }

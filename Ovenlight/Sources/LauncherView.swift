@@ -24,7 +24,7 @@ struct LauncherView: View {
             HomeTopBar(isEditing: $isEditing, showsLock: !welcome, showsAddApp: node.ownerEnabled, showsEditApps: !registry.apps.isEmpty,
                        lock: { lock.lock() }, addApp: { router.present(.addApp) }, settings: { router.present(.settings) }) {
                 // The owner's own connection only once they set Ovenlight up for their machines.
-                TailnetStatusPill(state: node.ownerEnabled ? node.state : .idle) { Task { await node.restart() } }
+                TailnetStatusPill(state: node.ownerEnabled ? node.state : .idle) { Task { await node.owner.restart() } }
             } menuItems: {
                 LauncherShareMenuItems()
             }
@@ -38,7 +38,7 @@ struct LauncherView: View {
                 LauncherWelcome { router.present(.join(JoinRequest())) }
             } else {
             HomeScreenGrid(apps: registry.apps, ownerEnabled: node.ownerEnabled, isEditing: $isEditing,
-                           reachability: { node.reachability(of: $0) },
+                           isOffline: { node.isOffline($0) },
                            open: { router.open($0) },
                            move: { registry.move($0, to: $1) },
                            remove: { removing = $0 },
@@ -281,7 +281,7 @@ struct AppTile: View {
     let app: WebApp
     var namespace: Namespace.ID?
     /// Set when the app's machine isn't answering; the icon dims and gets a badge.
-    var reachability: AppReachability?
+    var isOffline = false
     /// Editing the Home Screen: a tap doesn't open the app.
     var isEditing = false
 
@@ -291,11 +291,9 @@ struct AppTile: View {
         VStack(spacing: HomeGridLayout.labelGap) {
             AppIconView(app: app, image: registry.icon(for: app), size: iconSize)
                 .launchSource(for: app, in: namespace, iconSize: iconSize)
-                .opacity(reachability == .offline ? 0.5 : 1)
+                .opacity(isOffline ? 0.5 : 1)
                 .overlay(alignment: .topTrailing) {
-                    if let reachability {
-                        ReachabilityBadge(status: reachability).offset(x: 4, y: -4)
-                    }
+                    if isOffline { OfflineBadge().offset(x: 4, y: -4) }
                 }
                 .shadow(color: .black.opacity(0.08), radius: 3, y: 1)
             label
@@ -312,7 +310,7 @@ struct AppTile: View {
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(app.sharedBy.map { "\(app.name), \(ConnectionCopy.sharedBy($0))" } ?? app.name)
-        .accessibilityValue([app.isNew ? "New" : nil, reachability?.label].compactMap { $0 }.joined(separator: ", "))
+        .accessibilityValue([app.isNew ? "New" : nil, isOffline ? "Offline" : nil].compactMap { $0 }.joined(separator: ", "))
         .accessibilityHint(isEditing ? "" : "Opens the app")
     }
 

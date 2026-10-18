@@ -33,7 +33,11 @@ struct JoinFlowView: View {
                 case nil:
                     InviteEntryView { request.invite = $0 }
                 case .failure(let error):
-                    JoinMessage(symbol: "link.badge.plus", title: "Can’t Use This Invite", message: error.message) {
+                    ContentUnavailableView {
+                        Label("Can’t Use This Invite", systemImage: "link.badge.plus")
+                    } description: {
+                        Text(error.message)
+                    } actions: {
                         Button("Try Another Invite") { request.invite = nil }
                             .buttonStyle(.ovenlightProminent)
                             .buttonBorderShape(.capsule)
@@ -297,24 +301,6 @@ private struct JoinInviteView: View {
 
     private func open(_ id: UUID) {
         if let app = registry.apps.first(where: { $0.id == id }) { router.open(app) } else { close() }
-    }
-}
-
-/// A symbol, a title and a message, for the sheet's end states.
-private struct JoinMessage<Controls: View>: View {
-    let symbol: String
-    let title: String
-    let message: String
-    @ViewBuilder let controls: Controls
-
-    var body: some View {
-        ContentUnavailableView {
-            Label(title, systemImage: symbol)
-        } description: {
-            Text(message)
-        } actions: {
-            controls
-        }
     }
 }
 

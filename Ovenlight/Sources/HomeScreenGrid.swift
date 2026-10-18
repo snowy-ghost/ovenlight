@@ -69,7 +69,7 @@ struct HomeScreenGrid<Menu: View, Preview: View>: View {
     /// stays blank while the first invite joins.
     let ownerEnabled: Bool
     @Binding var isEditing: Bool
-    let reachability: (WebApp) -> AppReachability?
+    let isOffline: (WebApp) -> Bool
     let open: (WebApp) -> Void
     /// Moves an app to an index in the list, and saves the order.
     let move: (UUID, Int) -> Void
@@ -180,7 +180,7 @@ struct HomeScreenGrid<Menu: View, Preview: View>: View {
 
     @ViewBuilder
     private func tile(_ app: WebApp, index: Int, in order: [WebApp], layout: HomeGridLayout) -> some View {
-        let content = AppTile(app: app, namespace: launchNamespace, reachability: reachability(app),
+        let content = AppTile(app: app, namespace: launchNamespace, isOffline: isOffline(app),
                               isEditing: isEditing, iconSize: layout.iconSize)
             .frame(width: layout.tileSize.width, height: layout.tileSize.height, alignment: .top)
         Group {

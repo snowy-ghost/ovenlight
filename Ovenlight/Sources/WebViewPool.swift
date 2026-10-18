@@ -76,7 +76,9 @@ final class WebViewPool: ObservableObject {
         view.navigationDelegate = coordinator
         view.uiDelegate = coordinator
         coordinator.webView = view
-        coordinator.start()
+        // Every app waits for its host to answer before the first navigation, however it's
+        // reached (see AppLoadGate).
+        coordinator.openGate()
 
         views[app.id] = view
         coordinators[app.id] = coordinator
@@ -267,12 +269,6 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
         self.node = node
     }
 
-    /// Every app waits for its host to answer before the first navigation, however it's
-    /// reached (see AppLoadGate).
-    func start() {
-        openGate()
-    }
-
     /// The view was discarded: stop waiting on the node for it, and end its downloads under
     /// way, whose delegate this is no longer, with their files.
     func stop() {
@@ -306,7 +302,7 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
         openGate()
     }
 
-    private func openGate() {
+    func openGate() {
         gateTask?.cancel()
         gateTask = Task { [weak self] in await self?.runGate() }
     }

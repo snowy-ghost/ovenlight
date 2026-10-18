@@ -380,7 +380,7 @@ struct InviteComposer: View {
     @State private var name = ""
     @State private var working = false
     @State private var error: String?
-    @State private var result: InviteResultItem?
+    @State private var result: AdminShareResult?
     @FocusState private var focused: Bool
 
     private var trimmed: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -395,7 +395,7 @@ struct InviteComposer: View {
 
     var body: some View {
         if let result {
-            InviteResultView(item: result)
+            InviteResultView(result: result, appName: app.name)
         } else {
             NavigationStack {
                 Form {
@@ -501,7 +501,7 @@ struct InviteComposer: View {
             } else {
                 try await client.createInvite(to: trimmed, app: app.slug)
             }
-            withAnimation { result = InviteResultItem(result: shared, appName: app.name) }
+            withAnimation { result = shared }
             Task { await OwnerSharing.shared.refresh(apps: registry.apps) }
         } catch let failure as AdminError {
             error = failure.message
@@ -511,22 +511,17 @@ struct InviteComposer: View {
     }
 }
 
-struct InviteResultItem: Identifiable {
-    let id = UUID()
-    var result: AdminShareResult
-    var appName: String
-}
-
 /// A fresh invite: its code for in person, and the link to send. This is the link's only
 /// showing, so until it's sent or copied, closing asks first and a swipe doesn't close.
 struct InviteResultView: View {
-    let item: InviteResultItem
+    let result: AdminShareResult
+    let appName: String
     @Environment(\.dismiss) private var dismiss
     @State private var copied = false
     @State private var sent = false
     @State private var confirmingClose = false
 
-    private var invite: AdminInvite { item.result.invite }
+    private var invite: AdminInvite { result.invite }
 
     var body: some View {
         NavigationStack {
@@ -541,7 +536,7 @@ struct InviteResultView: View {
                             .foregroundStyle(Color.secondaryText)
                     }
                     .multilineTextAlignment(.center)
-                    if let link = item.result.link, let code = QRCode.image(for: link) {
+                    if let link = result.link, let code = QRCode.image(for: link) {
                         Image(uiImage: code)
                             .interpolation(.none)
                             .resizable()
@@ -557,7 +552,7 @@ struct InviteResultView: View {
                             .multilineTextAlignment(.center)
                     }
                     VStack(spacing: 10) {
-                        ShareLink(item: item.result.message, subject: Text("\(item.appName) in Ovenlight")) {
+                        ShareLink(item: result.message, subject: Text("\(appName) in Ovenlight")) {
                             Label("Send Invite", systemImage: "square.and.arrow.up")
                                 .font(.headline)
                                 .frame(maxWidth: .infinity)
@@ -568,7 +563,7 @@ struct InviteResultView: View {
                         .controlSize(.large)
                         Button {
                             // A live credential: this iPhone only, and gone once the invite expires.
-                            UIPasteboard.general.setItems([["public.utf8-plain-text": item.result.link ?? ""]],
+                            UIPasteboard.general.setItems([["public.utf8-plain-text": result.link ?? ""]],
                                                           options: [.localOnly: true, .expirationDate: invite.expires])
                             copied = true
                             sent = true
@@ -582,7 +577,7 @@ struct InviteResultView: View {
                         .controlSize(.large)
                         .sensoryFeedback(.success, trigger: copied)
                     }
-                    Text("\(invite.to) can join without your approval and reaches only \(item.appName). Until it’s used, the link works like a key, so send it privately.")
+                    Text("\(invite.to) can join without your approval and reaches only \(appName). Until it’s used, the link works like a key, so send it privately.")
                         .font(.footnote)
                         .foregroundStyle(Color.secondaryText)
                         .multilineTextAlignment(.center)
