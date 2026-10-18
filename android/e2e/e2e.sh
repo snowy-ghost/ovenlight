@@ -52,7 +52,8 @@
 # nothing, and a link to the removed app's ID opens no app.
 # conditions keeps Recipes open while the phone changes under it: rotation, dark mode, the
 # largest font and three-button navigation leave the same page working; with Wi-Fi off and
-# back on it still reaches Recipes; after more than a minute at Home the nodes have closed and
+# back on it still reaches Recipes; Pantry opened in airplane mode says it's offline at once and
+# loads once the network is back; after more than a minute at Home the nodes have closed and
 # the page works again once back; and after Android ends the process in the background, Recents
 # brings Ovenlight back unlocked within the lock's time, with no app open, and Recipes opens again.
 # perf records cold start over ten launches, memory once four apps have opened (the pool keeps
@@ -1395,6 +1396,22 @@ EOF
   fetches_within "Wi-Fi off (cellular)" 60
   a shell svc wifi enable; sleep 3
   fetches_within "Wi-Fi back" 60
+
+  say "conditions: an app opened in airplane mode says so at once, and loads when the network is back"
+  printf '%s\n' '<!doctype html><meta charset="utf-8"><title>Pantry</title><h1>Pantry conditions</h1>' > $D/pantry/index.html
+  a shell input keyevent KEYCODE_BACK
+  await_text 10 Pantry || fail "Back didn't close Recipes: $(screen_text | tr '\n' '|')"
+  a shell cmd connectivity airplane-mode enable; sleep 3
+  tap_text Pantry
+  await_text 3 "You're offline" || { a shell cmd connectivity airplane-mode disable; fail "no offline message: $(screen_text | tr '\n' '|')"; }
+  shot conditions-offline
+  a shell cmd connectivity airplane-mode disable
+  await_text 60 "Pantry conditions" || fail "Pantry didn't load once the network was back: $(screen_text | tr '\n' '|')"
+  note "offline at once, then Pantry loaded with the network back"
+  a shell input keyevent KEYCODE_BACK
+  await_text 10 Recipes || fail "Back didn't close Pantry"
+  tap_text Recipes
+  await_text 10 "Recipe Box conditions" || fail "Recipes didn't reopen after Pantry"
 
   say "conditions: Home for more than a minute, which closes the nodes, then back"
   home_at=$(a shell "date '+%m-%d %H:%M:%S.000'" | tr -d '\r')
