@@ -20,6 +20,8 @@ struct OvenlightApp: App {
         try? Tips.configure()
         // Guest nodes get their hooks from the first one on.
         _ = GuestManager.shared
+        // Its first report comes a moment after it starts, so it starts with the app.
+        _ = NetworkPath.shared
     }
 
     /// Whether this iPhone has kept anything: apps, invites or a node. It asks only whether

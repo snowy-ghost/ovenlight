@@ -88,6 +88,11 @@ private struct AppPage: View {
                                   retry: { coordinator.reload() }, close: onClose)
                         .transition(.opacity)
                         .zIndex(1)
+                } else if coordinator.gate == .offline {
+                    LoadErrorView(title: ConnectionCopy.offline, message: ConnectionCopy.offlineDetail,
+                                  retry: { coordinator.reload() }, close: onClose)
+                        .transition(.opacity)
+                        .zIndex(1)
                 } else {
                     LaunchPlaceholder(app: app, icon: icon, caption: ConnectionCopy.connecting)
                         .transition(.opacity)

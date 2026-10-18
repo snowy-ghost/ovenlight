@@ -257,6 +257,16 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
         while !Task.isCancelled, gate == .waiting || gate == .probing {
             // Not even a probe goes through a node the app's route no longer names.
             guard routeIsCurrent() else { return }
+            // With no network at all there is nothing to wait for or probe: You're Offline shows
+            // at once, and the app opens once the phone has a network again.
+            if !hasLoadedOnce, !NetworkPath.shared.isSatisfied {
+                gate = gate.next(.offline)
+                await NetworkPath.shared.satisfied()
+                guard !Task.isCancelled, gate == .offline else { return }
+                gate = gate.next(.online)
+                probingSince = nil
+                continue
+            }
             // Apps loaded directly (on the public internet) have no node to wait for.
             if node == nil || (node?.state == .ready && nodeMayCarry) {
                 gate = gate.next(.nodeReady)
@@ -288,9 +298,29 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
                 gate = gate.next(.nodeNotReady)
                 probingSince = nil
                 // Sign-in and node failures have their own screens and wait for the owner.
-                if node?.state.isBusy == true, Date.now.timeIntervalSince(opened) >= AppLoadGate.nodeTimeout { return giveUp() }
-                try? await Task.sleep(for: .milliseconds(250))
+                guard let node else { return }
+                let deadline = node.state.isBusy ? opened.addingTimeInterval(AppLoadGate.nodeTimeout) : nil
+                if let deadline, Date.now >= deadline { return giveUp() }
+                await Self.change(of: node, before: deadline)
             }
+        }
+    }
+
+    /// Waits for the node to change (its state, or its status, which says what the owner's
+    /// node carries), until `deadline` if there is one, or for the phone's network to drop.
+    private static func change(of node: MembershipNode, before deadline: Date?) async {
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { @MainActor in
+                for await _ in node.objectWillChange.values { return }
+            }
+            group.addTask { @MainActor in
+                for await satisfied in NetworkPath.shared.$isSatisfied.values where !satisfied { return }
+            }
+            if let deadline {
+                group.addTask { try? await Task.sleep(for: .seconds(max(deadline.timeIntervalSinceNow, 0))) }
+            }
+            await group.next()
+            group.cancelAll()
         }
     }
 

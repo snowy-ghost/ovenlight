@@ -992,6 +992,16 @@ final class AppLoadGateTests: XCTestCase {
         CopyRules.assertNeutral(ConnectionCopy.notResponding("Coach"))
     }
 
+    func testAPhoneWithNoNetworkGivesUpAtOnceAndOpensOnceItHasOne() {
+        XCTAssertEqual(run([.offline]), .offline, "nothing to wait for or probe")
+        XCTAssertEqual(run([.nodeReady, .offline]), .offline)
+        XCTAssertEqual(run([.nodeReady, .reached, .gaveUp], from: .offline), .offline, "only a network, or Retry, leaves it")
+        XCTAssertEqual(run([.online], from: .offline), .waiting)
+        XCTAssertEqual(run([.retry], from: .offline), .waiting)
+        XCTAssertEqual(run([.offline], from: .ready), .ready, "a loaded page stays")
+        XCTAssertEqual(run([.offline], from: .unreachable), .unreachable)
+    }
+
     func testAComputerListedOfflineOpensTheAppWhenItAnswers() {
         let gaveUp = run([.nodeReady, .gaveUp])
         XCTAssertEqual(run([.woke], from: gaveUp), .ready, "a quiet retry answered")
@@ -1020,6 +1030,7 @@ final class ConnectionStateTests: XCTestCase {
         let copy = [ConnectionCopy.connecting, ConnectionCopy.stopped, ConnectionCopy.couldNotStart,
                     ConnectionCopy.connecting(to: "Coach"), ConnectionCopy.cantReach("Coach"),
                     ConnectionCopy.cantReachDetail, ConnectionCopy.signIn(toOpen: "Coach"),
+                    ConnectionCopy.cantOpen("Coach"), ConnectionCopy.offline, ConnectionCopy.offlineDetail,
                     NodeState.starting.summary, NodeMachine.next(.ready, .backend(state: "Stopped", authURL: nil)).summary,
                     ConnectionCopy.reportProblem, ConnectionCopy.leaveApps("Riley"), ConnectionCopy.leaveTitle("Riley"),
                     ConnectionCopy.leaveDetail("Riley"), LauncherWelcome.title, LauncherWelcome.message]
