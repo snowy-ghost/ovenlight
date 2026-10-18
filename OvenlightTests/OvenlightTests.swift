@@ -1065,3 +1065,47 @@ final class NodeManagerTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: directory.path))
     }
 }
+
+@MainActor
+final class LocalAddressRulesTests: XCTestCase {
+    /// What WebKit does with the rules: blocked if a block rule matches and no later
+    /// ignore-previous-rules rule does. url-filters are case-insensitive by default.
+    private func blocks(_ url: String) -> Bool {
+        func matches(_ host: String) -> Bool {
+            url.range(of: LocalAddressRules.urlFilter(host: host), options: [.regularExpression, .caseInsensitive]) != nil
+        }
+        return LocalAddressRules.blockedHosts.contains(where: matches) && !LocalAddressRules.allowedHosts.contains(where: matches)
+    }
+
+    func testBlocksLoopbackAndLocalAddressesOnly() {
+        for url in [
+            "http://127.0.0.1:8080/", "https://127.255.0.9/x", "ws://127.0.0.1:9/socket", "wss://127.0.0.1/",
+            "https://[::1]:8443/", "http://[::1]/", "http://[::]/", "https://user:pw@127.0.0.1/",
+            "https://[::ffff:7f00:1]/", "https://[::ffff:a00:1]:443/", "https://[::ffff:c0a8:4441]/",
+            "https://[::ffff:ac10:1]/", "https://[::ffff:a9fe:a9fe]/", "https://[::ffff:0:0]/",
+            "https://10.0.0.1/", "https://10.20.30.40:3000/", "https://172.16.0.1/", "https://172.31.255.254/",
+            "https://192.168.68.65:56596/", "https://169.254.169.254/latest", "http://0.0.0.0:80/",
+            "https://[fe80::1]/", "https://[febf::1]/", "https://[fd96:bdba:f856:4b19::1]/", "https://[fc00::1]/",
+        ] {
+            XCTAssertTrue(blocks(url), url)
+        }
+        for url in [
+            "https://100.64.0.1/ping", "https://100.101.102.103/", "https://[fd7a:115c:a1e0::5]/",
+            "https://recipe-box.e2e.example/", "https://example.com/", "https://8.8.8.8/", "https://172.15.0.1/",
+            "https://172.32.0.1/", "https://11.0.0.1/", "https://192.169.0.1/", "https://[2606:4700::1111]/",
+            "https://[::ffff:5db8:d70e]/", "https://[fec0::1]/", "https://[64:ff9b::7f00:1]/",
+            "https://example.com/127.0.0.1/", "https://example.com/?u=http://127.0.0.1/", "https://10.0.0.1.example.com/",
+            "https://127.0.0.1.nip.io/", "https://example.com/#[::1]",
+        ] {
+            XCTAssertFalse(blocks(url), url)
+        }
+    }
+
+    func testTheRulesCompile() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let store = try XCTUnwrap(WKContentRuleListStore(url: dir))
+        _ = try await store.compileContentRuleList(forIdentifier: "test", encodedContentRuleList: LocalAddressRules.json)
+    }
+}

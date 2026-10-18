@@ -250,6 +250,7 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
 
     /// Waits for the node, then probes this app's host until it answers or time runs out.
     private func runGate() async {
+        if let webView, !(await LocalAddressRules.install(in: webView)) { return giveUp() }
         // A shared app always goes through its owner's node; without one it has no way in.
         if app.isShared && node == nil { return await GuestManager.shared.collectOrphans() }
         let opened = Date.now
@@ -895,4 +896,63 @@ enum DownloadPolicy {
 
     /// Well under the 255 bytes APFS allows.
     static let maxFileNameBytes = 200
+}
+
+/// WebKit sends a load to the phone's loopback address or its own network address straight
+/// out, past the node's proxy, which would refuse it. These rules block every load to a
+/// loopback, private or link-local IP literal, in an app's frames and from its scripts alike,
+/// so a page can't reach the phone itself or map what listens there. Tailnet addresses
+/// (100.64.0.0/10 and Tailscale's fd7a:115c:a1e0::/48) are left to the proxy, which allows
+/// only the node's peers, and names go through it as well.
+@MainActor
+enum LocalAddressRules {
+    /// Hosts as WebKit writes them in a URL: IPv4 in dotted decimal, IPv6 bracketed in
+    /// compressed hex, an IPv4-mapped address as `::ffff:7f00:1`. A url-filter has no
+    /// alternation, so each range needs its own pattern.
+    static let blockedHosts = [
+        "127\\.[0-9]+\\.[0-9]+\\.[0-9]+[:/]", "10\\.[0-9]+\\.[0-9]+\\.[0-9]+[:/]",
+        "172\\.1[6-9]\\.[0-9]+\\.[0-9]+[:/]", "172\\.2[0-9]\\.[0-9]+\\.[0-9]+[:/]", "172\\.3[01]\\.[0-9]+\\.[0-9]+[:/]",
+        "192\\.168\\.[0-9]+\\.[0-9]+[:/]", "169\\.254\\.[0-9]+\\.[0-9]+[:/]", "0\\.[0-9]+\\.[0-9]+\\.[0-9]+[:/]",
+        "\\[::1?\\]",
+        "\\[::ffff:7f[0-9a-f][0-9a-f]:[0-9a-f]+\\]", "\\[::ffff:a[0-9a-f][0-9a-f]:[0-9a-f]+\\]",
+        "\\[::ffff:ac1[0-9a-f]:[0-9a-f]+\\]", "\\[::ffff:c0a8:[0-9a-f]+\\]", "\\[::ffff:a9fe:[0-9a-f]+\\]",
+        "\\[::ffff:[0-9a-f]?[0-9a-f]?:[0-9a-f]+\\]",
+        "\\[fe[89ab][0-9a-f]:", "\\[f[cd][0-9a-f][0-9a-f]:",
+    ]
+    /// Checked after the blocks, so Tailscale's range inside fc00::/7 stays open.
+    static let allowedHosts = ["\\[fd7a:115c:a1e0:"]
+
+    /// The host comes right after the scheme and any user info, so the same text in a path
+    /// or query doesn't match.
+    static func urlFilter(host: String) -> String { "^[a-z]+://([^/@]*@)?" + host }
+
+    static var json: String {
+        let rules = blockedHosts.map { ["trigger": ["url-filter": urlFilter(host: $0)], "action": ["type": "block"]] }
+            + allowedHosts.map { ["trigger": ["url-filter": urlFilter(host: $0)], "action": ["type": "ignore-previous-rules"]] }
+        return String(decoding: try! JSONSerialization.data(withJSONObject: rules), as: UTF8.self)
+    }
+
+    private static let compiled = Task { () -> WKContentRuleList? in
+        do {
+            return try await WKContentRuleListStore.default().compileContentRuleList(forIdentifier: "local-addresses",
+                                                                                     encodedContentRuleList: json)
+        } catch {
+            Logger(subsystem: "com.snowyghost.ovenlight", category: "node")
+                .error("local address rules didn't compile: \(String(describing: error), privacy: .public)")
+            return nil
+        }
+    }
+    private static let installed = NSHashTable<WKUserContentController>.weakObjects()
+
+    /// Adds the rules to a view before its first load. False if they couldn't be compiled:
+    /// the view then loads nothing.
+    static func install(in view: WKWebView) async -> Bool {
+        guard let list = await compiled.value else { return false }
+        let controller = view.configuration.userContentController
+        if !installed.contains(controller) {
+            controller.add(list)
+            installed.add(controller)
+        }
+        return true
+    }
 }
