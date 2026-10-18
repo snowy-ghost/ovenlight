@@ -163,6 +163,16 @@ class AppChromeTests {
         assertShown(recipes)
     }
 
+    /** The tip teaches the handle, which TalkBack never shows: it waits until TalkBack is off. */
+    @Test
+    fun testTalkBackGetsNoTip() {
+        val controller = ChromeController(MemoryStore())
+        show(recipes, controller, touchExploration = true)
+        inEveryLook { assertShown(recipes) }
+        composeRule.onNodeWithText("Your apps are up here").assertDoesNotExist()
+        assertTrue("still due once TalkBack is off", controller.tipShowing)
+    }
+
     @Test
     fun testTheSnapshotFrameShowsNoChrome() {
         val controller = controller()
@@ -204,7 +214,8 @@ class AppChromeTests {
         inEveryLook {
             openMenu(recipes)
             assertMenu("Reload", "Share…", "Send feedback", "Report a problem", "Lock Ovenlight")
-            assertNotInMenu("Leave Riley's apps")
+            // The pill's own button goes to all apps.
+            assertNotInMenu("Leave Riley's apps", "All apps")
             composeRule.onNodeWithText("Reload").performClick()
             composeRule.waitForIdle()
         }

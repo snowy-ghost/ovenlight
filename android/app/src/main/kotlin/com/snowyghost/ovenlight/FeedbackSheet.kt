@@ -49,6 +49,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -155,8 +156,9 @@ fun FeedbackSheet(
         FullScreenDialogBars()
         val title = stringResource(R.string.feedback_title)
         val background = LocalOvenColors.current.groupedBackground
+        val bar = TopAppBarDefaults.pinnedScrollBehavior()
         Scaffold(
-            modifier = Modifier.semantics { paneTitle = title },
+            modifier = Modifier.nestedScroll(bar.nestedScrollConnection).semantics { paneTitle = title },
             containerColor = background,
             topBar = {
                 TopAppBar(
@@ -176,7 +178,8 @@ fun FeedbackSheet(
                             TextButton(onClick = { submit() }, enabled = canSend) { Text(stringResource(R.string.feedback_send)) }
                         }
                     },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = background, scrolledContainerColor = background),
+                    colors = scrollingBarColors(background),
+                    scrollBehavior = bar,
                 )
             },
         ) { bars ->

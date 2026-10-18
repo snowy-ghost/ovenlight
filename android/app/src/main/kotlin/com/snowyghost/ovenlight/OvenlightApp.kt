@@ -6,7 +6,9 @@ import android.content.res.Configuration
 import android.icu.text.Normalizer2
 import android.os.SystemClock
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.rememberTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -14,6 +16,7 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
@@ -29,9 +32,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import java.io.File
 import java.net.URI
+import java.util.UUID
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -433,9 +440,16 @@ fun RootView(model: AppModel) {
     }
 }
 
+/** Where each app's icon sits on the launcher, in the root's pixels, for its open app to grow from and shrink back into. */
+internal val launcherIcons = mutableMapOf<UUID, Offset>()
+
+private const val APP_ZOOM_MILLIS = 300
+
 /**
- * The open app over the launcher, growing in and shrinking away. It reports when it has
- * appeared and once it has finished closing, as the screens do (see [ScreenLayer]).
+ * The open app over the launcher, growing from its icon and shrinking back into it (the
+ * screen's center for an app not on the launcher). It fades only while small, quickly, so the
+ * page and the launcher never show through each other. It reports when it has appeared and once
+ * it has finished closing, as the screens do (see [ScreenLayer]).
  */
 @Composable
 private fun AppLayer(model: AppModel) {
@@ -445,14 +459,27 @@ private fun AppLayer(model: AppModel) {
     if (open != null) last = open
     // An app closed while the lock kept this layer out of composition never ran its own dismissal.
     LaunchedEffect(Unit) { if (router.openApp.value == null) router.appDismissed() }
-    AnimatedVisibility(visible = open != null, enter = scaleIn(initialScale = 0.9f) + fadeIn(), exit = scaleOut(targetScale = 0.9f) + fadeOut()) {
-        val shown = open ?: last ?: return@AnimatedVisibility
-        key(shown.id) {
-            DisposableEffect(Unit) {
-                router.appAppeared()
-                onDispose { router.appDismissed() }
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val origin = (open ?: last)?.let { launcherIcons[it.id] }
+            // An icon scrolled out of sight gives the nearest point on screen.
+            ?.let { TransformOrigin((it.x / constraints.maxWidth).coerceIn(0f, 1f), (it.y / constraints.maxHeight).coerceIn(0f, 1f)) } ?: TransformOrigin.Center
+        val zoom = tween<Float>(APP_ZOOM_MILLIS, easing = FastOutSlowInEasing)
+        AnimatedVisibility(
+            visible = open != null,
+            enter = scaleIn(zoom, initialScale = 0.2f, transformOrigin = origin) + fadeIn(tween(90)),
+            exit = scaleOut(zoom, targetScale = 0.2f, transformOrigin = origin) + fadeOut(tween(120, delayMillis = APP_ZOOM_MILLIS - 120)),
+        ) {
+            val shown = open ?: last ?: return@AnimatedVisibility
+            // Nothing of the launcher beneath takes a touch, even where the app draws nothing of its own.
+            Box(Modifier.fillMaxSize().pointerInput(Unit) {}) {
+                key(shown.id) {
+                    DisposableEffect(Unit) {
+                        router.appAppeared()
+                        onDispose { router.appDismissed() }
+                    }
+                    AppHostView(model, shown, origin, onClose = { if (router.openApp.value?.id == shown.id) router.openApp.value = null })
+                }
             }
-            AppHostView(model, shown, onClose = { if (router.openApp.value?.id == shown.id) router.openApp.value = null })
         }
     }
 }

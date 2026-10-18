@@ -31,6 +31,7 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -45,6 +46,7 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.captionBarIgnoringVisibility
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.only
@@ -57,7 +59,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -408,9 +409,10 @@ fun rememberAppBack(canGoBack: () -> Boolean, goBack: () -> Unit, close: () -> U
     return { progress.value }
 }
 
-/** The open app as a back gesture shrinks it: toward 0.9, its corners rounding to 28 dp. */
-fun Modifier.backShrink(progress: () -> Float): Modifier = graphicsLayer {
+/** The open app as a back gesture shrinks it toward [origin], its icon: to 0.9, its corners rounding to 28 dp. */
+fun Modifier.backShrink(progress: () -> Float, origin: TransformOrigin): Modifier = graphicsLayer {
     val p = progress()
+    transformOrigin = origin
     scaleX = 1 - 0.1f * p
     scaleY = 1 - 0.1f * p
     shape = RoundedCornerShape(28.dp * p)
@@ -505,7 +507,7 @@ fun AppChrome(
                 scaleIn(initialScale = 0.6f, transformOrigin = TransformOrigin(0.5f, 0f)),
             exit = slideOutVertically { -it } + fadeOut() + scaleOut(targetScale = 0.6f, transformOrigin = TransformOrigin(0.5f, 0f)),
         ) {
-            ChromePill(app, icon, actions, controller)
+            ChromePill(app, icon, actions, controller, touchExploration)
         }
         AnimatedVisibility(
             visible = !controller.isShown && !touchExploration,
@@ -518,13 +520,17 @@ fun AppChrome(
     }
 }
 
-/** The pill, with the tip pointing at it while the tip is due. The tip and the menu keep the reader's text size; the pill caps it. */
+/**
+ * The pill, with the tip pointing at it while the tip is due. The tip teaches the handle, which
+ * TalkBack never needs, so with TalkBack on it waits. The tip and the menu keep the reader's text
+ * size; the pill caps it.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ChromePill(app: WebApp, icon: Bitmap?, actions: AppChromeActions, controller: ChromeController) {
+private fun ChromePill(app: WebApp, icon: Bitmap?, actions: AppChromeActions, controller: ChromeController, touchExploration: Boolean) {
     val tip = rememberTooltipState(isPersistent = true)
     val reader = LocalDensity.current
-    LaunchedEffect(controller.tipShowing) { if (controller.tipShowing) tip.show() else tip.dismiss() }
+    LaunchedEffect(controller.tipShowing, touchExploration) { if (controller.tipShowing && !touchExploration) tip.show() else tip.dismiss() }
     TooltipBox(
         positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Below),
         tooltip = {
@@ -535,7 +541,7 @@ private fun ChromePill(app: WebApp, icon: Bitmap?, actions: AppChromeActions, co
         },
         state = tip,
         onDismissRequest = controller::closeTip,
-        // Holds focus, as iOS's popover does: TalkBack and a keyboard reach the tip, and Back closes it.
+        // Holds focus, as iOS's popover does: a keyboard reaches the tip, and Back closes it.
         focusable = true,
         enableUserInput = false,
         hasAction = true,
@@ -552,6 +558,8 @@ private fun Pill(app: WebApp, icon: Bitmap?, actions: AppChromeActions, controll
         shape = CircleShape,
         color = colors.surfaceContainer,
         shadowElevation = 3.dp,
+        // A shadow barely shows on a dark page; an edge does.
+        border = if (isSystemInDarkTheme()) BorderStroke(1.dp, colors.outlineVariant) else null,
         modifier = Modifier
             .widthIn(max = 320.dp)
             .height(48.dp)
@@ -583,7 +591,7 @@ private fun Pill(app: WebApp, icon: Bitmap?, actions: AppChromeActions, controll
                     Icon(painterResource(R.drawable.ic_expand_more), contentDescription = null, tint = colors.onSurfaceVariant)
                 }
                 CompositionLocalProvider(LocalDensity provides reader) {
-                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    RoundedMenu(expanded = menu, onDismissRequest = { menu = false }) {
                         AppMenuItems(app, actions, close = { menu = false })
                     }
                 }
@@ -592,10 +600,9 @@ private fun Pill(app: WebApp, icon: Bitmap?, actions: AppChromeActions, controll
     }
 }
 
-/** The app menu, in iOS's sections: getting around, then this app, then the lock. */
+/** The app menu, in iOS's sections: the page, then this app, then the lock. All apps is the pill's own button. */
 @Composable
 private fun AppMenuItems(app: WebApp, actions: AppChromeActions, close: () -> Unit) {
-    AppMenuItem(close, stringResource(R.string.chrome_all_apps), R.drawable.ic_apps, action = actions.home)
     AppMenuItem(close, stringResource(R.string.chrome_reload), R.drawable.ic_refresh, action = actions.reload)
     // Open in browser never applies: every Android app goes through Ovenlight's own connection.
     HorizontalDivider()
@@ -626,21 +633,23 @@ val chromeTop: WindowInsets
 
 /**
  * What stays of the chrome while it's tucked away: a small handle at the top center, in the band
- * just below the status bar, which takes its own touches (they pull down the shade). It works on
- * any page, however the page scrolls.
+ * just below the status bar, which takes its own touches (they pull down the shade). The whole
+ * band takes a tap for it. It works on any page, however the page scrolls.
  */
 @Composable
 private fun ChromeHandle(header: Color, reveal: () -> Unit) {
     val label = stringResource(R.string.chrome_show_menu)
     Box(
         Modifier
-            .size(width = 120.dp, height = ChromeHandleHeight)
+            .fillMaxWidth()
+            .height(ChromeHandleHeight)
             .clickable(role = Role.Button, onClick = reveal)
             .semantics { contentDescription = label },
         contentAlignment = Alignment.Center,
     ) {
+        // At 80 percent the mark keeps 3:1 against any band (3.2 at worst, a saturated red).
         val mark = if (header.isLight()) Color.Black else Color.White
-        Box(Modifier.size(width = 32.dp, height = 4.dp).background(mark.copy(alpha = 0.3f), CircleShape))
+        Box(Modifier.size(width = 32.dp, height = 4.dp).background(mark.copy(alpha = 0.8f), CircleShape))
     }
 }
 

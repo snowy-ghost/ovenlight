@@ -49,7 +49,6 @@ import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -88,12 +87,16 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
@@ -122,6 +125,9 @@ import kotlinx.coroutines.withContext
 
 /** The owner's People & sharing. */
 object SharingList {
+    /** The command, in the not-shareable footer, that makes an app shareable on its computer. */
+    fun shareableCommand(slug: String) = "ovenlight publish --slug $slug --shareable"
+
     /**
      * How many of the tailnet's tagged devices, which Tailscale's plans count, the owner's
      * shareable apps and guests' devices take. Null before a connector has counted them.
@@ -336,6 +342,23 @@ private fun SharingListPage(state: SharingState, scroll: ScrollState, open: (Sha
     }
 }
 
+/** How to make an app shareable, with the command in code type, selectable to copy. */
+@Composable
+private fun NotShareableFooter(slug: String) {
+    val text = stringResource(R.string.sharing_not_shareable_footer, slug)
+    val annotated = remember(text, slug) {
+        val command = SharingList.shareableCommand(slug)
+        buildAnnotatedString {
+            append(text)
+            val start = text.indexOf(command)
+            if (start >= 0) addStyle(SpanStyle(fontFamily = FontFamily.Monospace), start, start + command.length)
+        }
+    }
+    SelectionContainer {
+        Text(annotated, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp))
+    }
+}
+
 /** "Online · 2 people", or who it's for when it isn't shareable. */
 @Composable
 private fun appSummary(app: AdminApp): String {
@@ -387,12 +410,14 @@ internal fun Unavailable(title: String, detail: String? = null) {
     }
 }
 
-/** What went wrong, above the rest of a page. */
+/** What went wrong, above the rest of a page, and announced as it appears: TalkBack's focus is elsewhere. */
 @Composable
 internal fun SharingError(message: String) {
-    SettingsGroup {
-        row { shape ->
-            SettingsRow(shape, message, leading = { Icon(painterResource(R.drawable.ic_warning), contentDescription = null, tint = MaterialTheme.colorScheme.tertiary) })
+    Box(Modifier.semantics { liveRegion = LiveRegionMode.Polite }) {
+        SettingsGroup {
+            row { shape ->
+                SettingsRow(shape, message, leading = { Icon(painterResource(R.drawable.ic_warning), contentDescription = null, tint = MaterialTheme.colorScheme.tertiary) })
+            }
         }
     }
 }
@@ -405,7 +430,7 @@ internal fun RowMenu(label: String, items: @Composable ColumnScope.(close: () ->
         IconButton(onClick = { expanded = true }) {
             Icon(painterResource(R.drawable.ic_more_vert), contentDescription = stringResource(R.string.sharing_options, label))
         }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) { items { expanded = false } }
+        RoundedMenu(expanded = expanded, onDismissRequest = { expanded = false }) { items { expanded = false } }
     }
 }
 
@@ -428,7 +453,7 @@ private fun SharingAppPage(state: SharingState, page: SharingPage.App, scroll: S
             error?.let { SharingError(it) }
             SettingsGroup(
                 footer = {
-                    Footer(if (app.shareable) stringResource(R.string.sharing_share_footer) else stringResource(R.string.sharing_not_shareable_footer, app.slug))
+                    if (app.shareable) Footer(stringResource(R.string.sharing_share_footer)) else NotShareableFooter(app.slug)
                 },
             ) {
                 row { shape ->
@@ -641,7 +666,12 @@ private fun InviteForm(composer: InviteComposer, sharing: SharingState, scope: C
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
             if (target != null) {
-                SettingsGroup(footer = { Footer(error ?: stringResource(R.string.sharing_adds_a_phone, target.name, app.name)) }) {
+                SettingsGroup(
+                    footer = {
+                        // A failed Create is announced, as under the name field.
+                        if (error != null) Box(Modifier.semantics { liveRegion = LiveRegionMode.Polite }) { Footer(error) } else Footer(stringResource(R.string.sharing_adds_a_phone, target.name, app.name))
+                    },
+                ) {
                     row { shape -> SettingsRow(shape, target.name, trailing = { Text(target.devices, color = MaterialTheme.colorScheme.onSurfaceVariant) }) }
                 }
                 return@Column
@@ -680,7 +710,6 @@ private fun NewPersonField(composer: InviteComposer, onDone: () -> Unit) {
     // Here, in the dialog's own window, so the field is there to take focus.
     LaunchedEffect(Unit) { focus.requestFocus() }
     val supporting = when {
-        error != null -> error
         namesake != null -> stringResource(
             if (composer.choices.any { it.id == namesake.id }) R.string.sharing_namesake_listed else R.string.sharing_namesake_invited, namesake.name,
         )
@@ -690,14 +719,15 @@ private fun NewPersonField(composer: InviteComposer, onDone: () -> Unit) {
     Column {
         Text(
             stringResource(R.string.sharing_someone_new), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
+            modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp).semantics { heading() },
         )
         OutlinedTextField(
             composer.name,
             label = { Text(stringResource(R.string.sharing_their_name)) },
             lineLimits = TextFieldLineLimits.SingleLine,
             isError = error != null || namesake != null,
-            supportingText = { Text(supporting) },
+            // A failed Create is announced; the rest is guidance that changes as they type.
+            supportingText = { if (error != null) FieldWarning(error) else Text(supporting) },
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Done),
             onKeyboardAction = { onDone() },
             modifier = Modifier.fillMaxWidth().focusRequester(focus),
@@ -723,7 +753,7 @@ private fun InviteResultView(result: AdminShareResult, appName: String, used: ()
     ) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(20.dp)) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(stringResource(R.string.sharing_invite_title, invite.to), style = OvenType.displayTitle, textAlign = TextAlign.Center)
+                Text(stringResource(R.string.sharing_invite_title, invite.to), Modifier.semantics { heading() }, style = OvenType.displayTitle, textAlign = TextAlign.Center)
                 Text(
                     stringResource(R.string.sharing_invite_expires, invite.expiresIn, DateFormat.getTimeFormat(context).format(Date.from(invite.expires))),
                     style = MaterialTheme.typography.bodyMedium, color = muted, textAlign = TextAlign.Center,
