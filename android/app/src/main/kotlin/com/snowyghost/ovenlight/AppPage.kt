@@ -26,7 +26,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * One app's web view and everything about loading it (iOS's WebCoordinator): its profile, its
@@ -98,7 +97,8 @@ class AppPage(
         },
         failed = { name ->
             val app = this.context.applicationContext
-            Toast.makeText(app, app.getString(R.string.download_failed, name), Toast.LENGTH_LONG).show()
+            val text = name?.let { app.getString(R.string.download_failed, it) } ?: app.getString(R.string.download_failed_file)
+            Toast.makeText(app, text, Toast.LENGTH_LONG).show()
         },
     )
 
@@ -187,7 +187,7 @@ class AppPage(
         appDownLoads = 0
         error.value = null
         mutableGate.value = mutableGate.value.next(AppLoadGate.Event.Retry)
-        openGate(retried = true)
+        openGate()
     }
 
     /** Reopening an app that couldn't reach its computer, or couldn't load, tries again. */
@@ -195,14 +195,13 @@ class AppPage(
         if (!loaded.value && (mutableGate.value == AppLoadGate.Unreachable || error.value != null)) reload()
     }
 
-    /** [retried]: the person asked, so it tries even when Android finds no working network (see [runGate]). */
-    private fun openGate(retried: Boolean = false) {
+    private fun openGate() {
         gateJob?.cancel()
-        gateJob = scope.launch { runGate(retried) }
+        gateJob = scope.launch { runGate() }
     }
 
     /** Waits for the node, then probes this app's host until it answers or time runs out. */
-    private suspend fun runGate(retried: Boolean) {
+    private suspend fun runGate() {
         // A refused route has no way in; a shared app's always has its owner's node.
         if (node == null) {
             if (app.isShared) pool.guests.collectOrphans()
@@ -213,9 +212,9 @@ class AppPage(
         while (mutableGate.value == AppLoadGate.Waiting || mutableGate.value == AppLoadGate.Probing) {
             // Not even a probe goes through a node the app's route no longer names.
             if (!routeIsCurrent()) return
-            // No working network: say so at once, and start over quietly when one comes. Try
-            // Again tries anyway, since a network whose connectivity check is blocked may still work.
-            if (!TailnetCore.online.value && !retried) {
+            // No network: say so at once, and start over quietly when one comes.
+            val online = TailnetCore.online.value
+            if (!online) {
                 mutableGate.value = mutableGate.value.next(AppLoadGate.Event.PhoneOffline)
                 TailnetCore.online.first { it }
                 mutableGate.value = mutableGate.value.next(AppLoadGate.Event.PhoneOnline)
@@ -251,10 +250,10 @@ class AppPage(
                 val left = AppLoadGate.nodeTimeout - opened.elapsedNow()
                 if (state.isBusy && !left.isPositive()) return giveUp()
                 // Until the node, its tailnet or the phone's network changes, or a busy node's time runs out.
-                val status = node.status.value
-                withTimeoutOrNull(if (state.isBusy) left else Duration.INFINITE) {
-                    combine(node.state, node.status, TailnetCore.online) { now, seen, online -> now != state || seen != status || !online }.first { it }
-                }
+                AppLoadGate.awaitChange(
+                    combine(node.state, node.status, TailnetCore.online, ::Triple), Triple(state, node.status.value, online),
+                    if (state.isBusy) left else Duration.INFINITE,
+                )
             }
         }
     }

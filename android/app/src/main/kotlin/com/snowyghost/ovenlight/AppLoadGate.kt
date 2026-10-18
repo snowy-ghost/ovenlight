@@ -2,6 +2,9 @@ package com.snowyghost.ovenlight
 
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * When an app reached through Ovenlight's node may load its page. Opening the app shows its
@@ -22,7 +25,7 @@ enum class AppLoadGate {
     /** The host didn't answer in time. */
     Unreachable,
 
-    /** Android only: the phone has no working network, so nothing was tried; it tries again when one comes. */
+    /** The phone has no network, so nothing was tried; it tries again when one comes. */
     Offline,
     ;
 
@@ -41,10 +44,10 @@ enum class AppLoadGate {
         /** The app's computer, listed offline when the gate gave up, answered a quiet retry. */
         Woke,
 
-        /** Android only: the phone has no working network. */
+        /** The phone has no network. */
         PhoneOffline,
 
-        /** Android only: the phone has a working network again. */
+        /** The phone has a network again. */
         PhoneOnline,
     }
 
@@ -90,6 +93,15 @@ enum class AppLoadGate {
          * rather than showing the connector's text.
          */
         val appDownRetries: List<Duration> = listOf(1.seconds, 2.seconds, 4.seconds)
+
+        /**
+         * Android only: waits until [flow] holds something other than [seen], what the gate read
+         * before deciding to wait, or [timeout] passes. A value it was already given never ends
+         * the wait, so the gate's loop can't spin.
+         */
+        suspend fun <T> awaitChange(flow: Flow<T>, seen: T, timeout: Duration) {
+            withTimeoutOrNull(timeout) { flow.first { it != seen } }
+        }
     }
 }
 

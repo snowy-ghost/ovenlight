@@ -1,11 +1,21 @@
 package com.snowyghost.ovenlight
 
 import com.snowyghost.ovenlight.AppLoadGate.Event
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class AppLoadGateTests {
     private fun run(events: List<Event>, from: AppLoadGate = AppLoadGate.Waiting): AppLoadGate =
         events.fold(from) { gate, event -> gate.next(event) }
@@ -53,7 +63,7 @@ class AppLoadGateTests {
         assertEquals(AppLoadGate.Probing, run(listOf(Event.NodeReady, Event.Woke)))
     }
 
-    /** Android only: with no working network the gate says so at once, and starts over when one comes. */
+    /** With no network the gate says so at once, and starts over when one comes. */
     @Test
     fun testAnOfflinePhoneWaitsForANetwork() {
         assertEquals(AppLoadGate.Offline, run(listOf(Event.PhoneOffline)))
@@ -67,5 +77,36 @@ class AppLoadGateTests {
         assertEquals(AppLoadGate.Waiting, run(listOf(Event.PhoneOnline)))
         CopyRules.assertNeutral(ConnectionCopy.offline)
         CopyRules.assertNeutral(ConnectionCopy.offlineDetail)
+    }
+
+    /**
+     * Android only: offline, with the node not ready, the gate waits for a change rather than
+     * looping on what it already read, and wakes on the network coming back.
+     */
+    @Test
+    fun testTheGateOfflineAndNotReadyWaitsInsteadOfLooping() = runTest {
+        val state = MutableStateFlow<NodeState>(NodeState.Starting)
+        val online = MutableStateFlow(false)
+        val seen = state.value to online.value
+        var woke = false
+        launch {
+            AppLoadGate.awaitChange(combine(state, online, ::Pair), seen, Duration.INFINITE)
+            woke = true
+        }
+        advanceTimeBy(60_000)
+        assertFalse("nothing changed, so it still waits", woke)
+        online.value = true
+        runCurrent()
+        assertTrue(woke)
+
+        var timedOut = false
+        launch {
+            AppLoadGate.awaitChange(online, true, 30.seconds)
+            timedOut = true
+        }
+        advanceTimeBy(29_000)
+        assertFalse(timedOut)
+        advanceTimeBy(2_000)
+        assertTrue("a busy node's time ran out", timedOut)
     }
 }

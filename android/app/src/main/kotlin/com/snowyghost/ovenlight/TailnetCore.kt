@@ -63,7 +63,7 @@ object TailnetCore : Platform, TailnetClients {
 
     private val mutableOnline = MutableStateFlow(true)
 
-    /** The phone has a default network that Android found reaches the internet. */
+    /** The phone has a default network that offers the internet, as iOS's satisfied path: not in airplane mode or with no signal. */
     val online: StateFlow<Boolean> = mutableOnline
 
     fun start(context: Context) {
@@ -72,10 +72,10 @@ object TailnetCore : Platform, TailnetClients {
         proxySecret = Core.proxySecret()
         proxyRealm = Core.proxyRealm()
         connectivity = context.getSystemService(ConnectivityManager::class.java)
-        mutableOnline.value = validated(connectivity.activeNetwork?.let(connectivity::getNetworkCapabilities))
+        mutableOnline.value = hasInternet(connectivity.activeNetwork?.let(connectivity::getNetworkCapabilities))
         connectivity.registerDefaultNetworkCallback(object : ConnectivityManager.NetworkCallback() {
             override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
-                mutableOnline.value = validated(capabilities)
+                mutableOnline.value = hasInternet(capabilities)
             }
             override fun onLinkPropertiesChanged(network: Network, properties: LinkProperties) = reports.execute { report(properties) }
             // Only when no network takes over: a new default arrives with its own capabilities.
@@ -86,8 +86,8 @@ object TailnetCore : Platform, TailnetClients {
         })
     }
 
-    private fun validated(capabilities: NetworkCapabilities?): Boolean =
-        capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
+    private fun hasInternet(capabilities: NetworkCapabilities?): Boolean =
+        capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
 
     /**
      * Reports the current default network, as Ovenlight comes to the foreground, on the same
