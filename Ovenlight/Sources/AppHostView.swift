@@ -97,13 +97,8 @@ private struct AppPage: View {
                                 onClose()
                             }
                             .zIndex(1)
-                        } else if coordinator.gate == .unreachable {
-                            LoadErrorView(title: ConnectionCopy.cantReach(app.name), message: ConnectionCopy.cantReachDetail,
-                                          retry: { coordinator.reload() }, close: onClose)
-                                .transition(.opacity)
-                                .zIndex(1)
-                        } else if coordinator.gate == .offline {
-                            LoadErrorView(title: ConnectionCopy.offline, message: ConnectionCopy.offlineDetail,
+                        } else if let failure = gateFailure {
+                            LoadErrorView(title: failure.title, message: failure.message,
                                           retry: { coordinator.reload() }, close: onClose)
                                 .transition(.opacity)
                                 .zIndex(1)
@@ -167,6 +162,7 @@ private struct AppPage: View {
         }
         .statusBarHidden(false)
         .background(StatusBarTone(over: band))
+        .announcing(coverStatus)
         .sheet(item: $sheet) { sheet in
             switch sheet {
             case .login(let url):
@@ -199,6 +195,22 @@ private struct AppPage: View {
         }
         // VoiceOver's two-finger scrub goes back to the launcher, like Back does elsewhere.
         .accessibilityAction(.escape, onClose)
+    }
+
+    /// Can't Reach or You're Offline, from the gate, before the page has loaded.
+    private var gateFailure: (title: String, message: String)? {
+        switch coordinator.gate {
+        case .unreachable: (ConnectionCopy.cantReach(app.name), ConnectionCopy.cantReachDetail)
+        case .offline: (ConnectionCopy.offline, ConnectionCopy.offlineDetail)
+        default: nil
+        }
+    }
+
+    /// What the cover over the page says, for VoiceOver as it appears.
+    private var coverStatus: String? {
+        if let error = coordinator.loadError { return "\(ConnectionCopy.cantOpen(app.name)). \(error)" }
+        guard !coordinator.hasLoadedOnce, let failure = gateFailure else { return nil }
+        return "\(failure.title). \(failure.message)"
     }
 
     /// Share, for the owner's own apps the connector says are shareable.
@@ -329,7 +341,7 @@ struct NodeActionOverlay: View {
                     .multilineTextAlignment(.center)
                 Button("Try Again", action: retry).buttonStyle(.ovenlightProminent)
             }
-            Button("Back to Apps", action: close)
+            Button(action: close) { Text("Back to Apps").minimumHitArea() }
         }
         .padding(28)
         .ovenlightGlass(in: RoundedRectangle(cornerRadius: 24, style: .continuous))
@@ -374,7 +386,7 @@ struct LoadErrorView: View {
                 .font(.display(.title2))
                 .accessibilityAddTraits(.isHeader)
             Text(message)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.secondaryText)
             VStack(spacing: 12) {
                 Button(action: retry) {
                     Text("Try Again").font(.headline).frame(maxWidth: .infinity)
@@ -382,7 +394,7 @@ struct LoadErrorView: View {
                 .buttonStyle(.ovenlightProminent)
                 .buttonBorderShape(.capsule)
                 .controlSize(.large)
-                Button("Back to Apps", action: close)
+                Button(action: close) { Text("Back to Apps").minimumHitArea() }
             }
             .padding(.top, 22)
         }

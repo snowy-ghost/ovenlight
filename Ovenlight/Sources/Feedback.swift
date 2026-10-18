@@ -184,6 +184,15 @@ struct FeedbackSheet: View {
             case nil: nil
             }
         }
+        .announcing(announcement)
+    }
+
+    private var announcement: String? {
+        switch result {
+        case .sent: "\(ConnectionCopy.feedbackSent). \(ConnectionCopy.feedbackSentDetail(to: app.sharedBy))"
+        case .failed(let message): message
+        case nil: nil
+        }
     }
 
     private func send() async {

@@ -129,7 +129,7 @@ struct TailnetStatusPill: View {
                 .ovenlightGlass(in: Capsule(), interactive: true)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(message)
+            .accessibilityLabel("\(message) Try Again")
             .accessibilityHint("Tries to connect again")
         case .idle, .ready, .needsLogin, .awaitingApproval:
             EmptyView()
@@ -198,11 +198,12 @@ struct RemoveBadge: View {
                 .background(Circle().fill(.regularMaterial))
                 .overlay(Circle().strokeBorder(Color.primary.opacity(0.1), lineWidth: 0.5))
                 .shadow(color: .black.opacity(0.15), radius: 2, y: 1)
-                .padding(8)
+                // 44 points to tap, the badge in its middle.
+                .padding(10)
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
-        .padding(-8)
+        .padding(-10)
         .accessibilityLabel("Remove \(name)")
         .transition(.scale.combined(with: .opacity))
     }
@@ -226,7 +227,7 @@ struct EmptyHomeSlot: View {
                     }
                 Text("Add App")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.secondaryText)
                     .lineLimit(1)
             }
         }

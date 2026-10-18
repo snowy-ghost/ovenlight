@@ -192,10 +192,11 @@ struct TailnetBanner: View {
                         SettingsSymbol(systemName: "network", color: .ember)
                         Text("Connect Your Computers")
                             .font(.headline)
+                            .accessibilityAddTraits(.isHeader)
                     }
                     Text("Ovenlight connects privately to your own computers with your Tailscale account, without a VPN.")
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
                     Button { connect(url) } label: {
                         Text("Connect")
@@ -241,10 +242,11 @@ struct OwnerApprovalPrompt: View {
                 SettingsSymbol(systemName: "checkmark.shield", color: .ember)
                 Text("Approve This iPhone")
                     .font(.headline)
+                    .accessibilityAddTraits(.isHeader)
             }
             Text("Your Tailscale network asks you to approve each new device once. On the Machines page, find \(name), open its ••• menu and choose Approve. Ovenlight connects as soon as you do.")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
             Button(action: approve) {
                 Text("Open Machines Page")
@@ -335,7 +337,7 @@ struct AppPreviewCard: View {
                     .font(.headline)
                 Text(app.sharedBy.map(ConnectionCopy.sharedBy) ?? app.host)
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.secondaryText)
             }
             .multilineTextAlignment(.center)
         }
@@ -347,6 +349,7 @@ struct AppPreviewCard: View {
 }
 
 struct AddAppView: View {
+    static let insecureWarning = "Ovenlight only opens secure addresses that start with https."
     @EnvironmentObject private var registry: AppRegistry
     @EnvironmentObject private var node: NodeManager
     @EnvironmentObject private var router: Router
@@ -374,9 +377,10 @@ struct AddAppView: View {
                             .focused($focused)
                             .onSubmit(add)
                             .onChange(of: text) { refused = false }
+                            .announcing(isInsecure ? Self.insecureWarning : nil)
                     } footer: {
                         if isInsecure {
-                            Label("Ovenlight only opens secure addresses that start with https.", systemImage: "exclamationmark.triangle.fill")
+                            Label(Self.insecureWarning, systemImage: "exclamationmark.triangle.fill")
                                 .labelStyle(.warning)
                         } else if refused {
                             Label(AppAddress.notYourComputer, systemImage: "exclamationmark.triangle.fill")

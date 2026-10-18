@@ -216,6 +216,19 @@ private struct LightCone: View, Animatable {
 }
 
 extension View {
+    /// At least 44 points tall, all of it taking the tap: for a plain text button's label.
+    func minimumHitArea() -> some View {
+        frame(minHeight: 44).contentShape(Rectangle())
+    }
+
+    /// Says a status to VoiceOver as it appears or changes, since VoiceOver otherwise reads
+    /// only what has focus. Nil says nothing.
+    func announcing(_ status: String?) -> some View {
+        onChange(of: status) { _, status in
+            if let status { AccessibilityNotification.Announcement(status).post() }
+        }
+    }
+
     /// Fades the lamp's light in once per launch, like an oven light coming on over the
     /// plain launch screen. Every glow shares that one fade, so the privacy cover, lock
     /// screen and launcher can swap without the light dimming.
@@ -279,15 +292,36 @@ extension View {
 }
 
 extension View {
-    /// Grouped lists and forms on `Color.groupedBackground`.
+    /// Grouped lists and forms on `Color.groupedBackground`, their rows' values in
+    /// `Color.secondaryText`.
     func ovenlightGroupedBackground() -> some View {
         scrollContentBackground(.hidden).background(Color.groupedBackground)
+            .labeledContentStyle(SecondaryValueStyle())
     }
 
     /// The rows to match, for each section (or loose row) of a list that uses
     /// `ovenlightGroupedBackground()`. Not on a section whose row sets its own background.
     func ovenlightRows() -> some View {
         listRowBackground(Color.groupedRow)
+    }
+}
+
+/// A row's label and its value, the value in `Color.secondaryText`: the system's style
+/// fades it below 4.5:1 on the warm rows. Beside the label while it fits, under it after.
+private struct SecondaryValueStyle: LabeledContentStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .firstTextBaseline) {
+                configuration.label
+                Spacer(minLength: 12)
+                configuration.content.foregroundStyle(Color.secondaryText)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                configuration.label
+                configuration.content.foregroundStyle(Color.secondaryText)
+            }
+        }
+        .accessibilityElement(children: .combine)
     }
 }
 

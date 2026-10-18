@@ -20,11 +20,12 @@ struct SharedSettingsSections: View {
                             Text(membership.ownerName)
                             Text(apps.isEmpty ? "Joining…" : ListFormatter.localizedString(byJoining: apps.map(\.name)))
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Color.secondaryText)
                         }
                         Spacer()
                         Button("Leave", role: .destructive) { leaving = membership }
                             .buttonStyle(.borderless)
+                            .accessibilityLabel(ConnectionCopy.leaveApps(membership.ownerName))
                     }
                 }
             } header: {

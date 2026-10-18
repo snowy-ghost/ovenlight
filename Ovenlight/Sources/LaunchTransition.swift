@@ -74,7 +74,7 @@ struct LaunchPlaceholder: View {
                 if let caption {
                     Text(caption)
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.secondaryText)
                 }
             }
             .padding(.top, 28)

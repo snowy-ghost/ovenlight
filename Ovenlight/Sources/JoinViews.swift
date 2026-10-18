@@ -78,7 +78,7 @@ private struct InviteEntryView: View {
                 Text(ConnectionCopy.invitePrompt)
                     .textCase(nil)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.secondaryText)
                     .padding(.bottom, 6)
             }
             Section {
@@ -164,12 +164,23 @@ private struct JoinInviteView: View {
             ScrollView { layout(for: phase) }
         }
         .animation(.easeInOut(duration: 0.25), value: phase)
+        .announcing(announcement(for: phase))
         .sensoryFeedback(trigger: phase) { _, new in
             switch new {
             case .joined: .success
             case .failed: .error
             default: nil
             }
+        }
+    }
+
+    /// What VoiceOver hears as joining moves on: the screen's title, and why it failed.
+    private func announcement(for phase: JoinPhase?) -> String? {
+        switch phase {
+        case .joining, .claiming: ConnectionCopy.joining(owner: invite.owner, app: invite.name)
+        case .joined: ConnectionCopy.joined(invite.name)
+        case .failed(let error): "\(error.title(owner: invite.owner, app: invite.name)). \(error.message(owner: invite.owner, app: invite.name))"
+        case nil: nil
         }
     }
 
@@ -241,11 +252,11 @@ private struct JoinInviteView: View {
     }
 
     private func title(_ text: String) -> some View {
-        Text(text).font(.display(.title2))
+        Text(text).font(.display(.title2)).accessibilityAddTraits(.isHeader)
     }
 
     private func detail(_ text: String) -> some View {
-        Text(text).foregroundStyle(.secondary)
+        Text(text).foregroundStyle(Color.secondaryText)
     }
 
     @ViewBuilder
@@ -257,17 +268,17 @@ private struct JoinInviteView: View {
             case (nil, .alreadyAdded(let app)):
                 primary("Open \(invite.name)") { open(app.id) }
                 // A new invite after the owner removed the app must reach its connector.
-                Button("Join Again") { Task { await guests.accept(invite) } }
+                Button { Task { await guests.accept(invite) } } label: { Text("Join Again").minimumHitArea() }
             case (.failed(let error), _) where error.isRetryable:
                 primary("Try Again") { Task { await guests.retry(invite.invite) } }
-                Button("Stop Joining", role: .destructive) { Task { await guests.cancel(invite.invite); close() } }
+                Button(role: .destructive) { Task { await guests.cancel(invite.invite); close() } } label: { Text("Stop Joining").minimumHitArea() }
             case (.failed, _), (nil, .ownApp):
                 primary("Done", action: close)
             case (.joining, _), (.claiming, _):
                 EmptyView()
             case (nil, .ready):
                 primary("Join") { Task { await guests.accept(invite) } }
-                Button("Not Now", action: close)
+                Button(action: close) { Text("Not Now").minimumHitArea() }
             }
         }
     }
@@ -405,7 +416,7 @@ struct PendingInvitesBanner: View {
             AppIconView(app: WebApp(name: invite.name, startURL: invite.appURL), image: nil, size: 36)
             VStack(alignment: .leading, spacing: 2) {
                 Text(invite.name).font(.subheadline.weight(.semibold))
-                Text(status(invite)).font(.footnote).foregroundStyle(.secondary)
+                Text(status(invite)).font(.footnote).foregroundStyle(Color.secondaryText)
             }
             Spacer(minLength: 8)
             if case .failed = guests.phases[invite.invite] {
@@ -450,16 +461,17 @@ struct LauncherWelcome: View {
         VStack(spacing: 10) {
             Text(Self.title)
                 .font(.display(.title2))
+                .accessibilityAddTraits(.isHeader)
             Text(Self.message)
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.secondaryText)
             VStack(spacing: 14) {
                 Button(ConnectionCopy.joinWithInvite, action: join)
                     .font(.headline)
                     .buttonStyle(.ovenlightProminent)
                     .buttonBorderShape(.capsule)
                     .controlSize(.large)
-                Button("Use My Own Computers") { node.enableOwner() }
+                Button { node.enableOwner() } label: { Text("Use My Own Computers").minimumHitArea() }
             }
             .padding(.top, 14)
         }

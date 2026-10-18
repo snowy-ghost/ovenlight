@@ -145,7 +145,7 @@ private struct SharingAppRow: View {
             AdminAppIcon(app: app)
             VStack(alignment: .leading, spacing: 2) {
                 Text(app.name)
-                Text(summary).font(.caption).foregroundStyle(.secondary)
+                Text(summary).font(.caption).foregroundStyle(Color.secondaryText)
             }
         }
         .accessibilityElement(children: .combine)
@@ -219,14 +219,19 @@ struct SharingAppView: View {
                     if app.shareable {
                         Text("Each invite is a link that works once, on one phone, for 7 days. Guests reach only this app.")
                     } else {
-                        Text("To share it, run this on its computer: ovenlight publish --slug \(app.slug) --shareable")
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("To share it, run this on its computer:")
+                            Text(verbatim: "ovenlight publish --slug \(app.slug) --shareable")
+                                .font(.footnote.monospaced())
+                                .textSelection(.enabled)
+                        }
                     }
                 }
                 .ovenlightRows()
                 if app.shareable {
                     Section("People") {
                         if people.isEmpty {
-                            Text("No one yet").foregroundStyle(.secondary)
+                            Text("No one yet").foregroundStyle(Color.secondaryText)
                         }
                         ForEach(people) { person in
                             NavigationLink {
@@ -251,7 +256,7 @@ struct SharingAppView: View {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text("For \(invite.to)")
                                     Text("\(invite.review == true ? "Review invite, unused" : "Unused"), expires \(invite.expiresIn)")
-                                        .font(.caption).foregroundStyle(.secondary)
+                                        .font(.caption).foregroundStyle(Color.secondaryText)
                                 }
                                 .accessibilityElement(children: .combine)
                                 .swipeActions {
@@ -285,6 +290,7 @@ struct SharingAppView: View {
         }
         .ovenlightGroupedBackground()
         .navigationTitle(app?.name ?? "App")
+        .announcing(error)
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await sharing.refresh(apps: registry.apps) }
         .task { await sharing.refreshIfStale(apps: registry.apps) }
@@ -396,6 +402,7 @@ struct InviteComposer: View {
                 }
                 .ovenlightGroupedBackground()
                 .navigationTitle("Share \(app.name)")
+                .announcing(error)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
@@ -498,9 +505,10 @@ struct InviteResultView: View {
                     VStack(spacing: 6) {
                         Text("Invite for \(invite.to)")
                             .font(.display(.title2))
+                            .accessibilityAddTraits(.isHeader)
                         Text("Works once. Expires \(invite.expiresIn), at \(invite.expires.formatted(date: .omitted, time: .shortened)).")
                             .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.secondaryText)
                     }
                     .multilineTextAlignment(.center)
                     if let link = item.result.link, let code = QRCode.image(for: link) {
@@ -515,7 +523,7 @@ struct InviteResultView: View {
                             .accessibilityLabel("Invite code")
                         Text("In person: they scan this with their phone’s camera.")
                             .font(.footnote)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.secondaryText)
                             .multilineTextAlignment(.center)
                     }
                     VStack(spacing: 10) {
@@ -546,7 +554,7 @@ struct InviteResultView: View {
                     }
                     Text("\(invite.to) can join without your approval and reaches only \(item.appName). Until it’s used, the link works like a key, so send it privately.")
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.secondaryText)
                         .multilineTextAlignment(.center)
                 }
                 .padding(24)
@@ -609,10 +617,10 @@ struct FeedbackInbox: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(item.note.isEmpty ? "Screenshot only" : item.note)
                                 .lineLimit(3)
-                                .foregroundStyle(item.note.isEmpty ? .secondary : .primary)
+                                .foregroundStyle(item.note.isEmpty ? Color.secondaryText : .primary)
                             Text(meta(item, on: machine))
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Color.secondaryText)
                         }
                     }
                     .padding(.vertical, 2)
@@ -669,7 +677,7 @@ private struct FeedbackDetail: View {
                     }
                 }
                 .font(.footnote)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.secondaryText)
                 if item.hasScreenshot {
                     if let image = shots.image(item.id, .screen) {
                         Image(uiImage: image)
@@ -677,10 +685,11 @@ private struct FeedbackDetail: View {
                             .scaledToFit()
                             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                             .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color.primary.opacity(0.08)))
+                            .accessibilityLabel("Screenshot")
                     } else if shots.failed(item.id, .screen) {
                         Text("Couldn’t load the screenshot.")
                             .font(.footnote)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.secondaryText)
                     } else {
                         ProgressView().frame(maxWidth: .infinity, minHeight: 200)
                     }

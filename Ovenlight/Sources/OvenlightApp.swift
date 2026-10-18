@@ -471,4 +471,7 @@ extension Color {
     /// Labels on ember: white in light, and in dark a deep brown, where white on the brighter
     /// ember is too faint to read.
     static let onEmber = Color("OnEmber")
+    /// Secondary content text (details, row values): `.secondary` is about 3.2:1 on the warm
+    /// paper, this is 4.5:1 or more on it, its rows and the system backgrounds, light and dark.
+    static let secondaryText = Color("SecondaryText")
 }

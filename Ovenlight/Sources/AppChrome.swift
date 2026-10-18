@@ -105,7 +105,6 @@ struct AppChrome: View {
             Divider().frame(height: 18)
 
             Menu {
-                Button(action: actions.home) { Label("All Apps", systemImage: "square.grid.2x2") }
                 Section {
                     Button(action: actions.reload) { Label("Reload", systemImage: "arrow.clockwise") }
                 }
@@ -177,14 +176,19 @@ struct AppChrome: View {
 /// Teaches, once, where the chrome goes when it hides.
 struct ChromeTip: Tip {
     var title: Text { Text("Your Apps Are Up Here") }
-    var message: Text? { Text("This bar tucks away while you use an app. Tap the handle at the top of the screen, or pull down at the top of the page, to bring it back.") }
+    // With VoiceOver on, the bar stays put, so there's no handle to tell about.
+    var message: Text? {
+        UIAccessibility.isVoiceOverRunning ? nil
+            : Text("This bar tucks away while you use an app. Tap the handle at the top of the screen, or pull down at the top of the page, to bring it back.")
+    }
     var image: Image? { Image(systemName: "hand.tap") }
 }
 
 /// What stays of the chrome while it's tucked away: a small handle at the top center, in the
-/// band just below the top safe area, since the status bar takes the taps inside that area
-/// (to scroll the page to the top). It works on any page, however the page scrolls. A phone
-/// on its side has no top safe area, so there the band is the handle's alone.
+/// band just below the top safe area, the band's whole width taking the tap, since the status
+/// bar takes the taps inside that area (to scroll the page to the top). It works on any page,
+/// however the page scrolls. A phone on its side has no top safe area, so there the band is
+/// the handle's alone.
 private struct ChromeHandle: View {
     let header: Color
     let reveal: () -> Void
@@ -193,10 +197,14 @@ private struct ChromeHandle: View {
 
     var body: some View {
         Button(action: reveal) {
+            // 3:1 or more against any band, at its worst a mid grey: the threshold where
+            // dark and light marks contrast equally.
             Capsule()
-                .fill((header.isLight(in: environment) ? Color.black : .white).opacity(0.3))
+                .fill((header.isLight(in: environment) ? Color.black : .white).opacity(0.7))
                 .frame(width: 36, height: 5)
-                .frame(width: 120, height: AppChrome.handleHeight)
+                // The band's whole width takes the tap.
+                .frame(maxWidth: .infinity)
+                .frame(height: AppChrome.handleHeight)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

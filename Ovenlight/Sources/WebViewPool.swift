@@ -680,7 +680,11 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
                  completionHandler: @escaping @MainActor (String?) -> Void) {
         let answer = pageAnswer(fallback: nil, completionHandler)
         let alert = UIAlertController(title: app.name, message: PageDialogs.cut(prompt), preferredStyle: .alert)
-        alert.addTextField { $0.text = defaultText.map(PageDialogs.cut) }
+        alert.addTextField { field in
+            field.text = defaultText.map(PageDialogs.cut)
+            // Also what VoiceOver calls the field; the page's question is the alert's message.
+            field.placeholder = "Answer"
+        }
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in answer(nil) })
         alert.addAction(UIAlertAction(title: "OK", style: .default) { [weak alert] _ in answer(alert?.textFields?.first?.text) })
         presentPageDialog(alert, answer: answer)

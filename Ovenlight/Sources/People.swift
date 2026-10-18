@@ -9,7 +9,7 @@ struct GuestPersonRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(name)
-            Text(detail).font(.caption).foregroundStyle(.secondary)
+            Text(detail).font(.caption).foregroundStyle(Color.secondaryText)
         }
         .accessibilityElement(children: .combine)
     }
@@ -90,6 +90,7 @@ struct SharingPeopleList: View {
         .environment(\.editMode, $editMode)
         .ovenlightGroupedBackground()
         .navigationTitle(editMode.isEditing && !selection.isEmpty ? "\(selection.count) Selected" : "People")
+        .announcing(error)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if !groups.isEmpty {
@@ -265,6 +266,7 @@ struct SharingPersonView: View {
         }
         .ovenlightGroupedBackground()
         .navigationTitle(person?.name ?? "")
+        .announcing(error)
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await sharing.refresh(apps: registry.apps) }
         .alert(removalTitle, isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } })) {

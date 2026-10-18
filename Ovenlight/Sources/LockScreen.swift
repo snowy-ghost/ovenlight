@@ -54,6 +54,7 @@ struct LockScreen: View {
         .onChange(of: lock.lastError) { _, error in
             if error != nil { failures += 1 }
         }
+        .announcing(lock.lastError)
         .onAppear { appeared = true }
     }
 

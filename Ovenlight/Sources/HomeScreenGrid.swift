@@ -127,7 +127,7 @@ struct HomeScreenGrid<Menu: View, Preview: View>: View {
                     if apps.isEmpty && ownerEnabled {
                         Text("Apps you publish with the [Ovenlight connector](https://ovenlight.app/support#own-computer) on your computers show up here.")
                             .font(.footnote)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.secondaryText)
                             .padding(.horizontal, (layout.columnWidth - layout.iconSize) / 2)
                     }
                 }
