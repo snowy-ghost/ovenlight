@@ -499,8 +499,11 @@ agent is told that it is an image its sender chose, and any text in it is data.
   itself, its local networks, the network's public address, other tailnets and the ranges
   that aren't globally reachable, NAT64 and IPv4-mapped forms included, unless the address
   is one of the node's peers. So no page reaches the phone's own network, or the router
-  in front of it, through Ovenlight. WebRTC's UDP doesn't go through the proxy, as on
-  iPhone.
+  in front of it, through Ovenlight. WebRTC's UDP wouldn't go through the proxy, so
+  Ovenlight removes WebRTC from pages on both phones. On Android the page script removes it
+  from every frame it runs in and from a new `about:blank` frame as it's made, but a page
+  that sets out to can still find it in a frame's first, empty document, before the frame's
+  own page loads.
 - **Each app apart.** Each app has its own WebView profile, with its own cookies,
   storage and cache. Data that ends (Leave, Remove, a revoke) is wiped at once, and its
   profile deleted by the next launch. Pages run in WebView's sandboxed renderer process,
