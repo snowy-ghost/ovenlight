@@ -437,6 +437,7 @@ struct InviteComposer: View {
 
     /// Invites someone new by name, or, given a person, someone already shared with.
     private func create(_ person: GuestPerson? = nil) async {
+        error = nil
         let who = person?.name ?? trimmed
         guard !who.isEmpty, person != nil || namesake == nil, !working else { return }
         guard await OwnerAuth.confirm("Share \(app.name) with \(who)") else { return }
@@ -469,11 +470,14 @@ struct InviteResultItem: Identifiable {
     var appName: String
 }
 
-/// A fresh invite: its code for in person, and the link to send.
+/// A fresh invite: its code for in person, and the link to send. This is the link's only
+/// showing, so until it's sent or copied, closing asks first and a swipe doesn't close.
 struct InviteResultView: View {
     let item: InviteResultItem
     @Environment(\.dismiss) private var dismiss
     @State private var copied = false
+    @State private var sent = false
+    @State private var confirmingClose = false
 
     private var invite: AdminInvite { item.result.invite }
 
@@ -510,7 +514,8 @@ struct InviteResultView: View {
                                 .font(.headline)
                                 .frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(.borderedProminent)
+                        .simultaneousGesture(TapGesture().onEnded { sent = true })
+                        .buttonStyle(.ovenlightProminent)
                         .buttonBorderShape(.capsule)
                         .controlSize(.large)
                         Button {
@@ -518,6 +523,7 @@ struct InviteResultView: View {
                             UIPasteboard.general.setItems([["public.utf8-plain-text": item.result.link ?? ""]],
                                                           options: [.localOnly: true, .expirationDate: invite.expires])
                             copied = true
+                            sent = true
                         } label: {
                             Label(copied ? "Copied" : "Copy Link", systemImage: copied ? "checkmark" : "doc.on.doc")
                                 .fontWeight(.semibold)
@@ -536,8 +542,19 @@ struct InviteResultView: View {
                 .padding(24)
             }
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { if sent { dismiss() } else { confirmingClose = true } }
+                }
+            }
+            .alert("Close Without Sending?", isPresented: $confirmingClose) {
+                Button("Keep", role: .cancel) {}
+                Button("Close", role: .destructive) { dismiss() }
+            } message: {
+                Text("You can cancel this invite in People & Sharing.")
+            }
         }
+        .interactiveDismissDisabled(!sent)
     }
 }
 
