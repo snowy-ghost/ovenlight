@@ -67,8 +67,8 @@ struct LockScreen: View {
                 .foregroundStyle(.primary)
                 .buttonStyle(.glass)
         } else {
-            unlockButton(symbolColor: .white)
-                .buttonStyle(.borderedProminent)
+            unlockButton(symbolColor: .onEmber)
+                .buttonStyle(.ovenlightProminent)
         }
     }
 

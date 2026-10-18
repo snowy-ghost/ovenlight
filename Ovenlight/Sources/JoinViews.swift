@@ -35,7 +35,7 @@ struct JoinFlowView: View {
                 case .failure(let error):
                     JoinMessage(symbol: "link.badge.plus", title: "Can't Use This Invite", message: error.message) {
                         Button("Try Another Invite") { request.invite = nil }
-                            .buttonStyle(.borderedProminent)
+                            .buttonStyle(.ovenlightProminent)
                             .buttonBorderShape(.capsule)
                             .controlSize(.large)
                     }
@@ -276,7 +276,7 @@ private struct JoinInviteView: View {
         Button(action: action) {
             Text(title).font(.headline).frame(maxWidth: .infinity)
         }
-        .buttonStyle(.borderedProminent)
+        .buttonStyle(.ovenlightProminent)
         .buttonBorderShape(.capsule)
         .controlSize(.large)
     }
@@ -456,7 +456,7 @@ struct LauncherWelcome: View {
             VStack(spacing: 14) {
                 Button(ConnectionCopy.joinWithInvite, action: join)
                     .font(.headline)
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.ovenlightProminent)
                     .buttonBorderShape(.capsule)
                     .controlSize(.large)
                 Button("Use My Own Computers") { node.enableOwner() }

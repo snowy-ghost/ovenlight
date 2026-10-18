@@ -443,4 +443,7 @@ extension Color {
     static let groupedBackground = Color("GroupedBackground")
     /// Rows on `groupedBackground`: white in light, a warm step up from it in dark.
     static let groupedRow = Color("GroupedRow")
+    /// Labels on ember: white in light, and in dark a deep brown, where white on the brighter
+    /// ember is too faint to read.
+    static let onEmber = Color("OnEmber")
 }

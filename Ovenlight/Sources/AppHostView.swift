@@ -259,7 +259,7 @@ struct NodeActionOverlay: View {
                 Text(ConnectionCopy.signIn(toOpen: appName))
                     .font(.headline)
                     .multilineTextAlignment(.center)
-                Button("Sign In", action: connect).buttonStyle(.borderedProminent)
+                Button("Sign In", action: connect).buttonStyle(.ovenlightProminent)
             case .ownerApproval:
                 OwnerApprovalPrompt(approve: connect)
             case .failed(let message):
@@ -267,7 +267,7 @@ struct NodeActionOverlay: View {
                 Text(message)
                     .font(.subheadline)
                     .multilineTextAlignment(.center)
-                Button("Try Again", action: retry).buttonStyle(.borderedProminent)
+                Button("Try Again", action: retry).buttonStyle(.ovenlightProminent)
             }
             Button("Back to Apps", action: close)
         }

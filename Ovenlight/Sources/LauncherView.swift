@@ -199,7 +199,7 @@ struct TailnetBanner: View {
                             .font(.body.weight(.semibold))
                             .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.ovenlightProminent)
                     .buttonBorderShape(.capsule)
                     .controlSize(.large)
                 }
@@ -248,7 +248,7 @@ struct OwnerApprovalPrompt: View {
                     .font(.body.weight(.semibold))
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.ovenlightProminent)
             .buttonBorderShape(.capsule)
             .controlSize(.large)
         }
