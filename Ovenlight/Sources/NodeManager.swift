@@ -972,10 +972,15 @@ final class NodeManager: ObservableObject {
     }
 
     /// Creates the node's state directory and keeps all of `tailscale/` out of backups:
-    /// node keys belong to this iPhone and must not come back on another.
+    /// node keys belong to this iPhone and must not come back on another. tsnet keeps its
+    /// backend log files empty, but builds before 1.0.2 left lines in them, sign-in links
+    /// included, so they go before the node starts.
     static func makeStateDirectory(for membershipID: String) throws -> URL {
         let directory = stateDirectory(for: membershipID)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        for name in ["tailscaled.log1.txt", "tailscaled.log2.txt"] {
+            try? FileManager.default.removeItem(at: directory.appendingPathComponent(name))
+        }
         var parent = directory.deletingLastPathComponent()
         parent.excludeFromBackup()
         return directory
