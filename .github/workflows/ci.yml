@@ -258,7 +258,7 @@ jobs:
             name=$1 api=$2 port=$3
             shift 3
             echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd -n "$name" -k "system-images;$api;google_apis;x86_64" -d pixel_7 -p "$ANDROID_AVD_HOME/$name.avd"
-            nohup "$ANDROID_HOME/emulator/emulator" -avd "$name" -port "$port" "$@" -no-window -no-audio -no-boot-anim -no-metrics -gpu swiftshader_indirect -no-snapshot > "$RUNNER_TEMP/$name.log" 2>&1 &
+            nohup "$ANDROID_HOME/emulator/emulator" -avd "$name" -port "$port" "$@" -no-window -no-audio -no-boot-anim -no-metrics -gpu swiftshader_indirect -no-snapshot -show-kernel > "$RUNNER_TEMP/$name.log" 2>&1 &
             timeout 600 sh -c "until [ \"\$('$adb' -s emulator-$port shell getprop sys.boot_completed 2> /dev/null | tr -d '\r')\" = 1 ]; do sleep 2; done" ||
               { tail -50 "$RUNNER_TEMP/$name.log"; exit 1; }
           }
