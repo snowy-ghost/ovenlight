@@ -218,7 +218,7 @@ private fun AppPageView(model: AppModel, page: AppPage, origin: TransformOrigin,
             onDismissRequest = { page.cantReachAlert.value = false },
             title = { Text(ConnectionCopy.cantReach(app.name)) },
             text = { Text(ConnectionCopy.cantReachDetail) },
-            confirmButton = { TextButton(onClick = { page.cantReachAlert.value = false }) { Text(stringResource(R.string.app_ok)) } },
+            confirmButton = { TextButton(onClick = { page.cantReachAlert.value = false }) { Text(stringResource(R.string.ok)) } },
         )
     }
     CapturePrompt(page)
@@ -291,7 +291,7 @@ private fun LoadErrorView(icon: Int, title: String, message: String, retry: () -
         Icon(painterResource(icon), contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(40.dp))
         Text(title, Modifier.padding(top = 16.dp).semantics { heading() }, style = OvenType.displayTitle, textAlign = TextAlign.Center)
         Text(message, Modifier.padding(top = 8.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
-        Button(onClick = retry, Modifier.padding(top = 24.dp).heightIn(min = 48.dp)) { Text(stringResource(R.string.app_try_again)) }
+        Button(onClick = retry, Modifier.padding(top = 24.dp).heightIn(min = 48.dp)) { Text(stringResource(R.string.try_again)) }
         TextButton(onClick = close, Modifier.padding(top = 8.dp)) { Text(stringResource(R.string.app_back_to_apps)) }
     }
 }
@@ -308,7 +308,7 @@ private fun NodeActionCard(app: WebApp, action: NodeActionOverlay.Action, device
                         Button(onClick = connect, Modifier.padding(top = 16.dp).heightIn(min = 48.dp)) { Text(stringResource(R.string.app_sign_in)) }
                     }
                     NodeActionOverlay.Action.OwnerApproval -> {
-                        Text(stringResource(R.string.launcher_approve_title), style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
+                        Text(stringResource(R.string.approve_this_phone), style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
                         Text(
                             stringResource(R.string.launcher_approve_body, deviceName), Modifier.padding(top = 8.dp),
                             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center,
@@ -317,7 +317,7 @@ private fun NodeActionCard(app: WebApp, action: NodeActionOverlay.Action, device
                     }
                     is NodeActionOverlay.Action.Failed -> {
                         Text(action.message, style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center)
-                        Button(onClick = retry, Modifier.padding(top = 16.dp).heightIn(min = 48.dp)) { Text(stringResource(R.string.app_try_again)) }
+                        Button(onClick = retry, Modifier.padding(top = 16.dp).heightIn(min = 48.dp)) { Text(stringResource(R.string.try_again)) }
                     }
                 }
                 TextButton(onClick = close, Modifier.padding(top = 8.dp)) { Text(stringResource(R.string.app_back_to_apps)) }

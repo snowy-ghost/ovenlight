@@ -1,21 +1,16 @@
 package com.snowyghost.ovenlight
 
 import com.snowyghost.ovenlight.AppLoadGate.Event
+import java.net.URI
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.test.advanceTimeBy
-import kotlinx.coroutines.test.runCurrent
-import kotlinx.coroutines.test.runTest
+import kotlin.time.TestTimeSource
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-@OptIn(ExperimentalCoroutinesApi::class)
 class AppLoadGateTests {
     private fun run(events: List<Event>, from: AppLoadGate = AppLoadGate.Waiting): AppLoadGate =
         events.fold(from) { gate, event -> gate.next(event) }
@@ -79,34 +74,22 @@ class AppLoadGateTests {
         CopyRules.assertNeutral(ConnectionCopy.offlineDetail)
     }
 
-    /**
-     * Android only: offline, with the node not ready, the gate waits for a change rather than
-     * looping on what it already read, and wakes on the network coming back.
-     */
+    /** The node's 30 seconds count only while it's busy, never while the owner signs in or approves. */
     @Test
-    fun testTheGateOfflineAndNotReadyWaitsInsteadOfLooping() = runTest {
-        val state = MutableStateFlow<NodeState>(NodeState.Starting)
-        val online = MutableStateFlow(false)
-        val seen = state.value to online.value
-        var woke = false
-        launch {
-            AppLoadGate.awaitChange(combine(state, online, ::Pair), seen, Duration.INFINITE)
-            woke = true
-        }
-        advanceTimeBy(60_000)
-        assertFalse("nothing changed, so it still waits", woke)
-        online.value = true
-        runCurrent()
-        assertTrue(woke)
-
-        var timedOut = false
-        launch {
-            AppLoadGate.awaitChange(online, true, 30.seconds)
-            timedOut = true
-        }
-        advanceTimeBy(29_000)
-        assertFalse(timedOut)
-        advanceTimeBy(2_000)
-        assertTrue("a busy node's time ran out", timedOut)
+    fun testTheNodeDeadlineCountsOnlyBusyTime() {
+        val clock = TestTimeSource()
+        val deadline = NodeDeadline(clock)
+        assertEquals(30.seconds, deadline.left(NodeState.Starting))
+        clock += 20.seconds
+        assertEquals(10.seconds, deadline.left(NodeState.Connecting))
+        // The gate waits on a sign-in for as long as it takes, then sees the node start.
+        assertEquals(Duration.INFINITE, deadline.left(NodeState.NeedsLogin(URI("https://login.example.com/a/1"))))
+        clock += 5.minutes
+        assertEquals("the sign-in's time doesn't count", 30.seconds, deadline.left(NodeState.Starting))
+        clock += 25.seconds
+        assertEquals(5.seconds, deadline.left(NodeState.Connecting))
+        deadline.left(NodeState.AwaitingApproval)
+        clock += 2.minutes
+        assertEquals("nor an approval's", 30.seconds, deadline.left(NodeState.Starting))
     }
 }

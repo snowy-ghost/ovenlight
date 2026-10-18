@@ -215,7 +215,7 @@ class AppChromeTests {
             openMenu(recipes)
             assertMenu("Reload", "Share…", "Send feedback", "Report a problem", "Lock Ovenlight")
             // The pill's own button goes to all apps.
-            assertNotInMenu("Leave Riley's apps", "All apps")
+            assertNotInMenu("Leave Riley’s apps", "All apps")
             composeRule.onNodeWithText("Reload").performClick()
             composeRule.waitForIdle()
         }
@@ -247,9 +247,9 @@ class AppChromeTests {
         show(guide, controller, actions(leave = "Riley"))
         inEveryLook {
             openMenu(guide)
-            assertMenu("Reload", "Send feedback to Riley", "Report a problem", "Leave Riley's apps", "Lock Ovenlight")
+            assertMenu("Reload", "Send feedback to Riley", "Report a problem", "Leave Riley’s apps", "Lock Ovenlight")
             assertNotInMenu("Share…", "Send feedback")
-            composeRule.onNodeWithText("Leave Riley's apps").performClick()
+            composeRule.onNodeWithText("Leave Riley’s apps").performClick()
             composeRule.waitForIdle()
         }
         assertEquals(listOf("leave", "leave", "leave"), done)

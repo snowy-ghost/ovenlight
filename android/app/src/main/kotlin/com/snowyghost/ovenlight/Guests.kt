@@ -60,11 +60,11 @@ enum class JoinError {
         KeyUsed, UsedOnAnotherDevice -> "Each invite works once. Ask $owner for a new one."
         Expired -> "Invites expire, and each works only once. Ask $owner for a new one."
         KeyRefused, NotInvited -> "$owner may have canceled it. Ask $owner for a new one."
-        SomeoneElses -> "This phone already joined $owner's apps under another name. Ask $owner to invite that name instead."
-        Network -> "Check that you're online. $owner's computer may also be asleep or offline. Try again in a moment."
+        SomeoneElses -> "This phone already joined $owner’s apps under another name. Ask $owner to invite that name instead."
+        Network -> "Check that you’re online. $owner’s computer may also be asleep or offline. Try again in a moment."
         Canceled -> "Nothing was added to Ovenlight."
         OwnApp -> "This invite is for one of your own apps. Open it from your apps instead."
-        WrongNetwork -> "It didn't lead to $owner's $app, so Ovenlight disconnected and added nothing. Ask $owner for a new one."
+        WrongNetwork -> "It didn’t lead to $owner’s $app, so Ovenlight disconnected and added nothing. Ask $owner for a new one."
     }
 
     companion object {

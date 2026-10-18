@@ -43,9 +43,9 @@ data class InviteLink(
 ) {
     /** Why a link can't be used, with what Ovenlight says about it. Neutral: anyone can see it. */
     sealed class ParseError(override val message: String) : Exception(message) {
-        data object NotAnInvite : ParseError("This isn't an Ovenlight invite. Ask for the link again and copy the whole link.")
+        data object NotAnInvite : ParseError("This isn’t an Ovenlight invite. Ask for the link again and copy the whole link.")
         data object UnsupportedVersion : ParseError("This invite needs a newer Ovenlight. Update Ovenlight, then open the invite again.")
-        data object InsecureControl : ParseError("This invite isn't secure, so Ovenlight won't use it. Ask for a new one.")
+        data object InsecureControl : ParseError("This invite isn’t secure, so Ovenlight won’t use it. Ask for a new one.")
         data class MissingField(val field: String) : ParseError(INCOMPLETE)
         data class InvalidField(val field: String) : ParseError(INCOMPLETE)
 

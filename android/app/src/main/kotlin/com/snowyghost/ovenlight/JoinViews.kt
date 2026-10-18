@@ -213,7 +213,7 @@ fun JoinFlowScreen(request: JoinRequest, state: JoinState, onClose: () -> Unit) 
                 title = { if (request.invite == null) Text(title) },
                 navigationIcon = {
                     IconButton(onClick = onClose) {
-                        Icon(painterResource(R.drawable.ic_close), contentDescription = stringResource(R.string.join_close))
+                        Icon(painterResource(R.drawable.ic_close), contentDescription = stringResource(R.string.close))
                     }
                 },
                 colors = scrollingBarColors(background),
@@ -266,7 +266,7 @@ private fun InviteEntry(canScan: Boolean, found: (InviteLink) -> Unit) {
         Column {
             OutlinedTextField(
                 text,
-                label = { Text(stringResource(R.string.join_link)) },
+                label = { Text(stringResource(R.string.invite_link)) },
                 placeholder = { Text("https://ovenlight.app/join#…", style = monospace) },
                 textStyle = monospace,
                 lineLimits = TextFieldLineLimits.MultiLine(maxHeightInLines = 4),
@@ -466,7 +466,7 @@ private fun JoinInvite(invite: InviteLink, state: JoinState, close: () -> Unit) 
                         TextButton(onClick = { state.accept(invite) }) { Text(stringResource(R.string.join_again)) }
                     }
                     phase is JoinPhase.Failed && phase.error.isRetryable -> {
-                        primary(stringResource(R.string.join_try_again)) { state.retry(invite) }
+                        primary(stringResource(R.string.try_again)) { state.retry(invite) }
                         TextButton(onClick = { state.cancel(invite, close) }, colors = ButtonDefaults.textButtonColors(contentColor = colors.error)) {
                             Text(stringResource(R.string.join_stop))
                         }
@@ -521,7 +521,7 @@ private fun InviteScannerView(found: (String) -> Unit, cancel: () -> Unit) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(stringResource(R.string.join_point_at_code), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
-                TextButton(onClick = cancel) { Text(stringResource(R.string.join_cancel)) }
+                TextButton(onClick = cancel) { Text(stringResource(R.string.cancel)) }
             }
         }
     }
@@ -617,7 +617,7 @@ fun LauncherWelcome(join: () -> Unit, useOwnComputers: () -> Unit, modifier: Mod
             Text(ConnectionCopy.joinWithInvite, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 8.dp))
         }
         Spacer(Modifier.height(14.dp))
-        TextButton(onClick = useOwnComputers) { Text(stringResource(R.string.launcher_use_own_computers)) }
+        TextButton(onClick = useOwnComputers) { Text(stringResource(R.string.use_my_own_computers)) }
     }
 }
 
