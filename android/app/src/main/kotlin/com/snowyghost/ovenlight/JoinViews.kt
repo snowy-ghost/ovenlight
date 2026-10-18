@@ -76,8 +76,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -202,8 +204,9 @@ fun JoinFlowView(model: AppModel, request: JoinRequest, onClose: () -> Unit) {
 fun JoinFlowScreen(request: JoinRequest, state: JoinState, onClose: () -> Unit) {
     val background = LocalOvenColors.current.groupedBackground
     val title = ConnectionCopy.joinWithInvite
+    val bar = TopAppBarDefaults.pinnedScrollBehavior()
     Scaffold(
-        modifier = Modifier.semantics { paneTitle = title },
+        modifier = Modifier.nestedScroll(bar.nestedScrollConnection).semantics { paneTitle = title },
         containerColor = background,
         topBar = {
             TopAppBar(
@@ -213,7 +216,8 @@ fun JoinFlowScreen(request: JoinRequest, state: JoinState, onClose: () -> Unit) 
                         Icon(painterResource(R.drawable.ic_close), contentDescription = stringResource(R.string.join_close))
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = background, scrolledContainerColor = background),
+                colors = scrollingBarColors(background),
+                scrollBehavior = bar,
             )
         },
     ) { bars ->
@@ -364,6 +368,13 @@ private fun JoinInvite(invite: InviteLink, state: JoinState, close: () -> Unit) 
         felt = phase
     }
 
+    // Joining a computer that isn't Tailscale's says so, right above Join.
+    val warns = phase == null && preflight !is Preflight.AlreadyAdded && preflight != Preflight.OwnApp && !invite.usesTailscaleControl
+    val scroll = rememberScrollState()
+    // When it all doesn't fit, it sits scrolled to the end, so the warning shows beside Join,
+    // again after anything changes its height (a rotation, the font size).
+    LaunchedEffect(warns) { if (warns) snapshotFlow { scroll.maxValue }.collect { scroll.scrollTo(it) } }
+
     // The actions stay at the bottom; what's above them sits just over them rather than floating
     // mid-screen, and scrolls when it doesn't fit (the largest font sizes, a phone on its side).
     BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
@@ -372,7 +383,7 @@ private fun JoinInvite(invite: InviteLink, state: JoinState, close: () -> Unit) 
         Column(Modifier.widthIn(max = 640.dp).fillMaxSize().padding(horizontal = 28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             BoxWithConstraints(Modifier.weight(1f)) {
                 Column(
-                    Modifier.verticalScroll(rememberScrollState()).heightIn(min = maxHeight).fillMaxWidth().animateContentSize(),
+                    Modifier.verticalScroll(scroll).heightIn(min = maxHeight).fillMaxWidth().animateContentSize(),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Bottom,
                 ) {
@@ -429,6 +440,15 @@ private fun JoinInvite(invite: InviteLink, state: JoinState, close: () -> Unit) 
                             }
                         }
                     }
+                    if (warns) {
+                        Row(Modifier.padding(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Icon(painterResource(R.drawable.ic_warning), contentDescription = null, tint = colors.tertiary, modifier = Modifier.size(18.dp))
+                            Text(
+                                ConnectionCopy.privateServer(invite.control.bareHost.orEmpty(), invite.owner),
+                                style = MaterialTheme.typography.bodySmall, color = colors.tertiary,
+                            )
+                        }
+                    }
                 }
             }
             Column(Modifier.padding(bottom = 12.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -454,16 +474,6 @@ private fun JoinInvite(invite: InviteLink, state: JoinState, close: () -> Unit) 
                     phase is JoinPhase.Failed || (phase == null && preflight == Preflight.OwnApp) -> primary(stringResource(R.string.join_done), close)
                     phase != null -> Unit
                     else -> {
-                        // With the actions, so it shows whenever Join does.
-                        if (!invite.usesTailscaleControl) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Icon(painterResource(R.drawable.ic_warning), contentDescription = null, tint = colors.tertiary, modifier = Modifier.size(18.dp))
-                                Text(
-                                    ConnectionCopy.privateServer(invite.control.bareHost.orEmpty(), invite.owner),
-                                    style = MaterialTheme.typography.bodySmall, color = colors.tertiary,
-                                )
-                            }
-                        }
                         primary(stringResource(R.string.join_join)) { state.accept(invite) }
                         TextButton(onClick = close) { Text(stringResource(R.string.join_not_now)) }
                     }
@@ -599,7 +609,7 @@ object LauncherWelcome {
 fun LauncherWelcome(join: () -> Unit, useOwnComputers: () -> Unit, modifier: Modifier = Modifier) {
     val colors = MaterialTheme.colorScheme
     CenteredScroll(modifier, contentPadding = 32.dp) {
-        Text(LauncherWelcome.title, style = OvenType.displayTitle, color = colors.onSurface, textAlign = TextAlign.Center)
+        Text(LauncherWelcome.title, Modifier.semantics { heading() }, style = OvenType.displayTitle, color = colors.onSurface, textAlign = TextAlign.Center)
         Spacer(Modifier.height(10.dp))
         Text(LauncherWelcome.message, style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant, textAlign = TextAlign.Center)
         Spacer(Modifier.height(24.dp))

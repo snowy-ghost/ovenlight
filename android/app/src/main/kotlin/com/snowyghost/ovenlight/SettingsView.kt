@@ -46,6 +46,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -60,6 +61,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
@@ -346,7 +348,15 @@ private fun OwnerGroups(owner: OwnerSettings, state: SettingsState, confirm: (In
                 row { shape -> SettingsRow(shape, stringResource(R.string.settings_approve), color = primary, onClick = state.approve) }
             }
             if (owner.account != null) {
-                row { shape -> SettingsRow(shape, stringResource(R.string.settings_sign_out), color = MaterialTheme.colorScheme.error, onClick = { confirm(R.string.settings_sign_out) }) }
+                // With an icon, as Your computers has, so the two line up.
+                row { shape ->
+                    val error = MaterialTheme.colorScheme.error
+                    SettingsRow(
+                        shape, stringResource(R.string.settings_sign_out), color = error,
+                        leading = { Icon(painterResource(R.drawable.ic_logout), contentDescription = null, tint = error) },
+                        onClick = { confirm(R.string.settings_sign_out) },
+                    )
+                }
             }
         }
         // While no account is signed in, Use my own computers can still be taken back.
@@ -419,8 +429,13 @@ internal fun GroupedScreen(
 ) {
     val background = LocalOvenColors.current.groupedBackground
     val direction = LocalLayoutDirection.current
+    // A page coming back keeps its place in [scroll], and its bar starts as tinted as that leaves it.
+    val barHeight = with(LocalDensity.current) { TopAppBarDefaults.TopAppBarExpandedHeight.toPx() }
+    val bar = TopAppBarDefaults.pinnedScrollBehavior(
+        rememberTopAppBarState(initialHeightOffsetLimit = -barHeight, initialContentOffset = -(scroll?.value ?: 0).toFloat()),
+    )
     Scaffold(
-        modifier = Modifier.semantics { this.paneTitle = paneTitle },
+        modifier = Modifier.nestedScroll(bar.nestedScrollConnection).semantics { this.paneTitle = paneTitle },
         containerColor = background,
         topBar = {
             TopAppBar(
@@ -431,7 +446,8 @@ internal fun GroupedScreen(
                     }
                 },
                 actions = actions,
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = background, scrolledContainerColor = background),
+                colors = scrollingBarColors(background),
+                scrollBehavior = bar,
             )
         },
     ) { bars ->
@@ -469,6 +485,15 @@ internal fun GroupedScreen(
         ) { column() }
     }
 }
+
+/**
+ * A top app bar's colors on [background], a step deeper once content scrolls under it, as
+ * Material's bars do on surface. The grouped background is already surfaceContainer, so it's High.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun scrollingBarColors(background: Color) =
+    TopAppBarDefaults.topAppBarColors(containerColor = background, scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh)
 
 /** Collects a group's rows, so each can take its place's shape. */
 internal class GroupRows {

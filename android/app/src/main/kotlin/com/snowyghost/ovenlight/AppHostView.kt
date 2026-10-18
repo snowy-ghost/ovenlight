@@ -54,6 +54,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -62,6 +63,9 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.paneTitle
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -102,10 +106,11 @@ object NodeActionOverlay {
  * its connection needs, Can't Reach, or its launch placeholder. A page that asks for
  * `viewport-fit=cover` runs to the bottom and side edges; one that doesn't sits inside the cutout,
  * and runs under the gesture handle as on iOS, or above three-button navigation on its
- * background color. Back goes back in the page, then closes the app (iOS's AppHostView).
+ * background color. Back goes back in the page, then closes the app, shrinking toward [origin],
+ * where its icon is (iOS's AppHostView).
  */
 @Composable
-fun AppHostView(model: AppModel, app: WebApp, onClose: () -> Unit) {
+fun AppHostView(model: AppModel, app: WebApp, origin: TransformOrigin = TransformOrigin.Center, onClose: () -> Unit) {
     val apps by model.registry.appsFlow.collectAsState()
     // An app removed while it closes (Leave, access ended) gets no new view: the pool would
     // make its profile again, and load it.
@@ -113,11 +118,11 @@ fun AppHostView(model: AppModel, app: WebApp, onClose: () -> Unit) {
     // The same live page every time, unless the app's route changed since it was made.
     val revision by model.pool.revision.collectAsState()
     val page = remember(app.id, revision) { model.pool.page(app) }
-    key(page) { AppPageView(model, page, onClose) }
+    key(page) { AppPageView(model, page, origin, onClose) }
 }
 
 @Composable
-private fun AppPageView(model: AppModel, page: AppPage, onClose: () -> Unit) {
+private fun AppPageView(model: AppModel, page: AppPage, origin: TransformOrigin, onClose: () -> Unit) {
     val app = page.app
     val activity = LocalContext.current
     val loaded by page.hasLoadedOnce.collectAsState()
@@ -160,7 +165,7 @@ private fun AppPageView(model: AppModel, page: AppPage, onClose: () -> Unit) {
         else -> Cover.Placeholder
     }
     StatusBarIcons(band)
-    Box(Modifier.backShrink(back).fillMaxSize().background(color(look.background) ?: plain)) {
+    Box(Modifier.backShrink(back, origin).fillMaxSize().background(color(look.background) ?: plain)) {
         // No page runs under the status bar or the handle, which lives in this band.
         Box(Modifier.fillMaxWidth().background(band).windowInsetsPadding(chromeTop).height(ChromeHandleHeight))
         Box(Modifier.fillMaxSize().windowInsetsPadding(chromeTop).padding(top = ChromeHandleHeight)) {
@@ -281,9 +286,10 @@ private fun LaunchPlaceholder(app: WebApp, icon: Bitmap?) {
  */
 @Composable
 private fun LoadErrorView(icon: Int, title: String, message: String, retry: () -> Unit, close: () -> Unit) {
-    CenteredScroll(Modifier.background(LocalOvenColors.current.pageBackground), contentPadding = 32.dp) {
+    // A pane, so TalkBack says it as it replaces the placeholder.
+    CenteredScroll(Modifier.background(LocalOvenColors.current.pageBackground).semantics { paneTitle = title }, contentPadding = 32.dp) {
         Icon(painterResource(icon), contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(40.dp))
-        Text(title, Modifier.padding(top = 16.dp), style = OvenType.displayTitle, textAlign = TextAlign.Center)
+        Text(title, Modifier.padding(top = 16.dp).semantics { heading() }, style = OvenType.displayTitle, textAlign = TextAlign.Center)
         Text(message, Modifier.padding(top = 8.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
         Button(onClick = retry, Modifier.padding(top = 24.dp).heightIn(min = 48.dp)) { Text(stringResource(R.string.app_try_again)) }
         TextButton(onClick = close, Modifier.padding(top = 8.dp)) { Text(stringResource(R.string.app_back_to_apps)) }

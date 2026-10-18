@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.ScrollState
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -127,7 +126,7 @@ internal fun SharingPeopleList(state: SharingState, place: SharingPlace, scroll:
                         IconButton(onClick = { menu = true }) {
                             Icon(painterResource(R.drawable.ic_more_vert), contentDescription = stringResource(R.string.launcher_more))
                         }
-                        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        RoundedMenu(expanded = menu, onDismissRequest = { menu = false }) {
                             DropdownMenuItem(text = { Text(stringResource(R.string.people_select)) }, onClick = {
                                 menu = false
                                 selecting = true

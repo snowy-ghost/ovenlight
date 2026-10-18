@@ -100,7 +100,7 @@ data class LauncherState(
     val reachability: Map<UUID, AppReachability> = emptyMap(),
     /** Goes up with each icon saved, so a refreshed icon redraws. */
     val iconRevisions: Map<UUID, Int> = emptyMap(),
-    /** A screen covers the launcher: nothing in it takes keyboard focus. */
+    /** A screen or an open app covers the launcher: nothing in it takes keyboard focus or TalkBack's. */
     val covered: Boolean = false,
     val icon: (WebApp) -> Bitmap? = { null },
     val lock: () -> Unit = {},
@@ -153,6 +153,7 @@ fun LauncherView(model: AppModel) {
     val phases by model.guests.phases.collectAsState()
     val iconRevisions by registry.iconRevisions.collectAsState()
     val sheet by model.router.sheet.collectAsState()
+    val openApp by model.router.openApp.collectAsState()
     // The menus' Share and People follow what the connectors report.
     val machines by model.sharing.machines.collectAsState()
     val reachability = remember(apps, ownerState, ownerStatus, ownerAnswers, guestStates) {
@@ -171,7 +172,7 @@ fun LauncherView(model: AppModel) {
             phases = phases,
             reachability = reachability,
             iconRevisions = iconRevisions,
-            covered = sheet?.isScreen == true,
+            covered = sheet?.isScreen == true || openApp != null,
             icon = { IconDecoder.load(registry.iconFile(it)) },
             lock = model.lock::lock,
             present = model.router::present,
@@ -209,9 +210,10 @@ fun LauncherView(state: LauncherState) {
     var removing by remember { mutableStateOf<WebApp?>(null) }
     var leaving by remember { mutableStateOf<Membership?>(null) }
     var noMailApp by remember { mutableStateOf(false) }
-    // Covered by a screen, the launcher stays composed beneath it; touch and TalkBack don't reach
-    // it, and this keeps a keyboard's Tab from wrapping onto its hidden buttons and tiles.
-    val focus = if (state.covered) Modifier.focusProperties { onEnter = { cancelFocusChange() } }.focusGroup() else Modifier
+    // Covered by a screen or an app, the launcher stays composed beneath it. Touch doesn't reach
+    // it, and this keeps TalkBack and a keyboard's Tab off its hidden buttons and tiles, which an
+    // open app's band, drawn over the top bar, would otherwise leave reachable.
+    val focus = if (state.covered) Modifier.clearAndSetSemantics {}.focusProperties { onEnter = { cancelFocusChange() } }.focusGroup() else Modifier
     // And focus already inside, on More just tapped from a keyboard, say, lets go as it's covered.
     val focusManager = LocalFocusManager.current
     LaunchedEffect(state.covered) { if (state.covered) focusManager.clearFocus(force = true) }
@@ -310,7 +312,7 @@ private fun HomeTopBar(state: LauncherState) {
                 IconButton(onClick = { expanded = true }) {
                     Icon(painterResource(R.drawable.ic_more_vert), contentDescription = stringResource(R.string.launcher_more))
                 }
-                DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                RoundedMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                     val close = { expanded = false }
                     // Add app opens only the owner's own computers' apps.
                     if (state.ownerEnabled) AppMenuItem(close, stringResource(R.string.launcher_add_app), R.drawable.ic_add) { state.present(RootSheet.AddApp) }
@@ -346,13 +348,14 @@ private fun TailnetStatusPill(state: NodeState, retry: () -> Unit) {
         state is NodeState.Failed -> {
             val tryAgain = stringResource(R.string.launcher_try_again)
             Row(
-                pill.clickable(onClickLabel = tryAgain, role = Role.Button, onClick = retry).padding(horizontal = 14.dp),
+                // Read as what it shows, "Try again" included.
+                pill.clickable(role = Role.Button, onClick = retry).padding(horizontal = 14.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(painterResource(R.drawable.ic_warning), contentDescription = null, tint = colors.tertiary, modifier = Modifier.size(18.dp))
                 // The message gives way to Try again when the pill runs out of room.
                 Text(state.message, style = text, color = colors.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-                Text(tryAgain, style = text, color = colors.primary, maxLines = 1, modifier = Modifier.clearAndSetSemantics {})
+                Text(tryAgain, style = text, color = colors.primary, maxLines = 1)
             }
         }
     }
@@ -609,6 +612,11 @@ internal fun AppMenuItem(close: () -> Unit, label: String, icon: Int, destructiv
         colors = if (destructive) MenuDefaults.itemColors(textColor = colors.error, leadingIconColor = colors.error) else MenuDefaults.itemColors(),
     )
 }
+
+/** Every menu in Ovenlight: a DropdownMenu with Material 3 Expressive's rounder corners. */
+@Composable
+internal fun RoundedMenu(expanded: Boolean, onDismissRequest: () -> Unit, content: @Composable ColumnScope.() -> Unit) =
+    DropdownMenu(expanded = expanded, onDismissRequest = onDismissRequest, shape = RoundedCornerShape(16.dp), content = content)
 
 /** A confirmation whose button is in the error color, as iOS marks destructive ones red. */
 @Composable

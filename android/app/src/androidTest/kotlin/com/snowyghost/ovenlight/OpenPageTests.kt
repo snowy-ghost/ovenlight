@@ -392,6 +392,26 @@ class OpenPageTests {
 
     // The lock
 
+    /** The launcher under an open app takes none of its touches, and TalkBack doesn't reach it. */
+    @Test
+    fun testTheLauncherUnderAnOpenAppIsOutOfReach() {
+        // The launcher's Lock sits at the top start, partly under the app's band below the status bar.
+        val (width, density, statusBar) = onMain {
+            Triple(page.view.rootView.width, page.view.resources.displayMetrics.density, ViewCompat.getRootWindowInsets(page.view)?.getInsets(WindowInsetsCompat.Type.statusBars())?.top ?: 0)
+        }
+        val band = statusBar + 12 * density
+        // The handle, which takes the whole band while the pill is tucked, brings the pill back, leaving the band's sides bare.
+        tap(width / 2f to band)
+        instrumentation.waitForIdleSync()
+        Thread.sleep(500)
+        tap(28 * density to band)
+        instrumentation.waitForIdleSync()
+        Thread.sleep(500)
+        assertFalse("a tap at the app's top corner locked Ovenlight", model.lock.isLocked.value)
+        val seen = screen()
+        for (mark in listOf("Lock Ovenlight", "More")) assertFalse("the launcher's $mark under the app: $seen", seen.contains(mark))
+    }
+
     @Test
     fun testNothingOfThePageIsInTheAccessibilityTreeUnderTheLock() {
         // WebView builds its tree once an accessibility service first asks.

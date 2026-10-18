@@ -15,6 +15,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -36,7 +37,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -75,6 +75,8 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -414,6 +416,7 @@ fun HomeScreenGrid(
                                 positions[app.id] = position
                                 onDispose { positions.remove(app.id) }
                             }
+                            DisposableEffect(app.id) { onDispose { launcherIcons.remove(app.id) } }
                             val moving = drag?.let { it.id == app.id && !it.dropped } == true
                             LaunchedEffect(slot, moving) {
                                 if (!moving) position.animateTo(slot, spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessMediumLow))
@@ -430,6 +433,8 @@ fun HomeScreenGrid(
                                     .offset { position.value.round() }
                                     .zIndex(if (moving || menuFor == app.id) 1f else 0f)
                                     .size(tileSize.width.dp, tileSize.height.dp)
+                                    // Where the app grows from as it opens, and shrinks back into.
+                                    .onGloballyPositioned { launcherIcons[app.id] = it.positionInRoot() + Offset(it.size.width / 2f, (layout.iconSize * density.density / 2).toFloat()) }
                                     // A keyboard reaches each app: Enter opens it, the menu key or Shift+F10 shows its menu.
                                     .onFocusChanged { focused = it.isFocused }
                                     .onKeyEvent { event ->
@@ -461,7 +466,7 @@ fun HomeScreenGrid(
                                     app, image, status, layout.iconSize.dp, largeText,
                                     pressed = pressed == app.id, lifted = moving || menuFor == app.id, labelShown = !moving, focused = focused,
                                 )
-                                DropdownMenu(expanded = menuFor == app.id, onDismissRequest = { menuFor = null }) {
+                                RoundedMenu(expanded = menuFor == app.id, onDismissRequest = { menuFor = null }) {
                                     menu(this, app) { menuFor = null }
                                 }
                             }
@@ -530,6 +535,9 @@ fun AppTile(
     focused: Boolean = false,
 ) {
     val colors = MaterialTheme.colorScheme
+    // In the dark, the light behind the top rows is bright enough that only white reads on it:
+    // 4.8:1 at its brightest, measured, where the usual text is 3.7 and secondary text 2.8.
+    val label = if (isSystemInDarkTheme()) Color.White else colors.onSurface
     val scale by animateFloatAsState(if (pressed) 0.92f else if (lifted) 1.12f else 1f, label = "tile scale")
     val elevation by animateDpAsState(if (lifted) 12.dp else 2.dp, label = "tile shadow")
     Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -556,13 +564,13 @@ fun AppTile(
                 Text(
                     // A word too long for the column breaks with a hyphen, not mid-word.
                     app.name, style = MaterialTheme.typography.bodySmall.copy(hyphens = Hyphens.Auto, lineBreak = LineBreak.Paragraph),
-                    color = colors.onSurface, textAlign = TextAlign.Center,
+                    color = label, textAlign = TextAlign.Center,
                     maxLines = if (largeText) 2 else 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false),
                 )
             }
             app.sharedBy?.let { owner ->
-                // Over the light, secondary text stays faint, so higher contrast takes the main color.
-                val color = if (prefersHighContrast(LocalContext.current)) colors.onSurface else colors.onSurfaceVariant
+                // Over the light, secondary text stays faint, so higher contrast, and the dark, take the label's color.
+                val color = if (prefersHighContrast(LocalContext.current) || isSystemInDarkTheme()) label else colors.onSurfaceVariant
                 Text(ConnectionCopy.sharedBy(owner), style = MaterialTheme.typography.labelSmall, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
@@ -573,7 +581,8 @@ fun AppTile(
 @Composable
 fun AppIconView(app: WebApp, image: Bitmap?, size: Dp, modifier: Modifier = Modifier) {
     val outline = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
-    Box(modifier.size(size).clip(AppIconShape).border(0.5.dp, outline, AppIconShape), contentAlignment = Alignment.Center) {
+    // An image: whoever shows it names the app, so the monogram's letter is never read.
+    Box(modifier.size(size).clip(AppIconShape).border(0.5.dp, outline, AppIconShape).clearAndSetSemantics {}, contentAlignment = Alignment.Center) {
         if (image != null) {
             val bitmap = remember(image) { image.asImageBitmap() }
             Image(bitmap, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())

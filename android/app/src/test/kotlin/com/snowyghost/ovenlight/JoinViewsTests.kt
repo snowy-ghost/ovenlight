@@ -149,7 +149,7 @@ class JoinViewsTests {
         }
     }
 
-    /** And another connection server's warning shows with Join, without scrolling. */
+    /** And another connection server's warning shows with Join, at the largest font too, where the question scrolls to it. */
     @Test
     @Config(qualifiers = "w915dp-h412dp")
     fun testOnItsSideTheConnectionServerWarningShowsWithoutScrolling() {

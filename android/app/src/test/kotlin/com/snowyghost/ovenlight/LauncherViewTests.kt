@@ -3,12 +3,15 @@ package com.snowyghost.ovenlight
 import android.app.Application
 import android.content.ClipboardManager
 import android.content.Context
+import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusManager
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.platform.LocalDensity
@@ -44,6 +47,7 @@ import java.net.URI
 import java.time.Instant
 import java.util.UUID
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -147,16 +151,20 @@ class LauncherViewTests {
     fun testACoveredLauncherTakesNoKeyboardFocus() {
         var covered by mutableStateOf(false)
         lateinit var focus: FocusManager
+        // Read from focus itself: covered, the launcher has no semantics for isFocused to find.
+        var inside = false
         composeRule.setContent {
             focus = LocalFocusManager.current
-            OvenlightTheme { LauncherView(LauncherState(apps = apps, covered = covered)) }
+            OvenlightTheme { Box(Modifier.onFocusChanged { inside = it.hasFocus }) { LauncherView(LauncherState(apps = apps, covered = covered)) } }
         }
         composeRule.runOnIdle { repeat(3) { focus.moveFocus(FocusDirection.Next) } }
-        assertTrue("uncovered, a keyboard reaches it", composeRule.onAllNodes(isFocused()).fetchSemanticsNodes().isNotEmpty())
+        composeRule.runOnIdle { assertTrue("uncovered, a keyboard reaches it", inside) }
         // Covered while something in it has focus, as after More, then Settings, from a keyboard.
         composeRule.runOnIdle { covered = true }
         composeRule.runOnIdle { repeat(10) { focus.moveFocus(FocusDirection.Next) } }
-        assertTrue("under a screen, nothing in it takes focus", composeRule.onAllNodes(isFocused()).fetchSemanticsNodes().isEmpty())
+        composeRule.runOnIdle { assertFalse("under a screen, nothing in it takes focus", inside) }
+        // Nor does TalkBack reach it.
+        composeRule.onNodeWithContentDescription("More").assertDoesNotExist()
     }
 
     @Test
@@ -258,7 +266,8 @@ class LauncherViewTests {
         var retried = false
         show(LauncherState(apps = listOf(recipes), ownerEnabled = true, ownerState = NodeState.Failed(ConnectionCopy.couldNotStart), retry = { retried = true }))
         composeRule.onNodeWithText(ConnectionCopy.connecting).assertDoesNotExist()
-        composeRule.onNodeWithText(ConnectionCopy.couldNotStart).assertIsDisplayed().performClick()
+        // TalkBack reads the "Try again" it shows.
+        composeRule.onNodeWithText(ConnectionCopy.couldNotStart).assertIsDisplayed().assert(hasText("Try again")).performClick()
         assertTrue(retried)
     }
 

@@ -195,6 +195,8 @@ class SharingViewTests {
         show(state(), SharingPage.App(machine.id, "budget"))
         text("Budget is only for you.").assertIsDisplayed()
         text("To share it, run this on its computer: ovenlight publish --slug budget --shareable").assertIsDisplayed()
+        // Which the footer finds in it, to set in code type.
+        assertTrue(ApplicationProvider.getApplicationContext<Context>().getString(R.string.sharing_not_shareable_footer, "budget").contains(SharingList.shareableCommand("budget")))
         composeRule.onNodeWithText("People").assertDoesNotExist()
     }
 
