@@ -437,6 +437,7 @@ struct SettingsView: View {
     @EnvironmentObject private var lock: LockManager
     @Environment(\.dismiss) private var dismiss
     @AppStorage(LockManager.lockAfterKey) private var lockAfterSeconds = LockManager.defaultLockAfter
+    @Environment(\.dynamicTypeSize) private var typeSize
     @State private var confirmingSignOut = false
     @State private var mail: MailDraft?
     @State private var showingPrivacyPolicy = false
@@ -445,15 +446,11 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 Section {
-                    Picker(selection: $lockAfterSeconds) {
-                        Text("Immediately").tag(0)
-                        Text("After 1 Minute").tag(60)
-                        Text("After 5 Minutes").tag(300)
-                        Text("After 15 Minutes").tag(900)
-                    } label: {
-                        Label { Text("Require \(lock.biometry.name)") } icon: {
-                            SettingsSymbol(systemName: lock.biometry.symbol, color: .green)
-                        }
+                    // The menu's value would be cut short at the largest sizes; a page of its own has the room.
+                    if typeSize.isAccessibilitySize {
+                        lockAfterPicker.pickerStyle(.navigationLink)
+                    } else {
+                        lockAfterPicker
                     }
                 } footer: {
                     if lock.noPasscode {
@@ -533,6 +530,19 @@ struct SettingsView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+            }
+        }
+    }
+
+    private var lockAfterPicker: some View {
+        Picker(selection: $lockAfterSeconds) {
+            Text("Immediately").tag(0)
+            Text("After 1 Minute").tag(60)
+            Text("After 5 Minutes").tag(300)
+            Text("After 15 Minutes").tag(900)
+        } label: {
+            Label { Text("Require \(lock.biometry.name)") } icon: {
+                SettingsSymbol(systemName: lock.biometry.symbol, color: .green)
             }
         }
     }

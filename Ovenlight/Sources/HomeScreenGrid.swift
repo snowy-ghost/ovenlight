@@ -9,6 +9,8 @@ struct HomeGridLayout: Equatable {
     let iconSize: CGFloat
     /// An icon with its label (one line, or two at accessibility sizes).
     let tileHeight: CGFloat
+    /// Between neighboring tiles: wider with large text, whose two-line labels would run together.
+    let tileGap: CGFloat
 
     static let labelGap: CGFloat = 6
     static let rowGap: CGFloat = 24
@@ -22,6 +24,7 @@ struct HomeGridLayout: Equatable {
         columns = largeText ? max(3, Int(usable / 140)) : max(4, Int(usable / 92))
         iconSize = largeText ? 72 : (width >= 400 ? 64 : 60)
         tileHeight = iconSize + Self.labelGap + labelHeight
+        tileGap = largeText ? 12 : 4
     }
 
     static func sideMargin(_ width: CGFloat) -> CGFloat { (width * 0.064).rounded() }
@@ -29,7 +32,7 @@ struct HomeGridLayout: Equatable {
     var columnWidth: CGFloat { (width - 2 * sideMargin) / CGFloat(columns) }
     var rowPitch: CGFloat { tileHeight + Self.rowGap }
     /// As wide as its column, so labels get the room the Home Screen gives them.
-    var tileSize: CGSize { CGSize(width: max(columnWidth - 4, iconSize), height: tileHeight) }
+    var tileSize: CGSize { CGSize(width: max(columnWidth - tileGap, iconSize), height: tileHeight) }
 
     func tileCenter(of index: Int) -> CGPoint {
         CGPoint(x: sideMargin + columnWidth * (CGFloat(index % columns) + 0.5),
