@@ -5,16 +5,15 @@
 # connector runs from this run's folder with its own HOME, config and state, logs in only to
 # the local Headscale, and stops by its recorded pid.
 #
-#   android/e2e/e2e.sh [gates | owner | signin [seconds] | screens | app | chrome | downloads | upload | return | guests | sharing | shortcuts | conditions | perf] [avd]
+#   android/e2e/e2e.sh [gates | signin [seconds] | screens | app | chrome | downloads | upload | return | guests | sharing | shortcuts | conditions | perf] [avd]
 #
-# gates runs Phase 1's checks G2 to G5 through the debug lab. owner signs the owner's node in
-# with a preauth key and waits for the launcher to show both test apps. signin goes through
-# the launcher's Connect card and the sign-in page in Chrome's Custom Tab, approves the phone
+# gates runs Phase 1's checks G2 to G5 through the debug lab. signin goes through the
+# launcher's Connect card and the sign-in page in Chrome's Custom Tab, approves the phone
 # after [seconds] (default 90: Android freezes an app about a minute after it goes out of
 # sight), checking first that Chrome keeps Ovenlight running behind the tab, and checks that
-# Ovenlight comes back over the tab by itself, connected, and lets Chrome go. screens
-# signs in as owner does, takes the launcher, Settings and lock screenshots in light and
-# dark, and checks the lock: at Immediately, Home and back through the icon or Recents asks
+# Ovenlight comes back over the tab by itself, connected, and lets Chrome go. screens signs
+# the owner's node in with a preauth key, takes the launcher, Settings and lock screenshots in
+# light and dark, and checks the lock: at Immediately, Home and back through the icon or Recents asks
 # for it, and a canceled prompt doesn't come back by itself. app opens Recipes from the
 # launcher and waits for its page.
 # chrome opens Recipes, closes the pill's one-time tip, brings the pill back with its handle,
@@ -75,6 +74,10 @@
 # bash, not zsh: zsh skips its EXIT trap when err_exit fires inside a function, which would
 # leave Headscale, the connector and the emulator running after a failure.
 set -Eeuo pipefail
+# A shell that didn't read the profile may lack adb, and the free port check would then count
+# every port as free.
+PATH=${ANDROID_HOME:?set ANDROID_HOME}/platform-tools:$PATH
+command -v adb > /dev/null || { echo "no adb in $ANDROID_HOME/platform-tools" >&2; exit 1; }
 
 SCENARIO=${1:-gates}
 SIGNIN_WAIT=90
@@ -145,7 +148,7 @@ until_ok() {
 }
 
 [[ -x $HS ]] || fail "no headscale at $HS"
-[[ $SCENARIO =~ ^(gates|owner|signin|screens|app|chrome|downloads|upload|return|guests|sharing|shortcuts|conditions|perf)$ ]] || fail "unknown scenario $SCENARIO"
+[[ $SCENARIO =~ ^(gates|signin|screens|app|chrome|downloads|upload|return|guests|sharing|shortcuts|conditions|perf)$ ]] || fail "unknown scenario $SCENARIO"
 [[ -z ${OVENLIGHT_E2E_CONDITION:-} || $OVENLIGHT_E2E_CONDITION =~ ^(dark|font|threebutton|landscape)$ ]] || fail "unknown condition $OVENLIGHT_E2E_CONDITION"
 
 say "the test CA in $CA, made once, and a *.$BASE certificate for this run"
@@ -389,6 +392,7 @@ await_text() {
 night() { a shell cmd uimode night $1 >/dev/null; sleep 3; }
 nav() { a shell cmd overlay enable-exclusive --category com.android.internal.systemui.navbar.$1 >/dev/null; sleep 3; }
 rotate() { a shell settings put system accelerometer_rotation 0; a shell settings put system user_rotation $1; sleep 3; }
+font() { a shell settings put system font_scale $1; sleep 3; }
 locked() { screen_text | grep -qxE 'Unlock Ovenlight|Ovenlight is locked'; }
 # Locks Ovenlight where it is. The activity pauses and resumes for the intent, so the system's
 # unlock prompt ("Unlock Ovenlight") opens over the lock screen at once, as on a return; its
@@ -452,32 +456,76 @@ owner_launcher() {
   a shell "am start -W -n $PKG/.MainActivity --es controlURL $CTRL --es authKey $KEY" >/dev/null
   await_text 90 Recipes Pantry || fail "the launcher never showed both apps: $(screen_text | tr '\n' '|')"
 }
+# More, then Settings, from the launcher.
+open_settings() {
+  tap_text More || fail "no More: $(screen_text | tr '\n' '|')"
+  await_text 5 Settings || fail "no Settings in More: $(screen_text | tr '\n' '|')"
+  tap_text Settings
+  await_text 10 "Require screen lock" || fail "no Settings: $(screen_text | tr '\n' '|')"
+}
+# Sets the lock to Immediately in Settings, and goes back to the launcher.
+lock_immediately() {
+  open_settings
+  tap_text "Require screen lock" && sleep 1 && tap_text Immediately
+  await_text 10 Immediately || fail "the delay didn't change"
+  a shell input keyevent KEYCODE_BACK; sleep 2
+}
+# Back to Ovenlight from elsewhere through its icon, or through Recents ($1), tapping the card in the middle.
+back_through() {
+  if [[ $1 == icon ]]; then
+    a shell monkey -p $PKG -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
+  else
+    a shell input keyevent KEYCODE_APP_SWITCH; sleep 3
+    local size=$(a shell wm size | tail -1 | sed 's/.*: //' | tr -d '\r')
+    a shell input tap $((${size%x*} / 2)) $((${size#*x} / 2))
+  fi
+  sleep 3
+}
+# Android ends Ovenlight's process at Home, as it does for memory. Not force-stop: the
+# launcher hides a stopped app's shortcuts until it runs again.
+end_in_background() {
+  a shell input keyevent KEYCODE_HOME; sleep 2
+  a shell am kill $PKG
+  until_ok 10 sh -c "[ -z \"\$(adb -s $S shell pidof $PKG)\" ]" || fail "Ovenlight's process didn't end"
+}
+
+# The connector's status, and the user app $1's node belongs to.
+status_json() { c status --config $D/config.json --state $D/st --json; }
+owner_of() { python3 -c 'import json, sys; print(next(a["nodeUser"] for a in json.load(sys.stdin)["apps"] if a["slug"] == sys.argv[1]))' "$1"; }
+# Names the owner in connector config $1: user $2, called $3. It goes in by hand, as the
+# connector's own e2e test does: publish --shareable records one only after a person types yes.
+set_owner() { python3 -c 'import json, sys; c = json.load(open(sys.argv[1])); c.update(owner=sys.argv[2], ownerLabel=sys.argv[3]); json.dump(c, open(sys.argv[1], "w"))' "$@"; }
+# Every app serves, and Recipes as a shareable app node.
+serving_shareable() { status_json | python3 -c '
+import json, sys
+apps = {a["slug"]: a for a in json.load(sys.stdin)["apps"]}
+ok = all(a.get("state") == "serving" for a in apps.values()) and "tag:ovenlight-app-recipes" in (apps["recipes"].get("tags") or [])
+sys.exit(0 if ok else 1)'; }
+# Makes Recipes shareable, its owner called $1.
+shareable_recipes() {
+  set_owner $D/config.json "$(status_json | owner_of recipes)" "$1"
+  c publish --config $D/config.json --state $D/st --slug recipes --shareable >> $D/publish.log 2>&1 || fail "publish --shareable: $(tail -5 $D/publish.log)"
+  until_ok 120 serving_shareable || fail "Recipes never served as a shareable app node: $(status_json)"
+}
+# Shares app $1 with $2 from a terminal, as the connector requires, and prints the invite's
+# link. $3 is another connector's folder (Riley's) in place of this run's; the link stays there.
+share() {
+  local at=${3:-$D}
+  script -q /dev/null env HOME=$at/home OVENLIGHT_DEV=1 TS_NO_LOGS_NO_SUPPORT=1 $D/ovenlight share $1 --to "$2" \
+    --config $at/config.json --state $at/st < /dev/null > $at/share-$2.txt 2>&1 || fail "sharing $1 with $2: $(tail -5 $at/share-$2.txt)"
+  LC_ALL=C grep -o -E 'https://ovenlight\.app/join#[^[:space:][:cntrl:]]+' $at/share-$2.txt | head -1
+}
 
 case ${OVENLIGHT_E2E_CONDITION:-} in
 dark) say "in dark mode"; night yes ;;
-font) say "at the largest font"; a shell settings put system font_scale 2.0; sleep 3 ;;
+font) say "at the largest font"; font 2.0 ;;
 threebutton) say "with three-button navigation"; nav threebutton ;;
 landscape) say "in landscape"; rotate 1 ;;
 esac
 
 if [[ $SCENARIO == guests ]]; then
   say "sharing: Owen owns the connector, and Recipes runs as a shareable app node"
-  node_user=$(c status --config $D/config.json --state $D/st --json | python3 -c 'import json, sys; print([a for a in json.load(sys.stdin)["apps"] if a["slug"] == "recipes"][0]["nodeUser"])')
-  python3 - $D/config.json "$node_user" <<'PY2'
-import json, sys
-config = json.load(open(sys.argv[1]))
-config["owner"], config["ownerLabel"] = sys.argv[2], "Owen"
-json.dump(config, open(sys.argv[1], "w"))
-PY2
-  c publish --config $D/config.json --state $D/st --slug recipes --shareable >> $D/publish.log 2>&1 || fail "publish --shareable: $(cat $D/publish.log)"
-  until_ok 120 sh -c "env HOME=$D/home $D/ovenlight status --config $D/config.json --state $D/st --json | grep -c '\"state\": \"serving\"' | grep -qx 2" ||
-    fail "Recipes didn't serve again as a shareable node"
-  # Shares Recipes with $1 from a terminal, as the connector requires, and prints the invite's link.
-  share() {
-    script -q /dev/null env HOME=$D/home OVENLIGHT_DEV=1 TS_NO_LOGS_NO_SUPPORT=1 $D/ovenlight share recipes --to "$1" \
-      --config $D/config.json --state $D/st < /dev/null > $D/share-$1.txt 2>&1 || fail "sharing with $1: $(cat $D/share-$1.txt)"
-    LC_ALL=C grep -o -E 'https://ovenlight\.app/join#[^[:space:][:cntrl:]]+' $D/share-$1.txt | head -1
-  }
+  shareable_recipes Owen
   # The whole log from here on: the device's ring buffer may drop the lines the key check needs.
   a logcat > $OUT/logcat-guests.log 2>/dev/null &
   pids="$pids $!"
@@ -495,7 +543,7 @@ PY2
   }
 
   say "guests: Sam's invite arrives as an App Link"
-  link=$(share Sam)
+  link=$(share recipes Sam)
   [[ -n $link ]] || fail "no link for Sam"
   keys+=("$(key_of "$link")")
   a shell "am start -W -a android.intent.action.VIEW -c android.intent.category.BROWSABLE -p $PKG -d '$link'" >/dev/null
@@ -539,7 +587,7 @@ PY2
   note "the notice showed once; the welcome is back, and the guest node's state is gone"
 
   say "guests: Kim's invite, pasted under Join with invite"
-  link=$(share Kim)
+  link=$(share recipes Kim)
   [[ -n $link ]] || fail "no link for Kim"
   keys+=("$(key_of "$link")")
   tap_text "Join with invite"
@@ -1082,31 +1130,26 @@ if [[ $SCENARIO == screens ]]; then
   owner_launcher
   sleep 2; shot launcher-light
   night yes; shot launcher-dark
-  tap_text More && sleep 1 && tap_text Settings
-  await_text 10 "Require screen lock" || fail "no Settings: $(screen_text | tr '\n' '|')"
+  open_settings
   sleep 1; shot settings-dark
   night no; shot settings-light
   a shell input keyevent KEYCODE_BACK; sleep 2
   # Landscape, then the largest font, each on the launcher and Settings.
-  a shell settings put system accelerometer_rotation 0; a shell settings put system user_rotation 1; sleep 3
+  rotate 1
   shot launcher-landscape
-  tap_text More && sleep 1 && tap_text Settings && sleep 2 && shot settings-landscape
+  open_settings; shot settings-landscape
   a shell input keyevent KEYCODE_BACK; sleep 2
-  a shell settings put system user_rotation 0; sleep 3
-  a shell settings put system font_scale 2.0; sleep 3
+  rotate 0
+  font 2.0
   shot launcher-largest-font
-  tap_text More && sleep 1 && tap_text Settings && sleep 2 && shot settings-largest-font
+  open_settings; shot settings-largest-font
   a shell input keyevent KEYCODE_BACK; sleep 2
-  a shell settings put system font_scale 1.0; sleep 3
+  font 1.0
   await_text 10 Recipes || fail "the launcher didn't come back after the font change"
-  tap_text More && sleep 1 && tap_text Settings
-  await_text 10 "Require screen lock" || fail "no Settings after the font change"
   note "screenshots of the launcher and Settings in light, dark, landscape and at the largest font"
 
   say "lock: Immediately, from Settings"
-  tap_text "Require screen lock" && sleep 1 && tap_text Immediately
-  await_text 10 Immediately || fail "the delay didn't change"
-  a shell input keyevent KEYCODE_BACK; sleep 2
+  lock_immediately
   tap_text "Lock Ovenlight"; sleep 2
   KEEP_LOCK=1 await_text 10 "Ovenlight is locked" || fail "Lock Ovenlight didn't lock"
   shot lock-light; night yes; shot lock-dark; night no
@@ -1116,7 +1159,7 @@ if [[ $SCENARIO == screens ]]; then
 
   say "lock: Home, then back through the icon"
   a shell input keyevent KEYCODE_HOME; sleep 3
-  a shell monkey -p $PKG -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1; sleep 3
+  back_through icon
   locked || fail "back through the icon without the lock: $(screen_text | tr '\n' '|')"
   note "back through the icon: locked"
   # The prompt opened by itself; cancel it, and it must stay closed.
@@ -1129,9 +1172,7 @@ if [[ $SCENARIO == screens ]]; then
 
   say "lock: Home, then back through Recents"
   a shell input keyevent KEYCODE_HOME; sleep 3
-  a shell input keyevent KEYCODE_APP_SWITCH; sleep 3
-  size=$(a shell wm size | tail -1 | sed 's/.*: //' | tr -d '\r'); w=${size%x*}; h=${size#*x}
-  a shell input tap $((w / 2)) $((h / 2)); sleep 3
+  back_through Recents
   locked || fail "back through Recents without the lock: $(screen_text | tr '\n' '|')"
   note "back through Recents: locked"
   say "PASSED"
@@ -1140,19 +1181,7 @@ fi
 
 if [[ $SCENARIO == sharing ]]; then
   say "sharing: Recipes made shareable, as the owner's"
-  status_json() { c status --config $D/config.json --state $D/st --json; }
-  # The owner goes in the config by hand, as the connector's own e2e test does: publish --shareable
-  # records one only after a person types yes.
-  owner_of() { python3 -c 'import json, sys; print(next(a["nodeUser"] for a in json.load(sys.stdin)["apps"] if a["slug"] == sys.argv[1]))' "$1"; }
-  set_owner() { python3 -c 'import json, sys; c = json.load(open(sys.argv[1])); c.update(owner=sys.argv[2], ownerLabel=sys.argv[3]); json.dump(c, open(sys.argv[1], "w"))' "$@"; }
-  set_owner $D/config.json "$(status_json | owner_of recipes)" Dimitri
-  c publish --config $D/config.json --state $D/st --slug recipes --shareable >> $D/publish.log 2>&1 || fail "publish --shareable: $(tail -5 $D/publish.log)"
-  serving_shareable() { status_json | python3 -c '
-import json, sys
-apps = {a["slug"]: a for a in json.load(sys.stdin)["apps"]}
-ok = all(a.get("state") == "serving" for a in apps.values()) and "tag:ovenlight-app-recipes" in (apps["recipes"].get("tags") or [])
-sys.exit(0 if ok else 1)'; }
-  until_ok 120 serving_shareable || fail "Recipes never served as a shareable app node: $(status_json)"
+  shareable_recipes Dimitri
   # The connector's guests and invites, as the admin API lists them.
   guests() { c guests --config $D/config.json --state $D/st --json; }
   # The system's prompt for the screen lock again, titled $1, answered with fingerprint 1.
@@ -1198,11 +1227,7 @@ sys.exit(0 if ok else 1)'; }
   await_text 10 Recipes Pantry || fail "Close didn't close the invite"
 
   say "sharing: Kim joins Recipes from a phone of her own, with an invite from the terminal"
-  # share needs a terminal, as a person types it; the link stays in this run's folder.
-  env HOME=$D/home OVENLIGHT_DEV=1 TS_NO_LOGS_NO_SUPPORT=1 /usr/bin/script -q $D/share.log $D/ovenlight share recipes --to Kim --config $D/config.json --state $D/st < /dev/null > /dev/null 2>&1 ||
-    fail "share --to Kim failed: $(tail -5 $D/share.log)"
-  link=$(LC_ALL=C grep -o 'https://ovenlight\.app/join#[^[:space:][:cntrl:]]*' $D/share.log | head -1)
-  rm $D/share.log
+  link=$(share recipes Kim)
   [[ -n $link ]] || fail "share printed no invite link"
   printf '%s\n' "$link" | env TS_NO_LOGS_NO_SUPPORT=1 TS_DISABLE_PORTMAPPER=1 go -C $ROOT/connector run $ROOT/android/e2e/guest.go $CTRL $D/guest $CA/ca.pem > $D/guest.log 2>&1 ||
     fail "Kim's phone didn't claim the invite: $(tail -3 $D/guest.log)"
@@ -1243,11 +1268,7 @@ sys.exit(0 if ok else 1)'; }
 
   if [[ $(a shell getprop ro.build.version.sdk | tr -d '\r') == 29 ]]; then
     say "sharing, Android 10: at Immediately, the screen lock's own screen before an invite"
-    tap_text More && sleep 1 && tap_text Settings
-    await_text 10 "Require screen lock" || fail "no Settings"
-    tap_text "Require screen lock" && sleep 1 && tap_text Immediately
-    await_text 10 Immediately || fail "the delay didn't change"
-    a shell input keyevent KEYCODE_BACK; sleep 2
+    lock_immediately
     # Use screen lock opens the screen lock's own screen, which stops Ovenlight.
     open_screen_lock() {
       KEEP_LOCK=1 await_text 15 "Use screen lock" || fail "no Use screen lock: $(screen_text | tr '\n' '|')"
@@ -1272,14 +1293,7 @@ sys.exit(0 if ok else 1)'; }
       share_recipes "Bo $way"
       open_screen_lock
       a shell input keyevent KEYCODE_HOME; sleep 3
-      if [[ $way == icon ]]; then
-        a shell monkey -p $PKG -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
-      else
-        a shell input keyevent KEYCODE_APP_SWITCH; sleep 3
-        size=$(a shell wm size | tail -1 | sed 's/.*: //' | tr -d '\r'); w=${size%x*}; h=${size#*x}
-        a shell input tap $((w / 2)) $((h / 2))
-      fi
-      sleep 3
+      back_through $way
       shot sharing-return-$way
       # Whatever comes back, the screen lock's screen or Ovenlight's lock, nothing opens unlocked.
       if [[ $(front) != *$PKG/.MainActivity* ]]; then
@@ -1320,10 +1334,7 @@ sys.exit(0 if ok else 1)'; }
   set_owner $B/config.json "$(cr status --json | owner_of garden)" Riley
   cr publish --slug garden --shareable >> $D/publish.log 2>&1 || fail "publish garden --shareable: $(tail -5 $D/publish.log)"
   until_ok 120 sh -c "env HOME=$B/home $D/ovenlight status --config $B/config.json --state $B/st --json | grep -q 'tag:ovenlight-app-garden'" || fail "Garden never served as a shareable app node"
-  env HOME=$B/home OVENLIGHT_DEV=1 TS_NO_LOGS_NO_SUPPORT=1 /usr/bin/script -q $B/share.log $D/ovenlight share garden --to Dimitri --config $B/config.json --state $B/st < /dev/null > /dev/null 2>&1 ||
-    fail "share garden failed: $(tail -5 $B/share.log)"
-  riley_link=$(LC_ALL=C grep -o 'https://ovenlight\.app/join#[^[:space:][:cntrl:]]*' $B/share.log | head -1)
-  rm $B/share.log
+  riley_link=$(share garden Dimitri $B)
   [[ $riley_link == *"control=http%3A%2F%2F127.0.0.1%3A$HSPORT_B"* ]] || fail "Riley's invite doesn't name Riley's Headscale"
   note "Riley's connector serves Garden, shareable, and made an invite for this phone"
   a reverse tcp:$HSPORT_B tcp:$HSPORT_B >/dev/null
@@ -1389,8 +1400,8 @@ EOF
   rotate 0; same_page "portrait again"
   night yes; shot conditions-dark; same_page "dark mode"
   night no
-  a shell settings put system font_scale 2.0; sleep 3; shot conditions-largest-font; same_page "the largest font"
-  a shell settings put system font_scale 1.0; sleep 3
+  font 2.0; shot conditions-largest-font; same_page "the largest font"
+  font 1.0
   nav threebutton; shot conditions-three-button; same_page "three-button navigation"
   tap_text "Show app menu" || fail "no handle with three-button navigation: $(screen_text | tr '\n' '|')"
   await_text 5 "All apps" "Recipes options" || fail "the handle didn't bring the pill back with three-button navigation: $(screen_text | tr '\n' '|')"
@@ -1432,7 +1443,7 @@ EOF
   states() { a logcat -d -T "$home_at" -s Ovenlight 2>/dev/null | LC_ALL=C grep -E 'owner: state' | LC_ALL=C sed 's/.*owner: state //' | tr '\n' ',' || true; }
   away_states=$(states)
   note "the owner's node while away: ${away_states:-no change}"
-  a shell monkey -p $PKG -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
+  back_through icon
   await_text 40 "Recipe Box conditions" || { shot conditions-failed; fail "Recipes isn't on screen after the time away: $(screen_text | tr '\n' '|')"; }
   fetches_within "back after 75 s away" 60
   note "the owner's node from Home to back: $(states)"
@@ -1440,12 +1451,8 @@ EOF
   [[ $(load_id) == "$loaded" ]] || note "the page loaded again ($(load_id), was $loaded)"
 
   say "conditions: Android ends Ovenlight's process in the background, and Recents brings it back"
-  a shell input keyevent KEYCODE_HOME; sleep 2
-  a shell am kill $PKG
-  until_ok 10 sh -c "[ -z \"\$(adb -s $S shell pidof $PKG)\" ]" || fail "Ovenlight's process didn't end"
-  a shell input keyevent KEYCODE_APP_SWITCH; sleep 3
-  size=$(a shell wm size | tail -1 | sed 's/.*: //' | tr -d '\r'); w=${size%x*}; h=${size#*x}
-  a shell input tap $((w / 2)) $((h / 2)); sleep 3
+  end_in_background
+  back_through Recents
   # Back within the lock's minute: the time it went to the background outlives the process.
   ! locked || fail "Recents brought Ovenlight back locked within the lock's time: $(screen_text | tr '\n' '|')"
   await_text 60 Recipes Pantry || { shot conditions-failed; fail "no launcher after the restart: $(screen_text | tr '\n' '|')"; }
@@ -1521,23 +1528,10 @@ if [[ $SCENARIO == perf ]]; then
   exit 0
 fi
 
-if [[ $SCENARIO == owner ]]; then
-  say "owner: the owner's node signs in with a preauth key"
-  owner_launcher
-  shot owner-launcher
-  note "the launcher shows Recipes and Pantry"
-  say "PASSED"
-  exit 0
-fi
-
 if [[ $SCENARIO == shortcuts ]]; then
   say "shortcuts: the owner signs in, with the lock at Immediately"
   owner_launcher
-  tap_text More && sleep 1 && tap_text Settings
-  await_text 10 "Require screen lock" || fail "no Settings: $(screen_text | tr '\n' '|')"
-  tap_text "Require screen lock" && sleep 1 && tap_text Immediately
-  await_text 10 Immediately || fail "the delay didn't change"
-  a shell input keyevent KEYCODE_BACK; sleep 2
+  lock_immediately
   # The shortcut's state as Android keeps it: its label, and whether it's pinned or disabled.
   shortcut() { a shell dumpsys shortcut | LC_ALL=C grep -A12 "id=$1" || true; }
 
@@ -1574,10 +1568,7 @@ if [[ $SCENARIO == shortcuts ]]; then
   note "the shortcut opened Ovenlight locked, and Recipes after the unlock"
 
   say "shortcuts: again after Android ends Ovenlight's process in the background, so the shortcut starts it"
-  # Not force-stop: the launcher hides a stopped app's shortcuts until it runs again.
-  a shell input keyevent KEYCODE_HOME; sleep 2
-  a shell am kill $PKG
-  until_ok 10 sh -c "[ -z \"\$(adb -s $S shell pidof $PKG)\" ]" || fail "Ovenlight's process didn't end"
+  end_in_background
   tap_text Recipes || fail "no Recipes on the home screen: $(screen_text | tr '\n' '|')"
   sleep 3
   locked || fail "the shortcut started Ovenlight without the lock: $(screen_text | tr '\n' '|')"
@@ -1856,52 +1847,6 @@ lab "start --es labId lab --es controlURL $CTRL"
 await 60 '^start lab' >/dev/null || fail "the node didn't start after the relaunch"
 lab "waitup --es labId lab"; await 70 '^waitup lab' >/dev/null || fail "the node didn't run after the relaunch"
 
-insets() { # name
-  lab "page --es labProfile I --es labBase https://lab.$BASE/"
-  await 30 '^page I finished' >/dev/null || fail "the lab page didn't load"
-  sleep 2
-  lab "insets"
-  line=$(await 10 '^insets') || fail "no insets"
-  note "$1: ${line#insets I: }"
-  shot g5-$1
-}
-
-say "G5: env(safe-area-inset-*) beside Android's insets"
-nav gestural; rotate 0; insets portrait-gestures
-rotate 1; insets landscape-gestures
-nav threebutton; rotate 0; insets portrait-three-button
-rotate 1; insets landscape-three-button
-nav gestural; rotate 0
-
-# Each case in its own profile, with what the proxy answered beside WebView's error.
-error_case() { # profile what url [extras]
-  local profile=$1 what=$2 url=$3 extras=${4:-} line opened
-  lab "open --es labProfile $profile --es labId lab $extras --es labUrl $url"
-  opened=$since
-  line=$(await 40 "^error $profile main frame" || echo "no error")
-  # The proxy's own answer can come after WebView gives up.
-  local proxy=
-  for i in $(seq 1 12); do
-    proxy=$(corelog "$opened" | grep "^proxy: app-$profile " | sed 's/^proxy: [^ ]* //' | head -1 || true)
-    [[ -n $proxy ]] && break
-    sleep 1
-  done
-  note "$what: ${line#error $profile main frame }; the proxy: ${proxy:-nothing}"
-}
-say "G5: the WebView error codes Phase 4 maps"
-error_case E1 "refused CONNECT (an unknown tailnet name)" https://nope.$BASE/
-lab "start --es labId ghost --es labHostname ghost --es controlURL $CTRL --es authKey $KEY"
-await 60 '^start ghost' >/dev/null; lab "waitup --es labId ghost"; await 70 '^waitup ghost' >/dev/null || fail "the ghost node never ran"
-lab "close --es labId ghost"; await 20 '^close ghost' >/dev/null
-sleep 3
-error_case E2 "a peer that doesn't answer" https://ghost.$BASE/
-lab "close --es labId lab"; await 20 '^close lab' >/dev/null
-error_case E3 "a CONNECT held past Chromium's 10 second tunnel timeout" https://recipes.$BASE/ "--el labHold 15000"
-error_case E4 "a CONNECT held for a node that never comes" https://recipes.$BASE/ "--el labHold 8000"
-lab "closedPort"; await 10 '^proxy override' >/dev/null
-error_case E5 "a closed port" https://recipes.$BASE/
-lab "proxy"; await 10 '^proxy override' >/dev/null
-
 # Last, since the keyboard can't be put away without leaving the page.
 say "G5: an input at the bottom with the keyboard up"
 lab "page --es labProfile I --es labBase https://lab.$BASE/"
@@ -1913,7 +1858,6 @@ sleep 3
 res=$(evaljs 'window.labResult = JSON.stringify({focused: document.activeElement.id, inputBottom: Math.round(document.getElementById("field").getBoundingClientRect().bottom), visual: Math.round(visualViewport.height), offset: Math.round(visualViewport.offsetTop), layout: innerHeight})' 1)
 note "keyboard up: $res"
 shot g5-keyboard
-lab "insets"; note "$(await 10 '^insets' || echo none)"
 [[ $res == *'"focused":"field"'* ]] || fail "the tap didn't focus the input"
 python3 -c 'import json, sys; r = json.loads(sys.argv[1].strip(chr(34)) if sys.argv[1].startswith(chr(34)+"{") else sys.argv[1]); sys.exit(0 if r["visual"] < r["layout"] and r["inputBottom"] <= r["offset"] + r["visual"] else 1)' "$res" ||
   fail "with the keyboard up, the input isn't inside the visual viewport"

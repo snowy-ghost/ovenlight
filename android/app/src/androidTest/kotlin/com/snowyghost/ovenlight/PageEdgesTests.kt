@@ -235,7 +235,7 @@ class PageEdgesTests {
         composeRule.onNodeWithText("Open").performClick()
         composeRule.waitForIdle()
         assertTrue("an early tap does nothing", started.intents.isEmpty())
-        Thread.sleep(600)
+        Thread.sleep(PROMPT_DELAY_MILLIS + 100)
         composeRule.onNodeWithText("Open").performClick()
         waitFor("the reader") { started.intents.isNotEmpty() }
         val opened = started.intents.single()
@@ -253,7 +253,7 @@ class PageEdgesTests {
         tapped("intent:")
         val asked = edges.dialog.value as PageEdges.Dialog.OpenElsewhere
         assertNull(asked.intent.getStringExtra("browser_fallback_url"))
-        Thread.sleep(600)
+        Thread.sleep(PROMPT_DELAY_MILLIS + 100)
         composeRule.onNodeWithText("Open").performClick()
         waitFor("the start") { started.intents.isNotEmpty() }
         Thread.sleep(1_000)

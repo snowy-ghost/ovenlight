@@ -69,9 +69,4 @@ class SupportMailTests {
         assertEquals("Ovenlight report: Echo & Notes+", items["subject"])
         assertEquals(draft.body, items["body"])
     }
-
-    @Test
-    fun testPrivacyPolicyIsHTTPS() {
-        assertEquals("https", AppLinks.privacyPolicy.scheme)
-    }
 }

@@ -7,6 +7,7 @@ import java.net.URI
 import java.nio.ByteBuffer
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -53,9 +54,10 @@ class PageBridgeTests {
 
     @Test
     fun testThePageScriptGetsItsLimitsAndWords() {
-        val script = ApplicationProvider.getApplicationContext<Context>().assets.open("page.js").bufferedReader().use { it.readText() }
-        assertTrue(script.contains("const LIMIT = __LIMIT__, HREF_LIMIT = __HREF_LIMIT__, HEADER_LIMIT = __HEADER_LIMIT__;"))
-        assertTrue(script.contains("const OFFER = \"__OFFER__\", ANSWER = \"__ANSWER__\", STOP = \"__STOP__\""))
+        val script = PageBridge.script(ApplicationProvider.getApplicationContext<Context>())
+        assertFalse(Regex("__[A-Z_]+__").containsMatchIn(script))
+        assertTrue(script.contains("const LIMIT = ${PageDownloads.BLOB_LIMIT},"))
+        assertTrue(script.contains("const OFFER = \"${PageBridge.OFFER}\""))
         assertTrue("no binding left in any frame", !script.contains("__ovenlight"))
     }
 }

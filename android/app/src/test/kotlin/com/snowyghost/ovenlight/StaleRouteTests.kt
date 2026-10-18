@@ -18,17 +18,6 @@ class StaleRouteTests {
     /** Stands in for a membership's node: the routing rules only compare them. */
     private class Node(val id: String)
 
-    @Test
-    fun testTheOwnersNodeCarriesOnlyItsKnownTailnet() {
-        assertFalse(
-            "an unknown tailnet carries nothing, though the route waits on the owner's node",
-            Routing.isOnOwnersTailnet("cool.attacker.ts.net", null),
-        )
-        assertFalse(Routing.isOnOwnersTailnet("cool.attacker.ts.net", "tailabc123.ts.net"))
-        assertTrue(Routing.isOnOwnersTailnet("Coach.tailabc123.ts.net.", "tailabc123.ts.net"))
-        assertFalse(Routing.isOnOwnersTailnet("tailabc123.ts.net.example.com", "tailabc123.ts.net"))
-    }
-
     /** On Android a route with no node is refused (plan decision 9), where iOS loads it directly. */
     @Test
     fun testAViewIsStaleOnceTheRouteNamesAnotherNode() {

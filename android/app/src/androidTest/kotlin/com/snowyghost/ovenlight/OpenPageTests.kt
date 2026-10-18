@@ -381,9 +381,7 @@ class OpenPageTests {
             for (night in listOf(true, false)) {
                 shell("cmd uimode night ${if (night) "yes" else "no"}")
                 waitFor("night mode $night") { onMain { window.context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES } == night }
-                instrumentation.waitForIdleSync()
-                Thread.sleep(1_000)
-                assertEquals("dark icons with night mode $night", !night, darkIcons())
+                waitFor("dark icons with night mode $night") { darkIcons() == !night }
             }
         } finally {
             shell("cmd uimode night no")
