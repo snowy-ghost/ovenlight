@@ -258,7 +258,7 @@ jobs:
             name=$1 api=$2 port=$3
             shift 3
             echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd -n "$name" -k "system-images;$api;google_apis;x86_64" -d pixel_7 -p "$ANDROID_AVD_HOME/$name.avd"
-            nohup "$ANDROID_HOME/emulator/emulator" -avd "$name" -port "$port" "$@" -no-window -no-audio -no-boot-anim -no-metrics -gpu swiftshader_indirect -no-snapshot -show-kernel > "$RUNNER_TEMP/$name.log" 2>&1 &
+            (nohup "$ANDROID_HOME/emulator/emulator" -avd "$name" -port "$port" "$@" -no-window -no-audio -no-boot-anim -no-metrics -gpu swangle_indirect -no-snapshot -show-kernel; echo "emulator exited with $?") > "$RUNNER_TEMP/$name.log" 2>&1 &
             timeout 600 sh -c "until [ \"\$('$adb' -s emulator-$port shell getprop sys.boot_completed 2> /dev/null | tr -d '\r')\" = 1 ]; do sleep 2; done" ||
               { tail -50 "$RUNNER_TEMP/$name.log"; exit 1; }
           }
@@ -278,7 +278,7 @@ jobs:
             "$adb" -s emulator-5556 emu kill
           fi
           # ci gets 4 GB, as the mini's AVDs: the web view pool keeps as many pages as it does there.
-          boot ci android-36 5554 -memory 4096 -cores 2
+          boot ci android-36 5554 -memory 4096
           # The package manager may still be settling just after boot.
           for _ in 1 2 3 4 5 6; do "$adb" -s emulator-5554 install -r ~/webview/webview.apk && break; sleep 3; done
           for _ in $(seq 30); do [ "$(webview)" -ge 144 ] 2> /dev/null && break; sleep 2; done
