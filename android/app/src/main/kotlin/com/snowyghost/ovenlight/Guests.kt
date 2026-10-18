@@ -47,10 +47,10 @@ enum class JoinError {
         KeyUsed -> "This invite was already used"
         // A connector expires an invite's key once it's claimed, so "expired" also means used.
         Expired -> "This invite no longer works"
-        KeyRefused, NotInvited -> "This invite didn't work"
+        KeyRefused, NotInvited -> "This invite didn’t work"
         UsedOnAnotherDevice -> "This invite was used on another phone"
         SomeoneElses -> "This invite is for someone else"
-        Network -> "Can't reach $owner's $app"
+        Network -> "Can’t reach $owner’s $app"
         Canceled -> "Joining canceled"
         OwnApp -> "$app is already yours"
         WrongNetwork -> "This invite leads somewhere else"

@@ -36,10 +36,12 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -175,24 +177,27 @@ private fun AppPageView(model: AppModel, page: AppPage, onClose: () -> Unit) {
                 transitionSpec = { fadeIn(tween(250)) togetherWith fadeOut(tween(250)) },
                 label = "app cover",
             ) { cover ->
-                when (cover) {
-                    Cover.None -> Unit
-                    Cover.Placeholder -> LaunchPlaceholder(app, icon)
-                    Cover.CantReach -> LoadErrorView(ConnectionCopy.cantReach(app.name), ConnectionCopy.cantReachDetail, page::reload, onClose)
-                    Cover.Error -> LoadErrorView(stringResource(R.string.app_cant_open, app.name), error.orEmpty(), page::reload, onClose)
-                    Cover.Node -> action?.let {
-                        NodeActionCard(
-                            app, it, deviceName = model.nodes.deviceName,
-                            connect = {
-                                when (val state = model.nodes.owner.state.value) {
-                                    is NodeState.NeedsLogin -> model.router.presentTab(RootSheet.Login(state.url))
-                                    NodeState.AwaitingApproval -> model.router.presentTab(RootSheet.Approve)
-                                    else -> if (!ownerEnabled) model.nodes.enableOwner()
-                                }
-                            },
-                            retry = retryNode,
-                            close = onClose,
-                        )
+                // As on the launcher: nothing above gives a content color, which would leave the covers' text black.
+                CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface) {
+                    when (cover) {
+                        Cover.None -> Unit
+                        Cover.Placeholder -> LaunchPlaceholder(app, icon)
+                        Cover.CantReach -> LoadErrorView(R.drawable.ic_wifi_off, ConnectionCopy.cantReach(app.name), ConnectionCopy.cantReachDetail, page::reload, onClose)
+                        Cover.Error -> LoadErrorView(R.drawable.ic_warning, stringResource(R.string.app_cant_open, app.name), error.orEmpty(), page::reload, onClose)
+                        Cover.Node -> action?.let {
+                            NodeActionCard(
+                                app, it, deviceName = model.nodes.deviceName,
+                                connect = {
+                                    when (val state = model.nodes.owner.state.value) {
+                                        is NodeState.NeedsLogin -> model.router.presentTab(RootSheet.Login(state.url))
+                                        NodeState.AwaitingApproval -> model.router.presentTab(RootSheet.Approve)
+                                        else -> if (!ownerEnabled) model.nodes.enableOwner()
+                                    }
+                                },
+                                retry = retryNode,
+                                close = onClose,
+                            )
+                        }
                     }
                 }
             }
@@ -268,12 +273,15 @@ private fun LaunchPlaceholder(app: WebApp, icon: Bitmap?) {
     }
 }
 
-/** Can't Reach, or a page that couldn't load: Try again, and the way back to the apps. */
+/**
+ * Can't Reach, or a page that couldn't load, on the page's background as the placeholder before
+ * it: Try again, and the way back to the apps. Its title is the join screen's display title.
+ */
 @Composable
-private fun LoadErrorView(title: String, message: String, retry: () -> Unit, close: () -> Unit) {
-    CenteredScroll(Modifier.background(MaterialTheme.colorScheme.background), contentPadding = 32.dp) {
-        Icon(painterResource(R.drawable.ic_warning), contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(40.dp))
-        Text(title, Modifier.padding(top = 16.dp), style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center)
+private fun LoadErrorView(icon: Int, title: String, message: String, retry: () -> Unit, close: () -> Unit) {
+    CenteredScroll(Modifier.background(LocalOvenColors.current.pageBackground), contentPadding = 32.dp) {
+        Icon(painterResource(icon), contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(40.dp))
+        Text(title, Modifier.padding(top = 16.dp), style = OvenType.displayTitle, textAlign = TextAlign.Center)
         Text(message, Modifier.padding(top = 8.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
         Button(onClick = retry, Modifier.padding(top = 24.dp).heightIn(min = 48.dp)) { Text(stringResource(R.string.app_try_again)) }
         TextButton(onClick = close, Modifier.padding(top = 8.dp)) { Text(stringResource(R.string.app_back_to_apps)) }
@@ -283,7 +291,7 @@ private fun LoadErrorView(title: String, message: String, retry: () -> Unit, clo
 /** The owner's sign-in or device approval, or a failure, with the way back to the apps. A guest sees only a failure. */
 @Composable
 private fun NodeActionCard(app: WebApp, action: NodeActionOverlay.Action, deviceName: String, connect: () -> Unit, retry: () -> Unit, close: () -> Unit) {
-    CenteredScroll(Modifier.background(MaterialTheme.colorScheme.background)) {
+    CenteredScroll(Modifier.background(LocalOvenColors.current.pageBackground)) {
         ElevatedCard(Modifier.padding(24.dp).widthIn(max = 480.dp)) {
             Column(Modifier.padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 when (action) {

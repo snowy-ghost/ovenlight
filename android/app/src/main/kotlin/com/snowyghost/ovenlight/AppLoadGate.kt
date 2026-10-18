@@ -93,7 +93,7 @@ object ConnectionCopy {
     const val couldNotStart = "Ovenlight couldn't connect."
 
     fun connecting(to: String) = "Connecting to $to…"
-    fun cantReach(app: String) = "Can't reach $app"
+    fun cantReach(app: String) = "Can’t reach $app"
     const val cantReachDetail = "Its computer may be asleep or offline. Try again in a moment."
     fun notResponding(app: String) = "$app isn't responding on its computer right now. Try again in a moment."
     const val pageFailed = "This page couldn't load. Try again in a moment."
@@ -102,7 +102,7 @@ object ConnectionCopy {
     // Apps someone shared, and joining them. Guests see all of these.
 
     fun sharedBy(owner: String) = "from $owner"
-    fun joinTitle(owner: String, app: String) = "Join $owner's $app?"
+    fun joinTitle(owner: String, app: String) = "Join $owner’s $app?"
     fun joinDetail(owner: String, app: String, to: String): String {
         val who = if (to.isEmpty()) "$owner invited you." else "$owner invited you as $to."
         return "$who $app runs on $owner's computer. You don't need an account."
@@ -110,7 +110,7 @@ object ConnectionCopy {
     fun appAddress(host: String) = "Address: $host"
     fun privateServer(server: String, owner: String) =
         "This invite uses $server, a connection server $owner chose. Join only if you know this invite came from $owner."
-    fun joining(owner: String, app: String) = "Joining $owner's $app…"
+    fun joining(owner: String, app: String) = "Joining $owner’s $app…"
     const val joiningDetail = "This can take up to a minute."
     fun joined(app: String) = "$app is ready"
     const val noLongerSharedTitle = "No longer shared with you"

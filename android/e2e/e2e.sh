@@ -482,7 +482,7 @@ PY2
   pids="$pids $!"
   key_of() { python3 -c 'import sys, urllib.parse; print(urllib.parse.parse_qs(sys.argv[1].split("#", 1)[1])["key"][0])' "$1"; }
   keys=()
-  question="Join Owen's Recipes?"
+  question="Join Owen’s Recipes?"
   # Joins from the question, through the claim, and checks the connector counts the guest.
   join() { # name how
     tap_text Join || fail "$2: no Join button: $(screen_text | tr '\n' '|')"
@@ -1317,7 +1317,7 @@ sys.exit(0 if ok else 1)'; }
   a reverse tcp:$HSPORT_B tcp:$HSPORT_B >/dev/null
   # Quoted whole for the device's shell, which reads # as a comment and & as background.
   a shell "am start -n $PKG/.MainActivity -a android.intent.action.VIEW -d '$riley_link'" >/dev/null
-  await_text 20 "Join Riley's Garden?" || { shot sharing-failed; fail "the invite didn't ask to join: $(screen_text | tr '\n' '|')"; }
+  await_text 20 "Join Riley’s Garden?" || { shot sharing-failed; fail "the invite didn't ask to join: $(screen_text | tr '\n' '|')"; }
   tap_text Join
   await_text 90 "Garden is ready" || { shot sharing-failed; fail "the phone didn't join Riley's Garden: $(screen_text | tr '\n' '|')"; }
   tap_text "Open Garden"
