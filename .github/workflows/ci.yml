@@ -221,9 +221,20 @@ jobs:
         run: |
           (yes || true) | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$(sed -n 's/^ovenlight.ndkVersion=//p' gradle.properties)" "platforms;android-37.0" "build-tools;36.0.0" \
             emulator "system-images;android-36;google_apis;x86_64" "system-images;android-37.0;google_apis;x86_64" > /dev/null
+      # Google's WebView from the API 37 image, kept until that image changes, so the webview
+      # emulator boots only when it does.
+      - id: image
+        run: echo "revision=$(sed -n 's/^Pkg.Revision=//p' "$ANDROID_HOME/system-images/android-37.0/google_apis/x86_64/source.properties")" >> "$GITHUB_OUTPUT"
+      - id: webview
+        uses: actions/cache@v6
+        with:
+          path: ~/webview
+          key: webview-${{ steps.image.outputs.revision }}
       # Made fresh on the runner (the fixed AVD set is the mini's), and booting while the app builds:
       # ci on 5554 for the tests, and webview on 5556 only to hand over its WebView.
       - name: Emulators
+        env:
+          NEED_WEBVIEW: ${{ steps.webview.outputs.cache-hit != 'true' }}
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
@@ -233,7 +244,11 @@ jobs:
           # avdmanager and the emulator look for AVDs in different places by default.
           export ANDROID_AVD_HOME="$HOME/.android/avd"
           mkdir -p "$ANDROID_AVD_HOME"
-          for avd in "ci:android-36:5554:-memory 4096" webview:android-37.0:5556:; do
+          # One adb server for the run, started before the emulators race to start their own.
+          "$ANDROID_HOME/platform-tools/adb" start-server
+          avds=("ci:android-36:5554:-memory 4096")
+          if [ "$NEED_WEBVIEW" = true ]; then avds+=("webview:android-37.0:5556:"); fi
+          for avd in "${avds[@]}"; do
             IFS=: read -r name api port memory <<< "$avd"
             echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd -n "$name" -k "system-images;$api;google_apis;x86_64" -d pixel_7 -p "$ANDROID_AVD_HOME/$name.avd"
             # shellcheck disable=SC2086
@@ -252,12 +267,23 @@ jobs:
           adb="$ANDROID_HOME/platform-tools/adb"
           booted() { timeout 600 sh -c "until [ \"\$('$adb' -s $1 shell getprop sys.boot_completed 2> /dev/null | tr -d '\r')\" = 1 ]; do sleep 2; done"; }
           webview() { "$adb" -s emulator-5554 shell dumpsys webviewupdate | sed -n 's/.*Current WebView package (name, version): ([^,]*, \([0-9]*\)\..*/\1/p' | head -1; }
-          booted emulator-5556 || { tail -50 "$RUNNER_TEMP/webview.log"; exit 1; }
-          "$adb" -s emulator-5556 pull "$("$adb" -s emulator-5556 shell pm path com.google.android.webview | tr -d '\r' | sed -n 's/^package://p' | head -1)" "$RUNNER_TEMP/webview.apk"
-          "$adb" -s emulator-5556 emu kill
+          if [ ! -f ~/webview/webview.apk ]; then
+            booted emulator-5556 || { tail -50 "$RUNNER_TEMP/webview.log"; exit 1; }
+            # The package manager may still be starting when the boot is reported complete.
+            apk=
+            for _ in $(seq 30); do
+              apk="$("$adb" -s emulator-5556 shell pm path com.google.android.webview 2> /dev/null | tr -d '\r' | sed -n 's/^package://p' | head -1)"
+              [ -n "$apk" ] && break
+              sleep 2
+            done
+            [ -n "$apk" ] || { echo "the webview emulator has no WebView package"; exit 1; }
+            mkdir -p ~/webview
+            "$adb" -s emulator-5556 pull "$apk" ~/webview/webview.apk
+            "$adb" -s emulator-5556 emu kill
+          fi
           booted emulator-5554 || { tail -50 "$RUNNER_TEMP/ci.log"; exit 1; }
           # The package manager may still be settling just after boot.
-          for _ in 1 2 3 4 5 6; do "$adb" -s emulator-5554 install -r "$RUNNER_TEMP/webview.apk" && break; sleep 3; done
+          for _ in 1 2 3 4 5 6; do "$adb" -s emulator-5554 install -r ~/webview/webview.apk && break; sleep 3; done
           for _ in $(seq 30); do [ "$(webview)" -ge 144 ] 2> /dev/null && break; sleep 2; done
           [ "$(webview)" -ge 144 ] 2> /dev/null || { echo "WebView M$(webview)"; exit 1; }
           for k in window_animation_scale transition_animation_scale animator_duration_scale; do "$adb" -s emulator-5554 shell settings put global $k 0; done
