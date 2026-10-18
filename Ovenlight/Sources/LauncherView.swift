@@ -19,9 +19,10 @@ struct LauncherView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
+        let welcome = registry.apps.isEmpty && !node.ownerEnabled && node.memberships.memberships.isEmpty
         VStack(spacing: 0) {
-            HomeTopBar(isEditing: $isEditing, lock: { lock.lock() }, addApp: { router.present(.addApp) },
-                       settings: { router.present(.settings) }) {
+            HomeTopBar(isEditing: $isEditing, showsLock: !welcome, showsAddApp: node.ownerEnabled, showsEditApps: !registry.apps.isEmpty,
+                       lock: { lock.lock() }, addApp: { router.present(.addApp) }, settings: { router.present(.settings) }) {
                 // The owner's own connection only once they set Ovenlight up for their machines.
                 TailnetStatusPill(state: node.ownerEnabled ? node.state : .idle) { Task { await node.restart() } }
             } menuItems: {
@@ -33,7 +34,7 @@ struct LauncherView: View {
                           approve: { router.present(.approve) })
             PendingInvitesBanner { router.present(.join(JoinRequest(invite: .success($0)))) }
                 .padding(.horizontal, 26)
-            if registry.apps.isEmpty && !node.ownerEnabled && node.memberships.memberships.isEmpty {
+            if welcome {
                 LauncherWelcome { router.present(.join(JoinRequest())) }
             } else {
             HomeScreenGrid(apps: registry.apps, ownerEnabled: node.ownerEnabled, isEditing: $isEditing,

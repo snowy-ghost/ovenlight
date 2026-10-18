@@ -112,14 +112,23 @@ struct HomeScreenGrid<Menu: View, Preview: View>: View {
             let layout = layout(width: geo.size.width)
             ScrollView {
                 let order = displayed
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 0), count: layout.columns),
-                          spacing: HomeGridLayout.rowGap) {
-                    if apps.isEmpty && ownerEnabled {
-                        EmptyHomeSlot(size: layout.iconSize, action: addApp)
-                            .frame(width: layout.tileSize.width, height: layout.tileSize.height, alignment: .top)
+                VStack(alignment: .leading, spacing: 14) {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 0), count: layout.columns),
+                              spacing: HomeGridLayout.rowGap) {
+                        if apps.isEmpty && ownerEnabled {
+                            EmptyHomeSlot(size: layout.iconSize, action: addApp)
+                                .frame(width: layout.tileSize.width, height: layout.tileSize.height, alignment: .top)
+                        }
+                        ForEach(Array(order.enumerated()), id: \.element.id) { index, app in
+                            tile(app, index: index, in: order, layout: layout)
+                        }
                     }
-                    ForEach(Array(order.enumerated()), id: \.element.id) { index, app in
-                        tile(app, index: index, in: order, layout: layout)
+                    // Under the Add App slot it describes, from the slot's edge.
+                    if apps.isEmpty && ownerEnabled {
+                        Text("Apps you publish with the [Ovenlight connector](https://ovenlight.app/support#own-computer) on your computers show up here.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, (layout.columnWidth - layout.iconSize) / 2)
                     }
                 }
                 .padding(.horizontal, layout.sideMargin)
@@ -128,15 +137,6 @@ struct HomeScreenGrid<Menu: View, Preview: View>: View {
                 .animation(.spring(response: 0.38, dampingFraction: 0.82), value: order.map(\.id))
                 .frame(maxWidth: .infinity, minHeight: geo.size.height, alignment: .top)
                 .background { background }
-                .overlay {
-                    if apps.isEmpty && ownerEnabled {
-                        Text("Apps you publish with the [Ovenlight connector](https://ovenlight.app/support#own-computer) on your computers show up here.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 2 * layout.sideMargin)
-                    }
-                }
                 .overlay(alignment: .topLeading) { lifted(layout) }
                 .coordinateSpace(.named(Self.space))
             }
