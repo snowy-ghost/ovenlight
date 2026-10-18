@@ -258,7 +258,10 @@ jobs:
             name=$1 api=$2 port=$3
             shift 3
             echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd -n "$name" -k "system-images;$api;google_apis;x86_64" -d pixel_7 -p "$ANDROID_AVD_HOME/$name.avd"
-            (nohup "$ANDROID_HOME/emulator/emulator" -avd "$name" -port "$port" "$@" -no-window -no-audio -no-boot-anim -no-metrics -gpu guest -no-snapshot -show-kernel; echo "emulator exited with $?") > "$RUNNER_TEMP/$name.log" 2>&1 &
+            # SwiftShader through ANGLE: the runner's GLES translator over SwiftShader
+            # (swiftshader_indirect, as on the mini) crashes the emulator drawing WebView's
+            # colour picker. The subshell logs how the emulator ended.
+            (nohup "$ANDROID_HOME/emulator/emulator" -avd "$name" -port "$port" "$@" -no-window -no-audio -no-boot-anim -no-metrics -gpu swangle_indirect -no-snapshot; echo "emulator exited with $?") > "$RUNNER_TEMP/$name.log" 2>&1 &
             timeout 600 sh -c "until [ \"\$('$adb' -s emulator-$port shell getprop sys.boot_completed 2> /dev/null | tr -d '\r')\" = 1 ]; do sleep 2; done" ||
               { tail -50 "$RUNNER_TEMP/$name.log"; exit 1; }
           }
@@ -303,7 +306,7 @@ jobs:
           "$adb" -s emulator-5554 shell dumpsys dropbox | grep -i -E 'anr|crash|watchdog' || true
           "$adb" -s emulator-5554 shell dumpsys window windows | grep -i 'not responding' || true
       - name: Instrumented tests
-        run: ANDROID_SERIAL=emulator-5554 ./gradlew --no-daemon :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.snowyghost.ovenlight.OpenPageTests#testAPickerLeftOpenStaysUnderTheLock
+        run: ANDROID_SERIAL=emulator-5554 ./gradlew --no-daemon :app:connectedDebugAndroidTest
       # Whether the runner ran out of memory or the emulator stopped on its own, and the
       # emulator's whole log and the ANRs and crashes it kept.
       - if: failure()
