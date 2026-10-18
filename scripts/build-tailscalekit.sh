@@ -17,10 +17,13 @@ GO_FLAGS=-trimpath
 # entry once the pinned go.mod reaches it: go get would otherwise move it back down.
 GO_UPGRADES="golang.org/x/net@v0.60.0"
 # ts_omit_debug drops the node's debug LocalAPI, pprof and debug HTTP handlers, which
-# Ovenlight never calls. ts_omit_cachenetmap keeps a node from starting on a saved network
-# map, which would hide a guest's removal from the tailnet. libtailscale's Makefile has no
-# knob for tags, so it is edited.
-BUILD_TAGS=ios,ts_omit_debug,ts_omit_cachenetmap
+# Ovenlight never calls. ts_omit_peerapiserver drops the server other nodes reach the phone
+# through: nothing uses it, and its DNS endpoint answers any untagged node of the same user,
+# which an inviter can arrange for a guest's node, from the phone's own networks.
+# ts_omit_cachenetmap keeps a node from starting on a saved network map, which would hide a
+# guest's removal from the tailnet. libtailscale's Makefile has no knob for tags, so it is
+# edited.
+BUILD_TAGS=ios,ts_omit_debug,ts_omit_peerapiserver,ts_omit_cachenetmap
 # Every node would otherwise upload its logs to log.tailscale.com, guests' phones
 # included. The knob is read in Go, so it is set from a Go init: a setenv from Swift
 # comes after the Go runtime has copied the environment.
