@@ -55,14 +55,19 @@ final class LockManager: ObservableObject {
         var at: ContinuousClock.Instant
     }
 
-    /// This boot of the iPhone: a UUID the kernel makes at each start. Nil if it can't be
-    /// read, and then a launch locks.
+    /// This boot of the iPhone: the UUID the kernel makes at each start, or, where the sandbox
+    /// doesn't allow reading it, the boot time (which a clock change can move, locking sooner).
+    /// Nil if neither can be read, and then a launch locks.
     nonisolated static func bootSession() -> String? {
         var size = 0
-        guard sysctlbyname("kern.bootsessionuuid", nil, &size, nil, 0) == 0, size > 1 else { return nil }
-        var buffer = [CChar](repeating: 0, count: size)
-        guard sysctlbyname("kern.bootsessionuuid", &buffer, &size, nil, 0) == 0 else { return nil }
-        return String(cString: buffer)
+        if sysctlbyname("kern.bootsessionuuid", nil, &size, nil, 0) == 0, size > 1 {
+            var buffer = [CChar](repeating: 0, count: size)
+            if sysctlbyname("kern.bootsessionuuid", &buffer, &size, nil, 0) == 0 { return String(cString: buffer) }
+        }
+        var time = timeval()
+        size = MemoryLayout<timeval>.size
+        guard sysctlbyname("kern.boottime", &time, &size, nil, 0) == 0, time.tv_sec > 0 else { return nil }
+        return "boottime-\(time.tv_sec).\(time.tv_usec)"
     }
 
     /// The first time since Ovenlight was last in front counts, so a launch in the background

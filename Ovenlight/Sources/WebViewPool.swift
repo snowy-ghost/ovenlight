@@ -183,6 +183,13 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
     @Published var hasLoadedOnce = false
     @Published private(set) var gate: AppLoadGate = .waiting
 
+    /// Publishes only a real change: the gate's waits go round every second, and an equal
+    /// assignment would redraw the page's cover each time.
+    private func advance(_ event: AppLoadGate.Event) {
+        let next = gate.next(event)
+        if next != gate { gate = next }
+    }
+
     private static let log = Logger(subsystem: "com.snowyghost.ovenlight", category: "node")
     /// First navigations that failed at the connection level after the probe answered.
     private var failedLoads = 0
@@ -251,7 +258,7 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
         failedLoads = 0
         appDownLoads = 0
         loadError = nil
-        gate = gate.next(.retry)
+        advance(.retry)
         openGate()
     }
 
@@ -273,16 +280,16 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
             // With no network at all there is nothing to wait for or probe: You're Offline shows
             // at once, and the app opens once the phone has a network again.
             if !hasLoadedOnce, !NetworkPath.shared.isSatisfied {
-                gate = gate.next(.offline)
+                advance(.offline)
                 await NetworkPath.shared.satisfied()
                 guard !Task.isCancelled, gate == .offline else { return }
-                gate = gate.next(.online)
+                advance(.online)
                 probingSince = nil
                 continue
             }
             // Apps loaded directly (on the public internet) have no node to wait for.
             if node == nil || (node?.state == .ready && nodeMayCarry) {
-                gate = gate.next(.nodeReady)
+                advance(.nodeReady)
                 // Its computer is listed offline, asleep most likely: Can't Reach shows at
                 // once, and the app opens as soon as the computer answers.
                 if !hasLoadedOnce, let node, node.isListedOffline(app.host) {
@@ -295,7 +302,7 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
                 switch reach {
                 case .reached:
                     guard !Task.isCancelled else { return }
-                    gate = gate.next(.reached)
+                    advance(.reached)
                     load()
                     return
                 case .notInvited:
@@ -308,7 +315,7 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
                 if Date.now.timeIntervalSince(since) >= AppLoadGate.reachTimeout { return giveUp() }
                 try? await Task.sleep(for: .seconds(1))
             } else {
-                gate = gate.next(.nodeNotReady)
+                advance(.nodeNotReady)
                 probingSince = nil
                 // Sign-in and node failures have their own screens and wait for the owner.
                 guard let node else { return }
@@ -347,7 +354,7 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
                 switch await node.canReach(app) {
                 case .reached:
                     guard !Task.isCancelled, gate == .unreachable else { return }
-                    gate = gate.next(.woke)
+                    advance(.woke)
                     return load()
                 case .notInvited:
                     return GuestManager.shared.accessEnded(for: [app])
@@ -376,7 +383,7 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
     private func giveUp() {
         guard !Task.isCancelled else { return }
         Self.log.notice("\(self.app.host, privacy: .public): unreachable")
-        gate = gate.next(.gaveUp)
+        advance(.gaveUp)
         // A page already on screen keeps it. Once a page has loaded, only the person's Reload
         // checks the path again, so an alert tells them it couldn't reach the computer.
         if hasLoadedOnce {
@@ -538,7 +545,7 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
             if failedLoads < Self.maxFailedLoads {
                 failedLoads += 1
                 Self.log.info("\(self.app.host, privacy: .public): error \(ns.code), checking the path again")
-                gate = gate.next(.loadFailed)
+                advance(.loadFailed)
                 openGate()
                 return
             }

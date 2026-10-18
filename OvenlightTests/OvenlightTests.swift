@@ -571,7 +571,7 @@ final class LockTimingTests: XCTestCase {
         XCTAssertTrue(launch().isLocked, "the iPhone restarted")
         boot = nil
         XCTAssertTrue(launch().isLocked, "this boot can't be told")
-        XCTAssertEqual(UUID(uuidString: LockManager.bootSession() ?? "")?.uuidString.isEmpty, false, "the kernel's boot session reads")
+        XCTAssertNotNil(UUID(uuidString: LockManager.bootSession() ?? ""), "the kernel's boot session reads")
         boot = "boot-1"
         first.lockAfterSeconds = 0
         XCTAssertTrue(launch().isLocked, "Immediately")
