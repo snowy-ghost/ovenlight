@@ -74,13 +74,14 @@ struct LauncherView: View {
                 .submitLabel(.done)
             Button("Cancel", role: .cancel) {}
             Button("Save") {
-                if let app = renaming, !renameText.isEmpty { registry.rename(app.id, to: renameText) }
+                let name = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
+                if let app = renaming, !name.isEmpty { registry.rename(app.id, to: name) }
             }
         }
-        .alert(clearing.map { "Sign out of \($0.name)?" } ?? "", isPresented: isPresent($clearing),
+        .alert(clearing.map { "Clear \($0.name)'s Data?" } ?? "", isPresented: isPresent($clearing),
                presenting: clearing) { app in
             Button("Cancel", role: .cancel) {}
-            Button("Sign Out and Clear Data", role: .destructive) { Task { await registry.clearData(app.id) } }
+            Button("Clear App Data", role: .destructive) { Task { await registry.clearData(app.id) } }
         } message: { _ in
             Text("This deletes the app's cookies and storage on this iPhone.")
         }
@@ -146,7 +147,7 @@ struct LauncherView: View {
         }
         Section {
             Button { clearing = app } label: {
-                Label("Sign Out and Clear Data", systemImage: "eraser")
+                Label("Clear App Data", systemImage: "eraser")
             }
             Button(role: .destructive) { removing = app } label: {
                 Label("Remove App", systemImage: "trash")
@@ -191,7 +192,7 @@ struct TailnetBanner: View {
                         Text("Connect Your Computers")
                             .font(.headline)
                     }
-                    Text("Ovenlight connects privately to your own computers with your Tailscale account, without a VPN. If Tailscale says this iPhone needs approval, open the admin console and tap Approve.")
+                    Text("Ovenlight connects privately to your own computers with your Tailscale account, without a VPN.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
