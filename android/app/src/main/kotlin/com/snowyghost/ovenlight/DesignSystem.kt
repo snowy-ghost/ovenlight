@@ -11,19 +11,16 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
@@ -398,14 +395,6 @@ private inline fun DrawScope.turned(source: LightSource, draw: DrawScope.(Float,
             LightSource.Edge.RIGHT -> { translate(size.width, 0f); rotate(90f, Offset.Zero) }
         }
     }) { draw(originX, originY, across, along) }
-}
-
-/** The oven rack: a thin ember line the light falls on, under the wordmark and the welcome. */
-@Composable
-fun OvenRack(width: Dp, modifier: Modifier = Modifier) {
-    val oven = LocalOvenColors.current
-    val alpha = if (isSystemInDarkTheme()) 0.6f else 0.45f
-    Box(modifier.size(width, 3.dp).clip(CircleShape).background(oven.ember.copy(alpha = alpha)).clearAndSetSemantics {})
 }
 
 /** Whether an app's computer is reachable, for its launcher tile. */

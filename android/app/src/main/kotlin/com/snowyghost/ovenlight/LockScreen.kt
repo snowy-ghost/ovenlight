@@ -109,7 +109,6 @@ fun LockScreen(isLocked: Boolean, isAuthenticating: Boolean, lastError: String?,
                 ) {
                     // The message speaks for the whole block.
                     Text("Ovenlight", style = OvenType.wordmark, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.clearAndSetSemantics {})
-                    OvenRack(120.dp)
                     AnimatedContent(lastError, transitionSpec = { fadeIn() togetherWith fadeOut() }, label = "lock message") { error ->
                         Box(
                             Modifier

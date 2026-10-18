@@ -120,7 +120,6 @@ private struct LockLayout<Message: View, Controls: View>: View {
                             .font(.display(.largeTitle))
                             .dynamicTypeSize(...DynamicTypeSize.accessibility1)
                             .accessibilityHidden(true)
-                        OvenRack(width: 120)
                         message
                     }
                     .frame(maxWidth: .infinity)
