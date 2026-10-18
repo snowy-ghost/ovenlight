@@ -100,7 +100,7 @@ class PageDownloads(
 ) : DownloadListener {
     private class Started(val type: String, val at: Long)
     private class Clicked(val name: String, val fromHost: String, val at: Long)
-    private class Read(val blob: PageMessage.Blob, val fromHost: String, val at: Long)
+    private class Read(val blob: PageBlob, val fromHost: String, val at: Long)
 
     /** Blob and data URLs WebView started, and what the page script reported, by URL. */
     private val started = mutableMapOf<String, Started>()
@@ -164,7 +164,7 @@ class PageDownloads(
     }
 
     /** A blob's bytes, which the page script read as its `<a download>` was clicked. */
-    fun blob(blob: PageMessage.Blob, fromHost: String) {
+    fun blob(blob: PageBlob, fromHost: String) {
         forgetStale()
         if (!mayStart()) return
         // One read waits at a time: a newer click replaces it.

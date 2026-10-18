@@ -2,7 +2,6 @@ package com.snowyghost.ovenlight
 
 import android.app.Activity
 import android.app.KeyguardManager
-import android.content.Context
 import android.content.Intent
 import android.hardware.biometrics.BiometricManager
 import android.hardware.biometrics.BiometricManager.Authenticators.BIOMETRIC_WEAK
@@ -13,7 +12,6 @@ import android.os.CancellationSignal
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
-import androidx.core.content.edit
 import kotlin.coroutines.resume
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -146,16 +144,4 @@ class UnlockPrompt(
             }
         }
     }
-}
-
-/** Ovenlight's settings, kept in SharedPreferences under iOS's UserDefaults key names. */
-class PreferencesStore(context: Context) : KeyValueStore {
-    private val preferences = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
-    override fun getInt(key: String, default: Int) = preferences.getInt(key, default)
-    override fun putInt(key: String, value: Int) = preferences.edit { putInt(key, value) }
-    override fun getString(key: String): String? = preferences.getString(key, null)
-    override fun putString(key: String, value: String) = preferences.edit { putString(key, value) }
-    override fun getBoolean(key: String) = preferences.getBoolean(key, false)
-    override fun putBoolean(key: String, value: Boolean) = preferences.edit { putBoolean(key, value) }
-    override fun remove(key: String) = preferences.edit { remove(key) }
 }

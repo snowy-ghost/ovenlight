@@ -171,8 +171,6 @@ sealed interface PageMessage {
 
     data class Click(val href: String, val name: String) : PageMessage
 
-    class Blob(val href: String, val name: String, val type: String, val bytes: ByteArray)
-
     companion object {
         /** The most a message carries besides a URL or a blob's bytes; the page script holds to it too. */
         const val MAX_HEADER = 64 * 1024
@@ -188,7 +186,7 @@ sealed interface PageMessage {
         }
 
         /** The header's length (4 bytes, big-endian), the header as JSON, then the blob's bytes. */
-        fun blob(message: ByteArray): Blob? {
+        fun blob(message: ByteArray): PageBlob? {
             if (message.size < 4 || message.size > PageDownloads.BLOB_LIMIT + MAX_HEADER + 4) return null
             val length = ByteBuffer.wrap(message, 0, 4).int
             if (length !in 2..MAX_HEADER || length > message.size - 4) return null
@@ -197,7 +195,10 @@ sealed interface PageMessage {
             val href = fields.string("href")?.takeIf { it.startsWith("blob:") } ?: return null
             val bytes = message.copyOfRange(4 + length, message.size)
             if (bytes.size > PageDownloads.BLOB_LIMIT) return null
-            return Blob(href, fields.string("name") ?: "", fields.string("type") ?: "", bytes)
+            return PageBlob(href, fields.string("name") ?: "", fields.string("type") ?: "", bytes)
         }
     }
 }
+
+/** A blob URL's bytes the page script read for a download, which comes as binary rather than as a [PageMessage]. */
+class PageBlob(val href: String, val name: String, val type: String, val bytes: ByteArray)

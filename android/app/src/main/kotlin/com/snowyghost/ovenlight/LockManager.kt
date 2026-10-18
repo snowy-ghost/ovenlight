@@ -1,5 +1,7 @@
 package com.snowyghost.ovenlight
 
+import android.content.Context
+import androidx.core.content.edit
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -26,6 +28,18 @@ interface KeyValueStore {
     fun getBoolean(key: String): Boolean
     fun putBoolean(key: String, value: Boolean)
     fun remove(key: String)
+}
+
+/** Ovenlight's settings, kept in SharedPreferences under iOS's UserDefaults key names. */
+class PreferencesStore(context: Context) : KeyValueStore {
+    private val preferences = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
+    override fun getInt(key: String, default: Int) = preferences.getInt(key, default)
+    override fun putInt(key: String, value: Int) = preferences.edit { putInt(key, value) }
+    override fun getString(key: String): String? = preferences.getString(key, null)
+    override fun putString(key: String, value: String) = preferences.edit { putString(key, value) }
+    override fun getBoolean(key: String) = preferences.getBoolean(key, false)
+    override fun putBoolean(key: String, value: Boolean) = preferences.edit { putBoolean(key, value) }
+    override fun remove(key: String) = preferences.edit { remove(key) }
 }
 
 /**

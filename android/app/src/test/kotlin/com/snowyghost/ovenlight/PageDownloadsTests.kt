@@ -74,7 +74,7 @@ class PageDownloadsTests {
     private fun start(url: String, type: String = "") = downloads.onDownloadStart(url, "agent", null, type, 0)
 
     private fun blob(url: String, bytes: String, name: String = "note.txt", from: String = host) =
-        downloads.blob(PageMessage.Blob(url, name, "text/plain", bytes.toByteArray()), from)
+        downloads.blob(PageBlob(url, name, "text/plain", bytes.toByteArray()), from)
 
     @Test
     fun testADataURLNeedsTheClickThatStartedIt() {

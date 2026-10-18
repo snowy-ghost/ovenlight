@@ -841,11 +841,11 @@ private fun PageDialog(edges: PageEdges, dialog: PageEdges.Dialog) {
     val quiet: @Composable () -> Unit = { if ((dialog as? PageEdges.Dialog.FromPage)?.offersQuiet == true) QuietChoice(stopMore) { stopMore = it } }
     when (dialog) {
         is PageEdges.Dialog.Alert -> AlertDialog(
-            onDismissRequest = dismiss, title = title, text = { PageMessage(dialog.message, quiet) },
+            onDismissRequest = dismiss, title = title, text = { PageDialogText(dialog.message, quiet) },
             confirmButton = { TextButton(onClick = { dialog.answer(Unit); dismiss() }) { Text(stringResource(R.string.page_ok)) } },
         )
         is PageEdges.Dialog.Confirm -> AlertDialog(
-            onDismissRequest = dismiss, title = title, text = { PageMessage(dialog.message, quiet) },
+            onDismissRequest = dismiss, title = title, text = { PageDialogText(dialog.message, quiet) },
             confirmButton = { TextButton(onClick = { dialog.answer(true); dismiss() }) { Text(stringResource(R.string.page_ok)) } },
             dismissButton = { TextButton(onClick = { dialog.answer(false); dismiss() }) { Text(stringResource(R.string.page_cancel)) } },
         )
@@ -854,7 +854,7 @@ private fun PageDialog(edges: PageEdges, dialog: PageEdges.Dialog) {
             AlertDialog(
                 onDismissRequest = dismiss, title = title,
                 text = {
-                    PageMessage(dialog.message) {
+                    PageDialogText(dialog.message) {
                         OutlinedTextField(
                             value = text, onValueChange = { text = it }, singleLine = true,
                             label = { Text(stringResource(R.string.page_prompt_field)) },
@@ -875,13 +875,7 @@ private fun PageDialog(edges: PageEdges, dialog: PageEdges.Dialog) {
                 GuardedFromOverlays()
                 Text(stringResource(R.string.page_open_elsewhere_body, edges.appName, dialog.target))
             },
-            // Not at once: the page's own "tap twice here" can't land its second tap on Open.
-            confirmButton = {
-                val shownAt = remember(dialog) { SystemClock.uptimeMillis() }
-                TextButton(onClick = { if (SystemClock.uptimeMillis() - shownAt >= PROMPT_DELAY_MILLIS) edges.open(dialog) }) {
-                    Text(stringResource(R.string.page_open))
-                }
-            },
+            confirmButton = { GoAheadButton(dialog, stringResource(R.string.page_open)) { edges.open(dialog) } },
             dismissButton = { TextButton(onClick = dismiss) { Text(stringResource(R.string.page_cancel)) } },
         )
     }
@@ -916,9 +910,19 @@ private fun SourceRow(icon: Int, label: Int, onClick: () -> Unit) {
 /** How long Ovenlight's own prompts ("Open in another app?", the capture prompt) ignore their go-ahead after they show. */
 internal const val PROMPT_DELAY_MILLIS = 500L
 
+/**
+ * The go-ahead of one of Ovenlight's own prompts, shown for [prompt]. Not at once: the page's
+ * own "tap twice here" can't land its second tap on it.
+ */
+@Composable
+internal fun GoAheadButton(prompt: Any, label: String, onClick: () -> Unit) {
+    val shownAt = remember(prompt) { SystemClock.uptimeMillis() }
+    TextButton(onClick = { if (SystemClock.uptimeMillis() - shownAt >= PROMPT_DELAY_MILLIS) onClick() }) { Text(label) }
+}
+
 /** A page's message, which can run long. */
 @Composable
-private fun PageMessage(message: String, below: @Composable () -> Unit = {}) {
+private fun PageDialogText(message: String, below: @Composable () -> Unit = {}) {
     Column {
         // Scrolls in what's left once what goes below it has its room.
         if (message.isNotEmpty()) Text(message, Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()))

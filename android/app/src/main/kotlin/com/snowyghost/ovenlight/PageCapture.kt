@@ -8,7 +8,6 @@ import android.hardware.camera2.CameraManager
 import android.media.AudioManager
 import android.os.Handler
 import android.os.Looper
-import android.os.SystemClock
 import android.webkit.PermissionRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.AlertDialog
@@ -18,7 +17,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.res.stringResource
 import androidx.core.content.ContextCompat
 import com.snowyghost.ovenlight.MediaCapturePolicy.MediaCaptureType
@@ -252,11 +250,7 @@ internal fun CapturePromptDialog(title: String, answer: (Boolean) -> Unit) {
             Text(title)
             GuardedFromOverlays()
         },
-        // Not at once: the page's own "tap twice here" can't land its second tap on Allow.
-        confirmButton = {
-            val shownAt = remember(answer) { SystemClock.uptimeMillis() }
-            TextButton(onClick = { if (SystemClock.uptimeMillis() - shownAt >= PROMPT_DELAY_MILLIS) answer(true) }) { Text(stringResource(R.string.capture_allow)) }
-        },
+        confirmButton = { GoAheadButton(answer, stringResource(R.string.capture_allow)) { answer(true) } },
         dismissButton = { TextButton(onClick = { answer(false) }) { Text(stringResource(R.string.capture_dont_allow)) } },
     )
 }
