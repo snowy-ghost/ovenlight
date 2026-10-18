@@ -78,12 +78,12 @@ struct LauncherView: View {
                 if let app = renaming, !name.isEmpty { registry.rename(app.id, to: name) }
             }
         }
-        .alert(clearing.map { "Clear \($0.name)'s Data?" } ?? "", isPresented: isPresent($clearing),
+        .alert(clearing.map { "Clear \($0.name)’s Data?" } ?? "", isPresented: isPresent($clearing),
                presenting: clearing) { app in
             Button("Cancel", role: .cancel) {}
             Button("Clear App Data", role: .destructive) { Task { await registry.clearData(app.id) } }
         } message: { _ in
-            Text("This deletes the app's cookies and storage on this iPhone.")
+            Text("This deletes the app’s cookies and storage on this iPhone.")
         }
         .alert(removing.map { "Remove \($0.name)?" } ?? "", isPresented: isPresent($removing),
                presenting: removing) { app in
@@ -94,7 +94,8 @@ struct LauncherView: View {
             }
         } message: { app in
             Text(app.sharedBy.map(ConnectionCopy.removeSharedDetail)
-                 ?? "This removes the app from Ovenlight and deletes everything it stored on this iPhone.")
+                 ?? "This removes the app from Ovenlight and deletes everything it stored on this iPhone."
+                 + (app.discovered ? " It won’t come back on its own. Add it again with Add App." : ""))
         }
         .sensoryFeedback(.success, trigger: removals)
         .onChange(of: registry.apps.isEmpty) { _, empty in if empty { isEditing = false } }
@@ -381,7 +382,7 @@ struct AddAppView: View {
                             Label(AppAddress.notYourComputer, systemImage: "exclamationmark.triangle.fill")
                                 .labelStyle(.warning)
                         } else {
-                            Text("Ovenlight fetches the app's name and icon from its web manifest. Each app gets its own private storage.")
+                            Text("Ovenlight fetches the app’s name and icon from its web manifest. Each app gets its own private storage.")
                         }
                     }
                     .ovenlightRows()
@@ -458,7 +459,7 @@ struct SettingsView: View {
                     }
                 } footer: {
                     if lock.noPasscode {
-                        Text("Ovenlight can't lock until this iPhone has a passcode. Set one in the Settings app.")
+                        Text("Ovenlight can’t lock until this iPhone has a passcode. Set one in the Settings app.")
                     } else {
                         Text("How long Ovenlight can stay in the background before it locks.")
                     }

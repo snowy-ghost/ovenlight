@@ -613,7 +613,11 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
         if ns.domain == NSURLErrorDomain && Self.unreachable.contains(ns.code) {
             loadError = ConnectionCopy.cantReachDetail
         } else {
-            loadError = error.localizedDescription
+            // WebKit's own words ("The URL was blocked by a content blocker") mean nothing here.
+            #if DEBUG
+            Self.log.debug("\(self.app.host, privacy: .public): load failed: \(ns.domain, privacy: .public) \(ns.code): \(ns.localizedDescription, privacy: .public)")
+            #endif
+            loadError = ConnectionCopy.pageFailed
         }
     }
 
@@ -983,7 +987,7 @@ struct PageDialogs {
     static let gap: Duration = .seconds(1)
     /// A page's text past this many UTF-16 units is cut: a page can pass megabytes.
     static let maxText = 4000
-    static let stopTitle = "Don't Let This App Show More Dialogs"
+    static let stopTitle = "Don’t Let This App Show More Dialogs"
 
     var stopped = false
     private var run = 0
@@ -1111,7 +1115,7 @@ enum DownloadPolicy {
     }
 
     static func failedNotice(_ name: String?) -> String {
-        name.map { "Couldn't download \($0)" } ?? "Couldn't download the file"
+        name.map { "Couldn’t download \($0)" } ?? "Couldn’t download the file"
     }
 }
 

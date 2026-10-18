@@ -86,16 +86,17 @@ enum AppLoadGate: Equatable {
 enum ConnectionCopy {
     static let connecting = "Connecting…"
     static let stopped = "Ovenlight lost its connection."
-    static let couldNotStart = "Ovenlight couldn't connect."
+    static let couldNotStart = "Ovenlight couldn’t connect."
 
     static func connecting(to app: String) -> String { "Connecting to \(app)…" }
     static func cantReach(_ app: String) -> String { "Can’t Reach \(app)" }
     static let cantReachDetail = "Its computer may be asleep or offline. Try again in a moment."
-    static func notResponding(_ app: String) -> String { "\(app) isn't responding on its computer right now. Try again in a moment." }
+    static func notResponding(_ app: String) -> String { "\(app) isn’t responding on its computer right now. Try again in a moment." }
     static func signIn(toOpen app: String) -> String { "Sign In to Open \(app)" }
     static func cantOpen(_ app: String) -> String { "Can’t Open \(app)" }
     static let offline = "You’re Offline"
     static let offlineDetail = "Connect to Wi-Fi or mobile data, and Ovenlight tries again."
+    static let pageFailed = "This page couldn’t load. Try again in a moment."
 
     // Apps someone shared, and joining them. Guests see all of these.
 
@@ -103,7 +104,7 @@ enum ConnectionCopy {
     static func joinTitle(owner: String, app: String) -> String { "Join \(owner)’s \(app)?" }
     static func joinDetail(owner: String, app: String, to guest: String) -> String {
         let who = guest.isEmpty ? "\(owner) invited you." : "\(owner) invited you as \(guest)."
-        return "\(who) \(app) runs on \(owner)'s computer. You don't need an account."
+        return "\(who) \(app) runs on \(owner)’s computer. You don’t need an account."
     }
     static func appAddress(_ host: String) -> String { "Address: \(host)" }
     static func privateServer(_ server: String, owner: String) -> String {
@@ -122,18 +123,18 @@ enum ConnectionCopy {
     static let invitePrompt = "Paste the invite link you were sent, or scan its code."
     static let feedbackSent = "Feedback Sent"
     static func feedbackSentDetail(to owner: String?) -> String {
-        owner.map { "\($0) will see it." } ?? "It's in your feedback in People & Sharing."
+        owner.map { "\($0) will see it." } ?? "It’s in your feedback in People & Sharing."
     }
-    static let feedbackFailed = "Couldn't Send Feedback"
-    static let feedbackTooMany = "That's a lot of feedback for one hour. Try again later."
-    static let feedbackNetwork = "Ovenlight couldn't reach the app's computer. Try again in a moment."
+    static let feedbackFailed = "Couldn’t Send Feedback"
+    static let feedbackTooMany = "That’s a lot of feedback for one hour. Try again later."
+    static let feedbackNetwork = "Ovenlight couldn’t reach the app’s computer. Try again in a moment."
     static let reportProblem = "Report a Problem"
-    static func leaveApps(_ owner: String) -> String { "Leave \(owner)'s Apps" }
-    static func leaveTitle(_ owner: String) -> String { "Leave \(owner)'s apps?" }
+    static func leaveApps(_ owner: String) -> String { "Leave \(owner)’s Apps" }
+    static func leaveTitle(_ owner: String) -> String { "Leave \(owner)’s apps?" }
     static func leaveDetail(_ owner: String) -> String {
-        "\(owner)'s apps and everything they stored on this iPhone will be removed. You'll need a new invite from \(owner) to open them again."
+        "\(owner)’s apps and everything they stored on this iPhone will be removed. You’ll need a new invite from \(owner) to open them again."
     }
     static func removeSharedDetail(_ owner: String) -> String {
-        "This removes the app and everything it stored on this iPhone. You'll need a new invite from \(owner) to open it again."
+        "This removes the app and everything it stored on this iPhone. You’ll need a new invite from \(owner) to open it again."
     }
 }

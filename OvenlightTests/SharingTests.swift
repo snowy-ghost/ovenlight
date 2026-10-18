@@ -952,7 +952,7 @@ final class GuestActivityTests: XCTestCase {
             OwnerSharing.Machine(adminHost: "coach.tail1.ts.net", apps: [], guests: AdminGuestList(taggedDevices: tagged))
         }
         XCTAssertEqual(SharingList.taggedDevices([machine(AdminTaggedDevices(apps: 1, guests: 3, tailnet: 5))]),
-                       "Your shareable apps and your guests' devices use 4 of the 5 tagged devices in your Tailscale network. Tailscale's plans include a set number and charge for more.")
+                       "Your shareable apps and your guests’ devices use 4 of the 5 tagged devices in your Tailscale network. Tailscale’s plans include a set number and charge for more.")
         XCTAssertEqual(SharingList.taggedDevices([machine(AdminTaggedDevices(apps: 2, guests: 2, tailnet: 4))])?.contains("use all 4 tagged devices"), true)
         XCTAssertEqual(SharingList.taggedDevices([machine(AdminTaggedDevices(apps: 1, guests: 0, tailnet: 1))])?.contains("use the only tagged device"), true)
         XCTAssertNil(SharingList.taggedDevices([machine(nil)]), "not counted yet")

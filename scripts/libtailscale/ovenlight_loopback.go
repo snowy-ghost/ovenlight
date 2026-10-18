@@ -4,8 +4,8 @@ package main
 // and anything outside the tailnet goes to the system dialer as is: the phone itself, its
 // local network and another VPN's tailnet included. This one shares its port with the
 // LocalAPI, as tsnet's does, and dials only the node's peers and the internet, by the rules
-// of Ovenlight for Android (android/core/proxy.go), whose tests these mirror. build-tailscalekit.sh
-// copies this file into libtailscale and points TsnetLoopback and TsnetClose at it.
+// of Ovenlight for Android's proxy, whose tests these mirror. build-tailscalekit.sh copies
+// this file into libtailscale and points TsnetLoopback and TsnetClose at it.
 
 import (
 	"context"

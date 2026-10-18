@@ -220,9 +220,9 @@ extension InviteLink.ParseError {
     /// What Ovenlight says about a link it can't use. Neutral: anyone can see it.
     var message: String {
         switch self {
-        case .notAnInvite: "This isn't an Ovenlight invite. Ask for the link again and copy the whole link."
+        case .notAnInvite: "This isn’t an Ovenlight invite. Ask for the link again and copy the whole link."
         case .unsupportedVersion: "This invite needs a newer Ovenlight. Update Ovenlight, then open the invite again."
-        case .insecureControl: "This invite isn't secure, so Ovenlight won't use it. Ask for a new one."
+        case .insecureControl: "This invite isn’t secure, so Ovenlight won’t use it. Ask for a new one."
         case .missingField, .invalidField: "This link is incomplete. Ask for it again and copy the whole link."
         }
     }

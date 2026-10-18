@@ -107,7 +107,7 @@ struct FeedbackSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("What's working, or what isn't?", text: $note, axis: .vertical)
+                    TextField("What’s working, or what isn’t?", text: $note, axis: .vertical)
                         .lineLimit(4...10)
                         .focused($focused)
                 } footer: {
@@ -192,7 +192,7 @@ struct FeedbackSheet: View {
         do {
             payload = try FeedbackPayload.make(note: note, pageURL: pageURL, png: png)
         } catch .noteTooLong {
-            result = .failed("Keep the note under \(FeedbackPayload.maxNote) characters.")
+            result = .failed("Keep the note under \(FeedbackPayload.maxNote.formatted()) characters.")
             return
         } catch {
             result = .failed(ConnectionCopy.feedbackFailed)

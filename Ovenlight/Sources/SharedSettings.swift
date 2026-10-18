@@ -42,7 +42,7 @@ struct SharedSettingsSections: View {
                     dismiss()
                 }
             } footer: {
-                Text("Open apps that run on your own computers. You'll sign in once to connect them.")
+                Text("Open apps that run on your own computers. You’ll sign in once to connect them.")
             }
             .ovenlightRows()
         }

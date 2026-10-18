@@ -133,7 +133,7 @@ struct SharingList: View {
         let used = min(counts.reduce(0) { $0 + $1.apps + $1.guests }, all)
         guard used > 0 else { return nil }
         let share = used < all ? "\(used) of the \(all) tagged devices" : used == 1 ? "the only tagged device" : "all \(all) tagged devices"
-        return "Your shareable apps and your guests' devices use \(share) in your Tailscale network. Tailscale's plans include a set number and charge for more."
+        return "Your shareable apps and your guests’ devices use \(share) in your Tailscale network. Tailscale’s plans include a set number and charge for more."
     }
 }
 
@@ -294,7 +294,7 @@ struct SharingAppView: View {
             Button("Cancel", role: .cancel) {}
             Button("Remove", role: .destructive) { Task { await remove(person) } }
         } message: { person in
-            Text("\(person.name) can't open \(app?.name ?? "the app") anymore, on any device. Each of their devices is also removed from your Tailscale network unless it has another of your apps.")
+            Text("\(person.name) can’t open \(app?.name ?? "the app") anymore, on any device. Each of their devices is also removed from your Tailscale network unless it has another of your apps.")
         }
     }
 
@@ -386,7 +386,7 @@ struct InviteComposer: View {
                                     .disabled(working)
                                 }
                             } header: {
-                                Text("Someone You've Shared With")
+                                Text("Someone You’ve Shared With")
                             } footer: {
                                 Text("Choose someone here and your apps see them as one person, on every device.")
                             }
@@ -513,7 +513,7 @@ struct InviteResultView: View {
                             .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(Color.primary.opacity(0.08)))
                             .frame(maxWidth: 260)
                             .accessibilityLabel("Invite code")
-                        Text("In person: they scan this with their phone's camera.")
+                        Text("In person: they scan this with their phone’s camera.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
@@ -544,7 +544,7 @@ struct InviteResultView: View {
                         .controlSize(.large)
                         .sensoryFeedback(.success, trigger: copied)
                     }
-                    Text("\(invite.to) can join without your approval and reaches only \(item.appName). Until it's used, the link works like a key, so send it privately.")
+                    Text("\(invite.to) can join without your approval and reaches only \(item.appName). Until it’s used, the link works like a key, so send it privately.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -597,7 +597,7 @@ struct FeedbackInbox: View {
         List {
             if items.isEmpty {
                 ContentUnavailableView("No Feedback Yet", systemImage: "exclamationmark.bubble",
-                                       description: Text("People send it with Send Feedback in an open app's menu."))
+                                       description: Text("People send it with Send Feedback in an open app’s menu."))
                     .ovenlightRows()
             }
             ForEach(items, id: \.1.id) { machine, item in
@@ -678,7 +678,7 @@ private struct FeedbackDetail: View {
                             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                             .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color.primary.opacity(0.08)))
                     } else if shots.failed(item.id, .screen) {
-                        Text("Couldn't load the screenshot.")
+                        Text("Couldn’t load the screenshot.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     } else {

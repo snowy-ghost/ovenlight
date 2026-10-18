@@ -33,7 +33,7 @@ struct JoinFlowView: View {
                 case nil:
                     InviteEntryView { request.invite = $0 }
                 case .failure(let error):
-                    JoinMessage(symbol: "link.badge.plus", title: "Can't Use This Invite", message: error.message) {
+                    JoinMessage(symbol: "link.badge.plus", title: "Can’t Use This Invite", message: error.message) {
                         Button("Try Another Invite") { request.invite = nil }
                             .buttonStyle(.ovenlightProminent)
                             .buttonBorderShape(.capsule)
@@ -212,7 +212,7 @@ private struct JoinInviteView: View {
             switch (phase, guests.preflight(invite)) {
             case (.joined, _), (nil, .alreadyAdded):
                 title(ConnectionCopy.joined(invite.name))
-                detail("It's with your apps now, shared by \(invite.owner).")
+                detail("It’s with your apps now, shared by \(invite.owner).")
             case (.failed(let error), _):
                 title(error.title(owner: invite.owner, app: invite.name))
                 detail(error.message(owner: invite.owner, app: invite.name))

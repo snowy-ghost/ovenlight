@@ -1,7 +1,7 @@
 package main
 
-// The guarded loopback proxy's tests: Android's proxy tests (android/core/proxy_test.go)
-// against the dialer, then the whole proxy through a real node and SOCKS5 client.
+// The guarded loopback proxy's tests: Ovenlight for Android's proxy tests against the
+// dialer, then the whole proxy through a real node and SOCKS5 client.
 
 import (
 	"context"

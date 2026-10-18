@@ -118,7 +118,7 @@ final class LockManager: ObservableObject {
         var error: NSError?
         guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
             if let error, Self.isPasscodeNotSet(error) { return openWithoutPasscode() }
-            lastError = error?.localizedDescription ?? "Ovenlight can't ask for your passcode right now."
+            lastError = error?.localizedDescription ?? "Ovenlight can’t ask for your passcode right now."
             return
         }
         do {

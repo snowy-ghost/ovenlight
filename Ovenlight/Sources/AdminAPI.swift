@@ -434,7 +434,7 @@ enum AdminError: Error, Equatable {
     var message: String {
         switch self {
         case .notOwner: "The Ovenlight connector on this computer is set up for another owner. To make it yours, run ovenlight setup-sharing --owner with your login there."
-        case .unreachable: "Couldn't reach the computer. It may be asleep or offline."
+        case .unreachable: "Couldn’t reach the computer. It may be asleep or offline."
         case .failed(let message): message.prefix(1).uppercased() + message.dropFirst()
         }
     }
@@ -454,7 +454,7 @@ struct AdminClient {
         do {
             return try AdminAPI.decoder.decode(T.self, from: data)
         } catch {
-            throw AdminError.failed("The Ovenlight connector on this computer sent a reply this version of the app doesn't understand. Update both to the latest version.")
+            throw AdminError.failed("The Ovenlight connector on this computer sent a reply this version of the app doesn’t understand. Update both to the latest version.")
         }
     }
 

@@ -148,7 +148,7 @@ struct SharingPeopleList: View {
         let invited = removing.contains { ref in
             sharing.machines.contains { $0.id == ref.machineID && $0.guests.hasOpenInvites(ref.person) }
         }
-        return "\(who) can't open your apps anymore, on any device, and their devices are removed from your Tailscale network."
+        return "\(who) can’t open your apps anymore, on any device, and their devices are removed from your Tailscale network."
             + (invited ? " Their unused invites are canceled too." : "")
     }
 
@@ -290,11 +290,11 @@ struct SharingPersonView: View {
     private var removalMessage: String {
         switch removing {
         case .app(let app):
-            "\(name) can't open \(app.name) anymore, on any device. Each of their devices is also removed from your Tailscale network unless it has another of your apps."
+            "\(name) can’t open \(app.name) anymore, on any device. Each of their devices is also removed from your Tailscale network unless it has another of your apps."
         case .device:
-            "\(name) can't open your apps on this device anymore, and it's removed from your Tailscale network."
+            "\(name) can’t open your apps on this device anymore, and it’s removed from your Tailscale network."
         case .everything, nil:
-            "\(name) can't open your apps anymore, on any device, and their devices are removed from your Tailscale network."
+            "\(name) can’t open your apps anymore, on any device, and their devices are removed from your Tailscale network."
                 + (machine?.guests.hasOpenInvites(personID) == true ? " Their unused invites are canceled too." : "")
         }
     }
@@ -303,7 +303,7 @@ struct SharingPersonView: View {
         guard let machine, let person else { return }
         let reason = switch removal {
         case .app(let app): "Remove \(person.name) from \(app.name)"
-        case .device: "Remove \(person.name)'s device"
+        case .device: "Remove \(person.name)’s device"
         case .everything: "Remove \(person.name)"
         }
         guard await OwnerAuth.confirm(reason), let client = sharing.client(for: machine) else { return }

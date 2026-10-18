@@ -192,11 +192,11 @@ final class DownloadPolicyTests: XCTestCase {
 
     func testAFailedDownloadIsNamedOnlyByARealFileName() {
         func notice(_ url: String) -> String { DownloadPolicy.failedNotice(DownloadPolicy.name(in: URL(string: url))) }
-        XCTAssertEqual(notice("https://coach.example.com/exports/report.pdf"), "Couldn't download report.pdf")
-        XCTAssertEqual(notice("https://coach.example.com/"), "Couldn't download the file", "no path")
-        XCTAssertEqual(notice("https://coach.example.com"), "Couldn't download the file")
-        XCTAssertEqual(notice("blob:https://coach.example.com/6f1c2b3a-0d4e-4f5a-9b8c-7d6e5f4a3b2c"), "Couldn't download the file")
-        XCTAssertEqual(notice("data:text/csv;base64,YSxi"), "Couldn't download the file")
+        XCTAssertEqual(notice("https://coach.example.com/exports/report.pdf"), "Couldn’t download report.pdf")
+        XCTAssertEqual(notice("https://coach.example.com/"), "Couldn’t download the file", "no path")
+        XCTAssertEqual(notice("https://coach.example.com"), "Couldn’t download the file")
+        XCTAssertEqual(notice("blob:https://coach.example.com/6f1c2b3a-0d4e-4f5a-9b8c-7d6e5f4a3b2c"), "Couldn’t download the file")
+        XCTAssertEqual(notice("data:text/csv;base64,YSxi"), "Couldn’t download the file")
     }
 
     /// The share sheet closes once, a turn after it leaves the screen or is let go, kept
