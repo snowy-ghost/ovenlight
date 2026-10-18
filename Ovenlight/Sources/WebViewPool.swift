@@ -651,7 +651,7 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
         guard webView?.window != nil else { return false }
         let locked = OverlayPresenter.pageWindow == nil
         if DownloadPolicy.allows(url: url, from: sourceHost, appHost: app.host, locked: locked) { return true }
-        if tapped, !locked { downloadFailed(url.lastPathComponent) }
+        if tapped, !locked { downloadFailed(DownloadPolicy.name(in: url)) }
         return false
     }
 
@@ -696,13 +696,13 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
         // None after `stop()`, which cancelled them all.
         guard let failed = downloads.removeValue(forKey: ObjectIdentifier(download)) else { return }
         if let file = failed.file { DownloadPolicy.removeFolder(of: file) }
-        if failed.tapped { downloadFailed(failed.file?.lastPathComponent ?? download.originalRequest?.url?.lastPathComponent ?? "") }
+        if failed.tapped { downloadFailed(failed.file?.lastPathComponent ?? DownloadPolicy.name(in: download.originalRequest?.url)) }
     }
 
     /// Says a download the person started didn't make it, while the page is on screen.
-    private func downloadFailed(_ name: String) {
+    private func downloadFailed(_ name: String?) {
         guard webView?.window != nil, OverlayPresenter.pageWindow != nil else { return }
-        show(notice: "Couldn't download \(DownloadPolicy.fileName(name))")
+        show(notice: DownloadPolicy.failedNotice(name))
     }
 
     private func show(notice text: String) {
@@ -1037,6 +1037,18 @@ enum DownloadPolicy {
 
     /// Well under the 255 bytes APFS allows.
     static let maxFileNameBytes = 200
+
+    /// A file's name from its address, for the notice when it fails: the last part of an
+    /// http or https path. A blob or data URL, or one with no path, has none.
+    static func name(in url: URL?) -> String? {
+        guard let url, ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
+              !url.lastPathComponent.isEmpty, url.lastPathComponent != "/" else { return nil }
+        return fileName(url.lastPathComponent)
+    }
+
+    static func failedNotice(_ name: String?) -> String {
+        name.map { "Couldn't download \($0)" } ?? "Couldn't download the file"
+    }
 }
 
 /// WebKit sends a load to the phone's loopback address or its own network address straight
