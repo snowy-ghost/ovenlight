@@ -63,6 +63,11 @@ enum Discovery {
         }
     }
 
+    /// The hosts of the nodes a connector made for its apps, by their tag.
+    static func appHosts(in status: TailnetStatus?) -> Set<String> {
+        Set((status?.peers ?? []).filter { $0.tags.contains(where: OvenlightTag.isApp) }.map { normalizedHost($0.dnsName) })
+    }
+
     /// The owner's online machines that could run a connector. Phones and tablets can't,
     /// so they aren't probed.
     static func candidateHosts(in status: TailnetStatus?) -> [String] {
@@ -93,6 +98,14 @@ enum Discovery {
         var reachable = false
         /// Every probed host, and whether it answered.
         var answered: [String: Bool] = [:]
+    }
+
+    /// Whether a ready node looks at its hosts again: when a machine comes online or goes
+    /// away (the owner's new apps, and tiles), and a minute after a look that missed a host,
+    /// as a newly published app's first answer can. Not otherwise: each look wakes every app
+    /// node's connection, and keeps it out of idle.
+    static func lookAgain(hostsChanged: Bool, lastLook: Date?, missed: Bool, now: Date) -> Bool {
+        hostsChanged || missed && lastLook.map { now.timeIntervalSince($0) > 60 } == true
     }
 
     /// Fetches every candidate's manifest concurrently. `firstAnswer` runs as the first host

@@ -58,7 +58,7 @@ targets:
             CFBundleURLSchemes: [ovenlight]
         NSCameraUsageDescription: Ovenlight uses the camera to scan invite codes, and apps you open can use it when you allow them.
         NSFaceIDUsageDescription: Ovenlight uses Face ID so only you can open your apps.
-        NSLocalNetworkUsageDescription: Ovenlight uses your local network to find a faster, direct path to the computers your apps run on.
+        NSLocalNetworkUsageDescription: Ovenlight uses your local network to reach the computer an app runs on directly when it’s nearby, which is faster. Apps still open if you don’t allow this.
         NSMicrophoneUsageDescription: Apps you open in Ovenlight can record audio when you ask them to, for example to record a voice note.
         # WebKit's long-press Save to Photos on a page's image.
         NSPhotoLibraryAddUsageDescription: Ovenlight saves images you choose from your apps to your photo library.

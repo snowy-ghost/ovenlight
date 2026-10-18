@@ -608,11 +608,11 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
                 return
             }
             failedLoads = 0
-            loadError = ConnectionCopy.cantReachDetail
+            loadError = ConnectionCopy.cantReachDetail(sharedBy: app.sharedBy)
             return
         }
         if ns.domain == NSURLErrorDomain && Self.unreachable.contains(ns.code) {
-            loadError = ConnectionCopy.cantReachDetail
+            loadError = ConnectionCopy.cantReachDetail(sharedBy: app.sharedBy)
         } else {
             // WebKit's own words ("The URL was blocked by a content blocker") mean nothing here.
             #if DEBUG
@@ -866,7 +866,7 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
     /// stack.
     private func alertCantReach() {
         guard !(topController is UIAlertController) else { return }
-        let alert = UIAlertController(title: ConnectionCopy.cantReach(app.name), message: ConnectionCopy.cantReachDetail,
+        let alert = UIAlertController(title: ConnectionCopy.cantReach(app.name), message: ConnectionCopy.cantReachDetail(sharedBy: app.sharedBy),
                                       preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "OK", style: .default))
         present(alert, orElse: {})

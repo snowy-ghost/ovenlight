@@ -418,7 +418,9 @@ final class OverlayPresenter: ObservableObject {
     }
 
     func update(isLocked: Bool, isActive: Bool) {
-        if self.isLocked && !isLocked { unlocked = true }
+        // Only an unlock the lock screen showed fades it: at launch, before the window
+        // exists, a launch that doesn't lock would otherwise flash it.
+        if window != nil, self.isLocked && !isLocked { unlocked = true }
         self.isLocked = isLocked
         self.isActive = isActive
         apply()

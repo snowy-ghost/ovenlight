@@ -107,7 +107,11 @@ enum ConnectionCopy {
 
     static func connecting(to app: String) -> String { "Connecting to \(app)…" }
     static func cantReach(_ app: String) -> String { "Can’t Reach \(app)" }
-    static let cantReachDetail = "Its computer may be asleep or offline. Try again in a moment."
+    /// For an app someone shared, names them, since only they can wake its computer.
+    static func cantReachDetail(sharedBy owner: String?) -> String {
+        guard let owner else { return "Its computer may be asleep or offline. Try again in a moment." }
+        return "\(owner)’s computer may be asleep or offline. Try again in a moment, or let \(owner) know."
+    }
     static func notResponding(_ app: String) -> String { "\(app) isn’t responding on its computer right now. Try again in a moment." }
     static func signIn(toOpen app: String) -> String { "Sign In to Open \(app)" }
     static func cantOpen(_ app: String) -> String { "Can’t Open \(app)" }

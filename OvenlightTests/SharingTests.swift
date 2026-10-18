@@ -650,6 +650,19 @@ final class AdminAPITests: XCTestCase {
         XCTAssertEqual(AdminAPI.errorMessage(Data(#"{"error":"the admin API is for the owner only"}"#.utf8)), "the admin API is for the owner only")
     }
 
+    /// Only the nodes a connector made for its apps count as missed: a laptop or TV of the
+    /// owner's without a connector never answers.
+    func testAppHostsAreTheTaggedOnes() throws {
+        let json = """
+        {"BackendState":"Running","CurrentTailnet":{"Name":"owen@","MagicDNSSuffix":"tailabc123.ts.net"},
+         "Self":{"DNSName":"phone.tailabc123.ts.net.","OS":"iOS","UserID":1},
+         "Peer":{"a":{"DNSName":"Coach.tailabc123.ts.net.","OS":"linux","Online":true,"Tags":["tag:ovenlight-app-coach"]},
+                 "b":{"DNSName":"tv.tailabc123.ts.net.","OS":"tvOS","Online":true,"UserID":1}}}
+        """
+        let status = try XCTUnwrap(TailnetStatus.decode(Data(json.utf8)))
+        XCTAssertEqual(Discovery.appHosts(in: status), ["coach.tailabc123.ts.net"])
+    }
+
     func testAsksOnlyOnlineMachines() throws {
         let json = """
         {"BackendState":"Running","CurrentTailnet":{"Name":"owen@","MagicDNSSuffix":"tailabc123.ts.net"},

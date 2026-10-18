@@ -903,6 +903,18 @@ final class DiscoveryTests: XCTestCase {
         XCTAssertFalse(called, "nothing answered")
     }
 
+    /// A ready node looks again when machines come or go, and a minute after a look that
+    /// missed a host; not on a timer otherwise, which would keep every app node's
+    /// connection out of idle.
+    func testLooksAgainOnlyOnAChangeOrAfterAMiss() {
+        let t0 = Date(timeIntervalSince1970: 1_790_000_000)
+        XCTAssertTrue(Discovery.lookAgain(hostsChanged: true, lastLook: t0, missed: false, now: t0))
+        XCTAssertFalse(Discovery.lookAgain(hostsChanged: false, lastLook: t0, missed: false, now: t0.addingTimeInterval(600)),
+                       "every host answered: no timer")
+        XCTAssertFalse(Discovery.lookAgain(hostsChanged: false, lastLook: t0, missed: true, now: t0.addingTimeInterval(30)))
+        XCTAssertTrue(Discovery.lookAgain(hostsChanged: false, lastLook: t0, missed: true, now: t0.addingTimeInterval(61)))
+    }
+
     func testRoutesOnlyTheOwnersTailnetThroughTheOwnersNode() {
         let own = "tailabc123.ts.net"
         XCTAssertEqual(Routing.route(host: "interview-coach.tailabc123.ts.net", ownerSuffix: own), .tailnetNode)
@@ -1210,7 +1222,8 @@ final class ConnectionStateTests: XCTestCase {
     func testSharedCopyNeverNamesTailscale() {
         let copy = [ConnectionCopy.connecting, ConnectionCopy.stopped, ConnectionCopy.couldNotStart,
                     ConnectionCopy.connecting(to: "Coach"), ConnectionCopy.cantReach("Coach"),
-                    ConnectionCopy.cantReachDetail, ConnectionCopy.signIn(toOpen: "Coach"),
+                    ConnectionCopy.cantReachDetail(sharedBy: nil), ConnectionCopy.cantReachDetail(sharedBy: "Owen"),
+                    ConnectionCopy.signIn(toOpen: "Coach"),
                     ConnectionCopy.cantOpen("Coach"), ConnectionCopy.offline, ConnectionCopy.offlineDetail,
                     NodeState.starting.summary, NodeMachine.next(.ready, .backend(state: "Stopped", authURL: nil)).summary,
                     ConnectionCopy.reportProblem, ConnectionCopy.leaveApps("Riley"), ConnectionCopy.leaveTitle("Riley"),

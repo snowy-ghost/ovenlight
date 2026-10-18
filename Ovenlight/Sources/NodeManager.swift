@@ -257,6 +257,8 @@ final class MembershipNode: ObservableObject {
     private var isCheckingHealth = false
     private var probedHosts: [String]?
     private var lastProbe: Date?
+    /// The last look had a host that didn't answer.
+    private var lastProbeMissed = false
     private var loginLostPolls = 0
     private var absence = PeerAbsence()
     private var silence = GuestSilence()
@@ -481,16 +483,15 @@ final class MembershipNode: ObservableObject {
                     await checkReachability(generation: current)
                     continue
                 }
-                if state == .ready {
-                    // Look again when a machine comes online or goes away (the owner's new apps,
-                    // and tiles), and once a minute regardless: a host that missed one look, as a
-                    // newly published app's first answer can, would otherwise wait for the next change.
-                    let hostsChanged = probeHosts != probedHosts
-                    if hostsChanged || lastProbe.map({ Date.now.timeIntervalSince($0) > 60 }) == true { await rediscover() }
+                if state == .ready, Discovery.lookAgain(hostsChanged: probeHosts != probedHosts, lastLook: lastProbe,
+                                                        missed: lastProbeMissed, now: .now) {
+                    await rediscover()
                 }
             }
-            // Quick while the node comes up, so an app opened at launch waits no longer than it must.
-            let interval: Duration = state == .ready ? .seconds(10) : state == .starting || state == .connecting ? .milliseconds(250) : .seconds(1)
+            // Quick while the node comes up, so an app opened at launch waits no longer than it
+            // must, but not while the phone has no network to come up on.
+            let quick = (state == .starting || state == .connecting) && NetworkPath.shared.isSatisfied
+            let interval: Duration = state == .ready ? .seconds(10) : quick ? .milliseconds(250) : .seconds(1)
             try? await Task.sleep(for: interval)
         }
     }
@@ -543,13 +544,21 @@ final class MembershipNode: ObservableObject {
 
     private func probe(_ hosts: [String], firstAnswer: @MainActor () -> Void = {}) async -> Discovery.Outcome {
         lastProbe = .now
-        if isOwner { return await Discovery.probe(hosts: hosts, session: session(), firstAnswer: firstAnswer) }
-        // A guest's hosts count as looked at even when none answers: they come back with a
-        // change to the list, or in a minute, not every poll.
-        probedHosts = hosts
-        let outcome = await GuestProbe.probe(hosts: hosts, session: session(), firstAnswer: firstAnswer)
-        if !outcome.notInvited.isEmpty { onNotInvited(outcome.notInvited) }
-        return outcome.base
+        let outcome: Discovery.Outcome
+        if isOwner {
+            outcome = await Discovery.probe(hosts: hosts, session: session(), firstAnswer: firstAnswer)
+        } else {
+            // A guest's hosts count as looked at even when none answers: they come back with
+            // a change to the list, or in a minute, not every poll.
+            probedHosts = hosts
+            let guest = await GuestProbe.probe(hosts: hosts, session: session(), firstAnswer: firstAnswer)
+            if !guest.notInvited.isEmpty { onNotInvited(guest.notInvited) }
+            outcome = guest.base
+        }
+        // Only app nodes count: an owner's laptop or TV without a connector never answers.
+        let apps = isOwner ? Discovery.appHosts(in: status) : Set(hosts)
+        lastProbeMissed = hosts.contains { apps.contains($0) && outcome.answered[$0] != true }
+        return outcome
     }
 
     /// Once the node is up, probe the machines that might serve its apps. Any HTTP answer
@@ -614,6 +623,8 @@ final class MembershipNode: ObservableObject {
         // A probe cut short says nothing about the host.
         guard !Task.isCancelled else { return .unreachable }
         answers?[host] = reach != .unreachable
+        // Look again in a minute, as after any look that missed a host.
+        if reach == .unreachable { lastProbeMissed = true }
         return reach
     }
 
