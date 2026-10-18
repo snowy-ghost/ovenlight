@@ -65,7 +65,7 @@ class AppLoadGateTests {
 
     /** With no network the gate says so at once, and starts over when one comes. */
     @Test
-    fun testAnOfflinePhoneWaitsForANetwork() {
+    fun testAPhoneWithNoNetworkGivesUpAtOnceAndOpensOnceItHasOne() {
         assertEquals(AppLoadGate.Offline, run(listOf(Event.PhoneOffline)))
         assertEquals(AppLoadGate.Offline, run(listOf(Event.NodeReady, Event.PhoneOffline)))
         val offline = run(listOf(Event.PhoneOffline))

@@ -20,6 +20,8 @@ testOnlyAShownSheetTakesItsFiles         # iOS presentation only, as above
 testAppReplacedByAppStaysOnScreen        # SwiftUI only: a replaced cover's onDismiss
 testSheetsReplaceEachOther               # SwiftUI only: a replaced sheet's onDismiss
 testOnlyTheAppsOwnPagesPopUpAPost        # Android opens no popups: setSupportMultipleWindows(false)
+testBlocksLoopbackAndLocalAddressesOnly  # iOS only: WebKit loads loopback and the phone's own address past the proxy; Android's proxy refuses them (proxy_test.go)
+testTheRulesCompile                      # iOS only, as above: WebKit's content rule list
 EOF
 }
 

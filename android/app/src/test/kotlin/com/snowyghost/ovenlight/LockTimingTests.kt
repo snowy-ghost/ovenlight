@@ -58,7 +58,7 @@ class LockTimingTests {
 
     /** Android only: Android ends a background Ovenlight within minutes, and the next launch locks by the same rule. */
     @Test
-    fun testALaunchAfterTheProcessEndedLocksByTheTimeAway() {
+    fun testALaunchLocksUnlessQuitInTheBackgroundWithinTheDelay() {
         val store = MemoryStore()
         var now = 1_000_000L
         var boot = 7
