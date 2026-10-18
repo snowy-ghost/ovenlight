@@ -123,11 +123,27 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        hideFromRecents(false)
         // The answer always comes before this; should it not, the lock doesn't wait for it any longer.
         if (lockCheckWaits) checkLock()
         lock.screenLockChecked(getSystemService(KeyguardManager::class.java).isDeviceSecure)
         lifecycleScope.launch { lock.didBecomeActive(unlockPrompt) }
         returnedFromTab()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        hideFromRecents(true)
+    }
+
+    /**
+     * Below Android 13, which keeps Ovenlight out of Recents' snapshots (onCreate), the window is
+     * secure only while Ovenlight isn't in front: Recents shows a blank card, and the person's own
+     * screenshots of Ovenlight still work.
+     */
+    private fun hideFromRecents(hide: Boolean) {
+        if (Build.VERSION.SDK_INT >= 33) return
+        if (hide) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE) else window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
     }
 
     override fun onStop() {

@@ -6,12 +6,15 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
+import android.os.Build
+import android.view.WindowManager
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
 import androidx.test.runner.lifecycle.Stage
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -77,5 +80,26 @@ class RecentsTests {
         Thread.sleep(2_000)
         assertEquals("activities", listOf(running), live())
         assertEquals("cards with Ovenlight in them", 1, tasks.appTasks.count { it.taskInfo?.isRunning == true })
+    }
+
+    /**
+     * Recents shows no picture of Ovenlight: from Android 13 it keeps no snapshot, and below that
+     * the window is secure while Ovenlight is away. In front it never is, so the person's own
+     * screenshots work.
+     */
+    @Test
+    fun testRecentsShowsNoPictureOfOvenlight() {
+        tasks.appTasks.forEach { it.finishAndRemoveTask() }
+        context.startActivity(context.packageManager.getLaunchIntentForPackage(context.packageName)!!.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        waitFor("Ovenlight in front") { resumed() is MainActivity }
+        val ovenlight = resumed()!!
+        fun secure() = onMain { ovenlight.window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE != 0 }
+        assertFalse("secure in front", secure())
+        context.startActivity(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        waitFor("Ovenlight away") { resumed() !== ovenlight }
+        assertEquals("secure while away", Build.VERSION.SDK_INT < 33, secure())
+        context.startActivity(context.packageManager.getLaunchIntentForPackage(context.packageName)!!.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        waitFor("Ovenlight back") { resumed() === ovenlight }
+        assertFalse("secure in front again", secure())
     }
 }
