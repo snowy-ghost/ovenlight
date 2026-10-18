@@ -4,6 +4,8 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.MutableContextWrapper
 import android.graphics.Bitmap
+import android.view.ViewGroup
+import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.webkit.HttpAuthHandler
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebResourceError
@@ -42,7 +44,11 @@ class AppPage(
 
     /** Off screen it holds the application's context; on screen, the activity's (see [attach]). */
     val context = MutableContextWrapper(context.applicationContext)
-    val view = PageWebView(this.context)
+    /**
+     * As tall as where it shows: without layout params WebView takes its height as wrap-content,
+     * and a page's `100vh` comes out as 0.
+     */
+    val view = PageWebView(this.context).apply { layoutParams = ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT) }
 
     /** Links out, other apps, the page's dialogs, file input and full screen; made once the profile is on. */
     val edges: PageEdges

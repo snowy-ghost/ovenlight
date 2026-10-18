@@ -279,6 +279,16 @@ class OpenPageTests {
         waitFor("the text back to its size") { height() == normal }
     }
 
+    /** A page's `100vh` is as tall as the view it shows in, not 0. */
+    @Test
+    fun testAPagesViewportHeightIsTheViews() {
+        evaluate("document.body.insertAdjacentHTML('beforeend', \"<div id=full style='height:100vh'></div>\")")
+        val full = number("document.getElementById('full').getBoundingClientRect().height")
+        val view = onMain { page.view.height / page.view.resources.displayMetrics.density.toDouble() }
+        assertTrue("100vh is $full", full > 0)
+        assertEquals("100vh against the view's height", view, full, 1.0)
+    }
+
     /**
      * Every page starts below the band Ovenlight keeps at the top, the status bar's height and the
      * handle's, and sees no top inset, whether it asks for `viewport-fit=cover` or not, however it
