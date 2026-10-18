@@ -277,7 +277,8 @@ final class AppRegistry: ObservableObject {
               let image = await Task.detached(operation: { Self.iconImage(from: data) }).value, let png = image.pngData(),
               let index = apps.firstIndex(where: { $0.id == id }) else { return }
         let file = "\(id.uuidString).png"
-        try? png.write(to: iconsDirectory.appendingPathComponent(file), options: .atomic)
+        // A write that fails leaves the icon as it was: an app with none tries again later.
+        guard (try? png.write(to: iconsDirectory.appendingPathComponent(file), options: .atomic)) != nil else { return }
         // A refreshed icon keeps its file name, so `apps` may not change; say so anyway.
         objectWillChange.send()
         icons[file] = image
