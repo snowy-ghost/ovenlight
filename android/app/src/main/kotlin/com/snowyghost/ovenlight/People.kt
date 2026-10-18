@@ -79,27 +79,8 @@ internal fun SharingPeopleList(state: SharingState, place: SharingPlace, scroll:
         }
         if (refs.isEmpty() || !state.confirm(reason)) return
         working = true
-        val problems = mutableListOf<String>()
         val current = state.machines.value
-        if (refs.any { ref -> current.none { it.id == ref.machineID } }) problems += AdminError.Unreachable.message
-        for (machine in current) {
-            val theirs = refs.filter { it.machineID == machine.id }
-            if (theirs.isEmpty()) continue
-            val client = state.client(machine)
-            if (client == null) {
-                problems += AdminError.Unreachable.message
-                continue
-            }
-            for (ref in theirs) {
-                try {
-                    problems += client.removePerson(ref.person).errors.orEmpty()
-                } catch (failure: AdminError) {
-                    problems += failure.message
-                }
-            }
-        }
-        error = problems.firstOrNull()
-        state.refresh()
+        error = refs.mapNotNull { ref -> state.change(current.firstOrNull { it.id == ref.machineID }) { it.removePerson(ref.person).errors } }.firstOrNull()
         working = false
         stopSelecting()
     }
@@ -231,18 +212,14 @@ internal fun SharingPersonView(state: SharingState, page: SharingPage.Person, sc
             Removal.Everything -> resources.getString(R.string.sharing_remove_person, found.name)
         }
         if (machine == null || !state.confirm(reason)) return@launch
-        val client = state.client(machine) ?: return@launch
         working = true
-        error = try {
+        error = state.change(machine) { client ->
             when (removal) {
                 is Removal.App -> client.removeGuest(found, removal.app.slug)
                 is Removal.Device -> client.removeDevice(removal.id)
                 Removal.Everything -> client.removePerson(found.id)
-            }.errors?.firstOrNull()
-        } catch (failure: AdminError) {
-            failure.message
+            }.errors
         }
-        state.refresh()
         working = false
         // Gone from every app: back to the list, unless there's a problem to read here.
         if (person(state.machines.value) == null && error == null) back()

@@ -171,7 +171,22 @@ data class SharingState(
     /** Opens the invite composer: for someone new or already shared with, or another device for [person]. */
     val compose: (OwnerSharing.Machine, AdminApp, person: GuestPerson?) -> Unit = { _, _, _ -> },
     val openLink: (URI) -> Unit = {},
-)
+) {
+    /**
+     * Asks [machine]'s connector for a change and lists again: the connector's first problem, or
+     * Couldn't reach when there's no connection to it, or null.
+     */
+    suspend fun change(machine: OwnerSharing.Machine?, call: suspend (AdminClient) -> List<String>?): String? {
+        val client = machine?.let(client)
+        val problem = try {
+            if (client == null) AdminError.Unreachable.message else call(client)?.firstOrNull()
+        } catch (failure: AdminError) {
+            failure.message
+        }
+        refresh()
+        return problem
+    }
+}
 
 /** The model's sharing, for the screens and the composer. */
 @Composable
@@ -499,7 +514,12 @@ private fun SharingAppPage(state: SharingState, page: SharingPage.App, scroll: S
                                     trailing = {
                                         RowMenu(title) { close ->
                                             AppMenuItem(close, stringResource(R.string.sharing_cancel_invite), R.drawable.ic_close, destructive = true) {
-                                                scope.launch { error = cancel(state, machine, invite) }
+                                                scope.launch {
+                                                    error = state.change(machine) {
+                                                        it.cancelInvite(invite.id)
+                                                        null
+                                                    }
+                                                }
                                             }
                                         }
                                     },
@@ -528,29 +548,10 @@ private fun SharingAppPage(state: SharingState, page: SharingPage.App, scroll: S
         ) {
             scope.launch {
                 if (!state.confirm(resources.getString(R.string.sharing_remove_person, person.name))) return@launch
-                val client = state.client(machine) ?: return@launch
-                error = try {
-                    client.removeGuest(person, page.slug).errors?.firstOrNull()
-                } catch (failure: AdminError) {
-                    failure.message
-                }
-                state.refresh()
+                error = state.change(machine) { it.removeGuest(person, page.slug).errors }
             }
         }
     }
-}
-
-/** Cancels an invite no one has used: what went wrong, or null. */
-private suspend fun cancel(state: SharingState, machine: OwnerSharing.Machine, invite: AdminInvite): String? {
-    val client = state.client(machine) ?: return null
-    val error = try {
-        client.cancelInvite(invite.id)
-        null
-    } catch (failure: AdminError) {
-        failure.message
-    }
-    state.refresh()
-    return error
 }
 
 /**

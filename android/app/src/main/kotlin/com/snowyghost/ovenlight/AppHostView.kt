@@ -188,7 +188,7 @@ private fun AppPageView(model: AppModel, page: AppPage, origin: TransformOrigin,
                     when (cover) {
                         Cover.None -> Unit
                         Cover.Placeholder -> LaunchPlaceholder(app, icon)
-                        Cover.CantReach -> LoadErrorView(R.drawable.ic_wifi_off, ConnectionCopy.cantReach(app.name), ConnectionCopy.cantReachDetail, page::reload, onClose)
+                        Cover.CantReach -> LoadErrorView(R.drawable.ic_wifi_off, ConnectionCopy.cantReach(app.name), ConnectionCopy.cantReachDetail(app.sharedBy), page::reload, onClose)
                         Cover.Offline -> LoadErrorView(R.drawable.ic_wifi_off, ConnectionCopy.offline, ConnectionCopy.offlineDetail, page::reload, onClose)
                         Cover.Error -> LoadErrorView(R.drawable.ic_warning, stringResource(R.string.app_cant_open, app.name), error.orEmpty(), page::reload, onClose)
                         Cover.Node -> action?.let {
@@ -217,7 +217,7 @@ private fun AppPageView(model: AppModel, page: AppPage, origin: TransformOrigin,
         AlertDialog(
             onDismissRequest = { page.cantReachAlert.value = false },
             title = { Text(ConnectionCopy.cantReach(app.name)) },
-            text = { Text(ConnectionCopy.cantReachDetail) },
+            text = { Text(ConnectionCopy.cantReachDetail(app.sharedBy)) },
             confirmButton = { TextButton(onClick = { page.cantReachAlert.value = false }) { Text(stringResource(R.string.ok)) } },
         )
     }

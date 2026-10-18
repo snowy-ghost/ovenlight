@@ -17,6 +17,12 @@ class GuestCopyTests {
             ConnectionCopy.reportProblem, ConnectionCopy.leaveApps("Riley"), ConnectionCopy.leaveTitle("Riley"),
             ConnectionCopy.leaveDetail("Riley"), ConnectionCopy.removeSharedDetail("Riley"),
             AppAddress.signInFirst, AppAddress.notYourComputer,
+            ConnectionCopy.connecting, ConnectionCopy.stopped, ConnectionCopy.couldNotStart,
+            ConnectionCopy.connecting(to = "Echo"), ConnectionCopy.cantReach("Echo"),
+            ConnectionCopy.cantReachDetail(owner = null), ConnectionCopy.cantReachDetail(owner = "Riley"),
+            ConnectionCopy.signIn(toOpen = "Echo"), ConnectionCopy.pageFailed, ConnectionCopy.offline, ConnectionCopy.offlineDetail,
+            NodeState.Starting.summary, NodeMachine.next(NodeState.Ready, NodeEvent.Backend("Stopped", null)).summary,
+            LauncherWelcome.title, LauncherWelcome.message,
         )
         val report = MailDraft.problemReport(
             appName = "Echo", host = "echo.example.com", sharedBy = "Riley", connection = NodeState.Ready.summary,

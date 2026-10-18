@@ -288,6 +288,9 @@ class MembershipNode(
     private val lifecycle = Mutex()
     private var probedHosts: List<String>? = null
     private var lastProbe: Long? = null
+
+    /** The last look had a host that didn't answer. */
+    private var lastProbeMissed = false
     private var loginLostPolls = 0
     private var absence = PeerAbsence()
     private val silence = GuestSilence()
@@ -447,13 +450,7 @@ class MembershipNode(
                     checkReachability(current)
                     continue
                 }
-                if (state == NodeState.Ready) {
-                    // Look again when a computer comes online or goes away (the owner's new apps,
-                    // and tiles), and once a minute regardless: a host that missed one look, as a
-                    // newly published app's first answer can, would otherwise wait for the next change.
-                    val hostsChanged = probeHosts != probedHosts
-                    if (hostsChanged || lastProbe?.let { now() - it > 60_000 } == true) rediscover()
-                }
+                if (state == NodeState.Ready && Discovery.lookAgain(probeHosts != probedHosts, lastProbe, lastProbeMissed, now())) rediscover()
             }
             // Quick while the node comes up, so an app opened on a closed node loads as soon as it
             // can, though not on a phone that can't reach the network; a wait for a login keeps
@@ -518,13 +515,18 @@ class MembershipNode(
 
     private suspend fun probe(hosts: List<String>, firstAnswer: () -> Unit = {}): Discovery.Outcome {
         lastProbe = now()
-        if (isOwner) return Discovery.probe(hosts, fetch(), firstAnswer)
-        // A guest's hosts count as looked at even when none answers: they come back with a
-        // change to the list, or in a minute, not every poll.
-        probedHosts = hosts
-        val outcome = GuestProbe.probe(hosts, fetch(), firstAnswer)
-        if (outcome.notInvited.isNotEmpty()) onNotInvited(outcome.notInvited)
-        return outcome.base
+        val outcome = if (isOwner) {
+            Discovery.probe(hosts, fetch(), firstAnswer)
+        } else {
+            // A guest's hosts count as looked at even when none answers: they come back with a
+            // change to the list, or in a minute, not every poll.
+            probedHosts = hosts
+            GuestProbe.probe(hosts, fetch(), firstAnswer).also { if (it.notInvited.isNotEmpty()) onNotInvited(it.notInvited) }.base
+        }
+        // Only app nodes count: an owner's laptop or TV without a connector never answers.
+        val apps = if (isOwner) Discovery.appHosts(mutableStatus.value) else hosts.toSet()
+        lastProbeMissed = hosts.any { it in apps && outcome.answered[it] != true }
+        return outcome
     }
 
     /**
@@ -590,6 +592,8 @@ class MembershipNode(
             GuestProbe.whoami(host, fetch)
         }
         mutableAnswers.value = mutableAnswers.value?.plus(host to (reach != Reach.Unreachable))
+        // Look again in a minute, as after any look that missed a host.
+        if (reach == Reach.Unreachable) lastProbeMissed = true
         return reach
     }
 

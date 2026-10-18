@@ -144,6 +144,18 @@ class AdminAPITests {
         assertEquals("the admin API is for the owner only", AdminAPI.errorMessage("""{"error":"the admin API is for the owner only"}""".toByteArray()))
     }
 
+    /** Only the nodes a connector made for its apps count as missed: a laptop or TV of the owner's without a connector never answers. */
+    @Test
+    fun testAppHostsAreTheTaggedOnes() {
+        val json = """
+        {"BackendState":"Running","CurrentTailnet":{"Name":"owen@","MagicDNSSuffix":"tailabc123.ts.net"},
+         "Self":{"DNSName":"phone.tailabc123.ts.net.","OS":"android","UserID":1},
+         "Peer":{"a":{"DNSName":"Coach.tailabc123.ts.net.","OS":"linux","Online":true,"Tags":["tag:ovenlight-app-coach"]},
+                 "b":{"DNSName":"tv.tailabc123.ts.net.","OS":"tvOS","Online":true,"UserID":1}}}
+        """
+        assertEquals(setOf("coach.tailabc123.ts.net"), Discovery.appHosts(TailnetStatus.decode(json)))
+    }
+
     @Test
     fun testAsksOnlyOnlineMachines() {
         val json = """

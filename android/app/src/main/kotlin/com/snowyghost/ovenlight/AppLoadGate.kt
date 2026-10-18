@@ -130,7 +130,9 @@ object ConnectionCopy {
 
     fun connecting(to: String) = "Connecting to $to…"
     fun cantReach(app: String) = "Can’t reach $app"
-    const val cantReachDetail = "Its computer may be asleep or offline. Try again in a moment."
+    /** For an app someone shared, [owner] is who to tell. */
+    fun cantReachDetail(owner: String?) = owner?.let { "$it’s computer may be asleep or offline. Try again in a moment, or let $it know." }
+        ?: "Its computer may be asleep or offline. Try again in a moment."
     const val offline = "You’re offline"
     const val offlineDetail = "Connect to Wi-Fi or mobile data, and Ovenlight tries again."
     fun notResponding(app: String) = "$app isn’t responding on its computer right now. Try again in a moment."

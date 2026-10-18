@@ -169,6 +169,16 @@ class DiscoveryTests {
      * Android's twin asserts refusal where iOS asserts `.direct`: Android has no direct route
      * (plan decision 9), so a host on no known tailnet is refused, never loaded directly.
      */
+    /** A ready node looks again when computers come or go, and a minute after a look that missed a host; not on a timer otherwise, which would keep every app node's connection out of idle. */
+    @Test
+    fun testLooksAgainOnlyOnAChangeOrAfterAMiss() {
+        val t0 = 1_790_000_000_000L
+        assertTrue(Discovery.lookAgain(hostsChanged = true, lastLookMillis = t0, missed = false, nowMillis = t0))
+        assertFalse("every host answered: no timer", Discovery.lookAgain(hostsChanged = false, lastLookMillis = t0, missed = false, nowMillis = t0 + 600_000))
+        assertFalse(Discovery.lookAgain(hostsChanged = false, lastLookMillis = t0, missed = true, nowMillis = t0 + 30_000))
+        assertTrue(Discovery.lookAgain(hostsChanged = false, lastLookMillis = t0, missed = true, nowMillis = t0 + 61_000))
+    }
+
     @Test
     fun testRoutesOnlyTheOwnersTailnetThroughTheOwnersNode() {
         val own = "tailabc123.ts.net"

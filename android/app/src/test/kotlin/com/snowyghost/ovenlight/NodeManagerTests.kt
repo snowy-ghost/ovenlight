@@ -271,6 +271,31 @@ class NodeManagerTests {
         assertEquals(reads + 3, clients.statusReads)
     }
 
+    /** Through the poll: an app node that missed is asked each minute, and once every one answered nothing is asked again. */
+    @Test
+    fun testOnlyAMissedHostIsProbedAgain() = runTest {
+        val clients = FakeClients()
+        val nodes = manager(clients)
+        val manifest = { host: String -> "https://$host.tailabc123.ts.net/.well-known/ovenlight.json" }
+        val desktop = """"k2":{"HostName":"desktop","DNSName":"desktop.tailabc123.ts.net.","OS":"linux","Online":true,"Tags":["tag:ovenlight-app-pantry"]}"""
+        clients.pages[manifest("laptop")] = FetchResponse(200, """{"name":"Recipe Box","version":1}""".toByteArray())
+        clients.status[Membership.ownerID] = status("Running", self = ownerSelf, peers = "$laptop,$desktop")
+        nodes.enableOwner()
+        advanceTimeBy(2_500)
+        assertEquals(NodeState.Ready, nodes.owner.state.value)
+        val probes = { clients.fetched.count { it.second == manifest("desktop") } }
+        val missed = probes()
+        advanceTimeBy(150_000)
+        assertTrue("a host that missed is asked again each minute", probes() >= missed + 2)
+
+        clients.pages[manifest("desktop")] = FetchResponse(200, """{"name":"Pantry","version":1}""".toByteArray())
+        advanceTimeBy(80_000)
+        assertEquals(mapOf("desktop.tailabc123.ts.net" to true, "laptop.tailabc123.ts.net" to true), nodes.owner.answers.value)
+        val asked = clients.fetched.size
+        advanceTimeBy(300_000)
+        assertEquals("every host answered, so nothing is asked again", asked, clients.fetched.size)
+    }
+
     /** A probe canceled under way, as when its app's screen closes, says nothing about the host. */
     @Test
     fun testACanceledProbeLeavesTheHostsAnswer() = runTest {

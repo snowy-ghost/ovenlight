@@ -256,7 +256,7 @@ class MainActivity : ComponentActivity() {
         const val HANDLED_LAUNCH = "handledLaunch"
 
         /** Tailscale's device list, where a new device waits for approval. */
-        val machinesPage = URI("https://login.tailscale.com/admin/machines")
+        val machinesPage = URI("https://console.tailscale.com/admin/machines")
     }
 }
 

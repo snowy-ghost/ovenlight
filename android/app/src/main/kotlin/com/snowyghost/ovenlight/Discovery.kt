@@ -100,6 +100,19 @@ object Discovery {
         }
     }
 
+    /** The hosts of the nodes a connector made for its apps, by their tag. */
+    fun appHosts(status: TailnetStatus?): Set<String> =
+        (status?.peers ?: emptyList()).filter { peer -> peer.tags.any(OvenlightTag::isApp) }.map { normalizedHost(it.dnsName) }.toSet()
+
+    /**
+     * Whether a ready node looks at its hosts again: when a computer comes online or goes away
+     * (the owner's new apps, and tiles), and a minute after a look that missed a host, as a newly
+     * published app's first answer can. Not otherwise: each look wakes every app node's
+     * connection, and keeps it out of idle.
+     */
+    fun lookAgain(hostsChanged: Boolean, lastLookMillis: Long?, missed: Boolean, nowMillis: Long): Boolean =
+        hostsChanged || missed && lastLookMillis?.let { nowMillis - it > 60_000 } == true
+
     /** The owner's online computers that could run a connector. Phones and tablets can't, so they aren't probed. */
     fun candidateHosts(status: TailnetStatus?): List<String> =
         ownersPeers(status)

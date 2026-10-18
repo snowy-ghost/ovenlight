@@ -61,7 +61,8 @@ class UnlockPrompt(
     private var confirmation: Any? = null
     val confirming: Boolean get() = confirmation != null
 
-    override suspend fun authenticate(): Authenticator.Result = authenticate(activity.getString(R.string.unlock_prompt_title))
+    override suspend fun authenticate(): Authenticator.Result =
+        authenticate(activity.getString(R.string.unlock_prompt_title), activity.getString(R.string.unlock_prompt_subtitle))
 
     /**
      * The screen lock again, while unlocked, before anything that changes who can open an app
@@ -80,25 +81,26 @@ class UnlockPrompt(
         }
     }
 
-    private suspend fun authenticate(title: String): Authenticator.Result {
+    private suspend fun authenticate(title: String, subtitle: String? = null): Authenticator.Result {
         val keyguard = activity.getSystemService(KeyguardManager::class.java)
         if (!keyguard.isDeviceSecure) return Authenticator.Result.NoScreenLock
         // With the screen lock among its choices, the prompt always answers.
-        if (Build.VERSION.SDK_INT >= 30) return prompt(title, withScreenLock = true) ?: Authenticator.Result.Canceled
+        if (Build.VERSION.SDK_INT >= 30) return prompt(title, subtitle, withScreenLock = true) ?: Authenticator.Result.Canceled
         val biometrics = activity.getSystemService(BiometricManager::class.java)
         @Suppress("DEPRECATION") // canAuthenticate(Int) is API 30.
-        if (biometrics.canAuthenticate() != BiometricManager.BIOMETRIC_SUCCESS) return credential(keyguard, title)
+        if (biometrics.canAuthenticate() != BiometricManager.BIOMETRIC_SUCCESS) return credential(keyguard, title, subtitle)
         // Any error but a cancel (a fingerprint locked out after too many tries, a sensor that
         // isn't available) goes on to the screen lock, as iOS falls back to the passcode.
-        return when (val answer = prompt(title, withScreenLock = false)) {
-            null, is Authenticator.Result.Failed -> credential(keyguard, title)
+        return when (val answer = prompt(title, subtitle, withScreenLock = false)) {
+            null, is Authenticator.Result.Failed -> credential(keyguard, title, subtitle)
             else -> answer
         }
     }
 
     /** The prompt's answer, or null when Android 10's button for the screen lock was tapped. */
-    private suspend fun prompt(title: String, withScreenLock: Boolean): Authenticator.Result? = suspendCancellableCoroutine { done ->
+    private suspend fun prompt(title: String, subtitle: String?, withScreenLock: Boolean): Authenticator.Result? = suspendCancellableCoroutine { done ->
         val builder = BiometricPrompt.Builder(activity).setTitle(title)
+        subtitle?.let(builder::setSubtitle)
         if (withScreenLock && Build.VERSION.SDK_INT >= 30) {
             builder.setAllowedAuthenticators(BIOMETRIC_WEAK or DEVICE_CREDENTIAL)
         } else {
@@ -127,9 +129,9 @@ class UnlockPrompt(
         })
     }
 
-    private suspend fun credential(keyguard: KeyguardManager, title: String): Authenticator.Result {
+    private suspend fun credential(keyguard: KeyguardManager, title: String, subtitle: String?): Authenticator.Result {
         @Suppress("DEPRECATION") // The Android 10 path only; later versions use the prompt.
-        val intent: Intent = keyguard.createConfirmDeviceCredentialIntent(title, null)
+        val intent: Intent = keyguard.createConfirmDeviceCredentialIntent(title, subtitle)
             ?: return Authenticator.Result.NoScreenLock
         val answer = CompletableDeferred<Boolean>().also { credentialAnswer = it }
         showingCredentialScreen = true

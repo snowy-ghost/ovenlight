@@ -352,7 +352,7 @@ class AppPage(
         failedLoads = 0
         // Chromium's description is a code ("net::ERR_TOO_MANY_REDIRECTS"): the log keeps it, the page says it plainly.
         if (code !in retryableThroughNode) OvenlightLog.i("${app.host}: error $code, $description")
-        error.value = if (code in retryableThroughNode) ConnectionCopy.cantReachDetail else ConnectionCopy.pageFailed
+        error.value = if (code in retryableThroughNode) ConnectionCopy.cantReachDetail(app.sharedBy) else ConnectionCopy.pageFailed
     }
 
     // Leaving
