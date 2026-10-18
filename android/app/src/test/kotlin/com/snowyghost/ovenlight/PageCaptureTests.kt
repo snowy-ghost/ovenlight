@@ -144,21 +144,22 @@ class PageCaptureTests {
         val capture = capture()
         capture.stop()
         capturing = true
-        advanceTimeBy(PageCapture.CHECK_AFTER_MILLIS + 1)
+        advanceTimeBy(PageCapture.STOP_WAIT_MILLIS + 1)
         assertEquals("a page never granted capture can't hold any", 0, destroyed)
 
         capture.onPermissionRequest(Request(own, audio))
         onScreen = false
         capture.stop()
-        advanceTimeBy(PageCapture.CHECK_AFTER_MILLIS - 1)
-        assertEquals("the system is asked half a second later", 0, destroyed)
+        advanceTimeBy(PageCapture.STOP_WAIT_MILLIS - 1)
+        assertEquals("the system is given two seconds to let go", 0, destroyed)
         advanceTimeBy(2)
         runCurrent()
         assertEquals(1, destroyed)
 
-        capturing = false
         capture.stop()
-        advanceTimeBy(PageCapture.CHECK_AFTER_MILLIS + 1)
-        assertEquals("stopped in time, it stays", 1, destroyed)
+        advanceTimeBy(PageCapture.STOP_WAIT_MILLIS / 2)
+        capturing = false
+        advanceTimeBy(PageCapture.STOP_WAIT_MILLIS)
+        assertEquals("let go within the wait, it stays", 1, destroyed)
     }
 }
