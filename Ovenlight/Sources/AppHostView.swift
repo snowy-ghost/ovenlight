@@ -100,7 +100,7 @@ private struct AppPage: View {
                 }
             }
             if let error = coordinator.loadError {
-                LoadErrorView(title: "Can't Open \(app.name)", message: error,
+                LoadErrorView(title: ConnectionCopy.cantOpen(app.name), message: error,
                               retry: { coordinator.reload() }, close: onClose)
                     .transition(.opacity)
                     .zIndex(1)
@@ -290,6 +290,8 @@ struct NodeActionOverlay: View {
     }
 }
 
+/// Why an app couldn't open, in the join sheet's voice: a glyph, a display title, the detail,
+/// and Try Again.
 struct LoadErrorView: View {
     let title: String
     let message: String
@@ -297,18 +299,39 @@ struct LoadErrorView: View {
     let close: () -> Void
 
     var body: some View {
-        ContentUnavailableView {
-            Label(title, systemImage: "wifi.exclamationmark")
-        } description: {
-            Text(message)
-        } actions: {
-            Button("Try Again", action: retry)
-                .buttonStyle(.borderedProminent)
-                .buttonBorderShape(.capsule)
-                .controlSize(.large)
-            Button("Back to Apps", action: close)
+        // Scrolls only when the largest text sizes don't fit.
+        ViewThatFits(in: .vertical) {
+            content
+            ScrollView { content.padding(.vertical, 24) }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(.systemBackground))
+    }
+
+    private var content: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "wifi.exclamationmark")
+                .font(.system(size: 44))
+                .foregroundStyle(.secondary)
+                .padding(.bottom, 12)
+                .accessibilityHidden(true)
+            Text(title)
+                .font(.display(.title2))
+                .accessibilityAddTraits(.isHeader)
+            Text(message)
+                .foregroundStyle(.secondary)
+            VStack(spacing: 12) {
+                Button(action: retry) {
+                    Text("Try Again").font(.headline).frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.ovenlightProminent)
+                .buttonBorderShape(.capsule)
+                .controlSize(.large)
+                Button("Back to Apps", action: close)
+            }
+            .padding(.top, 22)
+        }
+        .multilineTextAlignment(.center)
+        .padding(.horizontal, 28)
     }
 }

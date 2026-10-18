@@ -109,7 +109,7 @@ enum ConnectionCopy {
     static func privateServer(_ server: String, owner: String) -> String {
         "This invite uses \(server), a connection server \(owner) chose. Join only if you know this invite came from \(owner)."
     }
-    static func joining(owner: String, app: String) -> String { "Joining \(owner)'s \(app)…" }
+    static func joining(owner: String, app: String) -> String { "Joining \(owner)’s \(app)…" }
     static let joiningDetail = "This can take up to a minute."
     static func joined(_ app: String) -> String { "\(app) Is Ready" }
     static let noLongerSharedTitle = "No Longer Shared with You"
