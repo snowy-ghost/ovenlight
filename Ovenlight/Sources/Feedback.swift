@@ -62,9 +62,11 @@ enum FeedbackResult: Equatable {
 enum FeedbackSender {
     @MainActor
     static func send(_ payload: FeedbackPayload, about app: WebApp) async -> FeedbackResult {
+        // Read as it fails: the phone may have gone offline while it tried.
+        let network = { FeedbackResult.failed(NetworkPath.shared.isSatisfied ? ConnectionCopy.feedbackNetwork : ConnectionCopy.feedbackOffline) }
         guard let session = NodeManager.shared.uploadSession(for: app, timeout: 30),
               let url = URL(string: "https://\(app.host)/__ovenlight/feedback") else {
-            return .failed(ConnectionCopy.feedbackNetwork)
+            return network()
         }
         defer { session.finishTasksAndInvalidate() }
         var request = URLRequest(url: url)
@@ -73,7 +75,7 @@ enum FeedbackSender {
         request.httpBody = try? JSONEncoder().encode(payload)
         guard let (data, response) = try? await session.data(for: request),
               let status = (response as? HTTPURLResponse)?.statusCode else {
-            return .failed(ConnectionCopy.feedbackNetwork)
+            return network()
         }
         if status == 403, app.isShared { await GuestManager.shared.verifyAccess(to: app) }
         return FeedbackResult.interpret(status: status, body: data)

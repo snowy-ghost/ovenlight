@@ -145,6 +145,7 @@ enum ConnectionCopy {
     static let feedbackFailed = "Couldn’t Send Feedback"
     static let feedbackTooMany = "That’s a lot of feedback for one hour. Try again later."
     static let feedbackNetwork = "Ovenlight couldn’t reach the app’s computer. Try again in a moment."
+    static let feedbackOffline = "You’re offline. Your note is kept, so send it again once you’re connected."
     static let reportProblem = "Report a Problem"
     static func leaveApps(_ owner: String) -> String { "Leave \(owner)’s Apps" }
     static func leaveTitle(_ owner: String) -> String { "Leave \(owner)’s Apps?" }

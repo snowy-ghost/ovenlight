@@ -50,13 +50,15 @@ struct SharedSettingsSections: View {
         }
     }
 
-    /// A membership with no apps yet: the app its invite is for, and how joining it went, as
-    /// the join screen says it.
+    /// A membership with no apps yet: a line for each invite still joining, its app and how
+    /// joining it went, as the join screen says it.
     private func joinDetail(_ membership: Membership) -> String {
-        guard let invite = membership.pendingClaims.first?.invite else { return "Joining…" }
-        if case .failed(let error) = guests.phases[invite.invite] {
-            return error.title(owner: membership.ownerName, app: invite.name)
-        }
-        return "\(invite.name), joining…"
+        guard !membership.pendingClaims.isEmpty else { return "Joining…" }
+        return membership.pendingClaims.map(\.invite).map { invite in
+            if case .failed(let error) = guests.phases[invite.invite] {
+                return "\(invite.name) · \(error.title(owner: membership.ownerName, app: invite.name))"
+            }
+            return "\(invite.name) · Joining…"
+        }.joined(separator: "\n")
     }
 }
