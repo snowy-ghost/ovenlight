@@ -196,8 +196,10 @@ jobs:
   # (Android 17 removed the InputManager method it reflects on). 36's image has WebView M133,
   # below Ovenlight's M144 floor, so it gets Google's own WebView from 37's image, as avds.sh
   # gives the mini's AVDs.
+  # On demand only until it runs clean on GitHub's runners: there, System UI restarts partway
+  # through and its lock screen takes the activity from the tests that follow.
   android-emulator:
-    if: (github.event_name == 'push' && github.ref == 'refs/heads/android') || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     defaults:
