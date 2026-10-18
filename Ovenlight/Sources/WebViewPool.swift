@@ -100,7 +100,24 @@ final class WebViewPool: ObservableObject {
         config.allowsInlineMediaPlayback = true
         config.mediaTypesRequiringUserActionForPlayback = []
         config.applicationNameForUserAgent = userAgentName(after: config.applicationNameForUserAgent)
+        // In every frame: WebKit runs it in a frame's first about:blank document too, as the
+        // frame is made, so no page can reach a frame that still has WebRTC.
+        config.userContentController.addUserScript(WKUserScript(source: noWebRTC, injectionTime: .atDocumentStart,
+                                                                forMainFrameOnly: false))
     }
+
+    /// Takes WebRTC away from pages. Its traffic goes around the node's proxy, to any address
+    /// a page names through a TURN relay, and nothing in Ovenlight uses it. Each interface
+    /// becomes a fixed undefined that page script can't delete or set back.
+    static let noWebRTC = """
+        for (const target of [window, Window.prototype]) {
+            for (const name of Object.getOwnPropertyNames(target)) {
+                if (!/^(webkit)?RTC/.test(name)) continue;
+                delete target[name];
+                if (target === window) Object.defineProperty(window, name, { value: undefined });
+            }
+        }
+        """
 
     /// The end of every app view's user agent, so a page can tell it runs in Ovenlight.
     /// WebKit's own name (`Mobile/...`) stays before it, so pages still see mobile Safari.

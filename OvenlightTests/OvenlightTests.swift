@@ -272,6 +272,36 @@ final class UserAgentTests: XCTestCase {
     }
 }
 
+final class NoWebRTCTests: XCTestCase {
+    /// As Ovenlight's views are configured: no WebRTC in the page, in a fresh about:blank
+    /// frame (the usual way back to an interface a page took away), or in a srcdoc frame,
+    /// and page script can't put it back.
+    @MainActor
+    func testPagesAndTheirFramesHaveNoWebRTC() async throws {
+        let config = WKWebViewConfiguration()
+        WebViewPool.configure(config)
+        let view = WKWebView(frame: .zero, configuration: config)
+        view.loadHTMLString("<iframe id=doc srcdoc='<p>hi</p>'></iframe>", baseURL: URL(string: "https://example.com/"))
+        for _ in 0..<50 where try await view.evaluateJavaScript("document.readyState == 'complete' && !!document.getElementById('doc')") as? Bool != true {
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        let result = try await view.callAsyncJavaScript("""
+            const blank = document.body.appendChild(document.createElement("iframe")).contentWindow;
+            const frames = [window, blank, window[window.length - 1], document.getElementById("doc").contentWindow];
+            const seen = frames.map(w => [typeof w.RTCPeerConnection, typeof w.RTCDataChannel, typeof w.RTCSessionDescription,
+                                          typeof w.RTCIceCandidate, typeof w.webkitRTCPeerConnection].join());
+            delete window.RTCPeerConnection;
+            try { window.RTCPeerConnection = Object; } catch {}
+            try { Object.defineProperty(window, "RTCPeerConnection", { value: Object }); } catch {}
+            seen.push(typeof RTCPeerConnection);
+            seen.push(Object.getOwnPropertyNames(window).filter(n => /RTC/.test(n) && window[n] !== undefined).join());
+            return seen;
+            """, contentWorld: .page)
+        let gone = Array(repeating: "undefined", count: 5).joined(separator: ",")
+        XCTAssertEqual(result as? [String], [gone, gone, gone, gone, "undefined", ""])
+    }
+}
+
 final class AppAddressTests: XCTestCase {
     func testAddsHTTPSToABareHostAndKeepsPortAndPath() {
         XCTAssertEqual(AppAddress.url(from: "  alex-mac.tailabc123.ts.net:8443/app ")?.absoluteString,
