@@ -47,7 +47,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -240,7 +239,8 @@ fun SharingScreen(state: SharingState, place: SharingPlace, onClose: () -> Unit,
     val shots = remember { ScreenshotCache() }
     // Each page keeps its place while others open over it, as Settings does under Acknowledgements.
     val scrolls = remember { mutableMapOf<SharingPage, ScrollState>() }
-    val open: (SharingPage) -> Unit = { pages += it }
+    // A quick second tap on the same row doesn't push its page twice.
+    val open: (SharingPage) -> Unit = { if (pages.lastOrNull() != it) pages += it }
     val back = { if (pages.size > 1) pages.removeAt(pages.lastIndex) else onClose() }
     val lists = remember { mutableMapOf<SharingPage, LazyListState>() }
     PageStack(pages) { page ->
@@ -606,19 +606,10 @@ fun InviteComposerDialog(composer: InviteComposer, sharing: SharingState, scope:
         val result = composer.result
         if (result != null) InviteResultView(result, composer.app.name, used = { composer.linkUsed = true }, close) else InviteForm(composer, sharing, scope, onDismiss)
         if (askingToClose) {
-            AlertDialog(
-                onDismissRequest = { askingToClose = false },
-                title = { Text(stringResource(R.string.sharing_close_unsent_title)) },
-                text = { Text(stringResource(R.string.sharing_close_unsent_message)) },
-                confirmButton = { TextButton(onClick = { askingToClose = false }) { Text(stringResource(R.string.sharing_keep)) } },
-                dismissButton = {
-                    TextButton(
-                        onClick = {
-                            askingToClose = false
-                            onDismiss()
-                        },
-                    ) { Text(stringResource(R.string.sharing_close)) }
-                },
+            Confirmation(
+                stringResource(R.string.sharing_close_unsent_title), stringResource(R.string.sharing_close_unsent_message),
+                confirm = stringResource(R.string.sharing_close), onDismiss = { askingToClose = false },
+                cancel = stringResource(R.string.sharing_keep), action = onDismiss,
             )
         }
     }

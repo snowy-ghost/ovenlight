@@ -193,7 +193,10 @@ fun SettingsScreen(state: SettingsState, onClose: () -> Unit, pages: SnapshotSta
     val back = { if (pages.size > 1) pages.removeAt(pages.lastIndex) }
     PageStack(pages) { page ->
         when (page) {
-            SettingsPage.List -> SettingsList(state, scroll, onClose, onAcknowledgements = { pages += SettingsPage.Acknowledgements })
+            SettingsPage.List -> SettingsList(state, scroll, onClose, onAcknowledgements = {
+                // A quick second tap doesn't push it twice.
+                if (pages.last() != SettingsPage.Acknowledgements) pages += SettingsPage.Acknowledgements
+            })
             SettingsPage.Acknowledgements -> AcknowledgementsScreen(state.notices, onBack = back)
         }
     }
