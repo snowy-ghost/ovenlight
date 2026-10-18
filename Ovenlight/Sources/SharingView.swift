@@ -667,21 +667,30 @@ private struct FeedbackDetail: View {
                             .scaledToFit()
                             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                             .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color.primary.opacity(0.08)))
+                    } else if shots.failed(item.id, .screen) {
+                        Text("Couldn't load the screenshot.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
                     } else {
                         ProgressView().frame(maxWidth: .infinity, minHeight: 200)
                     }
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(20)
         }
+        .ovenlightGroupedBackground()
         .navigationTitle(machine.apps.first { $0.slug == item.app }?.name ?? item.app)
         .navigationBarTitleDisplayMode(.inline)
         .task { await shots.load(item.id, .screen, from: machine) }
+        // Screen-sized images are big: only the open one is kept.
+        .onDisappear { shots.drop(item.id, .screen) }
     }
 }
 
 /// Screenshots fetched from the connectors, kept while the inbox is open: small for the
-/// list, screen-sized for the one open, never at full size.
+/// list, the most recent `maxThumbnails` of them, and screen-sized for the one open only,
+/// never at full size.
 @MainActor
 final class ScreenshotCache: ObservableObject {
     /// The most pixels on the long side: a row's thumbnail, and the largest screen, rounded up.
@@ -690,28 +699,60 @@ final class ScreenshotCache: ObservableObject {
         case screen = 3000
     }
 
+    /// A row whose thumbnail went fetches it again as it scrolls back into view.
+    static let maxThumbnails = 60
+
     private struct Key: Hashable {
         var id: String
         var size: Size
     }
 
     @Published private var images: [Key: UIImage] = [:]
+    /// The last try to fetch or decode each of these failed.
+    @Published private var failures: Set<Key> = []
+    /// Oldest first.
+    private var thumbnails: [Key] = []
     private var loading: Set<Key> = []
 
     func image(_ id: String, _ size: Size) -> UIImage? { images[Key(id: id, size: size)] }
 
+    func failed(_ id: String, _ size: Size) -> Bool { failures.contains(Key(id: id, size: size)) }
+
+    func drop(_ id: String, _ size: Size) {
+        images[Key(id: id, size: size)] = nil
+    }
+
     func load(_ id: String, _ size: Size, from machine: OwnerSharing.Machine) async {
         let key = Key(id: id, size: size)
-        guard images[key] == nil, !loading.contains(key), let client = OwnerSharing.shared.client(for: machine) else { return }
+        guard images[key] == nil, !loading.contains(key) else { return }
+        guard let client = OwnerSharing.shared.client(for: machine) else {
+            failures.insert(key)
+            return
+        }
         loading.insert(key)
+        failures.remove(key)
         defer {
             loading.remove(key)
             client.session.finishTasksAndInvalidate()
         }
-        guard let data = try? await client.screenshot(id) else { return }
-        if let image = await Task.detached(operation: { Screenshot.image(from: data, maxPixels: size.rawValue) }).value {
-            images[key] = image
+        let data = try? await client.screenshot(id)
+        guard let image = await Task.detached(operation: { data.flatMap { Screenshot.image(from: $0, maxPixels: size.rawValue) } }).value else {
+            failures.insert(key)
+            return
         }
+        store(image, for: key)
+    }
+
+    private func store(_ image: UIImage, for key: Key) {
+        switch key.size {
+        case .screen:
+            images = images.filter { $0.key.size != .screen }
+        case .thumbnail:
+            thumbnails.removeAll { $0 == key }
+            thumbnails.append(key)
+            if thumbnails.count > Self.maxThumbnails { images[thumbnails.removeFirst()] = nil }
+        }
+        images[key] = image
     }
 }
 
