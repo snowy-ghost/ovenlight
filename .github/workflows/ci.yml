@@ -304,6 +304,9 @@ jobs:
             sleep 2
           done
           ! locked || { echo "the emulator stayed on its lock screen"; exit 1; }
+          "$adb" -s emulator-5554 logcat -G 16M
+          "$adb" -s emulator-5554 shell dumpsys dropbox | grep -i -E 'anr|crash|watchdog' || true
+          "$adb" -s emulator-5554 shell dumpsys window windows | grep -i 'not responding' || true
       - name: Instrumented tests
         run: ANDROID_SERIAL=emulator-5554 ./gradlew --no-daemon :app:connectedDebugAndroidTest
       # Whether the runner ran out of memory or the emulator stopped on its own.
@@ -313,6 +316,10 @@ jobs:
           ps -eo pid,rss,etime,args --sort=-rss | head -8 | cut -c1-200
           sudo dmesg | grep -i -E "oom|killed process|out of memory" | tail -10 || true
           "$ANDROID_HOME/platform-tools/adb" devices
+          adb="$ANDROID_HOME/platform-tools/adb -s emulator-5554"
+          $adb logcat -b all -d > "$RUNNER_TEMP/logcat.log" || true
+          $adb shell dumpsys dropbox --print > "$RUNNER_TEMP/dropbox.log" || true
+          $adb shell dumpsys activity processes > "$RUNNER_TEMP/processes.log" || true
       - if: failure()
         uses: actions/upload-artifact@v7
         with:
