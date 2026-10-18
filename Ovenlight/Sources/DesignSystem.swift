@@ -291,6 +291,19 @@ extension View {
     }
 }
 
+/// `.borderedProminent`, its label in `onEmber`.
+struct OvenlightProminentButtonStyle: PrimitiveButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        Button(configuration)
+            .buttonStyle(.borderedProminent)
+            .foregroundStyle(Color.onEmber)
+    }
+}
+
+extension PrimitiveButtonStyle where Self == OvenlightProminentButtonStyle {
+    static var ovenlightProminent: OvenlightProminentButtonStyle { OvenlightProminentButtonStyle() }
+}
+
 /// A warning: the symbol in orange, the words in secondary text, since orange text is too
 /// faint to read on a light background. The secondary label color rather than `.secondary`,
 /// which in a form footer, already secondary, would fade the words a level further.

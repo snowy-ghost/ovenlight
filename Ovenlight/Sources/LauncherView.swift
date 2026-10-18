@@ -19,9 +19,10 @@ struct LauncherView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
+        let welcome = registry.apps.isEmpty && !node.ownerEnabled && node.memberships.memberships.isEmpty
         VStack(spacing: 0) {
-            HomeTopBar(isEditing: $isEditing, lock: { lock.lock() }, addApp: { router.present(.addApp) },
-                       settings: { router.present(.settings) }) {
+            HomeTopBar(isEditing: $isEditing, showsLock: !welcome, showsAddApp: node.ownerEnabled, showsEditApps: !registry.apps.isEmpty,
+                       lock: { lock.lock() }, addApp: { router.present(.addApp) }, settings: { router.present(.settings) }) {
                 // The owner's own connection only once they set Ovenlight up for their machines.
                 TailnetStatusPill(state: node.ownerEnabled ? node.state : .idle) { Task { await node.restart() } }
             } menuItems: {
@@ -33,7 +34,7 @@ struct LauncherView: View {
                           approve: { router.present(.approve) })
             PendingInvitesBanner { router.present(.join(JoinRequest(invite: .success($0)))) }
                 .padding(.horizontal, 26)
-            if registry.apps.isEmpty && !node.ownerEnabled && node.memberships.memberships.isEmpty {
+            if welcome {
                 LauncherWelcome { router.present(.join(JoinRequest())) }
             } else {
             HomeScreenGrid(apps: registry.apps, ownerEnabled: node.ownerEnabled, isEditing: $isEditing,
@@ -73,13 +74,14 @@ struct LauncherView: View {
                 .submitLabel(.done)
             Button("Cancel", role: .cancel) {}
             Button("Save") {
-                if let app = renaming, !renameText.isEmpty { registry.rename(app.id, to: renameText) }
+                let name = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
+                if let app = renaming, !name.isEmpty { registry.rename(app.id, to: name) }
             }
         }
-        .alert(clearing.map { "Sign out of \($0.name)?" } ?? "", isPresented: isPresent($clearing),
+        .alert(clearing.map { "Clear \($0.name)'s Data?" } ?? "", isPresented: isPresent($clearing),
                presenting: clearing) { app in
             Button("Cancel", role: .cancel) {}
-            Button("Sign Out and Clear Data", role: .destructive) { Task { await registry.clearData(app.id) } }
+            Button("Clear App Data", role: .destructive) { Task { await registry.clearData(app.id) } }
         } message: { _ in
             Text("This deletes the app's cookies and storage on this iPhone.")
         }
@@ -145,7 +147,7 @@ struct LauncherView: View {
         }
         Section {
             Button { clearing = app } label: {
-                Label("Sign Out and Clear Data", systemImage: "eraser")
+                Label("Clear App Data", systemImage: "eraser")
             }
             Button(role: .destructive) { removing = app } label: {
                 Label("Remove App", systemImage: "trash")
@@ -190,7 +192,7 @@ struct TailnetBanner: View {
                         Text("Connect Your Computers")
                             .font(.headline)
                     }
-                    Text("Ovenlight connects privately to your own computers with your Tailscale account, without a VPN. If Tailscale says this iPhone needs approval, open the admin console and tap Approve.")
+                    Text("Ovenlight connects privately to your own computers with your Tailscale account, without a VPN.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -199,7 +201,7 @@ struct TailnetBanner: View {
                             .font(.body.weight(.semibold))
                             .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.ovenlightProminent)
                     .buttonBorderShape(.capsule)
                     .controlSize(.large)
                 }
@@ -248,7 +250,7 @@ struct OwnerApprovalPrompt: View {
                     .font(.body.weight(.semibold))
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.ovenlightProminent)
             .buttonBorderShape(.capsule)
             .controlSize(.large)
         }
@@ -437,6 +439,7 @@ struct SettingsView: View {
     @EnvironmentObject private var lock: LockManager
     @Environment(\.dismiss) private var dismiss
     @AppStorage(LockManager.lockAfterKey) private var lockAfterSeconds = LockManager.defaultLockAfter
+    @Environment(\.dynamicTypeSize) private var typeSize
     @State private var confirmingSignOut = false
     @State private var mail: MailDraft?
     @State private var showingPrivacyPolicy = false
@@ -445,15 +448,11 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 Section {
-                    Picker(selection: $lockAfterSeconds) {
-                        Text("Immediately").tag(0)
-                        Text("After 1 Minute").tag(60)
-                        Text("After 5 Minutes").tag(300)
-                        Text("After 15 Minutes").tag(900)
-                    } label: {
-                        Label { Text("Require \(lock.biometry.name)") } icon: {
-                            SettingsSymbol(systemName: lock.biometry.symbol, color: .green)
-                        }
+                    // The menu's value would be cut short at the largest sizes; a page of its own has the room.
+                    if typeSize.isAccessibilitySize {
+                        lockAfterPicker.pickerStyle(.navigationLink)
+                    } else {
+                        lockAfterPicker
                     }
                 } footer: {
                     if lock.noPasscode {
@@ -533,6 +532,19 @@ struct SettingsView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+            }
+        }
+    }
+
+    private var lockAfterPicker: some View {
+        Picker(selection: $lockAfterSeconds) {
+            Text("Immediately").tag(0)
+            Text("After 1 Minute").tag(60)
+            Text("After 5 Minutes").tag(300)
+            Text("After 15 Minutes").tag(900)
+        } label: {
+            Label { Text("Require \(lock.biometry.name)") } icon: {
+                SettingsSymbol(systemName: lock.biometry.symbol, color: .green)
             }
         }
     }

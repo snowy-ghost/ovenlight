@@ -22,6 +22,8 @@ struct LockScreen: View {
             }
             .transition(.opacity)
             .multilineTextAlignment(.center)
+            // As large as the wordmark above it gets.
+            .dynamicTypeSize(...DynamicTypeSize.accessibility1)
             .padding(.horizontal, 40)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(lock.lastError ?? "Ovenlight is locked")
@@ -42,6 +44,8 @@ struct LockScreen: View {
             unlockButton
                 .buttonBorderShape(.capsule)
                 .controlSize(.large)
+                // Two lines at most, so it stays a capsule.
+                .dynamicTypeSize(...DynamicTypeSize.accessibility2)
                 .padding(.horizontal, 40)
         }
         .sensoryFeedback(.error, trigger: failures)
@@ -67,8 +71,8 @@ struct LockScreen: View {
                 .foregroundStyle(.primary)
                 .buttonStyle(.glass)
         } else {
-            unlockButton(symbolColor: .white)
-                .buttonStyle(.borderedProminent)
+            unlockButton(symbolColor: .onEmber)
+                .buttonStyle(.ovenlightProminent)
         }
     }
 

@@ -6,8 +6,18 @@ import SwiftUI
 /// Face ID (or the passcode) before anything that changes who can open an app. An iPhone
 /// with no passcode has nothing to ask for, and Ovenlight already opens without one there
 /// (see `LockManager`).
+@MainActor
 enum OwnerAuth {
+    /// The prompt is up. It makes Ovenlight inactive, which is no reason for the privacy
+    /// cover over the sheet that asked.
+    private(set) static var isAsking = false
+
     static func confirm(_ reason: String) async -> Bool {
+        isAsking = true
+        defer {
+            isAsking = false
+            OverlayPresenter.ownerAuthEnded()
+        }
         do {
             return try await LAContext().evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason)
         } catch {
@@ -437,6 +447,7 @@ struct InviteComposer: View {
 
     /// Invites someone new by name, or, given a person, someone already shared with.
     private func create(_ person: GuestPerson? = nil) async {
+        error = nil
         let who = person?.name ?? trimmed
         guard !who.isEmpty, person != nil || namesake == nil, !working else { return }
         guard await OwnerAuth.confirm("Share \(app.name) with \(who)") else { return }
@@ -469,11 +480,14 @@ struct InviteResultItem: Identifiable {
     var appName: String
 }
 
-/// A fresh invite: its code for in person, and the link to send.
+/// A fresh invite: its code for in person, and the link to send. This is the link's only
+/// showing, so until it's sent or copied, closing asks first and a swipe doesn't close.
 struct InviteResultView: View {
     let item: InviteResultItem
     @Environment(\.dismiss) private var dismiss
     @State private var copied = false
+    @State private var sent = false
+    @State private var confirmingClose = false
 
     private var invite: AdminInvite { item.result.invite }
 
@@ -510,7 +524,8 @@ struct InviteResultView: View {
                                 .font(.headline)
                                 .frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(.borderedProminent)
+                        .simultaneousGesture(TapGesture().onEnded { sent = true })
+                        .buttonStyle(.ovenlightProminent)
                         .buttonBorderShape(.capsule)
                         .controlSize(.large)
                         Button {
@@ -518,6 +533,7 @@ struct InviteResultView: View {
                             UIPasteboard.general.setItems([["public.utf8-plain-text": item.result.link ?? ""]],
                                                           options: [.localOnly: true, .expirationDate: invite.expires])
                             copied = true
+                            sent = true
                         } label: {
                             Label(copied ? "Copied" : "Copy Link", systemImage: copied ? "checkmark" : "doc.on.doc")
                                 .fontWeight(.semibold)
@@ -536,8 +552,19 @@ struct InviteResultView: View {
                 .padding(24)
             }
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { if sent { dismiss() } else { confirmingClose = true } }
+                }
+            }
+            .alert("Close Without Sending?", isPresented: $confirmingClose) {
+                Button("Keep", role: .cancel) {}
+                Button("Close", role: .destructive) { dismiss() }
+            } message: {
+                Text("You can cancel this invite in People & Sharing.")
+            }
         }
+        .interactiveDismissDisabled(!sent)
     }
 }
 
@@ -650,21 +677,30 @@ private struct FeedbackDetail: View {
                             .scaledToFit()
                             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                             .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color.primary.opacity(0.08)))
+                    } else if shots.failed(item.id, .screen) {
+                        Text("Couldn't load the screenshot.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
                     } else {
                         ProgressView().frame(maxWidth: .infinity, minHeight: 200)
                     }
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(20)
         }
+        .ovenlightGroupedBackground()
         .navigationTitle(machine.apps.first { $0.slug == item.app }?.name ?? item.app)
         .navigationBarTitleDisplayMode(.inline)
         .task { await shots.load(item.id, .screen, from: machine) }
+        // Screen-sized images are big: only the open one is kept.
+        .onDisappear { shots.drop(item.id, .screen) }
     }
 }
 
 /// Screenshots fetched from the connectors, kept while the inbox is open: small for the
-/// list, screen-sized for the one open, never at full size.
+/// list, the most recent `maxThumbnails` of them, and screen-sized for the one open only,
+/// never at full size.
 @MainActor
 final class ScreenshotCache: ObservableObject {
     /// The most pixels on the long side: a row's thumbnail, and the largest screen, rounded up.
@@ -673,28 +709,60 @@ final class ScreenshotCache: ObservableObject {
         case screen = 3000
     }
 
+    /// A row whose thumbnail went fetches it again as it scrolls back into view.
+    static let maxThumbnails = 60
+
     private struct Key: Hashable {
         var id: String
         var size: Size
     }
 
     @Published private var images: [Key: UIImage] = [:]
+    /// The last try to fetch or decode each of these failed.
+    @Published private var failures: Set<Key> = []
+    /// Oldest first.
+    private var thumbnails: [Key] = []
     private var loading: Set<Key> = []
 
     func image(_ id: String, _ size: Size) -> UIImage? { images[Key(id: id, size: size)] }
 
+    func failed(_ id: String, _ size: Size) -> Bool { failures.contains(Key(id: id, size: size)) }
+
+    func drop(_ id: String, _ size: Size) {
+        images[Key(id: id, size: size)] = nil
+    }
+
     func load(_ id: String, _ size: Size, from machine: OwnerSharing.Machine) async {
         let key = Key(id: id, size: size)
-        guard images[key] == nil, !loading.contains(key), let client = OwnerSharing.shared.client(for: machine) else { return }
+        guard images[key] == nil, !loading.contains(key) else { return }
+        guard let client = OwnerSharing.shared.client(for: machine) else {
+            failures.insert(key)
+            return
+        }
         loading.insert(key)
+        failures.remove(key)
         defer {
             loading.remove(key)
             client.session.finishTasksAndInvalidate()
         }
-        guard let data = try? await client.screenshot(id) else { return }
-        if let image = await Task.detached(operation: { Screenshot.image(from: data, maxPixels: size.rawValue) }).value {
-            images[key] = image
+        let data = try? await client.screenshot(id)
+        guard let image = await Task.detached(operation: { data.flatMap { Screenshot.image(from: $0, maxPixels: size.rawValue) } }).value else {
+            failures.insert(key)
+            return
         }
+        store(image, for: key)
+    }
+
+    private func store(_ image: UIImage, for key: Key) {
+        switch key.size {
+        case .screen:
+            images = images.filter { $0.key.size != .screen }
+        case .thumbnail:
+            thumbnails.removeAll { $0 == key }
+            thumbnails.append(key)
+            if thumbnails.count > Self.maxThumbnails { images[thumbnails.removeFirst()] = nil }
+        }
+        images[key] = image
     }
 }
 

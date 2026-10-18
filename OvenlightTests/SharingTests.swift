@@ -1045,6 +1045,35 @@ final class LockManagerTests: XCTestCase {
     }
 }
 
+final class PageDialogTests: XCTestCase {
+    func testAPagesTextIsCutWithoutSplittingACharacter() {
+        XCTAssertEqual(PageDialogs.cut("short"), "short")
+        let long = PageDialogs.cut(String(repeating: "x", count: 5_000_000))
+        XCTAssertEqual(long.utf16.count, 4_001)
+        XCTAssertEqual(long.last, "\u{2026}")
+        // A face that would straddle the cut goes whole.
+        let emoji = PageDialogs.cut(String(repeating: "x", count: 3_999) + "\u{1F600}" + "y")
+        XCTAssertEqual(emoji, String(repeating: "x", count: 3_999) + "\u{2026}")
+    }
+
+    /// Past three dialogs in a row, each within a second of the last one closing, each offers
+    /// the way out, however long it was read.
+    func testADialogLoopEnds() {
+        var now = ContinuousClock.now
+        var dialogs = PageDialogs(now: { now })
+        for _ in 1...PageDialogs.loopCount {
+            XCTAssertFalse(dialogs.next())
+            now += .seconds(20)
+            dialogs.closed()
+            now += .milliseconds(900)
+        }
+        XCTAssertTrue(dialogs.next(), "the fourth in a row")
+        dialogs.closed()
+        now += .seconds(2)
+        XCTAssertFalse(dialogs.next(), "a pause starts a new run")
+    }
+}
+
 @MainActor
 final class DialogAnswerTests: XCTestCase {
     func testAnswersOnceAndFallsBackWhenLetGoUnanswered() async {

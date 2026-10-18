@@ -38,10 +38,11 @@ enum NodeState: Equatable {
     }
 
     /// For the log, which is public: the sign-in link is left out, since whoever opens it
-    /// first can sign the node in to their own account.
+    /// first can sign the node in to their own account. A failure's message is the summary.
     var logDescription: String {
         switch self {
         case .needsLogin: return "needsLogin"
+        case .failed: return "failed"
         default: return String(describing: self)
         }
     }
@@ -448,7 +449,8 @@ final class MembershipNode: ObservableObject {
 
     private func poll(generation current: Int) async {
         while !Task.isCancelled, current == generation, let node {
-            if let data = try? await node.statusJSON(), let status = TailnetStatus.decode(data), current == generation {
+            if let data = try? await node.statusJSON(),
+               let status = await Task.detached(operation: { TailnetStatus.decode(data) }).value, current == generation {
                 // Polls repeat while nothing changes; only a change should redraw.
                 if status != self.status {
                     self.status = status
@@ -476,8 +478,9 @@ final class MembershipNode: ObservableObject {
                     if hostsChanged || lastProbe.map({ Date.now.timeIntervalSince($0) > 60 }) == true { await rediscover() }
                 }
             }
-            let interval: Double = state == .ready ? 10 : 1
-            try? await Task.sleep(for: .seconds(interval))
+            // Quick while the node comes up, so an app opened at launch waits no longer than it must.
+            let interval: Duration = state == .ready ? .seconds(10) : state == .starting || state == .connecting ? .milliseconds(250) : .seconds(1)
+            try? await Task.sleep(for: interval)
         }
     }
 
@@ -567,9 +570,11 @@ final class MembershipNode: ObservableObject {
         let current = generation
         let hosts = probeHosts
         let outcome = await probe(hosts)
+        guard current == generation else { return }
         record(outcome, probed: hosts)
         if outcome.reachable, isOwner, discovered != outcome.apps { discovered = outcome.apps }
-        guard !isOwner, current == generation, silence.record(probed: hosts, reachable: outcome.reachable) else { return }
+        // A phone with no network at all hears nothing from anyone: that look says nothing.
+        guard !isOwner, NetworkPath.shared.isSatisfied, silence.record(probed: hosts, reachable: outcome.reachable) else { return }
         log.notice("\(self.id, privacy: .public): no app has answered for a while, restarting the node")
         Task { await restart() }
     }
@@ -595,6 +600,8 @@ final class MembershipNode: ObservableObject {
         } else {
             reach = await GuestProbe.whoami(host: host, session: session)
         }
+        // A probe cut short says nothing about the host.
+        guard !Task.isCancelled else { return .unreachable }
         answers?[host] = reach != .unreachable
         return reach
     }
@@ -871,8 +878,12 @@ final class NodeManager: ObservableObject {
     }
 
     func rediscover() async {
-        await owner.rediscover()
-        for node in guests.values { await node.rediscover() }
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { await self.owner.rediscover() }
+            for node in guests.values {
+                group.addTask { await node.rediscover() }
+            }
+        }
     }
 
     // MARK: Guest nodes
@@ -1017,6 +1028,33 @@ final class NodeManager: ObservableObject {
         #else
         return nil
         #endif
+    }
+}
+
+/// Whether the phone has any network path, as NWPathMonitor reports it. Without one an app
+/// gives up opening at once (You're Offline) and tries again when one comes back, and a
+/// guest's silent looks don't count.
+@MainActor
+final class NetworkPath: ObservableObject {
+    static let shared = NetworkPath()
+
+    /// True until the monitor's first report, which comes a moment after it starts.
+    @Published private(set) var isSatisfied = true
+    private let monitor = NWPathMonitor()
+
+    private init() {
+        monitor.pathUpdateHandler = { path in
+            let satisfied = path.status == .satisfied
+            MainActor.assumeIsolated {
+                if NetworkPath.shared.isSatisfied != satisfied { NetworkPath.shared.isSatisfied = satisfied }
+            }
+        }
+        monitor.start(queue: .main)
+    }
+
+    /// Returns once there is a path, or the task is cancelled.
+    func satisfied() async {
+        for await satisfied in $isSatisfied.values where satisfied { return }
     }
 }
 

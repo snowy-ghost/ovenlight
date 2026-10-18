@@ -18,9 +18,14 @@ final class LockManager: ObservableObject {
     @AppStorage(LockManager.lockAfterKey) var lockAfterSeconds = LockManager.defaultLockAfter
 
     /// On a clock that keeps counting while the iPhone sleeps and ignores changes to the
-    /// time of day, so setting the clock back can't skip the lock.
+    /// time of day, so setting the clock back can't skip the lock. It starts over when the
+    /// iPhone restarts, so it's saved with the boot it was read in, and outlives Ovenlight
+    /// being quit in the background.
     private var backgroundedAt: ContinuousClock.Instant?
     private let now: () -> ContinuousClock.Instant
+    private let boot: () -> Int
+    private let defaults: UserDefaults
+    static let backgroundedKey = "backgroundedAt"
     /// Face ID starts by itself at launch and on each return from the background, never
     /// again after the person cancels it; the Face ID sheet itself makes Ovenlight briefly
     /// inactive, and coming back from that is no reason to ask again.
@@ -29,14 +34,44 @@ final class LockManager: ObservableObject {
     /// Whether there is anything to protect yet. A new install stays unlocked until there is.
     private let hasSavedData: () -> Bool
 
-    init(hasSavedData: @escaping () -> Bool = { true }, now: @escaping () -> ContinuousClock.Instant = { .now }) {
+    /// A launch locks unless Ovenlight was quit in the background within the lock delay,
+    /// since this iPhone last started.
+    init(hasSavedData: @escaping () -> Bool = { true }, now: @escaping () -> ContinuousClock.Instant = { .now },
+         boot: @escaping () -> Int = LockManager.bootTime, defaults: UserDefaults = .standard) {
         self.hasSavedData = hasSavedData
         self.now = now
+        self.boot = boot
+        self.defaults = defaults
         isLocked = hasSavedData()
+        if let saved = defaults.data(forKey: Self.backgroundedKey),
+           let backgrounded = try? JSONDecoder().decode(Backgrounded.self, from: saved), backgrounded.boot == boot() {
+            backgroundedAt = backgrounded.at
+        }
+        if isLocked, backgroundedAt != nil, !lockIsDue { isLocked = false }
     }
 
+    private struct Backgrounded: Codable {
+        var boot: Int
+        var at: ContinuousClock.Instant
+    }
+
+    /// When this iPhone started, in seconds since 1970. A restart changes it; so can setting
+    /// the time of day, which then locks too.
+    nonisolated static func bootTime() -> Int {
+        var time = timeval()
+        var size = MemoryLayout<timeval>.size
+        guard sysctlbyname("kern.boottime", &time, &size, nil, 0) == 0 else { return 0 }
+        return time.tv_sec
+    }
+
+    /// The first time since Ovenlight was last in front counts, so a launch in the background
+    /// doesn't start the delay over.
     func didEnterBackground() {
-        if !isLocked { backgroundedAt = now() }
+        if !isLocked, backgroundedAt == nil {
+            let at = now()
+            backgroundedAt = at
+            defaults.set(try? JSONEncoder().encode(Backgrounded(boot: boot(), at: at)), forKey: Self.backgroundedKey)
+        }
         promptsWhenActive = true
     }
 
@@ -54,6 +89,7 @@ final class LockManager: ObservableObject {
     func willBecomeActive() {
         if lockIsDue { isLocked = true }
         backgroundedAt = nil
+        defaults.removeObject(forKey: Self.backgroundedKey)
     }
 
     func lock() {

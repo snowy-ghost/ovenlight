@@ -91,7 +91,13 @@ struct FeedbackSheet: View {
     @State private var includeScreenshot = true
     @State private var sending = false
     @State private var result: FeedbackResult?
+    @State private var confirmingDiscard = false
     @FocusState private var focused: Bool
+
+    /// A note that a swipe down would lose.
+    private var hasDraft: Bool {
+        result != .sent && !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
 
     private var canSend: Bool {
         !sending && (!note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (includeScreenshot && screenshot != nil))
@@ -161,7 +167,12 @@ struct FeedbackSheet: View {
                     .transition(.opacity)
                 }
             }
-            .interactiveDismissDisabled(sending)
+            .interactiveDismissDisabled(sending || hasDraft)
+            .background(DismissAttempt { if hasDraft, !sending { confirmingDiscard = true } })
+            .alert("Discard Feedback?", isPresented: $confirmingDiscard) {
+                Button("Keep Editing", role: .cancel) {}
+                Button("Discard", role: .destructive) { dismiss() }
+            }
             .onAppear { if screenshot == nil { focused = true } }
         }
         .sensoryFeedback(trigger: result) { _, new in
@@ -193,6 +204,55 @@ struct FeedbackSheet: View {
         if outcome == .sent {
             try? await Task.sleep(for: .seconds(1.4))
             dismiss()
+        }
+    }
+}
+
+/// Runs `attempt` when a swipe tries to close the sheet it's in while
+/// `interactiveDismissDisabled` holds it, so the sheet can ask first: SwiftUI only blocks the
+/// swipe. It answers the sheet's presentation as SwiftUI's own delegate, which still gets
+/// everything.
+struct DismissAttempt: UIViewControllerRepresentable {
+    let attempt: () -> Void
+
+    func makeUIViewController(context: Context) -> Hook { Hook() }
+
+    func updateUIViewController(_ hook: Hook, context: Context) {
+        hook.attempt = attempt
+        hook.install()
+    }
+
+    final class Hook: UIViewController, UIAdaptivePresentationControllerDelegate {
+        var attempt: () -> Void = {}
+        private weak var swiftUI: UIAdaptivePresentationControllerDelegate?
+
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            install()
+        }
+
+        /// On the presented controller this sits in, again whenever SwiftUI sets its own.
+        func install() {
+            var sheet: UIViewController? = self
+            while let candidate = sheet, candidate.presentingViewController?.presentedViewController !== candidate {
+                sheet = candidate.parent
+            }
+            guard let controller = sheet?.presentationController, controller.delegate !== self else { return }
+            swiftUI = controller.delegate
+            controller.delegate = self
+        }
+
+        func presentationControllerDidAttemptToDismiss(_ controller: UIPresentationController) {
+            swiftUI?.presentationControllerDidAttemptToDismiss?(controller)
+            attempt()
+        }
+
+        override func responds(to selector: Selector!) -> Bool {
+            super.responds(to: selector) || swiftUI?.responds(to: selector) == true
+        }
+
+        override func forwardingTarget(for selector: Selector!) -> Any? {
+            swiftUI?.responds(to: selector) == true ? swiftUI : super.forwardingTarget(for: selector)
         }
     }
 }

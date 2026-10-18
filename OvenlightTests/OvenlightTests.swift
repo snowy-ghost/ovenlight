@@ -534,6 +534,45 @@ final class LockTimingTests: XCTestCase {
         XCTAssertFalse(lock.lockIsDue, "back in front")
     }
 
+    /// Quit in the background (by iOS, to free memory, or by the person), Ovenlight launches
+    /// unlocked only within the delay, on the same boot, and never set to Immediately.
+    func testALaunchLocksUnlessQuitInTheBackgroundWithinTheDelay() throws {
+        let suite = "LockTimingTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        var now = ContinuousClock.now
+        var boot = 1_000
+        var saved = false
+        func launch() -> LockManager { LockManager(hasSavedData: { saved }, now: { now }, boot: { boot }, defaults: defaults) }
+        let first = launch()
+        let previous = first.lockAfterSeconds
+        defer { first.lockAfterSeconds = previous }
+        first.lockAfterSeconds = 60
+        saved = true
+        XCTAssertTrue(launch().isLocked, "never in the background yet")
+
+        first.didEnterBackground()
+        now += .seconds(30)
+        let inBackground = launch()
+        XCTAssertFalse(inBackground.isLocked, "quit 30 seconds after it left the front")
+        inBackground.didEnterBackground()
+        now += .seconds(30)
+        XCTAssertTrue(launch().isLocked, "a launch in the background doesn't start the delay over")
+
+        now -= .seconds(30)
+        boot += 1
+        XCTAssertTrue(launch().isLocked, "the iPhone restarted")
+        boot -= 1
+        first.lockAfterSeconds = 0
+        XCTAssertTrue(launch().isLocked, "Immediately")
+        first.lockAfterSeconds = 60
+
+        let relaunched = launch()
+        XCTAssertFalse(relaunched.isLocked)
+        relaunched.willBecomeActive()
+        XCTAssertTrue(launch().isLocked, "quit in front: no time in the background to go by")
+    }
+
     func testAnEmptyNodeFolderOrListIsNothingToLock() throws {
         let base = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         defer { try? FileManager.default.removeItem(at: base) }
@@ -607,7 +646,7 @@ final class NodeMachineTests: XCTestCase {
     func testTheLogNeverCarriesTheSignInLink() {
         XCTAssertEqual(NodeState.needsLogin(login).logDescription, "needsLogin")
         XCTAssertEqual(NodeState.retrying(attempt: 2).logDescription, "retrying(attempt: 2)")
-        XCTAssertEqual(NodeState.failed("boom").logDescription, #"failed("boom")"#)
+        XCTAssertEqual(NodeState.failed("boom").logDescription, "failed", "the message is the summary beside it")
     }
 
     func testStatusDecoding() throws {
@@ -992,6 +1031,16 @@ final class AppLoadGateTests: XCTestCase {
         CopyRules.assertNeutral(ConnectionCopy.notResponding("Coach"))
     }
 
+    func testAPhoneWithNoNetworkGivesUpAtOnceAndOpensOnceItHasOne() {
+        XCTAssertEqual(run([.offline]), .offline, "nothing to wait for or probe")
+        XCTAssertEqual(run([.nodeReady, .offline]), .offline)
+        XCTAssertEqual(run([.nodeReady, .reached, .gaveUp], from: .offline), .offline, "only a network, or Retry, leaves it")
+        XCTAssertEqual(run([.online], from: .offline), .waiting)
+        XCTAssertEqual(run([.retry], from: .offline), .waiting)
+        XCTAssertEqual(run([.offline], from: .ready), .ready, "a loaded page stays")
+        XCTAssertEqual(run([.offline], from: .unreachable), .unreachable)
+    }
+
     func testAComputerListedOfflineOpensTheAppWhenItAnswers() {
         let gaveUp = run([.nodeReady, .gaveUp])
         XCTAssertEqual(run([.woke], from: gaveUp), .ready, "a quiet retry answered")
@@ -1020,6 +1069,7 @@ final class ConnectionStateTests: XCTestCase {
         let copy = [ConnectionCopy.connecting, ConnectionCopy.stopped, ConnectionCopy.couldNotStart,
                     ConnectionCopy.connecting(to: "Coach"), ConnectionCopy.cantReach("Coach"),
                     ConnectionCopy.cantReachDetail, ConnectionCopy.signIn(toOpen: "Coach"),
+                    ConnectionCopy.cantOpen("Coach"), ConnectionCopy.offline, ConnectionCopy.offlineDetail,
                     NodeState.starting.summary, NodeMachine.next(.ready, .backend(state: "Stopped", authURL: nil)).summary,
                     ConnectionCopy.reportProblem, ConnectionCopy.leaveApps("Riley"), ConnectionCopy.leaveTitle("Riley"),
                     ConnectionCopy.leaveDetail("Riley"), LauncherWelcome.title, LauncherWelcome.message]

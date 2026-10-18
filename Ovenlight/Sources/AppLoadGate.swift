@@ -13,6 +13,8 @@ enum AppLoadGate: Equatable {
     case ready
     /// The host didn't answer in time.
     case unreachable
+    /// The phone has no network at all: nothing was tried, and it opens once there is one.
+    case offline
 
     enum Event: Equatable {
         case nodeReady
@@ -25,6 +27,9 @@ enum AppLoadGate: Equatable {
         case loadFailed
         /// The app's computer, listed offline when the gate gave up, answered a quiet retry.
         case woke
+        /// The phone lost every network path, and got one back.
+        case offline
+        case online
     }
 
     /// How long the app's host may take to answer once the node is ready.
@@ -53,7 +58,11 @@ enum AppLoadGate: Equatable {
             return .waiting
         case (.unreachable, .woke):
             return .ready
-        case (.ready, _), (.unreachable, _):
+        case (.offline, .online):
+            return .waiting
+        case (.waiting, .offline), (.probing, .offline):
+            return .offline
+        case (.ready, _), (.unreachable, _), (.offline, _):
             // A loaded page stays put through node restarts; a gate that gave up waits for Retry.
             return self
         case (.waiting, .nodeReady):
@@ -80,15 +89,18 @@ enum ConnectionCopy {
     static let couldNotStart = "Ovenlight couldn't connect."
 
     static func connecting(to app: String) -> String { "Connecting to \(app)…" }
-    static func cantReach(_ app: String) -> String { "Can't Reach \(app)" }
+    static func cantReach(_ app: String) -> String { "Can’t Reach \(app)" }
     static let cantReachDetail = "Its computer may be asleep or offline. Try again in a moment."
     static func notResponding(_ app: String) -> String { "\(app) isn't responding on its computer right now. Try again in a moment." }
     static func signIn(toOpen app: String) -> String { "Sign In to Open \(app)" }
+    static func cantOpen(_ app: String) -> String { "Can’t Open \(app)" }
+    static let offline = "You’re Offline"
+    static let offlineDetail = "Connect to Wi-Fi or mobile data, and Ovenlight tries again."
 
     // Apps someone shared, and joining them. Guests see all of these.
 
     static func sharedBy(_ owner: String) -> String { "from \(owner)" }
-    static func joinTitle(owner: String, app: String) -> String { "Join \(owner)'s \(app)?" }
+    static func joinTitle(owner: String, app: String) -> String { "Join \(owner)’s \(app)?" }
     static func joinDetail(owner: String, app: String, to guest: String) -> String {
         let who = guest.isEmpty ? "\(owner) invited you." : "\(owner) invited you as \(guest)."
         return "\(who) \(app) runs on \(owner)'s computer. You don't need an account."
@@ -97,7 +109,7 @@ enum ConnectionCopy {
     static func privateServer(_ server: String, owner: String) -> String {
         "This invite uses \(server), a connection server \(owner) chose. Join only if you know this invite came from \(owner)."
     }
-    static func joining(owner: String, app: String) -> String { "Joining \(owner)'s \(app)…" }
+    static func joining(owner: String, app: String) -> String { "Joining \(owner)’s \(app)…" }
     static let joiningDetail = "This can take up to a minute."
     static func joined(_ app: String) -> String { "\(app) Is Ready" }
     static let noLongerSharedTitle = "No Longer Shared with You"

@@ -6,6 +6,12 @@ import SwiftUI
 /// between them while it matters.
 struct HomeTopBar<Status: View, MenuItems: View>: View {
     @Binding var isEditing: Bool
+    /// Not while the welcome shows, with nothing set up to lock away.
+    let showsLock: Bool
+    /// Add App once the owner uses their own computers, the only place apps are added from.
+    let showsAddApp: Bool
+    /// Edit Apps while there are apps to edit.
+    let showsEditApps: Bool
     let lock: () -> Void
     let addApp: () -> Void
     let settings: () -> Void
@@ -17,7 +23,7 @@ struct HomeTopBar<Status: View, MenuItems: View>: View {
         HStack(spacing: 8) {
             if isEditing {
                 GlassIconButton(systemName: "plus", label: "Add App", action: addApp)
-            } else {
+            } else if showsLock {
                 GlassIconButton(systemName: "lock", label: "Lock Ovenlight", action: lock)
             }
             Spacer(minLength: 0)
@@ -35,9 +41,13 @@ struct HomeTopBar<Status: View, MenuItems: View>: View {
                 .accessibilityShowsLargeContentViewer()
             } else {
                 Menu {
-                    Button(action: addApp) { Label("Add App", systemImage: "plus") }
-                    Button { withAnimation { isEditing = true } } label: {
-                        Label("Edit Apps", systemImage: "apps.iphone")
+                    if showsAddApp {
+                        Button(action: addApp) { Label("Add App", systemImage: "plus") }
+                    }
+                    if showsEditApps {
+                        Button { withAnimation { isEditing = true } } label: {
+                            Label("Edit Apps", systemImage: "apps.iphone")
+                        }
                     }
                     menuItems
                     Divider()

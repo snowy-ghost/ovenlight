@@ -195,8 +195,12 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
     /// page started itself.
     private var tapped = false
     private var gateTask: Task<Void, Never>?
-    /// Each download under way, and the file it's written to once WebKit asks where.
-    private var downloads: [ObjectIdentifier: (download: WKDownload, file: URL?)] = [:]
+    /// Each download under way, the file it's written to once WebKit asks where, and whether
+    /// the person started it (see `isTap`), who then hears if it fails.
+    private var downloads: [ObjectIdentifier: (download: WKDownload, file: URL?, tapped: Bool)] = [:]
+    /// A brief message over the page, such as a download that failed; it goes by itself.
+    @Published private(set) var notice: String?
+    private var noticeTask: Task<Void, Never>?
     /// The share sheet up, whichever page presented it, from presenting until it closes.
     private(set) static weak var sheet: ShareSheet?
     /// A sheet that never showed has had its one retry; the next trigger allows another,
@@ -225,7 +229,7 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
         gateTask?.cancel()
         gateTask = nil
         watcher?.cancel()
-        for (download, file) in downloads.values {
+        for (download, file, _) in downloads.values {
             download.cancel { _ in
                 if let file { DownloadPolicy.removeFolder(of: file) }
             }
@@ -233,9 +237,17 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
         downloads = [:]
     }
 
+    /// The page landed in a window: opened again, its dialogs may show again (see
+    /// `PageDialogs`), and files that finished meanwhile show.
+    func appeared() {
+        dialogs.stopped = false
+        presentWaitingDownloads()
+    }
+
     /// Try Again, and Reload from the app menu. A page that already loaded stays on screen
     /// while the path is checked again.
     func reload() {
+        dialogs.stopped = false
         failedLoads = 0
         appDownLoads = 0
         loadError = nil
@@ -258,6 +270,16 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
         while !Task.isCancelled, gate == .waiting || gate == .probing {
             // Not even a probe goes through a node the app's route no longer names.
             guard routeIsCurrent() else { return }
+            // With no network at all there is nothing to wait for or probe: You're Offline shows
+            // at once, and the app opens once the phone has a network again.
+            if !hasLoadedOnce, !NetworkPath.shared.isSatisfied {
+                gate = gate.next(.offline)
+                await NetworkPath.shared.satisfied()
+                guard !Task.isCancelled, gate == .offline else { return }
+                gate = gate.next(.online)
+                probingSince = nil
+                continue
+            }
             // Apps loaded directly (on the public internet) have no node to wait for.
             if node == nil || (node?.state == .ready && nodeMayCarry) {
                 gate = gate.next(.nodeReady)
@@ -289,9 +311,29 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
                 gate = gate.next(.nodeNotReady)
                 probingSince = nil
                 // Sign-in and node failures have their own screens and wait for the owner.
-                if node?.state.isBusy == true, Date.now.timeIntervalSince(opened) >= AppLoadGate.nodeTimeout { return giveUp() }
-                try? await Task.sleep(for: .milliseconds(250))
+                guard let node else { return }
+                let deadline = node.state.isBusy ? opened.addingTimeInterval(AppLoadGate.nodeTimeout) : nil
+                if let deadline, Date.now >= deadline { return giveUp() }
+                await Self.change(of: node, before: deadline)
             }
+        }
+    }
+
+    /// Waits for the node to change (its state, or its status, which says what the owner's
+    /// node carries), until `deadline` if there is one, or for the phone's network to drop.
+    private static func change(of node: MembershipNode, before deadline: Date?) async {
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { @MainActor in
+                for await _ in node.objectWillChange.values { return }
+            }
+            group.addTask { @MainActor in
+                for await satisfied in NetworkPath.shared.$isSatisfied.values where !satisfied { return }
+            }
+            if let deadline {
+                group.addTask { try? await Task.sleep(for: .seconds(max(deadline.timeIntervalSinceNow, 0))) }
+            }
+            await group.next()
+            group.cancelAll()
         }
     }
 
@@ -381,7 +423,7 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
         case .allow where action.shouldPerformDownload:
             // `<a download>`, of the app's own pages or of a blob or data URL.
             let source = (action.sourceFrame as WKFrameInfo?)?.securityOrigin.host
-            decisionHandler(mayDownload(url, from: source) ? .download : .cancel)
+            decisionHandler(mayDownload(url, from: source, tapped: Self.isTap(action)) ? .download : .cancel)
         case .allow:
             decisionHandler(.allow)
         case .openExternally(let external):
@@ -424,7 +466,7 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
             decisionHandler(.allow)
         case .download:
             guard let url = response.response.url else { return decisionHandler(.cancel) }
-            decisionHandler(mayDownload(url, from: nil) ? .download : .cancel)
+            decisionHandler(mayDownload(url, from: nil, tapped: tapped) ? .download : .cancel)
         }
     }
 
@@ -549,52 +591,80 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
 
     func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,
                  initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor () -> Void) {
-        let answer = DialogAnswer(fallback: ()) { _ in completionHandler() }
-        let alert = UIAlertController(title: app.name, message: message, preferredStyle: .alert)
+        let answer = pageAnswer(fallback: ()) { _ in completionHandler() }
+        let alert = UIAlertController(title: app.name, message: PageDialogs.cut(message), preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in answer(()) })
-        present(alert) { answer(()) }
+        presentPageDialog(alert, answer: answer)
     }
 
     func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String,
                  initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor (Bool) -> Void) {
-        let answer = DialogAnswer(fallback: false, completionHandler)
-        let alert = UIAlertController(title: app.name, message: message, preferredStyle: .alert)
+        let answer = pageAnswer(fallback: false, completionHandler)
+        let alert = UIAlertController(title: app.name, message: PageDialogs.cut(message), preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in answer(false) })
         alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in answer(true) })
-        present(alert) { answer(false) }
+        presentPageDialog(alert, answer: answer)
     }
 
     func webView(_ webView: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String,
                  defaultText: String?, initiatedByFrame frame: WKFrameInfo,
                  completionHandler: @escaping @MainActor (String?) -> Void) {
-        let answer = DialogAnswer(fallback: nil, completionHandler)
-        let alert = UIAlertController(title: app.name, message: prompt, preferredStyle: .alert)
-        alert.addTextField { $0.text = defaultText }
+        let answer = pageAnswer(fallback: nil, completionHandler)
+        let alert = UIAlertController(title: app.name, message: PageDialogs.cut(prompt), preferredStyle: .alert)
+        alert.addTextField { $0.text = defaultText.map(PageDialogs.cut) }
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in answer(nil) })
         alert.addAction(UIAlertAction(title: "OK", style: .default) { [weak alert] _ in answer(alert?.textFields?.first?.text) })
-        present(alert) { answer(nil) }
+        presentPageDialog(alert, answer: answer)
+    }
+
+    /// The page's dialogs in a row, and whether the person stopped them.
+    private var dialogs = PageDialogs()
+
+    /// An answer that also marks when the dialog closed, for the run of dialogs.
+    private func pageAnswer<Value: Sendable>(fallback: Value, _ handler: @escaping @MainActor (Value) -> Void) -> DialogAnswer<Value> {
+        DialogAnswer(fallback: fallback) { [weak self] value in
+            self?.dialogs.closed()
+            handler(value)
+        }
+    }
+
+    /// Past a few in a row, a page's dialog also offers to stop the rest (see `PageDialogs`).
+    private func presentPageDialog<Value>(_ alert: UIAlertController, answer: DialogAnswer<Value>) {
+        let offersStop = dialogs.next()
+        if dialogs.stopped { return answer.fallBack() }
+        if offersStop {
+            alert.addAction(UIAlertAction(title: PageDialogs.stopTitle, style: .default) { [weak self] _ in
+                self?.dialogs.stopped = true
+                answer.fallBack()
+            })
+        }
+        present(alert) { answer.fallBack() }
     }
 
     // MARK: Downloads
 
     /// Nothing downloads while this page is kept off screen either: a script's `a.click()`
-    /// would start one under another app.
-    private func mayDownload(_ url: URL, from sourceHost: String?) -> Bool {
-        webView?.window != nil
-            && DownloadPolicy.allows(url: url, from: sourceHost, appHost: app.host, locked: OverlayPresenter.pageWindow == nil)
+    /// would start one under another app. One the person started and the policy refused
+    /// says so.
+    private func mayDownload(_ url: URL, from sourceHost: String?, tapped: Bool) -> Bool {
+        guard webView?.window != nil else { return false }
+        let locked = OverlayPresenter.pageWindow == nil
+        if DownloadPolicy.allows(url: url, from: sourceHost, appHost: app.host, locked: locked) { return true }
+        if tapped, !locked { downloadFailed(url.lastPathComponent) }
+        return false
     }
 
     func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
-        track(download)
+        track(download, tapped: Self.isTap(navigationAction))
     }
 
     func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
-        track(download)
+        track(download, tapped: tapped)
     }
 
-    private func track(_ download: WKDownload) {
+    private func track(_ download: WKDownload, tapped: Bool) {
         download.delegate = self
-        downloads[ObjectIdentifier(download)] = (download, nil)
+        downloads[ObjectIdentifier(download)] = (download, nil, tapped)
     }
 
     /// Each download gets a folder of its own, so the file keeps the name the page gave it.
@@ -607,7 +677,7 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
             return completionHandler(nil)
         }
         let file = folder.appendingPathComponent(DownloadPolicy.fileName(suggestedFilename))
-        downloads[ObjectIdentifier(download)] = (download, file)
+        downloads[ObjectIdentifier(download)]?.file = file
         completionHandler(file)
     }
 
@@ -622,8 +692,26 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
 
     func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
         Self.log.info("\(self.app.host, privacy: .public): download failed: \(error.localizedDescription, privacy: .public)")
-        guard let file = downloads.removeValue(forKey: ObjectIdentifier(download))?.file else { return }
-        DownloadPolicy.removeFolder(of: file)
+        // None after `stop()`, which cancelled them all.
+        guard let failed = downloads.removeValue(forKey: ObjectIdentifier(download)) else { return }
+        if let file = failed.file { DownloadPolicy.removeFolder(of: file) }
+        if failed.tapped { downloadFailed(failed.file?.lastPathComponent ?? download.originalRequest?.url?.lastPathComponent ?? "") }
+    }
+
+    /// Says a download the person started didn't make it, while the page is on screen.
+    private func downloadFailed(_ name: String) {
+        guard webView?.window != nil, OverlayPresenter.pageWindow != nil else { return }
+        show(notice: "Couldn't download \(DownloadPolicy.fileName(name))")
+    }
+
+    private func show(notice text: String) {
+        notice = text
+        UIAccessibility.post(notification: .announcement, argument: text)
+        noticeTask?.cancel()
+        noticeTask = Task { [weak self] in
+            guard (try? await Task.sleep(for: .seconds(3))) != nil else { return }
+            self?.notice = nil
+        }
     }
 
     /// Shows this app's finished files in one share sheet once its page is on screen,
@@ -808,10 +896,62 @@ final class DialogAnswer<Value: Sendable>: @unchecked Sendable {
         handler(value)
     }
 
+    /// Answers as if the dialog was dismissed.
+    @MainActor
+    func fallBack() {
+        self(fallback)
+    }
+
     deinit {
         guard let handler else { return }
         let fallback = fallback
         Task { @MainActor in handler(fallback) }
+    }
+}
+
+/// A page's dialogs in a row, each within a second of the last one closing. Past three in a
+/// row, however long each was read, each offers to stop the page's dialogs, as Chrome does,
+/// so a page that asks in a loop can't trap the person. Once stopped, each is answered at
+/// once with its fallback, until the person reloads the app or opens it again.
+struct PageDialogs {
+    static let loopCount = 3
+    static let gap: Duration = .seconds(1)
+    /// A page's text past this many UTF-16 units is cut: a page can pass megabytes.
+    static let maxText = 4000
+    static let stopTitle = "Don't Let This App Show More Dialogs"
+
+    var stopped = false
+    private var run = 0
+    private var lastClosed: ContinuousClock.Instant?
+    private let now: () -> ContinuousClock.Instant
+
+    init(now: @escaping () -> ContinuousClock.Instant = { .now }) {
+        self.now = now
+    }
+
+    /// Counts a new dialog; true when it offers the way out.
+    mutating func next() -> Bool {
+        let at = now()
+        run = lastClosed.map { $0.duration(to: at) < Self.gap } == true ? run + 1 : 1
+        return run > Self.loopCount
+    }
+
+    /// The dialog closed: answered, dismissed or let go.
+    mutating func closed() {
+        lastClosed = now()
+    }
+
+    /// A page's text as its dialog shows it, cut at `maxText` without splitting a character.
+    static func cut(_ text: String) -> String {
+        guard text.utf16.count > maxText else { return text }
+        var end = text.startIndex
+        var units = 0
+        for character in text {
+            units += character.utf16.count
+            if units > maxText { break }
+            end = text.index(after: end)
+        }
+        return text[..<end] + "\u{2026}"
     }
 }
 

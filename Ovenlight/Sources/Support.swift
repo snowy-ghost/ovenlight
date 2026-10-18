@@ -143,8 +143,19 @@ struct AcknowledgementsView: View {
     // One Text per paragraph, laid out lazily: the whole text is thousands of lines.
     private let paragraphs = (notices ?? "The licenses are missing from this build.")
         .components(separatedBy: "\n\n")
-        .map { $0.trimmingCharacters(in: .newlines) }
+        .map { AcknowledgementsView.reflow($0.trimmingCharacters(in: .newlines)) }
         .filter { !$0.isEmpty }
+
+    /// A paragraph wrapped for 80 columns, rejoined so it wraps to the screen: each line runs
+    /// on from the one before, except the rule under a heading and a list item's first line.
+    static func reflow(_ paragraph: String) -> String {
+        paragraph.components(separatedBy: "\n").reduce(into: "") { text, line in
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            let breaks = text.isEmpty || trimmed.allSatisfy { $0 == "=" || $0 == "-" }
+                || trimmed.hasPrefix("* ") || trimmed.hasPrefix("- ") || trimmed.range(of: #"^\(?(\d+|[a-z])[.)] "#, options: .regularExpression) != nil
+            text += (text.isEmpty ? "" : breaks ? "\n" : " ") + trimmed
+        }
+    }
 
     var body: some View {
         ScrollView {
@@ -158,6 +169,7 @@ struct AcknowledgementsView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding()
         }
+        .ovenlightGroupedBackground()
         .navigationTitle("Acknowledgements")
         .navigationBarTitleDisplayMode(.inline)
     }

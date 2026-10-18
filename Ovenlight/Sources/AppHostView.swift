@@ -62,7 +62,7 @@ private struct AppPage: View {
             // is in a window to present over (it isn't yet as the view appears). The page
             // stays visible under the opaque placeholder, which fades out over it, and takes
             // no touches until it has loaded.
-            WebViewContainer(webView: webView, onWindow: { coordinator.presentWaitingDownloads() })
+            WebViewContainer(webView: webView, onWindow: { coordinator.appeared() })
                 .ignoresSafeArea()
                 .allowsHitTesting(coordinator.hasLoadedOnce)
             // A zIndex keeps each of these over the page as it fades out: without one, SwiftUI
@@ -88,6 +88,11 @@ private struct AppPage: View {
                                   retry: { coordinator.reload() }, close: onClose)
                         .transition(.opacity)
                         .zIndex(1)
+                } else if coordinator.gate == .offline {
+                    LoadErrorView(title: ConnectionCopy.offline, message: ConnectionCopy.offlineDetail,
+                                  retry: { coordinator.reload() }, close: onClose)
+                        .transition(.opacity)
+                        .zIndex(1)
                 } else {
                     LaunchPlaceholder(app: app, icon: icon, caption: ConnectionCopy.connecting)
                         .transition(.opacity)
@@ -95,7 +100,7 @@ private struct AppPage: View {
                 }
             }
             if let error = coordinator.loadError {
-                LoadErrorView(title: "Can't Open \(app.name)", message: error,
+                LoadErrorView(title: ConnectionCopy.cantOpen(app.name), message: error,
                               retry: { coordinator.reload() }, close: onClose)
                     .transition(.opacity)
                     .zIndex(1)
@@ -117,7 +122,27 @@ private struct AppPage: View {
                 )
             )
             .zIndex(2)
+            if let notice = coordinator.notice {
+                VStack {
+                    Spacer()
+                    Text(notice)
+                        .font(.footnote.weight(.medium))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .frame(minHeight: 34)
+                        .ovenlightGlass(in: Capsule())
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 12)
+                        // Announced as it shows.
+                        .accessibilityHidden(true)
+                }
+                .allowsHitTesting(false)
+                .transition(.opacity)
+                .zIndex(3)
+            }
         }
+        .animation(.easeOut(duration: 0.25), value: coordinator.notice)
         .animation(.easeOut(duration: 0.25), value: coordinator.hasLoadedOnce)
         .animation(.easeOut(duration: 0.25), value: coordinator.loadError)
         .animation(.easeOut(duration: 0.25), value: coordinator.gate)
@@ -259,7 +284,7 @@ struct NodeActionOverlay: View {
                 Text(ConnectionCopy.signIn(toOpen: appName))
                     .font(.headline)
                     .multilineTextAlignment(.center)
-                Button("Sign In", action: connect).buttonStyle(.borderedProminent)
+                Button("Sign In", action: connect).buttonStyle(.ovenlightProminent)
             case .ownerApproval:
                 OwnerApprovalPrompt(approve: connect)
             case .failed(let message):
@@ -267,7 +292,7 @@ struct NodeActionOverlay: View {
                 Text(message)
                     .font(.subheadline)
                     .multilineTextAlignment(.center)
-                Button("Try Again", action: retry).buttonStyle(.borderedProminent)
+                Button("Try Again", action: retry).buttonStyle(.ovenlightProminent)
             }
             Button("Back to Apps", action: close)
         }
@@ -285,6 +310,8 @@ struct NodeActionOverlay: View {
     }
 }
 
+/// Why an app couldn't open, in the join sheet's voice: a glyph, a display title, the detail,
+/// and Try Again.
 struct LoadErrorView: View {
     let title: String
     let message: String
@@ -292,18 +319,39 @@ struct LoadErrorView: View {
     let close: () -> Void
 
     var body: some View {
-        ContentUnavailableView {
-            Label(title, systemImage: "wifi.exclamationmark")
-        } description: {
-            Text(message)
-        } actions: {
-            Button("Try Again", action: retry)
-                .buttonStyle(.borderedProminent)
-                .buttonBorderShape(.capsule)
-                .controlSize(.large)
-            Button("Back to Apps", action: close)
+        // Scrolls only when the largest text sizes don't fit.
+        ViewThatFits(in: .vertical) {
+            content
+            ScrollView { content.padding(.vertical, 24) }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(.systemBackground))
+    }
+
+    private var content: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "wifi.exclamationmark")
+                .font(.system(size: 44))
+                .foregroundStyle(.secondary)
+                .padding(.bottom, 12)
+                .accessibilityHidden(true)
+            Text(title)
+                .font(.display(.title2))
+                .accessibilityAddTraits(.isHeader)
+            Text(message)
+                .foregroundStyle(.secondary)
+            VStack(spacing: 12) {
+                Button(action: retry) {
+                    Text("Try Again").font(.headline).frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.ovenlightProminent)
+                .buttonBorderShape(.capsule)
+                .controlSize(.large)
+                Button("Back to Apps", action: close)
+            }
+            .padding(.top, 22)
+        }
+        .multilineTextAlignment(.center)
+        .padding(.horizontal, 28)
     }
 }
