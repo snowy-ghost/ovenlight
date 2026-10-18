@@ -22,7 +22,7 @@ struct HomeTopBar<Status: View, MenuItems: View>: View {
     var body: some View {
         HStack(spacing: 8) {
             if isEditing {
-                GlassIconButton(systemName: "plus", label: "Add App", action: addApp)
+                if showsAddApp { GlassIconButton(systemName: "plus", label: "Add App", action: addApp) }
             } else if showsLock {
                 GlassIconButton(systemName: "lock", label: "Lock Ovenlight", action: lock)
             }
