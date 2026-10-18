@@ -456,12 +456,14 @@ class MembershipNode(
                 }
             }
             // Quick while the node comes up, so an app opened on a closed node loads as soon as it
-            // can; a wait for a login keeps its once a second, which the login watches count in.
+            // can, though not on a phone that can't reach the network; a wait for a login keeps
+            // its once a second, which the login watches count in.
             val after = mutableState.value
+            val comingUp = (after == NodeState.Starting || after == NodeState.Connecting) && status?.backendState != "NeedsLogin"
             delay(
                 when {
                     after == NodeState.Ready -> 10_000
-                    (after == NodeState.Starting || after == NodeState.Connecting) && status?.backendState != "NeedsLogin" -> 250
+                    comingUp && canHear() -> 250
                     else -> 1_000
                 },
             )
@@ -674,8 +676,8 @@ class NodeManager(
 
     /**
      * Whether the phone could hear an app's answer now, so a guest's look that none answered
-     * counts as silence (see [GuestSilence]): not without a working network, nor during an
-     * excursion (the app model sets this).
+     * counts as silence (see [GuestSilence]) and a node coming up is polled quickly: not
+     * without a working network, nor during an excursion (the app model sets this).
      */
     var canHear: () -> Boolean = { true }
 

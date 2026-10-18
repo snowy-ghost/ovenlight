@@ -305,8 +305,9 @@ class PageDownloads(
                 throw e
             } catch (e: Exception) {
                 log("a download failed: ${e.message}")
-                // Not one its page ended as it went (see cancel), whose call fails as it stops.
-                if (isActive) failed(DownloadPolicy.fileName(name()))
+                // Not one its page ended as it went (see cancel), whose call fails as it stops, nor
+                // over the lock or another app.
+                if (isActive && mayStart()) failed(DownloadPolicy.fileName(name()))
             }
         }
         jobs += job
@@ -675,6 +676,7 @@ private object SaveDocument {
         // The picker hands its answer back: an excursion, not leaving.
         model.lifecycle.beginExcursion()
         activity.launchOnce(ActivityResultContracts.CreateDocument(type), file.name, failed = model.lifecycle::excursionEnded) { target ->
+            model.lifecycle.excursionEnded()
             target ?: return@launchOnce
             // The picker's grant ends with this activity, which may go before the unlock; a
             // persisted one lasts until the file is written.

@@ -257,9 +257,17 @@ class NodeManagerTests {
 
         clients.status[Membership.ownerID] = status("NeedsLogin")
         advanceTimeBy(100)
-        val reads = clients.statusReads
+        var reads = clients.statusReads
         advanceTimeBy(3_000)
         assertEquals(NodeState.Starting, nodes.owner.state.value)
+        assertEquals(reads + 3, clients.statusReads)
+
+        // Offline, as in a subway: no quicker than once a second.
+        nodes.canHear = { false }
+        clients.status[Membership.ownerID] = status("Starting")
+        advanceTimeBy(1_100)
+        reads = clients.statusReads
+        advanceTimeBy(3_000)
         assertEquals(reads + 3, clients.statusReads)
     }
 

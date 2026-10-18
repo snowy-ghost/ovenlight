@@ -187,7 +187,7 @@ class AppPage(
         appDownLoads = 0
         error.value = null
         mutableGate.value = mutableGate.value.next(AppLoadGate.Event.Retry)
-        openGate()
+        openGate(retried = true)
     }
 
     /** Reopening an app that couldn't reach its computer, or couldn't load, tries again. */
@@ -195,13 +195,14 @@ class AppPage(
         if (!loaded.value && (mutableGate.value == AppLoadGate.Unreachable || error.value != null)) reload()
     }
 
-    private fun openGate() {
+    /** [retried]: the person asked, so it tries even when Android finds no working network (see [runGate]). */
+    private fun openGate(retried: Boolean = false) {
         gateJob?.cancel()
-        gateJob = scope.launch { runGate() }
+        gateJob = scope.launch { runGate(retried) }
     }
 
     /** Waits for the node, then probes this app's host until it answers or time runs out. */
-    private suspend fun runGate() {
+    private suspend fun runGate(retried: Boolean) {
         // A refused route has no way in; a shared app's always has its owner's node.
         if (node == null) {
             if (app.isShared) pool.guests.collectOrphans()
@@ -212,8 +213,9 @@ class AppPage(
         while (mutableGate.value == AppLoadGate.Waiting || mutableGate.value == AppLoadGate.Probing) {
             // Not even a probe goes through a node the app's route no longer names.
             if (!routeIsCurrent()) return
-            // No working network: say so at once, and start over quietly when one comes.
-            if (!TailnetCore.online.value) {
+            // No working network: say so at once, and start over quietly when one comes. Try
+            // Again tries anyway, since a network whose connectivity check is blocked may still work.
+            if (!TailnetCore.online.value && !retried) {
                 mutableGate.value = mutableGate.value.next(AppLoadGate.Event.PhoneOffline)
                 TailnetCore.online.first { it }
                 mutableGate.value = mutableGate.value.next(AppLoadGate.Event.PhoneOnline)
