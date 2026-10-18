@@ -34,6 +34,7 @@ import java.io.File
 import java.net.URI
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -42,6 +43,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -65,7 +67,7 @@ class OvenlightApp : Application() {
     }
 
     companion object {
-        /** Made once per process, so a configuration change or a restore after process death starts locked. */
+        /** Made once per process, so a configuration change keeps the lock as it is, and a restore after process death locks by the lock's own rule (see [LockManager]). */
         lateinit var model: AppModel
             private set
 
@@ -101,7 +103,10 @@ class AppModel(context: Context) {
     private val nodesDirectory = File(context.noBackupFilesDir, "tailscale")
 
     /** Lives with the process, never in saved instance state. */
-    val lock = LockManager(preferences, hasSavedData = { OvenlightApp.hasSavedData(ovenlight, nodesDirectory) }, now = SystemClock::elapsedRealtime)
+    val lock = LockManager(
+        preferences, hasSavedData = { OvenlightApp.hasSavedData(ovenlight, nodesDirectory) }, now = SystemClock::elapsedRealtime,
+        bootCount = { android.provider.Settings.Global.getInt(context.contentResolver, android.provider.Settings.Global.BOOT_COUNT, 0) },
+    )
     val router = Router(isLocked = { lock.holdsLinks })
     val nodes = NodeManager(
         TailnetCore, preferences, MembershipStore(ovenlight), nodesDirectory, scope, Dispatchers.IO, SystemClock::elapsedRealtime,
@@ -128,7 +133,11 @@ class AppModel(context: Context) {
         cameToFront = { didBecomeActive(context) },
     )
 
+    /** Missing icons being fetched, each app's once its node is connected; the next return starts over. */
+    private var iconRefresh: Job? = null
+
     init {
+        nodes.canHear = { TailnetCore.online.value && !lifecycle.inExcursion }
         scope.launch {
             registry.appsFlow.drop(1).collect { apps ->
                 router.appsChanged(apps)
@@ -209,7 +218,9 @@ class AppModel(context: Context) {
         // The launcher has no pull to refresh; Ovenlight looks for new apps each time it comes
         // to the front instead.
         nodes.rediscover()
-        registry.refreshAllMissingIcons()
+        // Nothing reaches an app until its node is connected.
+        iconRefresh?.cancel()
+        iconRefresh = scope.launch { registry.refreshAllMissingIcons { app -> nodes.node(app)?.state?.first { it == NodeState.Ready } != null } }
         refreshSharing()
     }
 

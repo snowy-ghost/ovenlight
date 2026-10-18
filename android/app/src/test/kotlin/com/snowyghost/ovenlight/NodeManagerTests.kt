@@ -243,4 +243,53 @@ class NodeManagerTests {
         clients.upError = "tsnet.Up: backend: invalid key: unable to validate API key"
         assertEquals("tsnet.Up: backend: invalid key: unable to validate API key", nodes.owner.waitUntilUp(1_000))
     }
+
+    /** A node coming up is asked four times a second, so an app opened on it loads soon after; a wait for a login stays at once a second. */
+    @Test
+    fun testANodeComingUpIsPolledQuickly() = runTest {
+        val clients = FakeClients()
+        val nodes = manager(clients)
+        clients.status[Membership.ownerID] = status("Starting")
+        nodes.owner.start()
+        advanceTimeBy(1_100)
+        assertEquals(NodeState.Starting, nodes.owner.state.value)
+        assertEquals("at 0, 250, 500, 750 and 1000 ms", 5, clients.statusReads)
+
+        clients.status[Membership.ownerID] = status("NeedsLogin")
+        advanceTimeBy(100)
+        var reads = clients.statusReads
+        advanceTimeBy(3_000)
+        assertEquals(NodeState.Starting, nodes.owner.state.value)
+        assertEquals(reads + 3, clients.statusReads)
+
+        // Offline, as in a subway: no quicker than once a second.
+        nodes.canHear = { false }
+        clients.status[Membership.ownerID] = status("Starting")
+        advanceTimeBy(1_100)
+        reads = clients.statusReads
+        advanceTimeBy(3_000)
+        assertEquals(reads + 3, clients.statusReads)
+    }
+
+    /** A probe canceled under way, as when its app's screen closes, says nothing about the host. */
+    @Test
+    fun testACanceledProbeLeavesTheHostsAnswer() = runTest {
+        val clients = FakeClients()
+        val nodes = manager(clients)
+        clients.pages["https://laptop.tailabc123.ts.net/.well-known/ovenlight.json"] =
+            FetchResponse(200, """{"name":"Recipe Box","version":1}""".toByteArray())
+        clients.status[Membership.ownerID] = status("Running", self = ownerSelf, peers = laptop)
+        nodes.enableOwner()
+        advanceTimeBy(2_500)
+        assertEquals(NodeState.Ready, nodes.owner.state.value)
+        assertEquals(mapOf("laptop.tailabc123.ts.net" to true), nodes.owner.answers.value)
+
+        val held = CompletableDeferred<Unit>()
+        clients.beforeAnswer = { held.await() }
+        val probe = launch { nodes.owner.canReach(WebApp(name = "Recipe Box", startURL = URI("https://laptop.tailabc123.ts.net/"))) }
+        runCurrent()
+        probe.cancel()
+        runCurrent()
+        assertEquals(mapOf("laptop.tailabc123.ts.net" to true), nodes.owner.answers.value)
+    }
 }

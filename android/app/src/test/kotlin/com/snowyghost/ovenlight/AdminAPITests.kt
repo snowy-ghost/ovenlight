@@ -15,6 +15,7 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
+import okio.Buffer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -134,10 +135,11 @@ class AdminAPITests {
         assertNull(get.header(AdminAPI.header))
         val post = AdminAPI.request(host = "echo.e2e.ovenlight.test", method = "POST", path = "/v1/invites", body = mapOf("to" to "Sam", "app" to "echo"))!!
         assertEquals("1", post.header("X-Ovenlight-Request"))
-        val body = ovenlightJSON.decodeFromString(MapSerializer(String.serializer(), String.serializer()), post.body!!.decodeToString())
+        val sent = Buffer().also { post.body!!.writeTo(it) }.readUtf8()
+        val body = ovenlightJSON.decodeFromString(MapSerializer(String.serializer(), String.serializer()), sent)
         assertEquals(mapOf("to" to "Sam", "app" to "echo"), body)
         val delete = AdminAPI.request(host = "h.test", method = "DELETE", path = AdminAPI.path("/v1/guests/", "Sam Lee/x"))!!
-        assertEquals("/v1/guests/Sam%20Lee%2Fx", delete.url.rawPath)
+        assertEquals("/v1/guests/Sam%20Lee%2Fx", delete.url.encodedPath)
         assertEquals("1", delete.header(AdminAPI.header))
         assertEquals("the admin API is for the owner only", AdminAPI.errorMessage("""{"error":"the admin API is for the owner only"}""".toByteArray()))
     }

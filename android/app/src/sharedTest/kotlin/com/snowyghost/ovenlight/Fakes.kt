@@ -37,7 +37,10 @@ class FakeNode(val id: String, private val clients: FakeClients) : TailnetNode {
     override fun waitUp(timeoutMillis: Long) {
         clients.upError?.let { throw Exception(it) }
     }
-    override fun statusJSON(): String = clients.status[id] ?: clients.anyStatus ?: error("no status")
+    override fun statusJSON(): String {
+        clients.statusReads += 1
+        return clients.status[id] ?: clients.anyStatus ?: error("no status")
+    }
     override fun loginInteractive() {
         clients.loginRequests += 1
     }
@@ -73,6 +76,7 @@ class FakeClients : TailnetClients {
     /** Runs inside each node's start, as the core's blocking call would. */
     var onStart: () -> Unit = {}
     var loginRequests = 0
+    var statusReads = 0
 
     override fun newNode(id: String, directory: File, hostName: String, controlURL: String, authKey: String): TailnetNode {
         check(nodes.none { it.id == id && !it.closed }) { "membership $id already has an open node" }

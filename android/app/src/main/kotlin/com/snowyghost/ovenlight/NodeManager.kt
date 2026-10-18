@@ -74,27 +74,9 @@ sealed class NodeState {
             Connecting -> "connecting"
             Ready -> "ready"
             is Retrying -> "retrying(attempt: $attempt)"
-            is Failed -> "failed(${swiftQuoted(message)})"
+            // Its message is the summary, which Report a problem shows beside it.
+            is Failed -> "failed"
         }
-
-    /** The text as Swift's `String(describing:)` quotes it inside an enum's payload. */
-    private fun swiftQuoted(text: String): String = buildString {
-        append('"')
-        text.codePoints().forEach { c ->
-            when {
-                c == '\\'.code -> append("\\\\")
-                c == '"'.code -> append("\\\"")
-                c == '\''.code -> append("\\'")
-                c == '\n'.code -> append("\\n")
-                c == '\r'.code -> append("\\r")
-                c == '\t'.code -> append("\\t")
-                c == 0 -> append("\\0")
-                Character.getType(c) == Character.CONTROL.toInt() -> append("\\u{").append(Integer.toHexString(c)).append('}')
-                else -> appendCodePoint(c)
-            }
-        }
-        append('"')
-    }
 }
 
 /**
@@ -261,6 +243,8 @@ class MembershipNode(
     private val pollingPaused: () -> Boolean = { false },
     /** Runs as the node starts to log out, so the web views it carried go first. */
     private val loggingOut: (MembershipNode) -> Unit = {},
+    /** Whether the phone could hear an app's answer now (see [NodeManager.canHear]). */
+    private val canHear: () -> Boolean = { true },
 ) {
     data class Settings(
         val controlURL: String,
@@ -443,7 +427,7 @@ class MembershipNode(
                 continue
             }
             val node = node ?: return
-            val status = withContext(io) { runCatching { node.statusJSON() }.getOrNull() }?.let(TailnetStatus::decode)
+            val status = withContext(io) { runCatching { node.statusJSON() }.getOrNull()?.let(TailnetStatus::decode) }
             if (status != null && current == generation) {
                 // Polls repeat while nothing changes; only a change should redraw.
                 if (status != mutableStatus.value) {
@@ -471,7 +455,18 @@ class MembershipNode(
                     if (hostsChanged || lastProbe?.let { now() - it > 60_000 } == true) rediscover()
                 }
             }
-            delay(if (mutableState.value == NodeState.Ready) 10_000 else 1_000)
+            // Quick while the node comes up, so an app opened on a closed node loads as soon as it
+            // can, though not on a phone that can't reach the network; a wait for a login keeps
+            // its once a second, which the login watches count in.
+            val after = mutableState.value
+            val comingUp = (after == NodeState.Starting || after == NodeState.Connecting) && status?.backendState != "NeedsLogin"
+            delay(
+                when {
+                    after == NodeState.Ready -> 10_000
+                    comingUp && canHear() -> 250
+                    else -> 1_000
+                },
+            )
         }
     }
 
@@ -566,7 +561,7 @@ class MembershipNode(
         if (current != generation) return
         record(outcome, hosts)
         if (outcome.reachable && isOwner && mutableDiscovered.value != outcome.apps) mutableDiscovered.value = outcome.apps
-        if (isOwner || !silence.record(hosts, outcome.reachable)) return
+        if (isOwner || !silence.record(hosts, outcome.reachable, heard = canHear())) return
         log("$id: no app has answered for a while, restarting the node")
         scope.launch { restart() }
     }
@@ -590,7 +585,7 @@ class MembershipNode(
         val host = Discovery.normalizedHost(app.host)
         val reach = if (isOwner) {
             val manifest = app.startURL.resolve(OvenlightManifest.path)
-            if (runCatching { fetch(manifest) }.getOrNull() != null) Reach.Reached else Reach.Unreachable
+            if (fetchOrNull(fetch, manifest) != null) Reach.Reached else Reach.Unreachable
         } else {
             GuestProbe.whoami(host, fetch)
         }
@@ -673,11 +668,18 @@ class NodeManager(
 
     private fun node(id: String, settings: () -> MembershipNode.Settings?) = MembershipNode(
         id, settings, clients, ::stateDirectory, preferences, scope, io, now, log, rememberOwnerSuffix = ::rememberOwnerSuffix,
-        pollingPaused = { pollingPaused }, loggingOut = { onLoggingOut(it) },
+        pollingPaused = { pollingPaused }, loggingOut = { onLoggingOut(it) }, canHear = { canHear() },
     )
 
     /** Set while Ovenlight is away, so no node polls (see AppLifecycle). */
     var pollingPaused = false
+
+    /**
+     * Whether the phone could hear an app's answer now, so a guest's look that none answered
+     * counts as silence (see [GuestSilence]) and a node coming up is polled quickly: not
+     * without a working network, nor during an excursion (the app model sets this).
+     */
+    var canHear: () -> Boolean = { true }
 
     // The owner's own tailnet (what the launcher and Settings show)
 
@@ -765,9 +767,9 @@ class NodeManager(
     /** Tries the owner's node again after a failure. */
     suspend fun restart() = owner.restart()
 
-    suspend fun rediscover() {
-        owner.rediscover()
-        for (node in mutableGuests.value.values) node.rediscover()
+    suspend fun rediscover() = coroutineScope {
+        launch { owner.rediscover() }
+        for (node in mutableGuests.value.values) launch { node.rediscover() }
     }
 
     // Guest nodes
@@ -926,15 +928,16 @@ class GuestSilence {
     private var looks = 0
     private var gap = firstRestart
 
-    /** Records one look; true when the node should restart. */
-    fun record(probed: List<String>, reachable: Boolean): Boolean {
+    /** Records one look; true when the node should restart. [heard] is false when the phone couldn't have heard an answer. */
+    fun record(probed: List<String>, reachable: Boolean, heard: Boolean = true): Boolean {
         if (reachable) {
             looks = 0
             gap = firstRestart
             return false
         }
-        // Nothing listed online says nothing: the computers are asleep.
-        if (probed.isEmpty()) return false
+        // Nothing listed online says nothing: the computers are asleep. Nor does a phone with no
+        // working network, or one out on an excursion, which may be frozen.
+        if (probed.isEmpty() || !heard) return false
         looks += 1
         if (looks < gap) return false
         looks = 0

@@ -173,6 +173,37 @@ class AppRegistryTests {
         assertEquals(listOf("Coach", "notes.example.com"), reopened.apps.map { it.name })
         assertFalse(reopened.readInFull)
     }
+
+    /** Android only: an icon that couldn't be written is fetched again, and no icon is fetched before its node can carry it. */
+    @Test
+    fun testAnIconIsSavedOnlyWhenWrittenAndFetchedOnlyWhenReachable() = runTest {
+        var fetches = 0
+        val registry = AppRegistry(
+            dir, session = { { _ -> fetches += 1; FetchResponse(200, "icon".toByteArray()) } },
+            webData = object : AppRegistry.WebData {
+                override fun discard(app: UUID) {}
+                override suspend fun clear(store: UUID) {}
+                override fun delete(store: UUID) {}
+                override suspend fun stores() = emptyList<UUID>()
+            },
+            iconPNG = { it }, scope = backgroundScope,
+        )
+        val coach = DiscoveredApp("coach.tailabc123.ts.net", OvenlightManifest(name = "Coach", icon = "/icon.png", version = 1))
+        assertTrue(registry.iconsDirectory.delete())
+        registry.iconsDirectory.writeText("in the way")
+        registry.mergeDiscovered(listOf(coach))
+        assertEquals(1, fetches)
+        assertNull("nothing was written", registry.apps.single().iconFile)
+
+        assertTrue(registry.iconsDirectory.delete())
+        assertTrue(registry.iconsDirectory.mkdirs())
+        registry.refreshAllMissingIcons { false }
+        assertEquals("its node isn't connected", 1, fetches)
+        registry.mergeDiscovered(listOf(coach))
+        val app = registry.apps.single()
+        assertEquals("${app.id.toString().uppercase()}.png", app.iconFile)
+        assertArrayEquals("icon".toByteArray(), registry.iconFile(app)!!.readBytes())
+    }
 }
 
 /** The registry's tests that need Android's own image decoding, run under Robolectric with its native graphics. */

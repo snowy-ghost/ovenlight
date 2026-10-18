@@ -85,14 +85,7 @@ class NodeMachineTests {
     fun testTheLogNeverCarriesTheSignInLink() {
         assertEquals("needsLogin", NodeState.NeedsLogin(login).logDescription)
         assertEquals("retrying(attempt: 2)", NodeState.Retrying(2).logDescription)
-        assertEquals("""failed("boom")""", NodeState.Failed("boom").logDescription)
-    }
-
-    /** Android only: the rest of what iOS escapes in a failure's text. */
-    @Test
-    fun testTheLogQuotesAFailureAsIOSDoes() {
-        assertEquals("""failed("Ovenlight couldn\'t connect.")""", NodeState.Failed("Ovenlight couldn't connect.").logDescription)
-        assertEquals("""failed("a\tb\r\n\"c\" \\ \0 \u{7}")""", NodeState.Failed("a\tb\r\n\"c\" \\ \u0000 \u0007").logDescription)
+        assertEquals("the message is the summary's, not the log's", "failed", NodeState.Failed("boom").logDescription)
     }
 
     @Test

@@ -40,7 +40,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
-import androidx.lifecycle.Lifecycle
 import androidx.webkit.URLUtilCompat
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -61,7 +60,6 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -96,6 +94,8 @@ class PageDownloads(
     private val freeBytes: () -> Long,
     /** Downloads are under way; the pool keeps such a page (see [AppPage.isDownloading]). */
     private val busy: (Boolean) -> Unit = {},
+    /** A download the person started on the page didn't make a file: says so, with its name. */
+    private val failed: (String) -> Unit = {},
     private val now: () -> Long = SystemClock::elapsedRealtime,
 ) : DownloadListener {
     private class Started(val type: String, val at: Long)
@@ -229,9 +229,10 @@ class PageDownloads(
     }
 
     private fun fetch(url: String, userAgent: String?, disposition: String?, type: String?, length: Long) {
-        if (jobs.size >= CONCURRENT) return log("refused a download: $CONCURRENT already under way")
-        val client = client()
         var name: String? = null
+        val shownName = { name?.ifEmpty { null } ?: URLUtilCompat.guessFileName(url, disposition, type) }
+        if (jobs.size >= CONCURRENT) return refused(shownName(), "$CONCURRENT already under way")
+        val client = client()
         val named: suspend () -> Boolean = {
             // The page's report of an `<a download>` click comes over a message port, which keeps
             // no order with WebView's start: its name may still be on the way.
@@ -243,7 +244,7 @@ class PageDownloads(
             // The page may have gone off screen meanwhile, without Ovenlight leaving.
             mayStart().also { if (!it) log("refused a download while off screen or locked") }
         }
-        track(first = named) {
+        track(shownName, first = named) {
             val request = Request.Builder().url(url).apply { userAgent?.let { header("User-Agent", it) } }.build()
             val call = client.newCall(request)
             calls += call
@@ -254,14 +255,10 @@ class PageDownloads(
             }.use { response ->
                 // WebView hands over the URL it was redirected to; another redirect now could lead
                 // anywhere the owner's node reaches, so it isn't followed.
-                if (response.code in 300..399) {
-                    log("a download redirected again, so it stops")
-                    return@track null
-                }
+                if (response.code in 300..399) throw IOException("it redirected again")
                 val sent = response.header("Content-Disposition") ?: disposition
                 if (DownloadPolicy.action(response.code, sent, canShow = false) == DownloadPolicy.ResponseAction.Show) {
-                    log("a download answered ${response.code}")
-                    return@track null
+                    throw IOException("it answered ${response.code}")
                 }
                 // From the headers on, 30 seconds with nothing arriving ends it.
                 response.body.source().timeout().timeout(READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
@@ -274,18 +271,24 @@ class PageDownloads(
 
     /** An empty [name] names the file after its type. */
     private fun save(name: String, decode: () -> DataURL.Decoded?) {
-        if (jobs.size >= CONCURRENT) return log("refused a download: $CONCURRENT already under way")
-        track {
+        if (jobs.size >= CONCURRENT) return refused(name, "$CONCURRENT already under way")
+        track({ name }) {
             val decoded = decode() ?: return@track null
             write(name.ifEmpty { guessedName(decoded.type) }, decoded.bytes.size.toLong(), decoded.bytes.inputStream())
         }
     }
 
+    /** A download refused while its page is on screen and unlocked: the person hears of it. */
+    private fun refused(name: String, why: String) {
+        log("refused a download: $why")
+        failed(DownloadPolicy.fileName(name))
+    }
+
     /**
      * Runs a download off the main thread, after [first] (on the page's own thread) says go; a
-     * file it makes waits for the sheet.
+     * file it makes waits for the sheet. One that fails says so under its [name].
      */
-    private fun track(first: suspend () -> Boolean = { true }, work: suspend () -> File?) {
+    private fun track(name: () -> String, first: suspend () -> Boolean = { true }, work: suspend () -> File?) {
         val job = scope.launch {
             try {
                 if (!first()) return@launch
@@ -296,12 +299,15 @@ class PageDownloads(
                         file.parentFile?.deleteRecursively()
                         return@withContext
                     }
-                    if (!DownloadShelf.add(appID, file)) log("refused a download: $WAITING_FILES files already wait")
+                    if (!DownloadShelf.add(appID, file)) throw IOException("$WAITING_FILES files already wait")
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 log("a download failed: ${e.message}")
+                // Not one its page ended as it went (see cancel), whose call fails as it stops, nor
+                // over the lock or another app.
+                if (isActive && mayStart()) failed(DownloadPolicy.fileName(name()))
             }
         }
         jobs += job
@@ -670,6 +676,7 @@ private object SaveDocument {
         // The picker hands its answer back: an excursion, not leaving.
         model.lifecycle.beginExcursion()
         activity.launchOnce(ActivityResultContracts.CreateDocument(type), file.name, failed = model.lifecycle::excursionEnded) { target ->
+            model.lifecycle.excursionEnded()
             target ?: return@launchOnce
             // The picker's grant ends with this activity, which may go before the unlock; a
             // persisted one lasts until the file is written.
@@ -677,9 +684,7 @@ private object SaveDocument {
             val write = Intent.FLAG_GRANT_WRITE_URI_PERMISSION
             runCatching { resolver.takePersistableUriPermission(target, write) }
             model.scope.launch {
-                // A return from the picker may lock first, as Ovenlight starts again.
-                activity.lifecycle.currentStateFlow.first { it.isAtLeast(Lifecycle.State.STARTED) || it == Lifecycle.State.DESTROYED }
-                model.lock.isLocked.first { !it }
+                afterReturnAndUnlock(activity, model.lock.isLocked)
                 val saved = withContext(Dispatchers.IO) {
                     runCatching { resolver.openOutputStream(target)?.use { out -> file.inputStream().use { it.copyTo(out) } } != null }.getOrDefault(false)
                 }

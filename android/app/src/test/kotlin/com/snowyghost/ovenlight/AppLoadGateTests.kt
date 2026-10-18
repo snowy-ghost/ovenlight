@@ -52,4 +52,20 @@ class AppLoadGateTests {
         assertEquals("only after giving up", AppLoadGate.Waiting, run(listOf(Event.Woke)))
         assertEquals(AppLoadGate.Probing, run(listOf(Event.NodeReady, Event.Woke)))
     }
+
+    /** Android only: with no working network the gate says so at once, and starts over when one comes. */
+    @Test
+    fun testAnOfflinePhoneWaitsForANetwork() {
+        assertEquals(AppLoadGate.Offline, run(listOf(Event.PhoneOffline)))
+        assertEquals(AppLoadGate.Offline, run(listOf(Event.NodeReady, Event.PhoneOffline)))
+        val offline = run(listOf(Event.PhoneOffline))
+        assertEquals("nothing else leaves it", offline, run(listOf(Event.NodeReady, Event.Reached, Event.GaveUp, Event.Woke), from = offline))
+        assertEquals("a network starts over", AppLoadGate.Waiting, run(listOf(Event.PhoneOnline), from = offline))
+        assertEquals(AppLoadGate.Waiting, run(listOf(Event.Retry), from = offline))
+        assertEquals("a loaded page stays", AppLoadGate.Ready, run(listOf(Event.PhoneOffline), from = AppLoadGate.Ready))
+        assertEquals(AppLoadGate.Unreachable, run(listOf(Event.PhoneOffline, Event.PhoneOnline), from = AppLoadGate.Unreachable))
+        assertEquals(AppLoadGate.Waiting, run(listOf(Event.PhoneOnline)))
+        CopyRules.assertNeutral(ConnectionCopy.offline)
+        CopyRules.assertNeutral(ConnectionCopy.offlineDetail)
+    }
 }
