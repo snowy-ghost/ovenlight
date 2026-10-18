@@ -136,7 +136,7 @@ object SharingList {
             used == 1L -> "the only tagged device"
             else -> "all $all tagged devices"
         }
-        return "Your shareable apps and your guests' devices use $share in your Tailscale network. Tailscale's plans include a set number and charge for more."
+        return "Your shareable apps and your guests’ devices use $share in your Tailscale network. Tailscale’s plans include a set number and charge for more."
     }
 }
 
@@ -183,7 +183,8 @@ fun sharingState(model: AppModel): SharingState {
     return SharingState(
         sharing.machines,
         isAvailable = ownerEnabled && ownerState == NodeState.Ready,
-        isLoading = loading && machines.isEmpty(),
+        // Once a pass failed, its problem shows rather than a spinner while the next one runs.
+        isLoading = loading && machines.isEmpty() && problem == null,
         problem = problem,
         localApp = { admin -> apps.firstOrNull { !it.isShared && Discovery.normalizedHost(it.host) == admin.host } },
         iconRevisions = iconRevisions,
@@ -403,7 +404,7 @@ internal fun RowMenu(label: String, items: @Composable ColumnScope.(close: () ->
     var expanded by remember { mutableStateOf(false) }
     Box {
         IconButton(onClick = { expanded = true }) {
-            Icon(painterResource(R.drawable.ic_more_vert), contentDescription = stringResource(R.string.sharing_options, label))
+            Icon(painterResource(R.drawable.ic_more_vert), contentDescription = stringResource(R.string.options, label))
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) { items { expanded = false } }
     }
@@ -421,7 +422,9 @@ private fun SharingAppPage(state: SharingState, page: SharingPage.App, scroll: S
     LaunchedEffect(Unit) { state.refreshIfStale() }
     GroupedScreen(app?.name ?: stringResource(R.string.sharing_app), onBack = back, scroll = scroll, refresh = state.refresh) {
         Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
-            if (machine == null || app == null) return@Column Unavailable(stringResource(R.string.sharing_app_not_found))
+            if (machine == null || app == null) {
+                return@Column state.problem?.let { Unavailable(stringResource(R.string.sharing_no_computers), it) } ?: Unavailable(stringResource(R.string.sharing_app_not_found))
+            }
             val people = GuestPerson.all(machine.guests.guests.filter { it.app == page.slug })
             val invites = machine.guests.invites.filter { it.app == page.slug && it.state == AdminInvite.sent }
             val feedback = machine.feedback.count { it.app == page.slug }
@@ -494,7 +497,7 @@ private fun SharingAppPage(state: SharingState, page: SharingPage.App, scroll: S
     val person = removing
     if (person != null && machine != null) {
         Confirmation(
-            stringResource(R.string.sharing_remove_title, person.name),
+            stringResource(R.string.remove_title, person.name),
             stringResource(R.string.sharing_remove_from_app_message, person.name, app?.name ?: page.slug),
             stringResource(R.string.sharing_remove), onDismiss = { removing = null },
         ) {
@@ -608,7 +611,7 @@ fun InviteComposerDialog(composer: InviteComposer, sharing: SharingState, scope:
         if (askingToClose) {
             Confirmation(
                 stringResource(R.string.sharing_close_unsent_title), stringResource(R.string.sharing_close_unsent_message),
-                confirm = stringResource(R.string.sharing_close), onDismiss = { askingToClose = false },
+                confirm = stringResource(R.string.close), onDismiss = { askingToClose = false },
                 cancel = stringResource(R.string.sharing_keep), action = onDismiss,
             )
         }
@@ -627,7 +630,7 @@ private fun InviteForm(composer: InviteComposer, sharing: SharingState, scope: C
     GroupedScreen(
         // Not while the invite is made, whose link shows only here.
         stringResource(R.string.sharing_share_title, app.name), onBack = { if (!composer.working) onDismiss() }, scroll = rememberScrollState(),
-        navigationIcon = R.drawable.ic_close, navigationLabel = stringResource(R.string.sharing_close),
+        navigationIcon = R.drawable.ic_close, navigationLabel = stringResource(R.string.close),
         actions = {
             if (composer.working) {
                 val label = stringResource(R.string.sharing_creating)
@@ -713,12 +716,12 @@ private fun InviteResultView(result: AdminShareResult, appName: String, used: ()
     val invite = result.invite
     var copied by remember { mutableStateOf(false) }
     val subject = stringResource(R.string.sharing_invite_subject, appName)
-    val clipLabel = stringResource(R.string.sharing_invite_link)
+    val clipLabel = stringResource(R.string.invite_link)
     val code = remember(result.link) { result.link?.let(QRCode::image) }
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     // No title in the bar, which the display title says below; TalkBack still hears it as the pane changes.
     GroupedScreen(
-        "", onBack = onDismiss, scroll = rememberScrollState(), navigationIcon = R.drawable.ic_close, navigationLabel = stringResource(R.string.sharing_close),
+        "", onBack = onDismiss, scroll = rememberScrollState(), navigationIcon = R.drawable.ic_close, navigationLabel = stringResource(R.string.close),
         paneTitle = stringResource(R.string.sharing_invite_title, invite.to),
     ) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(20.dp)) {

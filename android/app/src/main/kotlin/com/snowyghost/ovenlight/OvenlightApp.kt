@@ -520,7 +520,7 @@ private fun DialogLayer(model: AppModel) {
             onDismissRequest = done,
             title = { Text(shown.title) },
             text = { Text(shown.message) },
-            confirmButton = { TextButton(onClick = done) { Text(stringResource(R.string.join_ok)) } },
+            confirmButton = { TextButton(onClick = done) { Text(stringResource(R.string.ok)) } },
         )
     }
 }

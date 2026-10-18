@@ -263,8 +263,10 @@ fun LauncherView(state: LauncherState) {
     }
     removing?.let { app ->
         Confirmation(
-            title = stringResource(R.string.launcher_remove_title, app.name),
-            message = app.sharedBy?.let(ConnectionCopy::removeSharedDetail) ?: stringResource(R.string.launcher_remove_message),
+            title = stringResource(R.string.remove_title, app.name),
+            message = app.sharedBy?.let(ConnectionCopy::removeSharedDetail)
+                // One found on the owner's computers stays removed: discovery skips its host from now on.
+                ?: stringResource(if (app.discovered) R.string.launcher_remove_discovered_message else R.string.launcher_remove_message),
             confirm = stringResource(R.string.launcher_remove_app), onDismiss = { removing = null },
         ) {
             haptics.performHapticFeedback(HapticFeedbackType.Confirm)
@@ -298,7 +300,7 @@ private fun HomeTopBar(state: LauncherState) {
             Box(Modifier.size(48.dp)) {
                 if (!state.showsWelcome) {
                     IconButton(onClick = state.lock) {
-                        Icon(painterResource(R.drawable.ic_lock), contentDescription = stringResource(R.string.launcher_lock))
+                        Icon(painterResource(R.drawable.ic_lock), contentDescription = stringResource(R.string.lock_ovenlight))
                     }
                 }
             }
@@ -319,7 +321,7 @@ private fun HomeTopBar(state: LauncherState) {
                         AppMenuItem(close, stringResource(R.string.launcher_people_sharing), R.drawable.ic_group) { state.present(RootSheet.Sharing()) }
                     }
                     HorizontalDivider()
-                    AppMenuItem(close, stringResource(R.string.launcher_settings), R.drawable.ic_settings) { state.present(RootSheet.Settings()) }
+                    AppMenuItem(close, stringResource(R.string.settings), R.drawable.ic_settings) { state.present(RootSheet.Settings()) }
                 }
             }
         }
@@ -344,7 +346,7 @@ private fun TailnetStatusPill(state: NodeState, retry: () -> Unit) {
             Text(ConnectionCopy.connecting, style = text, color = colors.onSurfaceVariant, maxLines = 1)
         }
         state is NodeState.Failed -> {
-            val tryAgain = stringResource(R.string.launcher_try_again)
+            val tryAgain = stringResource(R.string.try_again)
             Row(
                 pill.clickable(onClickLabel = tryAgain, role = Role.Button, onClick = retry).padding(horizontal = 14.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically,
@@ -376,7 +378,7 @@ private fun TailnetBanner(state: NodeState, deviceName: String, connect: (URI) -
                 append(body)
                 if (deviceName.isNotEmpty() && start >= 0) addStyle(SpanStyle(fontWeight = FontWeight.Bold), start, start + deviceName.length)
             }
-            LauncherCard(R.drawable.ic_verified_user, stringResource(R.string.launcher_approve_title), text, stringResource(R.string.launcher_open_machines), approve)
+            LauncherCard(R.drawable.ic_verified_user, stringResource(R.string.approve_this_phone), text, stringResource(R.string.launcher_open_machines), approve)
         }
         else -> Unit
     }
@@ -425,7 +427,7 @@ private fun ColumnScope.AppMenu(
     // The menu is open: bring its People count and Share up to date.
     LaunchedEffect(Unit) { if (!app.isShared) state.refreshSharing() }
     val info = state.sharing(app)
-    val plan = AppMenuPlan.plan(app, admin = info?.let { (machine, admin) -> admin to machine.guests })
+    val plan = AppMenuPlan.plan(app, admin = info?.let { (machine, admin) -> admin to machine.guests }, apps = state.apps)
     Column(Modifier.widthIn(max = 280.dp).padding(horizontal = 12.dp, vertical = 8.dp).semantics(mergeDescendants = true) { heading() }) {
         Text(app.name, style = MaterialTheme.typography.titleSmall, color = colors.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
         Text(
@@ -442,12 +444,12 @@ private fun ColumnScope.AppMenu(
         HorizontalDivider()
         when (plan.share) {
             AppMenuPlan.Share.Available -> info?.let { (machine, admin) ->
-                AppMenuItem(close, stringResource(R.string.sharing_share), R.drawable.ic_share) { state.share(machine, admin) }
+                AppMenuItem(close, stringResource(R.string.share_ellipsis), R.drawable.ic_share) { state.share(machine, admin) }
             }
             AppMenuPlan.Share.NotShareable -> DropdownMenuItem(
                 text = {
                     Column {
-                        Text(stringResource(R.string.sharing_share))
+                        Text(stringResource(R.string.share_ellipsis))
                         Text(AppMenuPlan.notShareableDetail, style = MaterialTheme.typography.bodySmall)
                     }
                 },
@@ -491,8 +493,8 @@ private fun RenameDialog(app: WebApp, onDismiss: () -> Unit, save: (String) -> U
             // Here, in the dialog's own window, so the field is there to take focus.
             LaunchedEffect(Unit) { focus.requestFocus() }
         },
-        confirmButton = { TextButton(onClick = done, enabled = trimmed.isNotEmpty()) { Text(stringResource(R.string.launcher_save)) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.launcher_cancel)) } },
+        confirmButton = { TextButton(onClick = done, enabled = trimmed.isNotEmpty()) { Text(stringResource(R.string.save)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
     )
 }
 
@@ -549,12 +551,12 @@ fun AddAppDialog(
     // Before the owner is connected, the way there.
     val next: Pair<String, () -> Unit>? = when {
         ownerSuffix != null -> null
-        !ownerEnabled -> stringResource(R.string.launcher_use_own_computers) to {
+        !ownerEnabled -> stringResource(R.string.use_my_own_computers) to {
             useOwnComputers()
             onClose()
         }
-        ownerState is NodeState.NeedsLogin -> stringResource(R.string.add_app_sign_in) to { present(RootSheet.Login(ownerState.url)) }
-        ownerState == NodeState.AwaitingApproval -> stringResource(R.string.add_app_approve) to { present(RootSheet.Approve) }
+        ownerState is NodeState.NeedsLogin -> stringResource(R.string.sign_in_to_your_computers) to { present(RootSheet.Login(ownerState.url)) }
+        ownerState == NodeState.AwaitingApproval -> stringResource(R.string.approve_this_phone) to { present(RootSheet.Approve) }
         else -> null
     }
     AlertDialog(
@@ -591,7 +593,7 @@ fun AddAppDialog(
                 next?.let { (label, action) -> TextButton(onClick = action) { Text(label) } }
             }
         },
-        dismissButton = { TextButton(onClick = onClose) { Text(stringResource(R.string.launcher_cancel)) } },
+        dismissButton = { TextButton(onClick = onClose) { Text(stringResource(R.string.cancel)) } },
     )
 }
 
@@ -617,7 +619,7 @@ internal fun Confirmation(
     message: String?,
     confirm: String,
     onDismiss: () -> Unit,
-    cancel: String = stringResource(R.string.launcher_cancel),
+    cancel: String = stringResource(R.string.cancel),
     action: () -> Unit,
 ) {
     AlertDialog(
@@ -640,5 +642,5 @@ internal fun Confirmation(
 /** Leaving an owner's apps, asked the same way from the launcher, an app's menu and Settings. */
 @Composable
 internal fun LeaveConfirmation(owner: String, onDismiss: () -> Unit, leave: () -> Unit) = Confirmation(
-    ConnectionCopy.leaveTitle(owner), ConnectionCopy.leaveDetail(owner), stringResource(R.string.launcher_leave), onDismiss, action = leave,
+    ConnectionCopy.leaveTitle(owner), ConnectionCopy.leaveDetail(owner), stringResource(R.string.leave), onDismiss, action = leave,
 )

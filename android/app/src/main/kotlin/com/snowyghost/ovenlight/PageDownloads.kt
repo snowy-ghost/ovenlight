@@ -235,7 +235,6 @@ class PageDownloads(
                 ?: disposition?.let(URLUtilCompat::getFilenameFromContentDisposition)?.let(DownloadPolicy::fileName)
                 ?: DownloadPolicy.name(url)
         }
-        if (jobs.size >= CONCURRENT) return refused(shownName(), "$CONCURRENT already under way")
         val client = client()
         val named: suspend () -> Boolean = {
             // The page's report of an `<a download>` click comes over a message port, which keeps
@@ -276,17 +275,10 @@ class PageDownloads(
     /** An empty [name] names the file after its type. */
     private fun save(name: String, decode: () -> DataURL.Decoded?) {
         val shownName = { name.ifEmpty { null }?.let(DownloadPolicy::fileName) }
-        if (jobs.size >= CONCURRENT) return refused(shownName(), "$CONCURRENT already under way")
         track(shownName) {
             val decoded = decode() ?: return@track null
             write(name.ifEmpty { guessedName(decoded.type) }, decoded.bytes.size.toLong(), decoded.bytes.inputStream())
         }
-    }
-
-    /** A download refused while its page is on screen and unlocked: the person hears of it. */
-    private fun refused(name: String?, why: String) {
-        log("refused a download: $why")
-        failed(name)
     }
 
     /**
@@ -294,6 +286,10 @@ class PageDownloads(
      * file it makes waits for the sheet. One that fails says so, under its [name] when it has one.
      */
     private fun track(name: () -> String?, first: suspend () -> Boolean = { true }, work: suspend () -> File?) {
+        if (jobs.size >= CONCURRENT) {
+            log("refused a download: $CONCURRENT already under way")
+            return failed(name())
+        }
         val job = scope.launch {
             try {
                 if (!first()) return@launch
@@ -714,9 +710,9 @@ internal fun DownloadSheetContent(name: String, size: String, canOpen: Boolean, 
             colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
         )
         HorizontalDivider()
-        SheetAction(R.drawable.ic_download, stringResource(R.string.download_save), onSave)
+        SheetAction(R.drawable.ic_download, stringResource(R.string.save), onSave)
         SheetAction(R.drawable.ic_share, stringResource(R.string.download_share), onShare)
-        if (canOpen) SheetAction(R.drawable.ic_open_in_new, stringResource(R.string.download_open), onOpen)
+        if (canOpen) SheetAction(R.drawable.ic_open_in_new, stringResource(R.string.open), onOpen)
     }
 }
 

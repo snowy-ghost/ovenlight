@@ -589,7 +589,7 @@ sealed class AdminError : Exception() {
     override val message: String
         get() = when (this) {
             NotOwner -> "The Ovenlight connector on this computer is set up for another owner. To make it yours, run ovenlight setup-sharing --owner with your login there."
-            Unreachable -> "Couldn't reach the computer. It may be asleep or offline."
+            Unreachable -> "Couldn’t reach the computer. It may be asleep or offline."
             is Failed -> reason.replaceFirstChar { it.uppercase() }
         }
 }
@@ -602,7 +602,7 @@ class AdminClient(val host: String, private val session: Send) {
         return try {
             decode(data)
         } catch (_: Exception) {
-            throw AdminError.Failed("The Ovenlight connector on this computer sent a reply this version of the app doesn't understand. Update both to the latest version.")
+            throw AdminError.Failed("The Ovenlight connector on this computer sent a reply this version of the app doesn’t understand. Update both to the latest version.")
         }
     }
 
@@ -683,6 +683,7 @@ class OwnerSharing(
         val feedback: List<AdminFeedback> = emptyList(),
     ) {
         val id: String get() = adminHost
+        val hosts: List<String> get() = listOf(adminHost) + apps.mapNotNull { it.host }
     }
 
     /** One computer's listing, as [vouched] keeps it. */
@@ -762,9 +763,11 @@ class OwnerSharing(
         val covered = mutableSetOf<String>()
         val asked = mutableSetOf<String>()
         val failures = mutableListOf<String>()
+        val failedHosts = mutableSetOf<String>()
         fun failed(host: String, error: AdminError) {
             log("admin $host: $error")
             failures += error.message
+            if (error == AdminError.Unreachable) failedHosts += host
         }
         var round = firstRound(candidates, mutableMachines.value)
         while (round.isNotEmpty()) {
@@ -799,7 +802,12 @@ class OwnerSharing(
             }
             round = candidates.filter { it !in covered && it !in asked }
         }
-        mutableMachines.value = found
+        // A computer that couldn't be reached this time, asleep or between networks, keeps what it
+        // said last, its apps offline, so its pages and menus don't empty out meanwhile. One that
+        // answered on another host, or answered with an error, doesn't.
+        val answered = found.flatMap { it.hosts }.toSet()
+        val kept = mutableMachines.value.filter { it.hosts.any(failedHosts::contains) && it.hosts.none(answered::contains) }
+        mutableMachines.value = found + kept.map { machine -> machine.copy(apps = machine.apps.map { it.copy(online = false) }) }
         // A pass that only failed doesn't count as fresh: the next menu asks again.
         if (found.isNotEmpty() || failures.isEmpty()) lastRefresh = now()
         mutableProblem.value = if (found.isEmpty()) failures.firstOrNull() else null
@@ -862,7 +870,7 @@ class OwnerSharing(
         fun firstRound(candidates: List<String>, known: List<Machine>): List<String> {
             val hosts = candidates.toSet()
             val kept = known.filter { it.adminHost in hosts }
-            val listed = kept.flatMap { machine -> listOf(machine.adminHost) + machine.apps.mapNotNull { it.host } }.toSet()
+            val listed = kept.flatMap { it.hosts }.toSet()
             return kept.map { it.adminHost }.sorted() + candidates.filter { it !in listed }
         }
     }

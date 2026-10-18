@@ -220,7 +220,7 @@ class AdminAPITests {
         )
         answer = FetchResponse(200, "<html>".toByteArray())
         assertEquals(
-            "The Ovenlight connector on this computer sent a reply this version of the app doesn't understand. Update both to the latest version.",
+            "The Ovenlight connector on this computer sent a reply this version of the app doesn’t understand. Update both to the latest version.",
             runCatching { client.guests() }.exceptionOrNull()?.message,
         )
         answer = FetchResponse(200, """{"removed":[],"errors":["couldn't remove one device"]}""".toByteArray())
@@ -303,5 +303,30 @@ class AdminAPITests {
         val before = asked
         sharing.refreshIfStale(ownApps)
         assertTrue("the next menu asks again", asked > before)
+    }
+
+    /** A computer that stops answering keeps what it said last, and the problem says why. */
+    @Test
+    fun testAFailedRefreshKeepsTheMachineAsItWas() = runTest {
+        var asleep = false
+        val nodes = connectedOwner { request ->
+            if (asleep) return@connectedOwner null
+            when (request.url.encodedPath) {
+                "/v1/apps" -> FetchResponse(200, """[{"slug":"coach","name":"Coach","url":"https://coach.tailabc123.ts.net/","shareable":true},{"slug":"notes","name":"Notes","url":"https://notes.tailabc123.ts.net/"}]""".toByteArray())
+                "/v1/guests" -> FetchResponse(200, """{"guests":[{"deviceId":"7","person":"p1","name":"Sam","app":"coach","claimedAt":"2026-09-28T17:05:00Z"}]}""".toByteArray())
+                else -> FetchResponse(200, "[]".toByteArray())
+            }
+        }
+        val sharing = OwnerSharing(nodes, backgroundScope, { testScheduler.currentTime }, {})
+        sharing.refresh(ownApps)
+        val machine = sharing.machines.value.single()
+        asleep = true
+        sharing.refresh(ownApps)
+        assertEquals("Share and People stay while it sleeps", listOf(machine), sharing.machines.value)
+        assertEquals(AdminError.Unreachable.message, sharing.problem.value)
+        asleep = false
+        sharing.refresh(ownApps)
+        assertEquals(listOf(machine), sharing.machines.value)
+        assertNull(sharing.problem.value)
     }
 }

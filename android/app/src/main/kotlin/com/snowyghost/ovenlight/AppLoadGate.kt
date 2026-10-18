@@ -2,9 +2,8 @@ package com.snowyghost.ovenlight
 
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
 
 /**
  * When an app reached through Ovenlight's node may load its page. Opening the app shows its
@@ -93,15 +92,28 @@ enum class AppLoadGate {
          * rather than showing the connector's text.
          */
         val appDownRetries: List<Duration> = listOf(1.seconds, 2.seconds, 4.seconds)
+    }
+}
 
-        /**
-         * Android only: waits until [flow] holds something other than [seen], what the gate read
-         * before deciding to wait, or [timeout] passes. A value it was already given never ends
-         * the wait, so the gate's loop can't spin.
-         */
-        suspend fun <T> awaitChange(flow: Flow<T>, seen: T, timeout: Duration) {
-            withTimeoutOrNull(timeout) { flow.first { it != seen } }
+/**
+ * The gate's [AppLoadGate.nodeTimeout], counted only while the node is busy: a sign-in or an
+ * approval waits for the owner as long as they take, and the time starts over after one.
+ */
+class NodeDeadline(private val clock: TimeSource = TimeSource.Monotonic) {
+    private var busySince: TimeMark? = null
+
+    /** What's left for a node now in [state]; no limit while it isn't busy. */
+    fun left(state: NodeState): Duration {
+        if (!state.isBusy) {
+            restart()
+            return Duration.INFINITE
         }
+        val since = busySince ?: clock.markNow().also { busySince = it }
+        return AppLoadGate.nodeTimeout - since.elapsedNow()
+    }
+
+    fun restart() {
+        busySince = null
     }
 }
 
@@ -114,15 +126,15 @@ enum class AppLoadGate {
 object ConnectionCopy {
     const val connecting = "Connecting…"
     const val stopped = "Ovenlight lost its connection."
-    const val couldNotStart = "Ovenlight couldn't connect."
+    const val couldNotStart = "Ovenlight couldn’t connect."
 
     fun connecting(to: String) = "Connecting to $to…"
     fun cantReach(app: String) = "Can’t reach $app"
     const val cantReachDetail = "Its computer may be asleep or offline. Try again in a moment."
     const val offline = "You’re offline"
     const val offlineDetail = "Connect to Wi-Fi or mobile data, and Ovenlight tries again."
-    fun notResponding(app: String) = "$app isn't responding on its computer right now. Try again in a moment."
-    const val pageFailed = "This page couldn't load. Try again in a moment."
+    fun notResponding(app: String) = "$app isn’t responding on its computer right now. Try again in a moment."
+    const val pageFailed = "This page couldn’t load. Try again in a moment."
     fun signIn(toOpen: String) = "Sign in to open $toOpen"
 
     // Apps someone shared, and joining them. Guests see all of these.
@@ -131,7 +143,7 @@ object ConnectionCopy {
     fun joinTitle(owner: String, app: String) = "Join $owner’s $app?"
     fun joinDetail(owner: String, app: String, to: String): String {
         val who = if (to.isEmpty()) "$owner invited you." else "$owner invited you as $to."
-        return "$who $app runs on $owner's computer. You don't need an account."
+        return "$who $app runs on $owner’s computer. You don’t need an account."
     }
     fun appAddress(host: String) = "Address: $host"
     fun privateServer(server: String, owner: String) =
@@ -147,17 +159,18 @@ object ConnectionCopy {
     const val joinWithInvite = "Join with invite"
     const val invitePrompt = "Paste the invite link you were sent, or scan its code."
     const val feedbackSent = "Feedback sent"
-    fun feedbackSentDetail(to: String?) = to?.let { "$it will see it." } ?: "It's in your feedback in People & sharing."
-    const val feedbackFailed = "Couldn't send feedback"
-    const val feedbackTooMany = "That's a lot of feedback for one hour. Try again later."
-    const val feedbackNetwork = "Ovenlight couldn't reach the app's computer. Try again in a moment."
+    fun feedbackSentDetail(to: String?) = to?.let { "$it will see it." } ?: "It’s in your feedback in People & sharing."
+    const val feedbackFailed = "Couldn’t send feedback"
+    const val feedbackTooMany = "That’s a lot of feedback for one hour. Try again later."
+    const val feedbackNetwork = "Ovenlight couldn’t reach the app’s computer. Try again in a moment."
+    const val feedbackOffline = "You’re offline. Your note is kept, so send it again once you’re connected."
     const val reportProblem = "Report a problem"
-    fun leaveApps(owner: String) = "Leave $owner's apps"
-    fun leaveTitle(owner: String) = "Leave $owner's apps?"
+    fun leaveApps(owner: String) = "Leave $owner’s apps"
+    fun leaveTitle(owner: String) = "Leave $owner’s apps?"
     fun leaveDetail(owner: String) =
-        "$owner's apps and everything they stored on this phone will be removed. You'll need a new invite from $owner to open them again."
+        "$owner’s apps and everything they stored on this phone will be removed. You’ll need a new invite from $owner to open them again."
     fun removeSharedDetail(owner: String) =
-        "This removes the app and everything it stored on this phone. You'll need a new invite from $owner to open it again."
+        "This removes the app and everything it stored on this phone. You’ll need a new invite from $owner to open it again."
 
     /** "A", "A and B", "A, B, and C", as iOS's list formatter writes English. */
     private fun listed(items: List<String>): String = when (items.size) {

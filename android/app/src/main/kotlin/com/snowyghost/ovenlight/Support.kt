@@ -124,7 +124,7 @@ fun NoEmailAppDialog(onDismiss: () -> Unit) {
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.mail_no_app_title)) },
         text = { Text(stringResource(R.string.mail_no_app_body, AppLinks.supportEmail)) },
-        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.mail_ok)) } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.ok)) } },
         dismissButton = {
             TextButton(onClick = {
                 // Closes once copied: closing first would cancel the copy with the dialog's scope.

@@ -641,14 +641,14 @@ class PageEdgesTests {
         val result = evaluate("loop()")
         for (i in 0 until 3) {
             waitFor("dialog $i") { (edges.dialog.value as? PageEdges.Dialog.Alert)?.message == "again $i" }
-            composeRule.onNodeWithText("Don't let this app show more dialogs").assertDoesNotExist()
+            composeRule.onNodeWithText("Don’t let this app show more dialogs").assertDoesNotExist()
             // A slow reader still gets the choice.
             Thread.sleep(2_000)
             composeRule.onNodeWithText("OK").performClick()
         }
         waitFor("dialog 3") { (edges.dialog.value as? PageEdges.Dialog.Alert)?.message == "again 3" }
         checkAccessibility()
-        composeRule.onNodeWithText("Don't let this app show more dialogs").performClick()
+        composeRule.onNodeWithText("Don’t let this app show more dialogs").performClick()
         composeRule.onNodeWithText("OK").performClick()
         result.answer(10_000)
         waitFor("the loop's end") { title() == "done" }

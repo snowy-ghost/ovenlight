@@ -104,7 +104,7 @@ class LauncherViewTests {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val ownerOnly = setOf("launcher_connect_body", "launcher_approve_body")
         val labels = R.string::class.java.fields.filter { it.name.startsWith("launcher_") && it.name !in ownerOnly }
-        assertTrue(labels.size > 30)
+        assertTrue(labels.size > 20)
         for (field in labels) CopyRules.assertNeutral(context.getString(field.getInt(null), "Riley"))
     }
 
@@ -321,9 +321,11 @@ class LauncherViewTests {
     fun testMenuForASharedApp() {
         var reported: WebApp? = null
         var left: String? = null
+        // Riley's second app here, so Leave does more than Remove app (see AppMenuPlanTests).
+        val notes = WebApp(name = "Notes", startURL = URI("https://notes.tail2.ts.net/"), membershipID = "m1", sharedBy = "Riley")
         show(
             LauncherState(
-                apps = apps, memberships = listOf(membership()), leave = { left = it },
+                apps = apps + notes, memberships = listOf(membership()), leave = { left = it },
                 problemReport = { reported = it; null },
             ),
         )
@@ -351,7 +353,9 @@ class LauncherViewTests {
         assertTrue(removed.isEmpty())
         tile("Recipe Box").performTouchInput { longClick() }
         composeRule.onNodeWithText("Remove app").performClick()
-        composeRule.onNodeWithText("This removes the app from Ovenlight and deletes everything it stored on this phone.").assertIsDisplayed()
+        composeRule.onNodeWithText(
+            "This removes the app from Ovenlight and deletes everything it stored on this phone. It won’t come back on its own. Add it again with Add app.",
+        ).assertIsDisplayed()
         composeRule.onNodeWithText("Remove app").performClick()
         assertEquals(listOf(recipes.id), removed)
     }
@@ -362,7 +366,7 @@ class LauncherViewTests {
         show(LauncherState(apps = apps, clearData = { cleared += it }))
         tile("Garden Log").performTouchInput { longClick() }
         composeRule.onNodeWithText("Clear app data").performClick()
-        composeRule.onNodeWithText("Clear Garden Log's data?").assertIsDisplayed()
+        composeRule.onNodeWithText("Clear Garden Log’s data?").assertIsDisplayed()
         composeRule.onNodeWithText("Clear app data").performClick()
         assertEquals(listOf(garden.id), cleared)
     }

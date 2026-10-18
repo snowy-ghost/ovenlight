@@ -402,7 +402,7 @@ fun HomeScreenGrid(
                             Modifier.offset { (center(0) - half).round() }.size(tileSize.width.dp, tileSize.height.dp),
                         )
                     }
-                    val openLabel = stringResource(R.string.launcher_open)
+                    val openLabel = stringResource(R.string.open)
                     val menuLabel = stringResource(R.string.launcher_show_menu)
                     val newLabel = stringResource(R.string.launcher_new)
                     order.forEachIndexed { index, app ->

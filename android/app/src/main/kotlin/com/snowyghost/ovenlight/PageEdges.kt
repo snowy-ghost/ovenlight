@@ -850,12 +850,12 @@ private fun PageDialog(edges: PageEdges, dialog: PageEdges.Dialog) {
     when (dialog) {
         is PageEdges.Dialog.Alert -> AlertDialog(
             onDismissRequest = dismiss, title = title, text = { PageDialogText(dialog.message, quiet) },
-            confirmButton = { TextButton(onClick = { dialog.answer(Unit); dismiss() }) { Text(stringResource(R.string.page_ok)) } },
+            confirmButton = { TextButton(onClick = { dialog.answer(Unit); dismiss() }) { Text(stringResource(R.string.ok)) } },
         )
         is PageEdges.Dialog.Confirm -> AlertDialog(
             onDismissRequest = dismiss, title = title, text = { PageDialogText(dialog.message, quiet) },
-            confirmButton = { TextButton(onClick = { dialog.answer(true); dismiss() }) { Text(stringResource(R.string.page_ok)) } },
-            dismissButton = { TextButton(onClick = { dialog.answer(false); dismiss() }) { Text(stringResource(R.string.page_cancel)) } },
+            confirmButton = { TextButton(onClick = { dialog.answer(true); dismiss() }) { Text(stringResource(R.string.ok)) } },
+            dismissButton = { TextButton(onClick = { dialog.answer(false); dismiss() }) { Text(stringResource(R.string.cancel)) } },
         )
         is PageEdges.Dialog.Prompt -> {
             var text by rememberSaveable(dialog) { mutableStateOf(dialog.defaultText) }
@@ -871,8 +871,8 @@ private fun PageDialog(edges: PageEdges, dialog: PageEdges.Dialog) {
                         quiet()
                     }
                 },
-                confirmButton = { TextButton(onClick = { dialog.answer(text); dismiss() }) { Text(stringResource(R.string.page_ok)) } },
-                dismissButton = { TextButton(onClick = { dialog.answer(null); dismiss() }) { Text(stringResource(R.string.page_cancel)) } },
+                confirmButton = { TextButton(onClick = { dialog.answer(text); dismiss() }) { Text(stringResource(R.string.ok)) } },
+                dismissButton = { TextButton(onClick = { dialog.answer(null); dismiss() }) { Text(stringResource(R.string.cancel)) } },
             )
         }
         is PageEdges.Dialog.ChooseSource -> SourceSheet(dialog, dismiss)
@@ -883,8 +883,8 @@ private fun PageDialog(edges: PageEdges, dialog: PageEdges.Dialog) {
                 GuardedFromOverlays()
                 Text(stringResource(R.string.page_open_elsewhere_body, edges.appName, dialog.target))
             },
-            confirmButton = { GoAheadButton(dialog, stringResource(R.string.page_open)) { edges.open(dialog) } },
-            dismissButton = { TextButton(onClick = dismiss) { Text(stringResource(R.string.page_cancel)) } },
+            confirmButton = { GoAheadButton(dialog, stringResource(R.string.open)) { edges.open(dialog) } },
+            dismissButton = { TextButton(onClick = dismiss) { Text(stringResource(R.string.cancel)) } },
         )
     }
 }

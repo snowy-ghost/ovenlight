@@ -153,7 +153,7 @@ fun FeedbackSheet(
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false, dismissOnBackPress = !sending),
     ) {
         FullScreenDialogBars()
-        val title = stringResource(R.string.feedback_title)
+        val title = stringResource(R.string.send_feedback)
         val background = LocalOvenColors.current.groupedBackground
         Scaffold(
             modifier = Modifier.semantics { paneTitle = title },
@@ -163,7 +163,7 @@ fun FeedbackSheet(
                     title = { Text(title) },
                     navigationIcon = {
                         IconButton(onClick = close) {
-                            Icon(painterResource(R.drawable.ic_close), contentDescription = stringResource(R.string.feedback_close))
+                            Icon(painterResource(R.drawable.ic_close), contentDescription = stringResource(R.string.close))
                         }
                     },
                     actions = {

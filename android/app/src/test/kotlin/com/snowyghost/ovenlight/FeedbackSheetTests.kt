@@ -84,7 +84,7 @@ class FeedbackSheetTests {
         show(recipes)
         inEveryLook {
             text("Send feedback").assertIsDisplayed()
-            text("What's working, or what isn't?").assertIsDisplayed()
+            text("What’s working, or what isn’t?").assertIsDisplayed()
             text("Goes to your feedback in People & sharing.").assertIsDisplayed()
             composeRule.onNodeWithContentDescription("Close").assertIsDisplayed()
             text("Include screenshot").assertDoesNotExist()

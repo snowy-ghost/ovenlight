@@ -8,15 +8,13 @@
     <string name="capture_frame_microphone">%1$s, inside %2$s, wants to use the microphone</string>
     <string name="capture_frame_both">%1$s, inside %2$s, wants to use the camera and microphone</string>
     <string name="capture_allow">Allow</string>
-    <string name="capture_dont_allow">Don\'t allow</string>
+    <string name="capture_dont_allow">Don’t allow</string>
 
     <!-- A finished download's sheet. -->
-    <string name="download_save">Save</string>
     <string name="download_share">Share</string>
-    <string name="download_open">Open</string>
-    <string name="download_save_failed">Couldn\'t save %1$s</string>
+    <string name="download_save_failed">Couldn’t save %1$s</string>
 
     <!-- A download the person started made no file. -->
-    <string name="download_failed">Couldn\'t download %1$s</string>
-    <string name="download_failed_file">Couldn\'t download the file</string>
+    <string name="download_failed">Couldn’t download %1$s</string>
+    <string name="download_failed_file">Couldn’t download the file</string>
 </resources>

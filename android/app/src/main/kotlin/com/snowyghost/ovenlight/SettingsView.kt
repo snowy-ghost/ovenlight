@@ -87,7 +87,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /** Someone who shared apps with this phone, as Settings lists them. */
-data class SharedOwner(val membershipID: String, val ownerName: String, val appNames: List<String>)
+data class SharedOwner(
+    val membershipID: String,
+    val ownerName: String,
+    val appNames: List<String>,
+    /** Invites still joining, before any app is here: each app's name, and why joining failed (null while it goes on). */
+    val joining: List<Pair<String, String?>> = emptyList(),
+)
 
 /** The owner's own computers, once they chose to use them. */
 data class OwnerSettings(
@@ -135,6 +141,7 @@ fun SettingsView(model: AppModel, pages: SnapshotStateList<SettingsPage>, onClos
     val context = LocalContext.current
     val nodes = model.nodes
     val memberships by nodes.memberships.membershipsFlow.collectAsState()
+    val phases by model.guests.phases.collectAsState()
     val apps by model.registry.appsFlow.collectAsState()
     val ownerEnabled by nodes.ownerEnabled.collectAsState()
     val nodeState by nodes.owner.state.collectAsState()
@@ -147,7 +154,11 @@ fun SettingsView(model: AppModel, pages: SnapshotStateList<SettingsPage>, onClos
         lockAfterSeconds = lockAfter,
         noScreenLock = noScreenLock,
         shared = memberships.map { membership ->
-            SharedOwner(membership.id, membership.ownerName, apps.filter { it.membershipID == membership.id }.map { it.name })
+            // As the launcher's banner says it: a failed invite shows why.
+            val joining = membership.pendingClaims.map { it.invite }.distinctBy { it.invite }.map { invite ->
+                invite.name to (phases[invite.invite] as? JoinPhase.Failed)?.error?.title(invite.owner, invite.name)
+            }
+            SharedOwner(membership.id, membership.ownerName, apps.filter { it.membershipID == membership.id }.map { it.name }, joining)
         },
         owner = if (!ownerEnabled) null else OwnerSettings(
             state = nodeState,
@@ -220,7 +231,7 @@ private fun SettingsList(state: SettingsState, scroll: ScrollState, onClose: () 
     var noEmailApp by remember { mutableStateOf(false) }
     val error = MaterialTheme.colorScheme.error
     val primary = MaterialTheme.colorScheme.primary
-    GroupedScreen(stringResource(R.string.settings_title), onBack = onClose, scroll = scroll) {
+    GroupedScreen(stringResource(R.string.settings), onBack = onClose, scroll = scroll) {
         Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
             SettingsGroup(
                 footer = {
@@ -249,13 +260,19 @@ private fun SettingsList(state: SettingsState, scroll: ScrollState, onClose: () 
                 ) {
                     for (owner in state.shared) {
                         row { shape ->
+                            val joining = stringResource(R.string.settings_joining)
+                            val supporting = when {
+                                owner.appNames.isNotEmpty() -> ListFormatter.getInstance().format(owner.appNames)
+                                owner.joining.isEmpty() -> joining
+                                else -> owner.joining.map { (app, failed) -> stringResource(R.string.settings_joining_app, app, failed ?: joining) }.joinToString("\n")
+                            }
                             SettingsRow(
                                 shape, owner.ownerName,
-                                supporting = if (owner.appNames.isEmpty()) stringResource(R.string.settings_joining) else ListFormatter.getInstance().format(owner.appNames),
+                                supporting = supporting,
                                 trailing = {
                                     // Each says whose apps, so TalkBack tells one Leave from another.
                                     TextButton(onClick = { leaving = owner }, modifier = Modifier.semantics { contentDescription = ConnectionCopy.leaveApps(owner.ownerName) }) {
-                                        Text(stringResource(R.string.settings_leave), color = error)
+                                        Text(stringResource(R.string.leave), color = error)
                                     }
                                 },
                             )
@@ -266,7 +283,7 @@ private fun SettingsList(state: SettingsState, scroll: ScrollState, onClose: () 
             val owner = state.owner
             if (owner == null) {
                 SettingsGroup(footer = { Footer(stringResource(R.string.settings_use_my_own_computers_footer)) }) {
-                    row { shape -> SettingsRow(shape, stringResource(R.string.settings_use_my_own_computers), color = primary, onClick = state.useMyOwnComputers) }
+                    row { shape -> SettingsRow(shape, stringResource(R.string.use_my_own_computers), color = primary, onClick = state.useMyOwnComputers) }
                 }
             } else {
                 OwnerGroups(owner, state, confirm = { confirming = it })
@@ -307,7 +324,7 @@ private fun SettingsList(state: SettingsState, scroll: ScrollState, onClose: () 
                     }
                 }
             },
-            confirmButton = { TextButton(onClick = { choosingDelay = false }) { Text(stringResource(R.string.settings_cancel)) } },
+            confirmButton = { TextButton(onClick = { choosingDelay = false }) { Text(stringResource(R.string.cancel)) } },
         )
     }
     leaving?.let { owner ->
@@ -334,7 +351,7 @@ private fun OwnerGroups(owner: OwnerSettings, state: SettingsState, confirm: (In
     SettingsGroup {
         val login = owner.state as? NodeState.NeedsLogin
         if (login != null) {
-            row { shape -> SettingsRow(shape, stringResource(R.string.settings_sign_in), color = primary, onClick = { state.signIn(login.url) }) }
+            row { shape -> SettingsRow(shape, stringResource(R.string.sign_in_to_your_computers), color = primary, onClick = { state.signIn(login.url) }) }
         } else {
             row { shape ->
                 SettingsRow(
@@ -343,7 +360,7 @@ private fun OwnerGroups(owner: OwnerSettings, state: SettingsState, confirm: (In
                 )
             }
             if (owner.state == NodeState.AwaitingApproval) {
-                row { shape -> SettingsRow(shape, stringResource(R.string.settings_approve), color = primary, onClick = state.approve) }
+                row { shape -> SettingsRow(shape, stringResource(R.string.approve_this_phone), color = primary, onClick = state.approve) }
             }
             if (owner.account != null) {
                 row { shape -> SettingsRow(shape, stringResource(R.string.settings_sign_out), color = MaterialTheme.colorScheme.error, onClick = { confirm(R.string.settings_sign_out) }) }
@@ -411,7 +428,7 @@ internal fun GroupedScreen(
     onBack: () -> Unit,
     scroll: ScrollState? = null,
     @DrawableRes navigationIcon: Int = R.drawable.ic_arrow_back,
-    navigationLabel: String = stringResource(R.string.settings_back),
+    navigationLabel: String = stringResource(R.string.back),
     actions: @Composable RowScope.() -> Unit = {},
     refresh: (suspend () -> Unit)? = null,
     paneTitle: String = title,

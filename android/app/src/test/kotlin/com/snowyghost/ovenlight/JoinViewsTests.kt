@@ -110,7 +110,7 @@ class JoinViewsTests {
     @Test
     fun testALinkThatIsntUsableOffersAnother() {
         show(JoinRequest(URI("ovenlight://join?v=2&control=https%3A%2F%2Fcontrolplane.tailscale.com")))
-        inEveryLook("Can't use this invite", InviteLink.ParseError.UnsupportedVersion.message, "Try another invite")
+        inEveryLook("Can’t use this invite", InviteLink.ParseError.UnsupportedVersion.message, "Try another invite")
         tap("Try another invite")
         inEveryLook(ConnectionCopy.invitePrompt)
     }
@@ -168,7 +168,7 @@ class JoinViewsTests {
         inEveryLook(ConnectionCopy.joining("Riley", "Echo Board"), ConnectionCopy.joiningDetail)
         composeRule.onNodeWithText("Join").assertDoesNotExist()
         state = state.copy(phases = mapOf("i1" to JoinPhase.Joined(echo.id)), apps = listOf(echo))
-        inEveryLook(ConnectionCopy.joined("Echo Board"), "It's with your apps now, shared by Riley.", "Open Echo Board")
+        inEveryLook(ConnectionCopy.joined("Echo Board"), "It’s with your apps now, shared by Riley.", "Open Echo Board")
         tap("Open Echo Board")
         assertEquals(listOf(echo), opened)
     }

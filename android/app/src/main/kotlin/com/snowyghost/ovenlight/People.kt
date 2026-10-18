@@ -109,7 +109,7 @@ internal fun SharingPeopleList(state: SharingState, place: SharingPlace, scroll:
     GroupedScreen(
         title, onBack = if (selecting) stopSelecting else back, scroll = scroll, refresh = state.refresh,
         navigationIcon = if (selecting) R.drawable.ic_close else R.drawable.ic_arrow_back,
-        navigationLabel = stringResource(if (selecting) R.string.people_done_selecting else R.string.sharing_back),
+        navigationLabel = stringResource(if (selecting) R.string.people_done_selecting else R.string.back),
         actions = {
             when {
                 working -> {
@@ -193,7 +193,7 @@ internal fun SharingPeopleList(state: SharingState, place: SharingPlace, scroll:
         val invited = refs.any { ref -> machines.any { it.id == ref.machineID && it.guests.hasOpenInvites(ref.person) } }
         val message = stringResource(R.string.people_remove_message, who) + if (invited) " " + stringResource(R.string.people_invites_canceled) else ""
         Confirmation(
-            if (refs.size == 1) stringResource(R.string.sharing_remove_title, name(refs[0])) else pluralStringResource(R.plurals.people_remove_several_title, refs.size, refs.size),
+            if (refs.size == 1) stringResource(R.string.remove_title, name(refs[0])) else pluralStringResource(R.plurals.people_remove_several_title, refs.size, refs.size),
             message, stringResource(R.string.sharing_remove), onDismiss = { removing = emptyList() },
         ) { scope.launch { remove(refs) } }
     }
@@ -253,7 +253,7 @@ internal fun SharingPersonView(state: SharingState, page: SharingPage.Person, sc
         Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
             error?.let { SharingError(it) }
             if (machine == null || person == null) {
-                if (!working) Unavailable(stringResource(R.string.person_not_shared))
+                if (!working) state.problem?.let { Unavailable(stringResource(R.string.sharing_no_computers), it) } ?: Unavailable(stringResource(R.string.person_not_shared))
                 return@Column
             }
             val since = machine.guests.openedSince
@@ -308,7 +308,7 @@ internal fun SharingPersonView(state: SharingState, page: SharingPage.Person, sc
         val title = when (removal) {
             is Removal.App -> stringResource(R.string.person_remove_from_title, name, removal.app.name)
             is Removal.Device -> stringResource(R.string.person_remove_device_title)
-            Removal.Everything -> stringResource(R.string.sharing_remove_title, name)
+            Removal.Everything -> stringResource(R.string.remove_title, name)
         }
         val message = when (removal) {
             is Removal.App -> stringResource(R.string.sharing_remove_from_app_message, name, removal.app.name)

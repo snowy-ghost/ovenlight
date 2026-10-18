@@ -16,7 +16,6 @@ import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.webkit.WebViewCompat
 import com.snowyghost.ovenlight.core.Core
-import kotlin.time.Duration
 import kotlin.time.TimeSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -26,6 +25,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * One app's web view and everything about loading it (iOS's WebCoordinator): its profile, its
@@ -207,7 +207,7 @@ class AppPage(
             if (app.isShared) pool.guests.collectOrphans()
             return giveUp()
         }
-        var opened = TimeSource.Monotonic.markNow()
+        val deadline = NodeDeadline()
         var probingSince: TimeSource.Monotonic.ValueTimeMark? = null
         while (mutableGate.value == AppLoadGate.Waiting || mutableGate.value == AppLoadGate.Probing) {
             // Not even a probe goes through a node the app's route no longer names.
@@ -219,13 +219,14 @@ class AppPage(
                 mutableGate.value = mutableGate.value.next(AppLoadGate.Event.PhoneOffline)
                 TailnetCore.online.first { it }
                 mutableGate.value = mutableGate.value.next(AppLoadGate.Event.PhoneOnline)
-                opened = TimeSource.Monotonic.markNow()
+                deadline.restart()
                 probingSince = null
                 continue
             }
             val state = node.state.value
             if (state == NodeState.Ready && nodeMayCarry) {
                 mutableGate.value = mutableGate.value.next(AppLoadGate.Event.NodeReady)
+                deadline.restart()
                 // Its computer is listed offline, asleep most likely: Can't Reach shows at
                 // once, and the app opens as soon as the computer answers.
                 if (!loaded.value && node.isListedOffline(app.host)) {
@@ -248,13 +249,14 @@ class AppPage(
                 mutableGate.value = mutableGate.value.next(AppLoadGate.Event.NodeNotReady)
                 probingSince = null
                 // Sign-in and node failures have their own screens and wait for the owner.
-                val left = AppLoadGate.nodeTimeout - opened.elapsedNow()
-                if (state.isBusy && !left.isPositive()) return giveUp()
+                val left = deadline.left(state)
+                if (!left.isPositive()) return giveUp()
                 // Until the node, its tailnet or the phone's network changes, or a busy node's time runs out.
-                AppLoadGate.awaitChange(
-                    combine(node.state, node.status, TailnetCore.online, ::Triple), Triple(state, node.status.value, online),
-                    if (state.isBusy) left else Duration.INFINITE,
-                )
+                // Only a value other than the one read above ends the wait, so the loop can't spin.
+                val seen = Triple(state, node.status.value, online)
+                withTimeoutOrNull(left) {
+                    combine(node.state, node.status, TailnetCore.online, ::Triple).first { it != seen }
+                }
             }
         }
     }

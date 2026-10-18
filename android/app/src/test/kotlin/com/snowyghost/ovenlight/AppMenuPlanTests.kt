@@ -34,7 +34,7 @@ class AppMenuPlanTests {
     fun testOwnerShareableAppCountsActiveGuestsOfThatApp() {
         val app = WebApp(name = "Coach", startURL = URI("https://coach.tail1.ts.net/"))
         val guests = AdminGuestList(guests = listOf(guest("Sam"), guest("Kim"), guest("Lee", removed = true), guest("Max", app = "notes")))
-        val plan = AppMenuPlan.plan(app, admin(shareable = true) to guests)
+        val plan = AppMenuPlan.plan(app, admin(shareable = true) to guests, listOf(app))
         assertEquals(AppMenuPlan(share = AppMenuPlan.Share.Available, people = 2), plan)
         assertEquals("People (2)", AppMenuPlan.peopleTitle(2))
         assertEquals("People", AppMenuPlan.peopleTitle(0))
@@ -43,7 +43,7 @@ class AppMenuPlanTests {
     @Test
     fun testOwnerAppNotShareableOffersNoPeople() {
         val app = WebApp(name = "Coach", startURL = URI("https://coach.tail1.ts.net/"))
-        val plan = AppMenuPlan.plan(app, admin(shareable = false) to AdminGuestList(guests = listOf(guest("Sam"))))
+        val plan = AppMenuPlan.plan(app, admin(shareable = false) to AdminGuestList(guests = listOf(guest("Sam"))), listOf(app))
         assertEquals(AppMenuPlan(share = AppMenuPlan.Share.NotShareable), plan)
         CopyRules.assertNeutral(AppMenuPlan.notShareableDetail)
     }
@@ -51,15 +51,19 @@ class AppMenuPlanTests {
     @Test
     fun testAppWithoutConnectorOffersNothing() {
         val app = WebApp(name = "Example", startURL = URI("https://example.com/"))
-        assertEquals(AppMenuPlan(), AppMenuPlan.plan(app, admin = null))
+        assertEquals(AppMenuPlan(), AppMenuPlan.plan(app, admin = null, listOf(app)))
     }
 
     @Test
     fun testGuestNeverSeesShareOrPeople() {
         val app = WebApp(name = "Echo", startURL = URI("https://echo.tail5.ts.net/"), membershipID = "m1", sharedBy = "Riley")
+        val notes = WebApp(name = "Notes", startURL = URI("https://notes.tail5.ts.net/"), membershipID = "m1", sharedBy = "Riley")
+        val other = WebApp(name = "Pantry", startURL = URI("https://pantry.tail6.ts.net/"), membershipID = "m2", sharedBy = "Kim")
         // Even if the owner's view of a same-host app were at hand.
-        val plan = AppMenuPlan.plan(app, admin(shareable = true) to AdminGuestList())
+        val plan = AppMenuPlan.plan(app, admin(shareable = true) to AdminGuestList(), listOf(app, notes, other))
         assertEquals(AppMenuPlan(reportProblem = true, leaveOwner = "Riley"), plan)
+        // Android only: with Riley's one app here, Leave would do just what Remove app does.
+        assertEquals(AppMenuPlan(reportProblem = true), AppMenuPlan.plan(app, admin = null, listOf(app, other)))
     }
 
     @Test

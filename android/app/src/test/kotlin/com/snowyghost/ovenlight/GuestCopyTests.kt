@@ -13,7 +13,7 @@ class GuestCopyTests {
             ConnectionCopy.joinWithInvite, ConnectionCopy.invitePrompt, ConnectionCopy.feedbackSent,
             ConnectionCopy.appAddress("echo.taildef456.ts.net"), ConnectionCopy.privateServer("hs.example.com", owner = "Riley"),
             ConnectionCopy.feedbackSentDetail(to = "Riley"), ConnectionCopy.feedbackSentDetail(to = null), ConnectionCopy.feedbackFailed,
-            ConnectionCopy.feedbackTooMany, ConnectionCopy.feedbackNetwork,
+            ConnectionCopy.feedbackTooMany, ConnectionCopy.feedbackNetwork, ConnectionCopy.feedbackOffline,
             ConnectionCopy.reportProblem, ConnectionCopy.leaveApps("Riley"), ConnectionCopy.leaveTitle("Riley"),
             ConnectionCopy.leaveDetail("Riley"), ConnectionCopy.removeSharedDetail("Riley"),
             AppAddress.signInFirst, AppAddress.notYourComputer,

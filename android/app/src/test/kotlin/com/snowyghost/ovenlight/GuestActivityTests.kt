@@ -135,7 +135,7 @@ class GuestActivityTests {
         fun machine(tagged: AdminTaggedDevices?) =
             OwnerSharing.Machine(adminHost = "coach.tail1.ts.net", apps = emptyList(), guests = AdminGuestList(taggedDevices = tagged))
         assertEquals(
-            "Your shareable apps and your guests' devices use 4 of the 5 tagged devices in your Tailscale network. Tailscale's plans include a set number and charge for more.",
+            "Your shareable apps and your guests’ devices use 4 of the 5 tagged devices in your Tailscale network. Tailscale’s plans include a set number and charge for more.",
             SharingList.taggedDevices(listOf(machine(AdminTaggedDevices(apps = 1, guests = 3, tailnet = 5)))),
         )
         assertTrue(SharingList.taggedDevices(listOf(machine(AdminTaggedDevices(apps = 2, guests = 2, tailnet = 4))))!!.contains("use all 4 tagged devices"))

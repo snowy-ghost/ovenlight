@@ -145,6 +145,15 @@ class SharingViewTests {
         text(AdminError.NotOwner.message).assertIsDisplayed()
     }
 
+    /** Android only: an app or person page with nothing to show, after a refresh that failed, says why. */
+    @Test
+    fun testAPageWhoseComputerDidntAnswerSaysWhy() {
+        show(state(emptyList()).copy(problem = AdminError.Unreachable.message), SharingPage.App(machine.id, "book-club"))
+        text("No computers answered").assertIsDisplayed()
+        text(AdminError.Unreachable.message).assertIsDisplayed()
+        composeRule.onNodeWithText("App not found").assertDoesNotExist()
+    }
+
     @Test
     fun testAnAppsPeopleAndTheirRemoval() {
         show(state(), SharingPage.App(machine.id, "book-club"))
@@ -157,7 +166,7 @@ class SharingViewTests {
         composeRule.onNodeWithText("Add a device for Sam").assertIsDisplayed()
         composeRule.onNodeWithText("Remove Sam").performClick()
         inDialog("Remove Sam?").assertIsDisplayed()
-        inDialog("Sam can't open Book Club anymore, on any device. Each of their devices is also removed from your Tailscale network unless it has another of your apps.")
+        inDialog("Sam can’t open Book Club anymore, on any device. Each of their devices is also removed from your Tailscale network unless it has another of your apps.")
             .assertIsDisplayed()
         inDialog("Remove").performClick()
         composeRule.waitForIdle()
@@ -215,7 +224,7 @@ class SharingViewTests {
         composeRule.onNodeWithText("2 selected").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Remove").performClick()
         inDialog("Remove 2 people?").assertIsDisplayed()
-        inDialog("They can't open your apps anymore, on any device, and their devices are removed from your Tailscale network.").assertIsDisplayed()
+        inDialog("They can’t open your apps anymore, on any device, and their devices are removed from your Tailscale network.").assertIsDisplayed()
         inDialog("Remove").performClick()
         composeRule.waitForIdle()
         assertEquals(listOf("Remove 2 people"), confirmed)
@@ -234,10 +243,10 @@ class SharingViewTests {
         composeRule.onNodeWithContentDescription("Joined $first options").performScrollTo().performClick()
         composeRule.onNodeWithText("Remove").performClick()
         inDialog("Remove this device?").assertIsDisplayed()
-        inDialog("Sam can't open your apps on this device anymore, and it's removed from your Tailscale network.").assertIsDisplayed()
+        inDialog("Sam can’t open your apps on this device anymore, and it’s removed from your Tailscale network.").assertIsDisplayed()
         inDialog("Remove").performClick()
         composeRule.waitForIdle()
-        assertEquals(listOf("Remove Sam's device"), confirmed)
+        assertEquals(listOf("Remove Sam’s device"), confirmed)
         assertEquals("the device that joined first", listOf("DELETE /v1/guests/n1"), requests.map { it.line() })
     }
 
@@ -283,7 +292,7 @@ class SharingViewTests {
         inDialog("Invite for Jo").assertIsDisplayed()
         composeRule.onNode(SemanticsMatcher.expectValue(SemanticsProperties.PaneTitle, "Invite for Jo")).assertExists()
         composeRule.onNodeWithContentDescription("Invite code").assertIsDisplayed()
-        inDialog("Jo can join without your approval and reaches only Book Club. Until it's used, the link works like a key, so send it privately.").assertIsDisplayed()
+        inDialog("Jo can join without your approval and reaches only Book Club. Until it’s used, the link works like a key, so send it privately.").assertIsDisplayed()
         inDialog("Send invite").performClick()
         val chooser = shadowOf(ApplicationProvider.getApplicationContext<android.app.Application>()).nextStartedActivity
         assertEquals(Intent.ACTION_CHOOSER, chooser.action)
@@ -348,7 +357,7 @@ class SharingViewTests {
     fun testAScreenshotThatWontLoadSaysSo() {
         answer = { FetchResponse(404, """{"error":"no screenshot","code":"not_found"}""".toByteArray()) }
         show(state(), SharingPage.FeedbackItem(machine.id, "f1"))
-        text("Couldn't load the screenshot.").assertIsDisplayed()
+        text("Couldn’t load the screenshot.").assertIsDisplayed()
         assertEquals(listOf("GET /v1/feedback/f1/screenshot"), requests.map { it.line() })
     }
 

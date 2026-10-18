@@ -568,9 +568,20 @@ PY2
   await_text 10 "Recipes, from Owen" || fail "no Recipes on the launcher: $(screen_text | tr '\n' '|')"
   tile=($(bounds text "Recipes, from Owen"))
   a shell input swipe $(((tile[0] + tile[2]) / 2)) $(((tile[1] + tile[3]) / 2)) $(((tile[0] + tile[2]) / 2)) $(((tile[1] + tile[3]) / 2)) 800
-  await_text 10 "Leave Owen's apps" || { shot guests-failed; fail "no Leave in the menu: $(screen_text | tr '\n' '|')"; }
-  tap_text "Leave Owen's apps"
-  await_text 10 "Leave Owen's apps?" || fail "Leave didn't ask first"
+  # Recipes is Owen's only app here, so its tile's Remove app does what Leave would, and Leave isn't there.
+  await_text 10 "Remove app" || { shot guests-failed; fail "no Remove app in the tile's menu: $(screen_text | tr '\n' '|')"; }
+  ! screen_text | grep -qxF "Leave Owen’s apps" || fail "the tile's menu has Leave beside Remove app"
+  a shell input keyevent KEYCODE_BACK
+  await_text 10 "Recipes, from Owen" || fail "Back didn't close the tile's menu"
+  tap_text "Recipes, from Owen"
+  close_tip 5
+  await_text 40 "Show app menu" || { shot guests-failed; fail "Recipes didn't open with its handle: $(screen_text | tr '\n' '|')"; }
+  tap_text "Show app menu"
+  await_text 5 "Recipes options" || fail "the handle didn't bring the pill back: $(screen_text | tr '\n' '|')"
+  tap_text "Recipes options"
+  await_text 10 "Leave Owen’s apps" || { shot guests-failed; fail "no Leave in the app's menu: $(screen_text | tr '\n' '|')"; }
+  tap_text "Leave Owen’s apps"
+  await_text 10 "Leave Owen’s apps?" || fail "Leave didn't ask first"
   tap_text Leave
   await_text 30 "Welcome to Ovenlight" || { shot guests-failed; fail "Leave didn't remove Recipes: $(screen_text | tr '\n' '|')"; }
   [[ -z $(a shell run-as $PKG sh -c "'ls no_backup/tailscale 2>/dev/null'" | tr -d '\r') ]] || fail "the guest node's state is still on the phone"

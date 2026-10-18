@@ -564,7 +564,7 @@ private fun Pill(app: WebApp, icon: Bitmap?, actions: AppChromeActions, controll
             }
             VerticalDivider(Modifier.height(18.dp), color = colors.outlineVariant)
             Box(Modifier.weight(1f, fill = false)) {
-                val options = stringResource(R.string.chrome_options, app.name)
+                val options = stringResource(R.string.options, app.name)
                 Row(
                     Modifier
                         .clip(CircleShape)
@@ -599,16 +599,16 @@ private fun AppMenuItems(app: WebApp, actions: AppChromeActions, close: () -> Un
     AppMenuItem(close, stringResource(R.string.chrome_reload), R.drawable.ic_refresh, action = actions.reload)
     // Open in browser never applies: every Android app goes through Ovenlight's own connection.
     HorizontalDivider()
-    actions.share?.let { AppMenuItem(close, stringResource(R.string.chrome_share), R.drawable.ic_share, action = it) }
+    actions.share?.let { AppMenuItem(close, stringResource(R.string.share_ellipsis), R.drawable.ic_share, action = it) }
     actions.sendFeedback?.let {
         // A guest's feedback goes to the owner; Report a problem goes to Ovenlight.
-        val label = app.sharedBy?.let { owner -> stringResource(R.string.chrome_send_feedback_to, owner) } ?: stringResource(R.string.chrome_send_feedback)
+        val label = app.sharedBy?.let { owner -> stringResource(R.string.chrome_send_feedback_to, owner) } ?: stringResource(R.string.send_feedback)
         AppMenuItem(close, label, R.drawable.ic_feedback, action = it)
     }
     AppMenuItem(close, ConnectionCopy.reportProblem, R.drawable.ic_flag, action = actions.reportProblem)
     actions.leave?.let { AppMenuItem(close, ConnectionCopy.leaveApps(it.owner), R.drawable.ic_logout, destructive = true, action = it.action) }
     HorizontalDivider()
-    AppMenuItem(close, stringResource(R.string.chrome_lock), R.drawable.ic_lock, action = actions.lock)
+    AppMenuItem(close, stringResource(R.string.lock_ovenlight), R.drawable.ic_lock, action = actions.lock)
 }
 
 /** The handle's height, which the band at the top of an open app holds below [chromeTop] (AppHostView). */
