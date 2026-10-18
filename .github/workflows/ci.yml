@@ -304,6 +304,13 @@ jobs:
           ! locked || { echo "the emulator stayed on its lock screen"; exit 1; }
       - name: Instrumented tests
         run: ANDROID_SERIAL=emulator-5554 ./gradlew --no-daemon :app:connectedDebugAndroidTest
+      # Whether the runner ran out of memory or the emulator stopped on its own.
+      - if: failure()
+        run: |
+          free -m
+          ps -eo pid,rss,etime,args --sort=-rss | head -8 | cut -c1-200
+          sudo dmesg | grep -i -E "oom|killed process|out of memory" | tail -10 || true
+          "$ANDROID_HOME/platform-tools/adb" devices
       - if: failure()
         uses: actions/upload-artifact@v7
         with:
