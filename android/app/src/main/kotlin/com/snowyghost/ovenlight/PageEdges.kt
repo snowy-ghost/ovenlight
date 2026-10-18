@@ -31,7 +31,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -49,9 +48,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -72,7 +68,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
@@ -898,21 +893,11 @@ private fun SourceSheet(dialog: PageEdges.Dialog.ChooseSource, dismiss: () -> Un
             dialog.answer(source)
             dismiss()
         }
-        SourceRow(R.drawable.ic_photo_camera, R.string.page_take_photo) { choose(PageEdges.Source.Camera) }
-        SourceRow(R.drawable.ic_photo_library, R.string.page_choose_photo) { choose(PageEdges.Source.Photos) }
-        if (dialog.files) SourceRow(R.drawable.ic_description, R.string.page_choose_file) { choose(PageEdges.Source.Files) }
+        SheetRow(R.drawable.ic_photo_camera, stringResource(R.string.page_take_photo)) { choose(PageEdges.Source.Camera) }
+        SheetRow(R.drawable.ic_photo_library, stringResource(R.string.page_choose_photo)) { choose(PageEdges.Source.Photos) }
+        if (dialog.files) SheetRow(R.drawable.ic_description, stringResource(R.string.page_choose_file)) { choose(PageEdges.Source.Files) }
         Spacer(Modifier.navigationBarsPadding().padding(bottom = 16.dp))
     }
-}
-
-@Composable
-private fun SourceRow(icon: Int, label: Int, onClick: () -> Unit) {
-    ListItem(
-        headlineContent = { Text(stringResource(label)) },
-        leadingContent = { Icon(painterResource(icon), contentDescription = null) },
-        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-        modifier = Modifier.clickable(onClick = onClick),
-    )
 }
 
 /** How long Ovenlight's own prompts ("Open in another app?", the capture prompt) ignore their go-ahead after they show. */

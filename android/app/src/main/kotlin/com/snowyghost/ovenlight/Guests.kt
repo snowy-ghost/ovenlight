@@ -73,8 +73,6 @@ enum class JoinError {
          * text unchanged: "authkey already used", "authkey expired" (Headscale), "invalid key:
          * ..." (Tailscale).
          */
-        operator fun invoke(upError: Throwable): JoinError = invoke(upMessage = upError.message ?: upError.toString())
-
         operator fun invoke(upMessage: String): JoinError {
             val text = upMessage.lowercase()
             return when {

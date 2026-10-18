@@ -228,7 +228,8 @@ fun HomeScreenGrid(
     ownerEnabled: Boolean,
     icon: (WebApp) -> Bitmap?,
     iconRevisions: Map<UUID, Int>,
-    reachability: Map<UUID, AppReachability>,
+    /** Apps whose computer is offline. */
+    offline: Set<UUID>,
     open: (WebApp) -> Unit,
     /** Moves an app to an index in the list, and saves the order. */
     move: (UUID, Int) -> Unit,
@@ -407,6 +408,7 @@ fun HomeScreenGrid(
                     val openLabel = stringResource(R.string.open)
                     val menuLabel = stringResource(R.string.launcher_show_menu)
                     val newLabel = stringResource(R.string.launcher_new)
+                    val offlineLabel = stringResource(R.string.launcher_offline)
                     order.forEachIndexed { index, app ->
                         key(app.id) {
                             val slot = center(index) - half
@@ -422,7 +424,7 @@ fun HomeScreenGrid(
                                 if (!moving) position.animateTo(slot, spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessMediumLow))
                             }
                             val image = rememberIcon(app, iconRevisions[app.id] ?: 0, icon)
-                            val status = reachability[app.id]
+                            val isOffline = app.id in offline
                             val before = order.getOrNull(index - 1)
                             val after = order.getOrNull(index + 1)
                             val moveBefore = before?.let { stringResource(R.string.launcher_move_before, it.name) }
@@ -449,7 +451,7 @@ fun HomeScreenGrid(
                                     .focusable()
                                     .clearAndSetSemantics {
                                         contentDescription = app.sharedBy?.let { "${app.name}, ${ConnectionCopy.sharedBy(it)}" } ?: app.name
-                                        val states = listOfNotNull(if (app.isNew) newLabel else null, status?.label)
+                                        val states = listOfNotNull(if (app.isNew) newLabel else null, if (isOffline) offlineLabel else null)
                                         if (states.isNotEmpty()) stateDescription = states.joinToString(", ")
                                         onClick(label = openLabel) { open(app); true }
                                         onLongClick(label = menuLabel) { menuFor = app.id; true }
@@ -463,7 +465,7 @@ fun HomeScreenGrid(
                                     },
                             ) {
                                 AppTile(
-                                    app, image, status, layout.iconSize.dp, largeText,
+                                    app, image, isOffline, layout.iconSize.dp, largeText,
                                     pressed = pressed == app.id, lifted = moving || menuFor == app.id, labelShown = !moving, focused = focused,
                                 )
                                 RoundedMenu(expanded = menuFor == app.id, onDismissRequest = { menuFor = null }) {
@@ -521,18 +523,17 @@ private class FingerPosition {
  * lifts. The grid gives the tile its semantics.
  */
 @Composable
-fun AppTile(
+private fun AppTile(
     app: WebApp,
     image: Bitmap?,
-    reachability: AppReachability?,
+    offline: Boolean,
     iconSize: Dp,
     largeText: Boolean,
-    modifier: Modifier = Modifier,
-    pressed: Boolean = false,
-    lifted: Boolean = false,
-    labelShown: Boolean = true,
+    pressed: Boolean,
+    lifted: Boolean,
+    labelShown: Boolean,
     /** Reached from a keyboard: the icon gets a ring. */
-    focused: Boolean = false,
+    focused: Boolean,
 ) {
     val colors = MaterialTheme.colorScheme
     // In the dark, the light behind the top rows is bright enough that only white reads on it:
@@ -540,7 +541,7 @@ fun AppTile(
     val label = if (isSystemInDarkTheme()) Color.White else colors.onSurface
     val scale by animateFloatAsState(if (pressed) 0.92f else if (lifted) 1.12f else 1f, label = "tile scale")
     val elevation by animateDpAsState(if (lifted) 12.dp else 2.dp, label = "tile shadow")
-    Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
         val ring = if (focused) Modifier.border(2.dp, colors.primary, AppIconShape) else Modifier
         Box(Modifier.size(iconSize).graphicsLayer { scaleX = scale; scaleY = scale }.then(ring)) {
             AppIconView(
@@ -548,10 +549,10 @@ fun AppTile(
                 Modifier.graphicsLayer {
                     shadowElevation = elevation.toPx()
                     shape = AppIconShape
-                    alpha = if (reachability == AppReachability.Offline) 0.5f else 1f
+                    alpha = if (offline) 0.5f else 1f
                 },
             )
-            if (reachability != null) ReachabilityBadge(Modifier.align(Alignment.TopEnd).offset(4.dp, (-4).dp))
+            if (offline) OfflineBadge(Modifier.align(Alignment.TopEnd).offset(4.dp, (-4).dp))
         }
         Spacer(Modifier.height(HomeGridLayout.labelGap.dp))
         Column(Modifier.alpha(if (labelShown) 1f else 0f), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -612,7 +613,7 @@ fun themeColor(hex: String?): Color? {
 
 /** The dot an offline app's icon gets on its top end corner, ringed so it reads on any icon. */
 @Composable
-private fun ReachabilityBadge(modifier: Modifier = Modifier) {
+private fun OfflineBadge(modifier: Modifier = Modifier) {
     Box(
         modifier
             .size(18.dp)

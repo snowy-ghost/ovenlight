@@ -94,7 +94,7 @@ class ScreenAccessibilityTests {
         LauncherView(
             LauncherState(
                 apps = listOf(recipes, guide, garden), ownerEnabled = true, ownerState = NodeState.Ready,
-                reachability = mapOf(garden.id to AppReachability.Offline),
+                offline = setOf(garden.id),
             ),
         )
     }
@@ -187,9 +187,9 @@ class ScreenAccessibilityTests {
         apps = listOf(book, AdminApp("budget", "Budget", "https://budget.tail1.ts.net/", online = false)),
         guests = AdminGuestList(
             guests = listOf(
-                AdminGuest("n1", "p1", "Sam", "book-club", "ovenlight-4k2x9q", claimedAt = Instant.ofEpochSecond(1_780_000_000), lastOpened = Instant.ofEpochSecond(1_784_000_000)),
-                AdminGuest("n4", "p1", "Sam", "book-club", "ovenlight-m7c1pw", claimedAt = Instant.ofEpochSecond(1_784_000_000), lastOpened = Instant.now()),
-                AdminGuest("n2", "p2", "Kim", "book-club", "ovenlight-r5j8de", claimedAt = Instant.ofEpochSecond(1_786_000_000)),
+                AdminGuest("n1", "p1", "Sam", "book-club", claimedAt = Instant.ofEpochSecond(1_780_000_000), lastOpened = Instant.ofEpochSecond(1_784_000_000)),
+                AdminGuest("n4", "p1", "Sam", "book-club", claimedAt = Instant.ofEpochSecond(1_784_000_000), lastOpened = Instant.now()),
+                AdminGuest("n2", "p2", "Kim", "book-club", claimedAt = Instant.ofEpochSecond(1_786_000_000)),
             ),
             invites = listOf(AdminInvite("i3", "Lee", "p3", "book-club", AdminInvite.sent, expires = Instant.now().plusSeconds(86_400))),
             openedSince = Instant.ofEpochSecond(1_770_000_000),

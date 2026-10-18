@@ -20,6 +20,7 @@
     <string name="add_app_insecure">Ovenlight only opens secure addresses that start with https.</string>
 
     <string name="launcher_new">New</string>
+    <string name="launcher_offline">Offline</string>
     <string name="launcher_show_menu">Show menu</string>
     <string name="launcher_move_before">Move before %1$s</string>
     <string name="launcher_move_after">Move after %1$s</string>

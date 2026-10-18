@@ -11,6 +11,7 @@ import java.net.URI
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -49,7 +50,7 @@ class WebViewPoolTests {
                 FakeClients(), MemoryStore(), MembershipStore(File(temp.root, "Ovenlight")), File(temp.root, "tailscale"),
                 scope, Dispatchers.IO, System::currentTimeMillis, {},
             )
-            pool = WebViewPool(context, nodes, scope, isLocked = { false })
+            pool = WebViewPool(context, nodes, scope, isLocked = MutableStateFlow(false))
         }
     }
 

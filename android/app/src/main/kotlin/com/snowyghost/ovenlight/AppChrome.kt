@@ -604,7 +604,6 @@ private fun Pill(app: WebApp, icon: Bitmap?, actions: AppChromeActions, controll
 @Composable
 private fun AppMenuItems(app: WebApp, actions: AppChromeActions, close: () -> Unit) {
     AppMenuItem(close, stringResource(R.string.chrome_reload), R.drawable.ic_refresh, action = actions.reload)
-    // Open in browser never applies: every Android app goes through Ovenlight's own connection.
     HorizontalDivider()
     actions.share?.let { AppMenuItem(close, stringResource(R.string.share_ellipsis), R.drawable.ic_share, action = it) }
     actions.sendFeedback?.let {

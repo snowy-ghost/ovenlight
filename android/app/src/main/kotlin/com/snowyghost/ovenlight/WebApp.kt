@@ -318,7 +318,7 @@ object NavigationPolicy {
         val http = text.toHttpUrlOrNull() ?: return uri(text)
         // toUri throws for some userinfo HttpUrl takes, such as a stray `%`.
         val url = runCatching { http.toUri() }.getOrNull() ?: return null
-        // java.net.URI leaves the host out for names it won't take (`a_b.com`), as before.
+        // java.net.URI leaves the host out for names it won't take (`a_b.com`).
         val host = url.host?.removeSurrounding("[", "]") ?: return url
         return url.takeIf { host.equals(http.host, ignoreCase = true) }
     }

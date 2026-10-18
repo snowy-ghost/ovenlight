@@ -20,7 +20,7 @@ class GuestActivityTests {
     private val now: Instant = LocalDateTime.of(2026, 10, 13, 21, 41).atZone(zone).toInstant()
 
     private fun guest(device: String, person: String = "pSam", name: String = "Sam", app: String = "coach", claimed: Instant, opened: Instant? = null) =
-        AdminGuest(deviceId = device, person = person, name = name, app = app, deviceName = "", claimedAt = claimed, lastOpened = opened)
+        AdminGuest(deviceId = device, person = person, name = name, app = app, claimedAt = claimed, lastOpened = opened)
 
     private fun daysAgo(days: Double): Instant = now.minusMillis((86_400_000 * days).toLong())
 

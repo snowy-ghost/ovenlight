@@ -78,9 +78,6 @@ class OvenlightApp : Application() {
         lateinit var model: AppModel
             private set
 
-        val lock: LockManager get() = model.lock
-        val router: Router get() = model.router
-
         /**
          * Whether this phone has kept anything: apps, invites or a node. Apps and invites live
          * in [ovenlight] (filesDir/Ovenlight), each node's state in [nodes]
@@ -119,7 +116,7 @@ class AppModel(context: Context) {
         TailnetCore, preferences, MembershipStore(ovenlight), nodesDirectory, scope, Dispatchers.IO, SystemClock::elapsedRealtime,
         log = { OvenlightLog.i(it) }, debugBuild = BuildConfig.DEBUG,
     )
-    val pool = WebViewPool(context, nodes, scope, isLocked = { lock.isLocked.value })
+    val pool = WebViewPool(context, nodes, scope, lock.isLocked)
     val registry = AppRegistry(
         ovenlight, session = nodes::fetch, webData = WebProfiles(context, discard = pool::discard),
         iconPNG = { withContext(Dispatchers.Default) { IconDecoder.png(it) } }, scope = scope,

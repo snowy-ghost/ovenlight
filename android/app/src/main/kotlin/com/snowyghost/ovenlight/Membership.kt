@@ -397,11 +397,4 @@ object GuestCleanup {
             it.membershipID == membership.id && host in notInvited && host !in claiming
         }
     }
-
-    /**
-     * Whether a guest node that lost its login means the owner removed this phone: only once it
-     * had joined, since a first join passes through NeedsLogin briefly. The caller asks only
-     * after the state held for a moment.
-     */
-    fun isRemoved(membership: Membership): Boolean = membership.joined
 }

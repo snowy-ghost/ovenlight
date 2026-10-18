@@ -111,18 +111,15 @@ class GuestManagerRulesTests {
         CopyRules.assertNeutral(notice.message)
     }
 
-    /** Every join error a guest can see is neutral and says "phone" for the guest's device. */
+    /** Every join error says "phone" for the guest's device (GuestCopyTests checks they are neutral). */
     @Test
     fun testJoinErrorsAreNeutralAndSayPhone() {
         for (error in JoinError.entries) {
-            CopyRules.assertNeutral(error.title("Riley", "Echo Board"))
-            CopyRules.assertNeutral(error.message("Riley", "Echo Board"))
             for (text in listOf(error.title("Riley", "Echo Board"), error.message("Riley", "Echo Board"))) {
                 assertFalse(text, text.contains("iPhone"))
             }
         }
         assertEquals("This invite was used on another phone", JoinError.UsedOnAnotherDevice.title("Riley", "Echo Board"))
         assertTrue(JoinError.SomeoneElses.message("Riley", "Echo Board").startsWith("This phone already joined Riley’s apps"))
-        assertEquals("a Go error's text is read as up()'s", JoinError.KeyUsed, JoinError(upError = Exception("backend: authkey already used")))
     }
 }

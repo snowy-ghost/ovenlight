@@ -69,7 +69,7 @@
   // measured; an ArrayBuffer by its own byte length. Anything over the caps never leaves, and big
   // messages share a budget of one blob's worth a second, so a page can't queue gigabytes in
   // Ovenlight one capped message at a time. Small ones (capture reports) don't count.
-  const STRING_LIMIT = HREF_LIMIT + HEADER_LIMIT, BUFFER_LIMIT = LIMIT + HEADER_LIMIT + 4, SMALL = 64;
+  const STRING_LIMIT = HREF_LIMIT + HEADER_LIMIT, BUFFER_LIMIT = LIMIT + HEADER_LIMIT + 4, SMALL = __SMALL__;
   let budget = BUFFER_LIMIT, budgetAt = apply(now, clock, []);
   const send = message => {
     let size;

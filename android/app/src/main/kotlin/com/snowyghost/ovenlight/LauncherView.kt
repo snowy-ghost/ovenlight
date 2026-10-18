@@ -97,7 +97,8 @@ data class LauncherState(
     /** Invites being accepted this session, by invite ID. */
     val phases: Map<String, JoinPhase> = emptyMap(),
     /** The apps whose computers aren't answering. */
-    val reachability: Map<UUID, AppReachability> = emptyMap(),
+    /** Apps whose tile says their computer is offline. */
+    val offline: Set<UUID> = emptySet(),
     /** Goes up with each icon saved, so a refreshed icon redraws. */
     val iconRevisions: Map<UUID, Int> = emptyMap(),
     /** A screen or an open app covers the launcher: nothing in it takes keyboard focus or TalkBack's. */
@@ -156,8 +157,8 @@ fun LauncherView(model: AppModel) {
     val openApp by model.router.openApp.collectAsState()
     // The menus' Share and People follow what the connectors report.
     val machines by model.sharing.machines.collectAsState()
-    val reachability = remember(apps, ownerState, ownerStatus, ownerAnswers, guestStates) {
-        apps.mapNotNull { app -> nodes.reachability(app)?.let { app.id to it } }.toMap()
+    val offline = remember(apps, ownerState, ownerStatus, ownerAnswers, guestStates) {
+        apps.filter(nodes::isOffline).map { it.id }.toSet()
     }
     val scope = model.scope
     val canPin = remember { HomeShortcuts.isSupported(context) }
@@ -170,7 +171,7 @@ fun LauncherView(model: AppModel) {
             deviceName = NodeManager.deviceName(ownerStatus, nodes.hostName),
             memberships = memberships,
             phases = phases,
-            reachability = reachability,
+            offline = offline,
             iconRevisions = iconRevisions,
             covered = sheet?.isScreen == true || openApp != null,
             icon = { IconDecoder.load(registry.iconFile(it)) },
@@ -230,7 +231,7 @@ fun LauncherView(state: LauncherState) {
                 } else {
                     HomeScreenGrid(
                         apps = state.apps, ownerEnabled = state.ownerEnabled, icon = state.icon, iconRevisions = state.iconRevisions,
-                        reachability = state.reachability, open = state.open, move = state.move,
+                        offline = state.offline, open = state.open, move = state.move,
                         addApp = { state.present(RootSheet.AddApp) }, openLink = state.openLink,
                         modifier = Modifier.weight(1f),
                         header = {

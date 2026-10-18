@@ -79,13 +79,9 @@ class AdminAPITests {
                     assertEquals(result.invite.id, invite.invite)
                     assertEquals(result.invite.app, invite.app)
                     assertEquals(result.invite.to, invite.to)
-                    assertEquals(result.appName, invite.name)
-                    assertEquals(result.owner, invite.owner)
                     assertEquals("coach.tail1.ts.net", invite.host)
                     assertEquals("https://controlplane.tailscale.com", invite.control.toString())
                     assertEquals("tskey-auth-kExample1CNTRL-ExampleSecretNotReal", invite.key)
-                    assertEquals("round trip", invite, InviteLink.parse(invite.universalURL, allowLocalHTTP = false))
-                    assertEquals("round trip", invite, InviteLink.parse(invite.url, allowLocalHTTP = false))
                 }
                 name == "guest-removed" || name == "guest-removed-with-errors" ->
                     assertEquals(count(data, "removed"), AdminAPI.decode(AdminRevokeResult.decoder, data).removed.size)

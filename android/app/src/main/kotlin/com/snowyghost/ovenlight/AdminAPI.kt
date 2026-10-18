@@ -119,7 +119,6 @@ data class AdminGuest(
     val person: String,
     val name: String,
     val app: String,
-    val deviceName: String,
     val claimedAt: Instant,
     val removedAt: Instant? = null,
     /**
@@ -139,7 +138,6 @@ data class AdminGuest(
                 app = fields.requiredString("app"),
                 claimedAt = fields.requiredDate("claimedAt"),
                 name = fields.string("name") ?: "",
-                deviceName = fields.string("deviceName") ?: "",
                 removedAt = fields.date("removedAt"),
                 lastOpened = fields.string("lastOpened")?.let { AdminAPI.parseDay(it) },
             )
@@ -399,8 +397,6 @@ data class AdminGuestList(
 data class AdminShareResult(
     val invite: AdminInvite,
     val link: String? = null,
-    val appName: String? = null,
-    val owner: String? = null,
     /** The connector's wording of the message to send (its `message`), as `ovenlight share` words it. */
     val sentMessage: String? = null,
 ) {
@@ -413,8 +409,6 @@ data class AdminShareResult(
             AdminShareResult(
                 invite = ovenlightJSON.decodeFromJsonElement(AdminInvite.decoder, fields["invite"] ?: throw SerializationException("invite")),
                 link = fields.optionalString("link"),
-                appName = fields.optionalString("appName"),
-                owner = fields.optionalString("owner"),
                 sentMessage = fields.optionalString("message"),
             )
         }
@@ -520,21 +514,10 @@ object AdminAPI {
     }
 
     /** [base] plus [component] percent-encoded as one path segment, its `/` escaped too. */
-    fun path(base: String, component: String): String = base + buildString {
-        for (byte in component.toByteArray()) {
-            val value = byte.toInt() and 0xFF
-            val c = value.toChar()
-            if (c in 'a'..'z' || c in 'A'..'Z' || c in '0'..'9' || c in PATH_ALLOWED) {
-                append(c)
-            } else {
-                append('%').append(HEX[value shr 4]).append(HEX[value and 0xF])
-            }
-        }
-    }
+    fun path(base: String, component: String): String = base + percentEncoded(component, PATH_ALLOWED)
 
     /** What iOS's `urlPathAllowed` keeps besides ASCII letters and digits, less `/`. */
     private const val PATH_ALLOWED = "!$&'()*+,-.:;=@_~"
-    private const val HEX = "0123456789ABCDEF"
 
     /** The `{"error": "...", "code": "..."}` the connector answers with. */
     fun errorMessage(data: ByteArray): String? = errorBody(data)?.error

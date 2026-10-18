@@ -95,7 +95,7 @@ object FeedbackSender {
     suspend fun send(payload: FeedbackPayload, app: WebApp, nodes: NodeManager, guests: GuestManager): FeedbackResult {
         // Read as it fails: the phone may have gone offline while it tried.
         val network = { FeedbackResult.Failed(if (TailnetCore.online.value) ConnectionCopy.feedbackNetwork else ConnectionCopy.feedbackOffline) }
-        val session = nodes.uploadSession(app, timeoutMillis = 30_000) ?: return network()
+        val session = nodes.node(app)?.makeSession(timeoutMillis = 30_000) ?: return network()
         val body = ovenlightJSON.encodeToString(FeedbackPayload.serializer(), payload).toRequestBody("application/json".toMediaType())
         val request = runCatching { Request.Builder().url("https://${app.host}/__ovenlight/feedback").post(body).build() }.getOrNull() ?: return network()
         val response = session(request) ?: return network()

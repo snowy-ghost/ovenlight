@@ -150,6 +150,7 @@ class PageBridge(
             .replace("__LIMIT__", PageDownloads.BLOB_LIMIT.toString())
             .replace("__HREF_LIMIT__", PageDownloads.HREF_LIMIT.toString())
             .replace("__HEADER_LIMIT__", PageMessage.MAX_HEADER.toString())
+            .replace("__SMALL__", SMALL.toString())
             .replace("__OFFER__", OFFER)
             .replace("__ANSWER__", ANSWER)
             .replace("__STOP__", STOP)

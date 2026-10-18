@@ -36,7 +36,6 @@ class InviteLinkTests {
         assertEquals("+ is a space", "Sam Lee", link.to)
         assertEquals("taildef456.ts.net", link.networkDomain)
         assertEquals("https://echo-board.taildef456.ts.net/", link.appURL.toString())
-        assertEquals("round trip", link, InviteLink.parse(link.url, allowLocalHTTP = false))
     }
 
     @Test
@@ -47,15 +46,7 @@ class InviteLinkTests {
             val text = universalLink.replace("https://ovenlight.app/join#", variant)
             assertEquals(variant, link, parse(text))
         }
-
-        // What Ovenlight sends: the App Link, with nothing for the website but the path.
-        val sent = link.universalURL
-        assertEquals("https://ovenlight.app/join", sent.toString().split("#").first())
-        assertEquals(null, sent.rawQuery)
-        assertTrue(sent.rawFragment?.contains("key=tskey-auth-kX1abc-DEF") == true)
-        assertEquals("round trip", link, InviteLink.parse(sent, allowLocalHTTP = false))
-        assertEquals("both forms carry the same fields", sent.rawFragment, link.url.rawQuery)
-        assertTrue(InviteLink.isInvite(sent) && InviteLink.isInvite(link.url))
+        assertTrue(InviteLink.isInvite(URI(universalLink)) && InviteLink.isInvite(URI(connectorLink)))
     }
 
     /** Android only: the join page hands an invite to an unverified App Link this way. */

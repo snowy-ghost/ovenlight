@@ -9,8 +9,10 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Guest memberships from invites: joining, claiming, resuming an interrupted join, and taking
@@ -67,9 +69,10 @@ class GuestManager(
                 }
             }
         }
+        // A lost login means the owner removed this phone only once it had joined: a first join
+        // passes through NeedsLogin briefly.
         node.onLoginLost = {
-            val membership = store[id]
-            if (membership != null && GuestCleanup.isRemoved(membership)) {
+            if (store[id]?.joined == true) {
                 log("$id: the owner removed this device")
                 store.update(id) { it.copy(pendingClaims = emptyList()) }
                 val apps = registry.apps.filter { it.membershipID == id }
@@ -248,15 +251,8 @@ class GuestManager(
         store[membershipID]?.pendingClaims?.firstOrNull { it.invite.invite == inviteID }?.invite
 
     /** For a node that already joined: waits until it runs again. Null once it does. */
-    private suspend fun waitForRunning(node: MembershipNode, timeoutMillis: Long): JoinError? {
-        var waited = 0L
-        while (waited < timeoutMillis) {
-            if (node.status.value?.backendState == "Running") return null
-            delay(500)
-            waited += 500
-        }
-        return JoinError.Network
-    }
+    private suspend fun waitForRunning(node: MembershipNode, timeoutMillis: Long): JoinError? =
+        if (withTimeoutOrNull(timeoutMillis) { node.status.first { it?.backendState == "Running" } } != null) null else JoinError.Network
 
     /**
      * Posts the invite's key to the app's connector. Right after joining, the connector may not

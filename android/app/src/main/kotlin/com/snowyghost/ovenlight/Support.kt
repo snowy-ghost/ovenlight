@@ -84,22 +84,11 @@ data class MailDraft(val to: String = AppLinks.supportEmail, val subject: String
         fun connection(state: NodeState, listedOffline: Boolean): String =
             "${state.summary} (${state.logDescription}${if (listedOffline) ", computer listed offline" else ""})"
 
-        private const val hexDigits = "0123456789ABCDEF"
-
         /**
          * Percent-encoded as iOS encodes a query value: UTF-8, leaving only letters, digits and
          * `!$'()*,-./:;@_~`, so `&+=?#` can't cut an app name short.
          */
-        private fun encoded(value: String): String = buildString {
-            for (byte in value.toByteArray(Charsets.UTF_8)) {
-                val c = byte.toInt() and 0xFF
-                if (c in 'a'.code..'z'.code || c in 'A'.code..'Z'.code || c in '0'.code..'9'.code || c.toChar() in "!$'()*,-./:;@_~") {
-                    append(c.toChar())
-                } else {
-                    append('%').append(hexDigits[c shr 4]).append(hexDigits[c and 0xF])
-                }
-            }
-        }
+        private fun encoded(value: String): String = percentEncoded(value, "!$'()*,-./:;@_~")
     }
 }
 

@@ -88,7 +88,7 @@ class AppPage(
     /** Its downloads, refetched on its route with its profile's cookies (PageDownloads.kt). */
     val downloads = PageDownloads(
         app.id, app.host, DownloadShelf.folder(context), scope,
-        mayStart = { shown && !pool.isLocked() }, isLocked = pool.isLocked,
+        mayStart = { shown && !pool.isLocked.value }, isLocked = { pool.isLocked.value },
         client = { PageDownloads.client(TailnetCore.client(routeKey), ProfileCookieJar(WebViewCompat.getProfile(view).cookieManager)) },
         freeBytes = { DownloadShelf.freeBytes(this.context.applicationContext) },
         busy = { busy ->
@@ -104,7 +104,7 @@ class AppPage(
 
     /** Its microphone and camera (PageCapture.kt). */
     val capture = PageCapture(
-        app, ownersHosts = { nodes.ownersHosts }, isLocked = pool.isLocked, isOnScreen = { shown }, scope = scope,
+        app, ownersHosts = { nodes.ownersHosts }, isLocked = { pool.isLocked.value }, isOnScreen = { shown }, scope = scope,
         permissions = { needed, done ->
             CaptureMonitor.watch(this.context)
             RuntimePermissions.request(this.context, needed, done)
@@ -140,8 +140,8 @@ class AppPage(
         WebViewSetup.configure(view)
         if (node != null) Core.setRoute(routeKey, node.id) else Core.clearRoute(routeKey)
         edges = PageEdges(
-            app, view, this.context, scope, OvenlightApp.lock.isLocked, OvenlightApp.model.lifecycle, capture, isShown = { shown },
-            home = { if (routeIsCurrent() && nodeMayCarry && !destroyed) view.loadUrl(app.startURL.toString()) },
+            app, view, this.context, scope, pool.isLocked, OvenlightApp.model.lifecycle, capture, isShown = { shown },
+            home = { loadStart() },
         )
         view.webViewClient = Client()
         view.webChromeClient = edges.chrome
@@ -237,7 +237,7 @@ class AppPage(
                 when (node.canReach(app)) {
                     Reach.Reached -> {
                         mutableGate.value = mutableGate.value.next(AppLoadGate.Event.Reached)
-                        return load()
+                        return loadStart(reload = true)
                     }
                     // The owner stopped sharing it; Ovenlight takes the app away.
                     Reach.NotInvited -> return pool.guests.accessEnded(listOf(app))
@@ -273,7 +273,7 @@ class AppPage(
                     Reach.Reached -> {
                         if (mutableGate.value != AppLoadGate.Unreachable) return
                         mutableGate.value = mutableGate.value.next(AppLoadGate.Event.Woke)
-                        return load()
+                        return loadStart(reload = true)
                     }
                     Reach.NotInvited -> return pool.guests.accessEnded(listOf(app))
                     Reach.Unreachable -> Unit
@@ -294,11 +294,12 @@ class AppPage(
         }
     }
 
-    private fun load() {
+    /** Loads the start page, or with [reload] the page the view has, unless the route changed or its node may not carry it. */
+    private fun loadStart(reload: Boolean = false) {
         if (!routeIsCurrent() || !nodeMayCarry || destroyed) return
         error.value = null
         val current = view.url
-        if (current != null && current != "about:blank") view.reload() else view.loadUrl(app.startURL.toString())
+        if (reload && current != null && current != "about:blank") view.reload() else view.loadUrl(app.startURL.toString())
     }
 
     /**
@@ -332,7 +333,7 @@ class AppPage(
         gateJob?.cancel()
         gateJob = scope.launch {
             delay(wait)
-            if (routeIsCurrent() && nodeMayCarry && !destroyed) view.loadUrl(app.startURL.toString())
+            loadStart()
         }
     }
 
@@ -449,7 +450,7 @@ class AppPage(
 
         // WebView's codes for a path through the proxy that didn't connect: -11 for a tunnel the
         // proxy refused or couldn't open (502, 503, 504), -8 for one held past 10 s, -5 for the
-        // proxy itself gone (Phase 1's G5), and the plain connection failures.
+        // proxy itself gone, and the plain connection failures.
         val retryableThroughNode = setOf(
             WebViewClient.ERROR_FAILED_SSL_HANDSHAKE, WebViewClient.ERROR_TIMEOUT, WebViewClient.ERROR_PROXY_AUTHENTICATION,
             WebViewClient.ERROR_CONNECT, WebViewClient.ERROR_HOST_LOOKUP, WebViewClient.ERROR_IO,

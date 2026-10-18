@@ -14,7 +14,6 @@ import android.webkit.DownloadListener
 import android.webkit.MimeTypeMap
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -260,7 +259,7 @@ class PageDownloads(
                 // anywhere the owner's node reaches, so it isn't followed.
                 if (response.code in 300..399) throw IOException("it redirected again")
                 val sent = response.header("Content-Disposition") ?: disposition
-                if (DownloadPolicy.action(response.code, sent, canShow = false) == DownloadPolicy.ResponseAction.Show) {
+                if (!DownloadPolicy.isFile(response.code, sent)) {
                     throw IOException("it answered ${response.code}")
                 }
                 // From the headers on, 30 seconds with nothing arriving ends it.
@@ -375,7 +374,7 @@ class PageDownloads(
         const val HREF_LIMIT = 2 * 1024 * 1024
         const val PENDING_CLICKS = 8
 
-        /** An http download waits up to 10 times 50 ms for the click report that names it. */
+        /** How many times, and how long each, an http download waits for the click report that names it. */
         const val CLICK_WAITS = 10
         const val CLICK_WAIT_MILLIS = 50L
         const val PENDING_BYTES = BLOB_LIMIT.toLong()
@@ -710,18 +709,8 @@ internal fun DownloadSheetContent(name: String, size: String, canOpen: Boolean, 
             colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
         )
         HorizontalDivider()
-        SheetAction(R.drawable.ic_download, stringResource(R.string.save), onSave)
-        SheetAction(R.drawable.ic_share, stringResource(R.string.download_share), onShare)
-        if (canOpen) SheetAction(R.drawable.ic_open_in_new, stringResource(R.string.open), onOpen)
+        SheetRow(R.drawable.ic_download, stringResource(R.string.save), onSave)
+        SheetRow(R.drawable.ic_share, stringResource(R.string.download_share), onShare)
+        if (canOpen) SheetRow(R.drawable.ic_open_in_new, stringResource(R.string.open), onOpen)
     }
-}
-
-@Composable
-private fun SheetAction(icon: Int, label: String, onClick: () -> Unit) {
-    ListItem(
-        headlineContent = { Text(label) },
-        leadingContent = { Icon(painterResource(icon), contentDescription = null) },
-        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-        modifier = Modifier.clickable(onClick = onClick),
-    )
 }

@@ -191,11 +191,11 @@ class LauncherViewTests {
     @Test
     fun testGridOfOwnAndSharedApps() {
         val opened = mutableListOf<WebApp>()
-        show(LauncherState(apps = apps, ownerEnabled = true, ownerState = NodeState.Ready, reachability = mapOf(garden.id to AppReachability.Offline), open = { opened += it }))
+        show(LauncherState(apps = apps, ownerEnabled = true, ownerState = NodeState.Ready, offline = setOf(garden.id), open = { opened += it }))
         assertEquals(4, columns())
         assertEquals(null, stateOf("Recipe Box"))
         assertEquals("New", stateOf(sharedTile))
-        assertEquals(AppReachability.Offline.label, stateOf("Garden Log"))
+        assertEquals("Offline", stateOf("Garden Log"))
         composeRule.onNodeWithText(ConnectionCopy.sharedBy("Riley"), useUnmergedTree = true).assertExists()
         tile(sharedTile).assert(SemanticsMatcher("click label Open") { it.config.getOrNull(SemanticsActions.OnClick)?.label == "Open" })
         tile("Recipe Box").performClick()
@@ -292,7 +292,7 @@ class LauncherViewTests {
     @Test
     fun testMenuSharesAShareableApp() {
         val shareable = AdminApp("recipe-box", "Recipe Box", recipes.startURL.toString(), online = true, shareable = true, guests = 1)
-        val sam = AdminGuest("n1", "p1", "Sam", "recipe-box", "ovenlight-4k2x9q", claimedAt = Instant.ofEpochSecond(1_000))
+        val sam = AdminGuest("n1", "p1", "Sam", "recipe-box", claimedAt = Instant.ofEpochSecond(1_000))
         val machine = OwnerSharing.Machine(recipes.host, listOf(shareable), AdminGuestList(guests = listOf(sam)))
         var refreshed = 0
         var shared: AdminApp? = null

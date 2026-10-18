@@ -46,7 +46,6 @@ class AppLoadGateTests {
         assertFalse("the app's own 502 is its page", AppLoadGate.appIsDown(502, null))
         assertFalse(AppLoadGate.appIsDown(503, "unavailable"))
         assertFalse(AppLoadGate.appIsDown(403, "not_invited"))
-        assertFalse(AppLoadGate.appIsDown(null, null))
         CopyRules.assertNeutral(ConnectionCopy.notResponding("Coach"))
     }
 

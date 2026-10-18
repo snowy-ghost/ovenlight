@@ -79,9 +79,9 @@ class SharingViewTests {
         apps = listOf(club, budget),
         guests = AdminGuestList(
             guests = listOf(
-                AdminGuest("n1", "p1", "Sam", "book-club", "ovenlight-4k2x9q", claimedAt = ago(120), lastOpened = ago(64)),
-                AdminGuest("n4", "p1", "Sam", "book-club", "ovenlight-m7c1pw", claimedAt = ago(63), lastOpened = now),
-                AdminGuest("n2", "p2", "Kim", "book-club", "ovenlight-r5j8de", claimedAt = ago(30), lastOpened = ago(1)),
+                AdminGuest("n1", "p1", "Sam", "book-club", claimedAt = ago(120), lastOpened = ago(64)),
+                AdminGuest("n4", "p1", "Sam", "book-club", claimedAt = ago(63), lastOpened = now),
+                AdminGuest("n2", "p2", "Kim", "book-club", claimedAt = ago(30), lastOpened = ago(1)),
             ),
             invites = listOf(
                 AdminInvite("i3", "Lee", "p3", "book-club", AdminInvite.sent, expires = now.plusSeconds(86_400)),
@@ -213,7 +213,7 @@ class SharingViewTests {
     @Test
     fun testSelectingPeopleRemovesSeveralButNeverAppReview() {
         val reviewed = machine.copy(
-            guests = machine.guests.copy(guests = machine.guests.guests + AdminGuest("n9", "p4", "App Review", "book-club", "ovenlight-x", claimedAt = ago(2))),
+            guests = machine.guests.copy(guests = machine.guests.guests + AdminGuest("n9", "p4", "App Review", "book-club", claimedAt = ago(2))),
         )
         show(state(listOf(reviewed)), SharingPage.People)
         // App Review joined last and opened nothing since, so it's last; its open review invite keeps it out of a selection.

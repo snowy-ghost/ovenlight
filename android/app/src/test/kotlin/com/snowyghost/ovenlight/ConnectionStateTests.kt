@@ -1,7 +1,7 @@
 package com.snowyghost.ovenlight
 
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ConnectionStateTests {
@@ -12,12 +12,13 @@ class ConnectionStateTests {
             host: String = coach,
             node: NodeState = NodeState.Ready,
             answers: Map<String, Boolean>? = mapOf(coach to true),
-        ) = AppReachability.forTile(host, node, answers)
-        assertNull(tile())
-        assertNull("hosts compare normalized", tile("Interview-Coach.tailabc123.ts.net"))
-        assertEquals(AppReachability.Offline, tile(answers = mapOf(coach to false)))
-        assertEquals("not probed: its computer is offline", AppReachability.Offline, tile(answers = mapOf("other.tailabc123.ts.net" to true)))
-        assertNull("nothing before the first probe", tile(answers = null))
-        assertNull("the launcher shows the connection itself", tile(node = NodeState.Connecting, answers = mapOf(coach to false)))
+        ) = NodeManager.isOffline(host, node, answers)
+        assertFalse(tile())
+        assertFalse("hosts compare normalized", tile("Interview-Coach.tailabc123.ts.net"))
+        assertTrue(tile(answers = mapOf(coach to false)))
+        assertTrue("not probed: its computer is offline", tile(answers = mapOf("other.tailabc123.ts.net" to true)))
+        assertTrue("what a node records when nothing was left to probe", tile(answers = emptyMap()))
+        assertFalse("nothing before the first probe", tile(answers = null))
+        assertFalse("the launcher shows the connection itself", tile(node = NodeState.Connecting, answers = mapOf(coach to false)))
     }
 }

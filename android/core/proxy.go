@@ -46,7 +46,7 @@ const (
 )
 
 // Chromium abandons a tunnel 10 seconds after sending CONNECT, so the proxy
-// answers within 8, the hold and the dial included. Tests and debug builds change it.
+// answers within 8, the hold and the dial included. Tests change it.
 var answerWithin atomic.Int64
 
 func init() { answerWithin.Store(int64(8 * time.Second)) }

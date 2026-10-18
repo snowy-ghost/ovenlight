@@ -84,7 +84,7 @@ enum class AppLoadGate {
          * every released connector sends a plain-text 502 with the code `unavailable`. The probe
          * can't tell, since the connector answers it.
          */
-        fun appIsDown(status: Int?, header: String?): Boolean =
+        fun appIsDown(status: Int, header: String?): Boolean =
             status == 502 && ConnectorError(header, ByteArray(0)) == ConnectorError.Unavailable
 
         /**

@@ -79,7 +79,7 @@ class MainActivity : ComponentActivity() {
         // replays.
         val handled = savedInstanceState?.getBoolean(HANDLED_LAUNCH) ?: false
         if (!handled && intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY == 0) receive(intent)
-        setContent { Root(OvenlightApp.model, onUnlock = { lifecycleScope.launch { lock.unlock(unlockPrompt) } }) }
+        setContent { Root(model, onUnlock = { lifecycleScope.launch { lock.unlock(unlockPrompt) } }) }
     }
 
     /**
@@ -247,9 +247,9 @@ class MainActivity : ComponentActivity() {
         val url = intent.dataString?.let { runCatching { URI(it) }.getOrNull() } ?: return
         // The link goes in front of an invite not yet made, as iOS's composer goes with the sheet
         // under it. One being made or not sent yet stays, since its link shows only once.
-        val composer = OvenlightApp.model.composer
+        val composer = model.composer
         composer.value?.let { if (!it.holdsLinks) composer.value = null }
-        OvenlightApp.router.handle(url, OvenlightApp.model.registry.apps)
+        model.router.handle(url, model.registry.apps)
     }
 
     private companion object {

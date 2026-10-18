@@ -10,6 +10,7 @@ import java.util.Locale
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 
 /**
  * Keeps a live web view per recently used app, so switching apps doesn't reload them. Each
@@ -20,8 +21,8 @@ class WebViewPool(
     private val context: Context,
     private val nodes: NodeManager,
     private val scope: CoroutineScope,
-    /** Ovenlight is locked: nothing downloads or captures. */
-    val isLocked: () -> Boolean,
+    /** Ovenlight is locked: nothing downloads, captures or opens a page's dialogs. */
+    val isLocked: StateFlow<Boolean>,
 ) {
     private val pages = mutableMapOf<UUID, AppPage>()
     private val recent = mutableListOf<UUID>()
@@ -247,23 +248,16 @@ object DownloadPolicy {
         }
     }
 
-    enum class ResponseAction { Show, Download }
-
     /**
-     * A response sent as an attachment, or a successful one WebView can't show, is a file to
-     * keep (an empty one gets no sheet). [status] is null for a blob or data URL. An http(s)
-     * download passes the status of Ovenlight's own fetch of it, since Android's
-     * DownloadListener gives none, so an error body is no file there either. 204, 205 and 304
-     * have no body, and the page stays as it is. An error the view can't show (one with no
-     * Content-Type is `application/octet-stream`) isn't a file.
+     * Whether an http(s) download is a file to keep, by the [status] of Ovenlight's own fetch of
+     * it, since Android's DownloadListener gives none: a successful one, or one sent as an
+     * attachment. 204, 205 and 304 have no body, and the page stays as it is.
      */
-    fun action(status: Int?, disposition: String?, canShow: Boolean): ResponseAction {
-        if (status == 204 || status == 205 || status == 304) return ResponseAction.Show
-        val isSuccess = status?.let { it in 200..<300 } ?: true
+    fun isFile(status: Int, disposition: String?): Boolean {
+        if (status == 204 || status == 205 || status == 304) return false
         // The type is the part before any `;`, in any case, with spaces allowed around it.
         val type = disposition?.split(';', limit = 2)?.first()?.trimmingWhitespace() ?: ""
-        val isFile = type.equals("attachment", ignoreCase = true) || !canShow && isSuccess
-        return if (isFile) ResponseAction.Download else ResponseAction.Show
+        return status in 200..<300 || type.equals("attachment", ignoreCase = true)
     }
 
     /**

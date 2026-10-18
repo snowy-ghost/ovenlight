@@ -75,19 +75,6 @@ data class InviteLink(
         return suffix == networkDomain
     }
 
-    /** The fields in the connector's order, form-encoded: the query of `ovenlight://join` and the fragment of the App Link. */
-    private val encodedFields: String
-        get() = listOf(
-            "v" to version, "control" to control.toString(), "key" to key, "owner" to owner,
-            "app" to app, "invite" to invite, "host" to host, "name" to name, "to" to to,
-        ).joinToString("&") { (name, value) -> "$name=${formEncode(value)}" }
-
-    /** The link to send: the App Link, which opens Ovenlight when it's installed. */
-    val universalURL: URI get() = URI(joinPage.toString() + "#" + encodedFields)
-
-    /** The same invite as `ovenlight://join?...`, for when the App Link opens the page. */
-    val url: URI get() = URI("$scheme://join?$encodedFields")
-
     companion object {
         const val version = "1"
         const val maxLabel = 64
@@ -228,19 +215,6 @@ data class InviteLink(
                     label.all { it.isAsciiLetterOrDigit() || it == '-' }
             }
         }
-
-        private fun formEncode(text: String): String {
-            val out = StringBuilder()
-            for (byte in text.toByteArray(Charsets.UTF_8)) {
-                val c = (byte.toInt() and 0xFF).toChar()
-                when {
-                    c.isAsciiLetterOrDigit() || c in "-._~" -> out.append(c)
-                    c == ' ' -> out.append('+')
-                    else -> out.append('%').append(String.format(Locale.ROOT, "%02X", byte.toInt() and 0xFF))
-                }
-            }
-            return out.toString()
-        }
     }
 }
 
@@ -280,6 +254,17 @@ internal fun URI.resolving(reference: String): URI? = try {
 /** The host without the brackets java.net.URI keeps around an IPv6 address, as iOS's `URL.host` gives it. */
 internal val URI.bareHost: String?
     get() = host?.removeSurrounding("[", "]")
+
+/** [text] as UTF-8, percent-encoded but for ASCII letters, digits and the characters in [keep]. */
+internal fun percentEncoded(text: String, keep: String): String = buildString {
+    for (byte in text.toByteArray(Charsets.UTF_8)) {
+        val value = byte.toInt() and 0xFF
+        val c = value.toChar()
+        if (c.isAsciiLetterOrDigit() || c in keep) append(c) else append('%').append(HEX[value shr 4]).append(HEX[value and 0xF])
+    }
+}
+
+private const val HEX = "0123456789ABCDEF"
 
 /** Percent-decoded as UTF-8, or null when an escape is malformed or the bytes aren't UTF-8. */
 internal fun removingPercentEncoding(text: String): String? {

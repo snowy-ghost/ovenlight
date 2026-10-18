@@ -12,7 +12,7 @@ class AppMenuPlanTests {
         AdminApp(slug = "coach", name = "Coach", url = "https://coach.tail1.ts.net/", online = true, shareable = shareable, guests = 0)
 
     private fun guest(name: String, app: String = "coach", removed: Boolean = false) = AdminGuest(
-        deviceId = "n$name", person = "p$name", name = name, app = app, deviceName = "$name-iphone", claimedAt = t0,
+        deviceId = "n$name", person = "p$name", name = name, app = app, claimedAt = t0,
         removedAt = if (removed) t0 else null,
     )
 

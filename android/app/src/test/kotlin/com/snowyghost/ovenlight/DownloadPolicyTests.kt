@@ -1,6 +1,5 @@
 package com.snowyghost.ovenlight
 
-import com.snowyghost.ovenlight.DownloadPolicy.ResponseAction
 import java.net.URI
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -35,24 +34,14 @@ class DownloadPolicyTests {
 
     @Test
     fun testAttachmentsAndFilesWebKitCantShowDownload() {
-        fun action(status: Int?, disposition: String?, canShow: Boolean = true) = DownloadPolicy.action(status, disposition, canShow)
-        assertEquals(ResponseAction.Download, action(200, "attachment; filename=\"export.csv\""))
-        assertEquals(ResponseAction.Download, action(200, " Attachment"))
-        assertEquals("space before the semicolon", ResponseAction.Download, action(200, "attachment ; filename=export.csv"))
-        assertEquals(ResponseAction.Download, action(200, "ATTACHMENT;filename=export.csv"))
-        assertEquals("a zip, say", ResponseAction.Download, action(200, null, canShow = false))
-        assertEquals("a blob WebKit can't show", ResponseAction.Download, action(null, null, canShow = false))
-        assertEquals(ResponseAction.Show, action(200, "inline; filename=\"report.pdf\""))
-        assertEquals(ResponseAction.Show, action(200, "attachments-are-not-this"))
-        assertEquals(ResponseAction.Show, action(200, null))
-        assertEquals(ResponseAction.Show, action(200, ""))
-        // No body, and no Content-Type, which WebKit takes as application/octet-stream.
-        assertEquals("WebKit stays on the page itself", ResponseAction.Show, action(204, null, canShow = false))
-        assertEquals(ResponseAction.Show, action(205, null, canShow = false))
-        assertEquals(ResponseAction.Show, action(204, "attachment; filename=export.csv"))
-        assertEquals(ResponseAction.Show, action(304, "attachment; filename=export.csv", canShow = false))
-        assertEquals("an error page isn't a file", ResponseAction.Show, action(404, null, canShow = false))
-        assertEquals(ResponseAction.Show, action(500, null, canShow = false))
+        assertTrue(DownloadPolicy.isFile(200, null))
+        assertTrue("an error sent as an attachment", DownloadPolicy.isFile(404, " Attachment ; filename=export.csv"))
+        assertFalse("no body: the page stays as it is", DownloadPolicy.isFile(204, null))
+        assertFalse(DownloadPolicy.isFile(205, null))
+        assertFalse(DownloadPolicy.isFile(204, "attachment; filename=export.csv"))
+        assertFalse(DownloadPolicy.isFile(304, "attachment; filename=export.csv"))
+        assertFalse("an error page isn't a file", DownloadPolicy.isFile(404, null))
+        assertFalse(DownloadPolicy.isFile(500, "inline"))
     }
 
     @Test

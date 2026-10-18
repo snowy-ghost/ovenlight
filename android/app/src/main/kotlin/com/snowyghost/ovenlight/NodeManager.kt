@@ -238,13 +238,13 @@ class MembershipNode(
     private val now: () -> Long,
     private val log: (String) -> Unit,
     /** The owner's node saw its tailnet's MagicDNS suffix. */
-    private val rememberOwnerSuffix: (String) -> Unit = {},
+    private val rememberOwnerSuffix: (String) -> Unit,
     /** Ovenlight is away (see AppLifecycle): the node idles until it comes back. */
-    private val pollingPaused: () -> Boolean = { false },
+    private val pollingPaused: () -> Boolean,
     /** Runs as the node starts to log out, so the web views it carried go first. */
-    private val loggingOut: (MembershipNode) -> Unit = {},
+    private val loggingOut: (MembershipNode) -> Unit,
     /** Whether the phone could hear an app's answer now (see [NodeManager.canHear]). */
-    private val canHear: () -> Boolean = { true },
+    private val canHear: () -> Boolean,
 ) {
     data class Settings(
         val controlURL: String,
@@ -822,13 +822,10 @@ class NodeManager(
     /** A fetch for the app's pages and icon, through its node; null until the node is up, and for a refused app. */
     fun fetch(app: WebApp): Fetch? = node(app)?.fetch()
 
-    /** A fetch for posting to an app (feedback), with its own timeouts, through the app's node; null without one. */
-    fun uploadSession(app: WebApp, timeoutMillis: Long): Send? = node(app)?.makeSession(timeoutMillis)
-
-    /** What an app's launcher tile shows about its computer. */
-    fun reachability(app: WebApp): AppReachability? {
-        val node = node(app) ?: return null
-        return AppReachability.forTile(app.host, node.state.value, node.answers.value)
+    /** Whether an app's tile shows its computer offline. */
+    fun isOffline(app: WebApp): Boolean {
+        val node = node(app) ?: return false
+        return isOffline(app.host, node.state.value, node.answers.value)
     }
 
     // Configuration
@@ -853,6 +850,14 @@ class NodeManager(
         const val HOST_NAME_KEY = "tailnetHostName"
         const val CONTROL_URL_KEY = "controlURL"
         const val AUTH_KEY_KEY = "authKey"
+
+        /**
+         * Tiles only speak up when something is wrong: a computer that didn't answer the last
+         * probe, or wasn't online to be probed. Nothing before the node is ready (the launcher
+         * shows that) or before the first probe.
+         */
+        fun isOffline(host: String, nodeState: NodeState, answers: Map<String, Boolean>?): Boolean =
+            nodeState == NodeState.Ready && answers != null && answers[Discovery.normalizedHost(host)] != true
 
         /**
          * The name the tailnet gave this node, which is the one it asked for ([hostName]) unless
