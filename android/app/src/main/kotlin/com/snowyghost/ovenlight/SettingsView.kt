@@ -5,11 +5,6 @@ import android.content.Intent
 import android.icu.text.ListFormatter
 import android.provider.Settings as SystemSettings
 import androidx.annotation.DrawableRes
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.rememberTransition
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -56,11 +51,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -134,7 +131,7 @@ data class SettingsState(
 
 /** Settings (SettingsView in LauncherView.swift, and SharedSettings.swift). */
 @Composable
-fun SettingsView(model: AppModel, onClose: () -> Unit) {
+fun SettingsView(model: AppModel, pages: SnapshotStateList<SettingsPage>, onClose: () -> Unit) {
     val context = LocalContext.current
     val nodes = model.nodes
     val memberships by nodes.memberships.membershipsFlow.collectAsState()
@@ -182,31 +179,22 @@ fun SettingsView(model: AppModel, onClose: () -> Unit) {
         privacyPolicy = { CustomTabs.open(context, AppLinks.privacyPolicy, model.lifecycle) },
         notices = { withContext(Dispatchers.IO) { Acknowledgements.notices { context.assets.open(it) } } },
     )
-    SettingsScreen(state, onClose)
+    SettingsScreen(state, onClose, pages)
 }
+
+/** The pages of Settings: the list, and Acknowledgements over it. */
+enum class SettingsPage { List, Acknowledgements }
 
 /** Settings, and Acknowledgements over it, which Back returns from. */
 @Composable
-fun SettingsScreen(state: SettingsState, onClose: () -> Unit) {
-    var acknowledgements by remember { mutableStateOf(false) }
+fun SettingsScreen(state: SettingsState, onClose: () -> Unit, pages: SnapshotStateList<SettingsPage> = remember { mutableStateListOf(SettingsPage.List) }) {
     // Outlives the slide to Acknowledgements, so coming back keeps the place in the list.
     val scroll = rememberScrollState()
-    val page = rememberScreenShown(acknowledgements)
-    ScreenBack(page, shown = acknowledgements) { acknowledgements = false }
-    rememberTransition(page, label = "settings page").AnimatedContent(
-        transitionSpec = {
-            if (targetState) {
-                slideInHorizontally(screenTween()) { it } togetherWith slideOutHorizontally(screenTween()) { -it / 3 }
-            } else {
-                // Back slides Acknowledgements away over Settings, as Android's own screens do.
-                (slideInHorizontally(screenTween()) { -it / 3 } togetherWith slideOutHorizontally(screenTween()) { it }).apply { targetContentZIndex = -1f }
-            }
-        },
-    ) { showing ->
-        if (showing) {
-            AcknowledgementsScreen(state.notices, onBack = { acknowledgements = false })
-        } else {
-            SettingsList(state, scroll, onClose, onAcknowledgements = { acknowledgements = true })
+    val back = { if (pages.size > 1) pages.removeAt(pages.lastIndex) }
+    PageStack(pages) { page ->
+        when (page) {
+            SettingsPage.List -> SettingsList(state, scroll, onClose, onAcknowledgements = { pages += SettingsPage.Acknowledgements })
+            SettingsPage.Acknowledgements -> AcknowledgementsScreen(state.notices, onBack = back)
         }
     }
 }
@@ -394,7 +382,7 @@ private fun AcknowledgementsScreen(notices: suspend () -> String?, onBack: () ->
                         val text = remember(paragraph, space) {
                             buildAnnotatedString {
                                 for ((indent, line) in Acknowledgements.lines(paragraph)) {
-                                    withStyle(ParagraphStyle(textIndent = TextIndent(space * indent, space * indent))) { append(line) }
+                                    withStyle(ParagraphStyle(textIndent = TextIndent(space * indent, space * indent))) { append(Acknowledgements.unbroken(line)) }
                                 }
                             }
                         }

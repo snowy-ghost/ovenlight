@@ -51,7 +51,7 @@ class RouterTests {
     fun testOpeningAnAppFromASheetWaitsForItToClose() {
         val router = Router()
         val app = WebApp(name = "Coach", startURL = URI("https://coach.example.com/"))
-        router.present(RootSheet.Settings)
+        router.present(RootSheet.Settings())
         router.sheetAppeared()
         router.open(app)
         assertNull(router.sheet.value)

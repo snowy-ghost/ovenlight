@@ -113,6 +113,24 @@ class FeedbackSheetTests {
         assertEquals("closes 1.4 s after", 1, dismissed)
     }
 
+    /** Closing with a note asks before it's lost; with none, it closes at once. */
+    @Test
+    fun testClosingWithANoteAsksFirst() {
+        show(recipes)
+        val close = composeRule.onNodeWithContentDescription("Close")
+        close.performClick()
+        assertEquals("nothing to lose", 1, dismissed)
+        field.performTextInput("The soup page overlaps")
+        close.performClick()
+        text("Discard feedback?").assertIsDisplayed()
+        text("Keep editing").performClick()
+        text("Discard feedback?").assertDoesNotExist()
+        assertEquals(1, dismissed)
+        close.performClick()
+        text("Discard").performClick()
+        assertEquals(2, dismissed)
+    }
+
     @Test
     fun testAScreenshotToTheOwnerOfASharedApp() {
         show(guide, screenshot())

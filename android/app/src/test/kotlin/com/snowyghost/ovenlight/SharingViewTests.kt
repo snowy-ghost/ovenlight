@@ -105,8 +105,10 @@ class SharingViewTests {
         refresh = { refreshes += 1 },
     )
 
-    private fun show(state: SharingState, root: SharingPage = SharingPage.List) {
-        composeRule.setContent { OvenlightTheme { SharingScreen(state, root, onClose = {}, scope = rememberCoroutineScope()) } }
+    private fun show(state: SharingState, root: SharingPage = SharingPage.List) = show(state, SharingPlace(root))
+
+    private fun show(state: SharingState, place: SharingPlace) {
+        composeRule.setContent { OvenlightTheme { SharingScreen(state, place, onClose = {}, scope = rememberCoroutineScope()) } }
         composeRule.checkAccessibility()
     }
 
@@ -297,6 +299,49 @@ class SharingViewTests {
         assertEquals(link, clip.getItemAt(0).text)
         assertTrue("marked sensitive, so Android's preview hides the key", clip.description.extras!!.getBoolean(ClipDescription.EXTRA_IS_SENSITIVE))
         assertEquals("one invite", 1, requests.size)
+    }
+
+    /** The screen opens where its place says, as after the lock took it apart. */
+    @Test
+    fun testTheScreenComesBackToItsPage() {
+        val place = SharingPlace(SharingPage.List)
+        place.pages += SharingPage.App(machine.id, "book-club")
+        show(state(), place)
+        composeRule.onNodeWithText("Share Book Club…").assertIsDisplayed()
+        composeRule.runOnIdle { place.pages.removeAt(place.pages.lastIndex) }
+        composeRule.onNodeWithText("Apps").assertIsDisplayed()
+    }
+
+    /** The link shows only once, so closing a new invite before it's sent or copied asks first. */
+    @Test
+    fun testClosingAnUnsentInviteAsksFirst() {
+        val link = "https://ovenlight.app/join#v=1&invite=i9"
+        answer = {
+            FetchResponse(
+                200,
+                """{"invite":{"id":"i9","to":"Jo","person":"p9","app":"book-club","state":"sent","expires":"${now.plusSeconds(86_400)}"},"link":"$link","message":"$link"}""".toByteArray(),
+            )
+        }
+        var dismissed = 0
+        composeRule.setContent { OvenlightTheme { InviteComposerDialog(InviteComposer(machine, club), state(), rememberCoroutineScope(), onDismiss = { dismissed += 1 }) } }
+        composeRule.onNodeWithText("Their name, like Sam").performTextInput("Jo")
+        inDialog("Create").performClick()
+        inDialog("Invite for Jo").assertIsDisplayed()
+        val close = composeRule.onNodeWithContentDescription("Close")
+        close.performClick()
+        inDialog("Close without sending?").assertIsDisplayed()
+        inDialog("You can cancel this invite in People & sharing.").assertIsDisplayed()
+        inDialog("Keep").performClick()
+        inDialog("Close without sending?").assertDoesNotExist()
+        assertEquals(0, dismissed)
+        close.performClick()
+        inDialog("Close").performClick()
+        assertEquals(1, dismissed)
+        // Copied, the link is safe: closing goes at once.
+        inDialog("Copy link").performClick()
+        close.performClick()
+        inDialog("Close without sending?").assertDoesNotExist()
+        assertEquals(2, dismissed)
     }
 
     @Test

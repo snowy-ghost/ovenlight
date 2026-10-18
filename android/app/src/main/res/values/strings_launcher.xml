@@ -9,7 +9,7 @@
     <string name="launcher_try_again">Try again</string>
 
     <string name="launcher_connect_title">Connect your computers</string>
-    <string name="launcher_connect_body">Ovenlight connects privately to your own computers with your Tailscale account, without a VPN. If Tailscale says this phone needs approval, open the admin console and tap Approve.</string>
+    <string name="launcher_connect_body">Ovenlight connects privately to your own computers with your Tailscale account, without a VPN.</string>
     <string name="launcher_connect">Connect</string>
     <string name="launcher_approve_title">Approve this phone</string>
     <string name="launcher_approve_body">Your Tailscale network asks you to approve each new device once. On the Machines page, find %1$s, open its ••• menu and choose Approve. Ovenlight connects as soon as you do.</string>
@@ -35,15 +35,15 @@
     <string name="launcher_add_to_home_screen">Add to Home screen</string>
     <string name="launcher_rename">Rename</string>
     <string name="launcher_refresh_icon">Refresh icon</string>
-    <string name="launcher_sign_out_clear">Sign out and clear data</string>
+    <string name="launcher_clear_data">Clear app data</string>
     <string name="launcher_remove_app">Remove app</string>
 
     <string name="launcher_rename_title">Rename app</string>
     <string name="launcher_name">Name</string>
     <string name="launcher_cancel">Cancel</string>
     <string name="launcher_save">Save</string>
-    <string name="launcher_sign_out_title">Sign out of %1$s?</string>
-    <string name="launcher_sign_out_message">This deletes the app\'s cookies and storage on this phone.</string>
+    <string name="launcher_clear_data_title">Clear %1$s\'s data?</string>
+    <string name="launcher_clear_data_message">This deletes the app\'s cookies and storage on this phone.</string>
     <string name="launcher_remove_title">Remove %1$s?</string>
     <string name="launcher_remove_message">This removes the app from Ovenlight and deletes everything it stored on this phone.</string>
     <string name="launcher_leave">Leave</string>

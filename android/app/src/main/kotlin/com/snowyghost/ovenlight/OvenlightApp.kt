@@ -24,6 +24,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -364,7 +365,7 @@ sealed class RootSheet {
      * Shown as a screen over the launcher by RootView. Add App is a dialog, and the sign-in and
      * Machines pages show in a Custom Tab (see MainActivity).
      */
-    val isScreen: Boolean get() = this == Settings || this is Join || this == Sharing || this is People
+    val isScreen: Boolean get() = this is Settings || this is Join || this is Sharing || this is People
 
     /** An invite link, or the Join with Invite entry. */
     data class Join(val request: JoinRequest) : RootSheet() {
@@ -381,8 +382,9 @@ sealed class RootSheet {
         override val id: String get() = "approve"
     }
 
-    /** The owner's People & Sharing. */
-    data object Sharing : RootSheet() {
+    /** The owner's People & Sharing, holding where in it the person is, so the lock keeps that too. */
+    class Sharing : RootSheet() {
+        val place = SharingPlace(SharingPage.List)
         override val id: String get() = "sharing"
     }
 
@@ -390,12 +392,15 @@ sealed class RootSheet {
         override val id: String get() = "add"
     }
 
-    data object Settings : RootSheet() {
+    /** Settings, holding whether Acknowledgements is open over it, so the lock keeps that too. */
+    class Settings : RootSheet() {
+        val pages = mutableStateListOf(SettingsPage.List)
         override val id: String get() = "settings"
     }
 
-    /** One app's people, from its menu. */
+    /** One app's people, from its menu, holding the pages opened from there as [Sharing] does. */
     data class People(val machineID: String, val slug: String) : RootSheet() {
+        val place = SharingPlace(SharingPage.App(machineID, slug))
         override val id: String get() = "people $machineID $slug"
     }
 }
@@ -472,10 +477,10 @@ private fun ScreenLayer(model: AppModel) {
             }
             ScreenBack(shownState, shown = screen != null, back = close)
             when (shown) {
-                RootSheet.Settings -> SettingsView(model, onClose = close)
+                is RootSheet.Settings -> SettingsView(model, shown.pages, onClose = close)
                 is RootSheet.Join -> JoinFlowView(model, shown.request, onClose = close)
-                RootSheet.Sharing -> SharingView(model, SharingPage.List, onClose = close)
-                is RootSheet.People -> SharingView(model, SharingPage.App(shown.machineID, shown.slug), onClose = close)
+                is RootSheet.Sharing -> SharingView(model, shown.place, onClose = close)
+                is RootSheet.People -> SharingView(model, shown.place, onClose = close)
                 else -> Unit
             }
         }

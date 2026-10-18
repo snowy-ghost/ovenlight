@@ -156,6 +156,14 @@ object Acknowledgements {
     /** A paragraph's lines, each with the spaces that indent it, so a line too long for the screen wraps under its own text. */
     fun lines(paragraph: String): List<Pair<Int, String>> = paragraph.lines().map { line -> line.takeWhile { it == ' ' }.length.let { it to line.drop(it) } }
 
+    /**
+     * A line with no spaces, such as a library's "group:artifact:version" or a URL, kept whole
+     * where it fits, and otherwise broken only after a colon: a zero-width space after each `:`,
+     * and a word joiner after each `-` and `/`, where it would otherwise break.
+     */
+    fun unbroken(line: String): String =
+        if (line.any(Char::isWhitespace)) line else line.replace(Regex("[-/:]")) { it.value + if (it.value == ":") "\u200B" else "\u2060" }
+
     /** A title underlined with `=`, the heading of one library's or one file's licenses. */
     fun heading(paragraph: String): String? = paragraph.lines().takeIf { it.size == 2 && it[1].isNotEmpty() && it[1].all { c -> c == '=' } }?.first()
 

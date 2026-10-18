@@ -200,13 +200,13 @@ class ScreenAccessibilityTests {
     private val sharing = SharingState(MutableStateFlow(listOf(machine)))
 
     @Composable
-    private fun Sharing(root: SharingPage) = SharingScreen(sharing, root, onClose = {}, scope = rememberCoroutineScope())
+    private fun Sharing(root: SharingPage) = SharingScreen(sharing, SharingPlace(root), onClose = {}, scope = rememberCoroutineScope())
 
     @Test
     fun testPeopleAndSharing() = check { Sharing(SharingPage.List) }
 
     @Test
-    fun testPeopleAndSharingNotConnected() = check { SharingScreen(sharing.copy(isAvailable = false), SharingPage.List, onClose = {}, scope = rememberCoroutineScope()) }
+    fun testPeopleAndSharingNotConnected() = check { SharingScreen(sharing.copy(isAvailable = false), SharingPlace(SharingPage.List), onClose = {}, scope = rememberCoroutineScope()) }
 
     @Test
     fun testAnAppsPeopleWithARowMenu() = check(open = { composeRule.onNodeWithContentDescription("Sam options").performClick() }) {

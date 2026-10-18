@@ -250,6 +250,8 @@ private fun InviteEntry(canScan: Boolean, found: (InviteLink) -> Unit) {
         Text(ConnectionCopy.invitePrompt, style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp))
         // The clipboard is read only on a tap, and Android says when it is.
         FilledTonalButton(onClick = { use(clipboardText(context)) }, modifier = Modifier.fillMaxWidth().height(56.dp)) {
+            Icon(painterResource(R.drawable.ic_content_paste), contentDescription = null, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(8.dp))
             Text(stringResource(R.string.join_paste), style = MaterialTheme.typography.titleMedium)
         }
         Text(
@@ -320,25 +322,18 @@ private fun clipboardText(context: Context): String {
 
 /** A link that isn't an invite Ovenlight can use, and why. */
 @Composable
-private fun CantUseInvite(message: String, tryAnother: () -> Unit) = BoxWithConstraints(Modifier.fillMaxSize()) {
-    // Centered, scrolling only when the largest font sizes don't fit.
-    Column(
-        Modifier.verticalScroll(rememberScrollState()).heightIn(min = maxHeight).fillMaxWidth().padding(32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Icon(painterResource(R.drawable.ic_error), contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(48.dp))
-        Text(
-            stringResource(R.string.join_cant_use), Modifier.padding(top = 16.dp).semantics { heading() },
-            style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center,
-        )
-        Text(
-            message, Modifier.padding(top = 8.dp),
-            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center,
-        )
-        Button(onClick = tryAnother, modifier = Modifier.padding(top = 24.dp).height(56.dp)) {
-            Text(stringResource(R.string.join_try_another), style = MaterialTheme.typography.titleMedium)
-        }
+private fun CantUseInvite(message: String, tryAnother: () -> Unit) = CenteredScroll(contentPadding = 32.dp) {
+    Icon(painterResource(R.drawable.ic_error), contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(48.dp))
+    Text(
+        stringResource(R.string.join_cant_use), Modifier.padding(top = 16.dp).semantics { heading() },
+        style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center,
+    )
+    Text(
+        message, Modifier.padding(top = 8.dp),
+        style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center,
+    )
+    Button(onClick = tryAnother, modifier = Modifier.padding(top = 24.dp).height(56.dp)) {
+        Text(stringResource(R.string.join_try_another), style = MaterialTheme.typography.titleMedium)
     }
 }
 
@@ -603,22 +598,16 @@ object LauncherWelcome {
 @Composable
 fun LauncherWelcome(join: () -> Unit, useOwnComputers: () -> Unit, modifier: Modifier = Modifier) {
     val colors = MaterialTheme.colorScheme
-    BoxWithConstraints(modifier.fillMaxWidth()) {
-        Column(
-            Modifier.verticalScroll(rememberScrollState()).heightIn(min = maxHeight).fillMaxWidth().padding(horizontal = 32.dp, vertical = 24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-        ) {
-            Text(LauncherWelcome.title, style = OvenType.displayTitle, color = colors.onSurface, textAlign = TextAlign.Center)
-            Spacer(Modifier.height(10.dp))
-            Text(LauncherWelcome.message, style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant, textAlign = TextAlign.Center)
-            Spacer(Modifier.height(24.dp))
-            Button(onClick = join, modifier = Modifier.height(56.dp)) {
-                Text(ConnectionCopy.joinWithInvite, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 8.dp))
-            }
-            Spacer(Modifier.height(14.dp))
-            TextButton(onClick = useOwnComputers) { Text(stringResource(R.string.launcher_use_own_computers)) }
+    CenteredScroll(modifier, contentPadding = 32.dp) {
+        Text(LauncherWelcome.title, style = OvenType.displayTitle, color = colors.onSurface, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(10.dp))
+        Text(LauncherWelcome.message, style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(24.dp))
+        Button(onClick = join, modifier = Modifier.height(56.dp)) {
+            Text(ConnectionCopy.joinWithInvite, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 8.dp))
         }
+        Spacer(Modifier.height(14.dp))
+        TextButton(onClick = useOwnComputers) { Text(stringResource(R.string.launcher_use_own_computers)) }
     }
 }
 

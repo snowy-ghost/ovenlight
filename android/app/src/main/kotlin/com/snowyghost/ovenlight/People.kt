@@ -20,7 +20,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -40,7 +39,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
 /** A person on one computer. */
-private data class PersonRef(val machineID: String, val person: String)
+internal data class PersonRef(val machineID: String, val person: String)
 
 /**
  * Everyone the owner shares with, across apps, those who opened one most recently first. People
@@ -48,12 +47,13 @@ private data class PersonRef(val machineID: String, val person: String)
  * or Select in the menu), and their devices leave the owner's Tailscale network.
  */
 @Composable
-internal fun SharingPeopleList(state: SharingState, scroll: ScrollState, open: (SharingPage) -> Unit, back: () -> Unit, scope: CoroutineScope) {
+internal fun SharingPeopleList(state: SharingState, place: SharingPlace, scroll: ScrollState, open: (SharingPage) -> Unit, back: () -> Unit, scope: CoroutineScope) {
     val resources = LocalResources.current
     val machines by state.machines.collectAsState()
     val groups = machines.map { it to GuestPerson.byActivity(it.guests) }.filter { it.second.isNotEmpty() }
-    var selecting by remember { mutableStateOf(false) }
-    val selection = remember { mutableStateListOf<PersonRef>() }
+    // On the screen's place, so the lock keeps a selection.
+    var selecting by place::selecting
+    val selection = place.selection
     var removing by remember { mutableStateOf(emptyList<PersonRef>()) }
     var working by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }

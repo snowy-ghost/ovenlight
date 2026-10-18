@@ -46,4 +46,11 @@ class AcknowledgementsTests {
             Acknowledgements.lines("Apache:\n  androidx.core:core:1.19.1\n      \"License\" shall mean"),
         )
     }
+
+    /** A library's coordinates break only where they don't fit, and then only between their parts. */
+    @Test
+    fun testCoordinatesStayWhole() {
+        assertEquals("androidx.core:\u200Bcore-\u2060ktx:\u200B1.9", Acknowledgements.unbroken("androidx.core:core-ktx:1.9"))
+        assertEquals("prose breaks as prose", "Version 2.0 (the", Acknowledgements.unbroken("Version 2.0 (the"))
+    }
 }

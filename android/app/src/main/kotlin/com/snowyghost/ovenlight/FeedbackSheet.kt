@@ -145,8 +145,11 @@ fun FeedbackSheet(
         }
     }
 
+    // A note would be lost: closing asks first.
+    var askingToDiscard by remember { mutableStateOf(false) }
+    val close = { if (note.text.isNotBlank() && result != FeedbackResult.Sent) askingToDiscard = true else onDismiss() }
     Dialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = close,
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false, dismissOnBackPress = !sending),
     ) {
         FullScreenDialogBars()
@@ -159,7 +162,7 @@ fun FeedbackSheet(
                 TopAppBar(
                     title = { Text(title) },
                     navigationIcon = {
-                        IconButton(onClick = onDismiss) {
+                        IconButton(onClick = close) {
                             Icon(painterResource(R.drawable.ic_close), contentDescription = stringResource(R.string.feedback_close))
                         }
                     },
@@ -181,6 +184,12 @@ fun FeedbackSheet(
                 FeedbackForm(app, screenshot, note, includeScreenshot, { draft.includeScreenshot = it }, result)
                 AnimatedVisibility(result == FeedbackResult.Sent, enter = fadeIn(), exit = fadeOut()) { FeedbackSent(app) }
             }
+        }
+        if (askingToDiscard) {
+            Confirmation(
+                stringResource(R.string.feedback_discard_title), message = null, confirm = stringResource(R.string.feedback_discard),
+                onDismiss = { askingToDiscard = false }, cancel = stringResource(R.string.feedback_keep_editing), action = onDismiss,
+            )
         }
     }
 }

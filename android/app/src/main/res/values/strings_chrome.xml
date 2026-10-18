@@ -18,6 +18,9 @@
     <string name="feedback_send">Send</string>
     <string name="feedback_sending">Sending</string>
     <string name="feedback_close">Close</string>
+    <string name="feedback_discard_title">Discard feedback?</string>
+    <string name="feedback_discard">Discard</string>
+    <string name="feedback_keep_editing">Keep editing</string>
     <string name="feedback_note">What\'s working, or what isn\'t?</string>
     <string name="feedback_goes_to">Goes to %1$s, who runs %2$s.</string>
     <string name="feedback_goes_to_you">Goes to your feedback in People &amp; sharing.</string>

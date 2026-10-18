@@ -22,6 +22,7 @@ import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isFocused
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -114,17 +115,20 @@ class LauncherViewTests {
         show(LauncherState(present = { presented += it }, enableOwner = { enabled = true }))
         composeRule.onNodeWithText(LauncherWelcome.title).assertIsDisplayed()
         composeRule.onNodeWithText(LauncherWelcome.message).assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Lock Ovenlight").assertDoesNotExist()
         composeRule.onNodeWithText(ConnectionCopy.joinWithInvite).performClick()
         assertTrue(presented.single() is RootSheet.Join)
         composeRule.onNodeWithText("Use my own computers").performClick()
         assertTrue(enabled)
+        composeRule.onNodeWithContentDescription("More").performClick()
+        composeRule.onNodeWithText("Add app").assertDoesNotExist()
     }
 
     @Test
     fun testTopRow() {
         val presented = mutableListOf<RootSheet>()
         var locked = false
-        show(LauncherState(apps = listOf(recipes), lock = { locked = true }, present = { presented += it }))
+        show(LauncherState(apps = listOf(recipes), ownerEnabled = true, lock = { locked = true }, present = { presented += it }))
         composeRule.onNodeWithContentDescription("Lock Ovenlight").performClick()
         assertTrue(locked)
         composeRule.onNodeWithContentDescription("More").performClick()
@@ -136,7 +140,7 @@ class LauncherViewTests {
         composeRule.onNodeWithText("Settings").performClick()
         assertEquals(RootSheet.AddApp, presented[0])
         assertNull("Join with invite opens the join sheet without an invite", (presented[1] as RootSheet.Join).request.invite)
-        assertEquals(RootSheet.Settings, presented[2])
+        assertTrue(presented[2] is RootSheet.Settings)
     }
 
     @Test
@@ -161,7 +165,7 @@ class LauncherViewTests {
         show(LauncherState(apps = listOf(recipes), ownerEnabled = true, ownerState = NodeState.Ready, present = { presented += it }))
         composeRule.onNodeWithContentDescription("More").performClick()
         composeRule.onNodeWithText("People & sharing").performClick()
-        assertEquals(listOf<RootSheet>(RootSheet.Sharing), presented)
+        assertTrue(presented.single() is RootSheet.Sharing)
     }
 
     @Test
@@ -270,7 +274,7 @@ class LauncherViewTests {
         show(LauncherState(apps = apps))
         tile("Recipe Box").performTouchInput { longClick() }
         composeRule.onNodeWithText(recipes.host).assertIsDisplayed()
-        for (item in listOf("Rename", "Refresh icon", "Sign out and clear data", "Remove app")) composeRule.onNodeWithText(item).assertIsDisplayed()
+        for (item in listOf("Rename", "Refresh icon", "Clear app data", "Remove app")) composeRule.onNodeWithText(item).assertIsDisplayed()
         composeRule.onNodeWithText("Add to Home screen").assertDoesNotExist()
         composeRule.onNodeWithText(ConnectionCopy.reportProblem).assertDoesNotExist()
         composeRule.onNodeWithText(ConnectionCopy.leaveApps("Riley")).assertDoesNotExist()
@@ -353,13 +357,13 @@ class LauncherViewTests {
     }
 
     @Test
-    fun testSignOutAndClearDataAsks() {
+    fun testClearAppDataAsks() {
         val cleared = mutableListOf<UUID>()
         show(LauncherState(apps = apps, clearData = { cleared += it }))
         tile("Garden Log").performTouchInput { longClick() }
-        composeRule.onNodeWithText("Sign out and clear data").performClick()
-        composeRule.onNodeWithText("Sign out of Garden Log?").assertIsDisplayed()
-        composeRule.onNodeWithText("Sign out and clear data").performClick()
+        composeRule.onNodeWithText("Clear app data").performClick()
+        composeRule.onNodeWithText("Clear Garden Log's data?").assertIsDisplayed()
+        composeRule.onNodeWithText("Clear app data").performClick()
         assertEquals(listOf(garden.id), cleared)
     }
 
@@ -370,7 +374,10 @@ class LauncherViewTests {
         tile("Recipe Box").performTouchInput { longClick() }
         composeRule.onNodeWithText("Rename").performClick()
         composeRule.onNodeWithText("Rename app").assertIsDisplayed()
-        composeRule.onNodeWithText("Recipe Box").performTextReplacement("Kitchen")
+        val field = composeRule.onNode(hasSetTextAction())
+        field.performTextReplacement("   ")
+        composeRule.onNodeWithText("Save").assertIsNotEnabled()
+        field.performTextReplacement(" Kitchen ")
         composeRule.onNodeWithText("Save").performClick()
         assertEquals(listOf(recipes.id to "Kitchen"), renamed)
     }

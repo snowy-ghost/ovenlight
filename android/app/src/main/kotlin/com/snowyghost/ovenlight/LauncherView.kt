@@ -257,8 +257,8 @@ fun LauncherView(state: LauncherState) {
     renaming?.let { app -> RenameDialog(app, onDismiss = { renaming = null }) { state.rename(app.id, it) } }
     clearing?.let { app ->
         Confirmation(
-            title = stringResource(R.string.launcher_sign_out_title, app.name), message = stringResource(R.string.launcher_sign_out_message),
-            confirm = stringResource(R.string.launcher_sign_out_clear), onDismiss = { clearing = null },
+            title = stringResource(R.string.launcher_clear_data_title, app.name), message = stringResource(R.string.launcher_clear_data_message),
+            confirm = stringResource(R.string.launcher_clear_data), onDismiss = { clearing = null },
         ) { state.clearData(app.id) }
     }
     removing?.let { app ->
@@ -294,8 +294,13 @@ private fun HomeTopBar(state: LauncherState) {
     CappedFontScale {
         // Icons 16 dp from the edges, as in a top app bar.
         Row(Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = state.lock) {
-                Icon(painterResource(R.drawable.ic_lock), contentDescription = stringResource(R.string.launcher_lock))
+            // Nothing is saved while the welcome shows, so there's nothing to lock. Its spot stays, keeping the pill centered.
+            Box(Modifier.size(48.dp)) {
+                if (!state.showsWelcome) {
+                    IconButton(onClick = state.lock) {
+                        Icon(painterResource(R.drawable.ic_lock), contentDescription = stringResource(R.string.launcher_lock))
+                    }
+                }
             }
             Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
                 TailnetStatusPill(state.ownerState, state.retry)
@@ -306,16 +311,15 @@ private fun HomeTopBar(state: LauncherState) {
                     Icon(painterResource(R.drawable.ic_more_vert), contentDescription = stringResource(R.string.launcher_more))
                 }
                 DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                    @Composable
-                    fun item(label: String, sheet: RootSheet) = DropdownMenuItem(text = { Text(label) }, onClick = {
-                        expanded = false
-                        state.present(sheet)
-                    })
-                    item(stringResource(R.string.launcher_add_app), RootSheet.AddApp)
-                    item(ConnectionCopy.joinWithInvite, RootSheet.Join(JoinRequest()))
-                    if (state.showsSharing) item(stringResource(R.string.launcher_people_sharing), RootSheet.Sharing)
+                    val close = { expanded = false }
+                    // Add app opens only the owner's own computers' apps.
+                    if (state.ownerEnabled) AppMenuItem(close, stringResource(R.string.launcher_add_app), R.drawable.ic_add) { state.present(RootSheet.AddApp) }
+                    AppMenuItem(close, ConnectionCopy.joinWithInvite, R.drawable.ic_person_add) { state.present(RootSheet.Join(JoinRequest())) }
+                    if (state.showsSharing) {
+                        AppMenuItem(close, stringResource(R.string.launcher_people_sharing), R.drawable.ic_group) { state.present(RootSheet.Sharing()) }
+                    }
                     HorizontalDivider()
-                    item(stringResource(R.string.launcher_settings), RootSheet.Settings)
+                    AppMenuItem(close, stringResource(R.string.launcher_settings), R.drawable.ic_settings) { state.present(RootSheet.Settings()) }
                 }
             }
         }
@@ -461,7 +465,7 @@ private fun ColumnScope.AppMenu(
         plan.leaveOwner?.let { AppMenuItem(close, ConnectionCopy.leaveApps(it), R.drawable.ic_logout, destructive = true, action = leave) }
     }
     HorizontalDivider()
-    AppMenuItem(close, stringResource(R.string.launcher_sign_out_clear), R.drawable.ic_ink_eraser, action = clearData)
+    AppMenuItem(close, stringResource(R.string.launcher_clear_data), R.drawable.ic_ink_eraser, action = clearData)
     AppMenuItem(close, stringResource(R.string.launcher_remove_app), R.drawable.ic_delete, destructive = true, action = remove)
 }
 
@@ -469,8 +473,10 @@ private fun ColumnScope.AppMenu(
 private fun RenameDialog(app: WebApp, onDismiss: () -> Unit, save: (String) -> Unit) {
     val name = rememberTextFieldState(app.name)
     val focus = remember { FocusRequester() }
+    // Only spaces is no name.
+    val trimmed = name.text.toString().trimmingWhitespaceAndNewlines()
     val done = {
-        name.text.toString().takeIf { it.isNotEmpty() }?.let(save)
+        if (trimmed.isNotEmpty()) save(trimmed)
         onDismiss()
     }
     AlertDialog(
@@ -485,7 +491,7 @@ private fun RenameDialog(app: WebApp, onDismiss: () -> Unit, save: (String) -> U
             // Here, in the dialog's own window, so the field is there to take focus.
             LaunchedEffect(Unit) { focus.requestFocus() }
         },
-        confirmButton = { TextButton(onClick = done, enabled = name.text.isNotEmpty()) { Text(stringResource(R.string.launcher_save)) } },
+        confirmButton = { TextButton(onClick = done, enabled = trimmed.isNotEmpty()) { Text(stringResource(R.string.launcher_save)) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.launcher_cancel)) } },
     )
 }
@@ -589,7 +595,7 @@ fun AddAppDialog(
     )
 }
 
-/** A row of an app's menu, which closes the menu before it acts; a destructive one is in the error color. */
+/** A row of a menu, which closes the menu before it acts; a destructive one is in the error color. */
 @Composable
 internal fun AppMenuItem(close: () -> Unit, label: String, icon: Int, destructive: Boolean = false, action: () -> Unit) {
     val colors = MaterialTheme.colorScheme
@@ -606,11 +612,18 @@ internal fun AppMenuItem(close: () -> Unit, label: String, icon: Int, destructiv
 
 /** A confirmation whose button is in the error color, as iOS marks destructive ones red. */
 @Composable
-internal fun Confirmation(title: String, message: String, confirm: String, onDismiss: () -> Unit, action: () -> Unit) {
+internal fun Confirmation(
+    title: String,
+    message: String?,
+    confirm: String,
+    onDismiss: () -> Unit,
+    cancel: String = stringResource(R.string.launcher_cancel),
+    action: () -> Unit,
+) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
-        text = { Text(message) },
+        text = message?.let { { Text(it) } },
         confirmButton = {
             TextButton(
                 onClick = {
@@ -620,12 +633,12 @@ internal fun Confirmation(title: String, message: String, confirm: String, onDis
                 colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
             ) { Text(confirm) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.launcher_cancel)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(cancel) } },
     )
 }
 
 /** Leaving an owner's apps, asked the same way from the launcher, an app's menu and Settings. */
 @Composable
 internal fun LeaveConfirmation(owner: String, onDismiss: () -> Unit, leave: () -> Unit) = Confirmation(
-    ConnectionCopy.leaveTitle(owner), ConnectionCopy.leaveDetail(owner), stringResource(R.string.launcher_leave), onDismiss, leave,
+    ConnectionCopy.leaveTitle(owner), ConnectionCopy.leaveDetail(owner), stringResource(R.string.launcher_leave), onDismiss, action = leave,
 )
