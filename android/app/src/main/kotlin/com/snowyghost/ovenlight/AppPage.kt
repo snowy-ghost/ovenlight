@@ -212,9 +212,10 @@ class AppPage(
         while (mutableGate.value == AppLoadGate.Waiting || mutableGate.value == AppLoadGate.Probing) {
             // Not even a probe goes through a node the app's route no longer names.
             if (!routeIsCurrent()) return
-            // No network: say so at once, and start over quietly when one comes.
+            // No network: say so at once, and start over quietly when one comes. A page that
+            // already loaded stays and is checked as usual, as on iPhone.
             val online = TailnetCore.online.value
-            if (!online) {
+            if (!online && !loaded.value) {
                 mutableGate.value = mutableGate.value.next(AppLoadGate.Event.PhoneOffline)
                 TailnetCore.online.first { it }
                 mutableGate.value = mutableGate.value.next(AppLoadGate.Event.PhoneOnline)

@@ -230,7 +230,11 @@ class PageDownloads(
 
     private fun fetch(url: String, userAgent: String?, disposition: String?, type: String?, length: Long) {
         var name: String? = null
-        val shownName = { name?.ifEmpty { null }?.let(DownloadPolicy::fileName) ?: DownloadPolicy.name(url) }
+        val shownName = {
+            name?.ifEmpty { null }?.let(DownloadPolicy::fileName)
+                ?: disposition?.let(URLUtilCompat::getFilenameFromContentDisposition)?.let(DownloadPolicy::fileName)
+                ?: DownloadPolicy.name(url)
+        }
         if (jobs.size >= CONCURRENT) return refused(shownName(), "$CONCURRENT already under way")
         val client = client()
         val named: suspend () -> Boolean = {

@@ -34,7 +34,7 @@ class GuestSilenceTests {
         assertTrue(silence.record(probed = hosts, reachable = false))
     }
 
-    /** Android only: a phone with no working network, or out on an excursion, couldn't have heard an answer. */
+    /** A phone with no network, or (on Android) out on an excursion, couldn't have heard an answer. */
     @Test
     fun testALookThePhoneCouldntHearIsNotSilence() {
         val silence = GuestSilence()

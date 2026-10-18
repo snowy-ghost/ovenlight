@@ -677,7 +677,7 @@ class NodeManager(
     /**
      * Whether the phone could hear an app's answer now, so a guest's look that none answered
      * counts as silence (see [GuestSilence]) and a node coming up is polled quickly: not
-     * without a working network, nor during an excursion (the app model sets this).
+     * without a network, nor during an excursion (the app model sets this).
      */
     var canHear: () -> Boolean = { true }
 
@@ -936,7 +936,7 @@ class GuestSilence {
             return false
         }
         // Nothing listed online says nothing: the computers are asleep. Nor does a phone with no
-        // working network, or one out on an excursion, which may be frozen.
+        // network, or one out on an excursion, which may be frozen.
         if (probed.isEmpty() || !heard) return false
         looks += 1
         if (looks < gap) return false
