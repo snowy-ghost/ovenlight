@@ -607,7 +607,7 @@ final class NodeMachineTests: XCTestCase {
     func testTheLogNeverCarriesTheSignInLink() {
         XCTAssertEqual(NodeState.needsLogin(login).logDescription, "needsLogin")
         XCTAssertEqual(NodeState.retrying(attempt: 2).logDescription, "retrying(attempt: 2)")
-        XCTAssertEqual(NodeState.failed("boom").logDescription, #"failed("boom")"#)
+        XCTAssertEqual(NodeState.failed("boom").logDescription, "failed", "the message is the summary beside it")
     }
 
     func testStatusDecoding() throws {

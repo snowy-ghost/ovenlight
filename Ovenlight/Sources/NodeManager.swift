@@ -38,10 +38,11 @@ enum NodeState: Equatable {
     }
 
     /// For the log, which is public: the sign-in link is left out, since whoever opens it
-    /// first can sign the node in to their own account.
+    /// first can sign the node in to their own account. A failure's message is the summary.
     var logDescription: String {
         switch self {
         case .needsLogin: return "needsLogin"
+        case .failed: return "failed"
         default: return String(describing: self)
         }
     }
