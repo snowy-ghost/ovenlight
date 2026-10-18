@@ -46,6 +46,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.Request
 import okio.Buffer
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -250,6 +251,20 @@ class SharingViewTests {
         composeRule.waitForIdle()
         assertEquals(listOf("Remove Sam’s device"), confirmed)
         assertEquals("the device that joined first", listOf("DELETE /v1/guests/n1"), requests.map { it.line() })
+    }
+
+    /** Android's composer stays over the link's screen while it holds links (MainActivity.receive). */
+    @Test
+    fun testALinkWaitsForUnsentWork() {
+        val composer = InviteComposer(machine, club)
+        assertFalse("an invite not yet made gives way", composer.holdsLinks)
+        composer.working = true
+        assertTrue("one being made stays", composer.holdsLinks)
+        composer.working = false
+        composer.result = AdminShareResult(AdminInvite("i9", "Jo", "p9", "book-club", AdminInvite.sent, expires = now.plusSeconds(86_400)))
+        assertTrue("its link shows only once", composer.holdsLinks)
+        composer.linkUsed = true
+        assertFalse("then the link goes on", composer.holdsLinks)
     }
 
     @Test

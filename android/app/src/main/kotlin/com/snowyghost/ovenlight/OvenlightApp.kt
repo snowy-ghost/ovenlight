@@ -124,7 +124,7 @@ class AppModel(context: Context) {
         ovenlight, session = nodes::fetch, webData = WebProfiles(context, discard = pool::discard),
         iconPNG = { withContext(Dispatchers.Default) { IconDecoder.png(it) } }, scope = scope,
     )
-    val guests = GuestManager(nodes, registry, router, scope, SystemClock::elapsedRealtime, log = { OvenlightLog.i(it) })
+    val guests = GuestManager(nodes, registry, router, scope, SystemClock::uptimeMillis, log = { OvenlightLog.i(it) })
         .also { pool.guests = it }
     val sharing = OwnerSharing(nodes, scope, SystemClock::elapsedRealtime, log = { OvenlightLog.i(it) })
 

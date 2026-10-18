@@ -125,7 +125,7 @@ class GuestManagerTests {
         s.guests.accept(echoInvite)
 
         assertEquals(JoinPhase.Failed(JoinError.Network), s.guests.phases.value[echoInvite.invite])
-        assertTrue("it kept trying for the claim's time", testScheduler.currentTime - started >= Claim.claimTime.inWholeMilliseconds)
+        assertTrue("it kept trying for the claim's budget", testScheduler.currentTime - started >= Claim.budget.inWholeMilliseconds)
         assertTrue(claims > 3)
         val membership = s.nodes.memberships.memberships.single()
         assertEquals("kept for Try Again", listOf(echoInvite.invite), membership.pendingClaims.map { it.invite.invite })

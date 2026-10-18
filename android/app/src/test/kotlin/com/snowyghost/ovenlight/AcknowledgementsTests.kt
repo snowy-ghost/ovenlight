@@ -34,12 +34,17 @@ class AcknowledgementsTests {
         assertNull("text that isn't UTF-8 counts as missing", Acknowledgements.notices { java.io.ByteArrayInputStream(byteArrayOf(0xC3.toByte(), 0x28)) })
     }
 
-    /** A section's title shows as a heading, and each line wraps under its own indent. */
+    /** A module's title underlined with `=` shows as a heading. */
     @Test
-    fun testEachLineHangsUnderItsOwnIndent() {
+    fun testASectionTitleIsAHeading() {
         assertEquals("Go standard library", Acknowledgements.heading("Go standard library\n==================="))
         assertNull(Acknowledgements.heading("Copyright 2009 The Go Authors."))
         assertNull("only = underlines a heading", Acknowledgements.heading("Source Serif\n------------"))
+    }
+
+    /** Android only: each line wraps under its own indent. */
+    @Test
+    fun testEachLineHangsUnderItsOwnIndent() {
         assertEquals(listOf("Apache:\n  androidx.core:core:1.19.1"), Acknowledgements.paragraphs("Apache:\n  androidx.core:core:1.19.1"))
         assertEquals(
             listOf(0 to "Apache:", 2 to "androidx.core:core:1.19.1", 6 to "\"License\" shall mean"),

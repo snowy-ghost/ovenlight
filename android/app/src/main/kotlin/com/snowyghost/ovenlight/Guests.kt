@@ -3,8 +3,8 @@ package com.snowyghost.ovenlight
 import java.time.Instant
 import java.util.UUID
 import kotlin.math.min
-import kotlin.math.pow
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.buildJsonObject
@@ -117,8 +117,20 @@ object Claim {
 
     const val path = "/__ovenlight/claim"
 
-    /** How long the manager keeps trying one claim (`GuestManager.claimTime` on iOS). */
-    val claimTime: Duration = 25.seconds
+    /** How long a claim keeps trying, in all. */
+    val budget: Duration = 25.seconds
+
+    /** One try's timeout: 8 s, or what's left of the budget, but never under 2 s. */
+    fun tryTimeout(left: Duration): Duration = left.coerceIn(2.seconds, 8.seconds)
+
+    /**
+     * The wait before the next try, doubling from half a second up to 4 s, and no longer than
+     * what's left of the budget. Null once it's spent.
+     */
+    fun wait(after: Int, left: Duration): Duration? {
+        if (left <= Duration.ZERO) return null
+        return minOf(500.milliseconds * (1 shl min(after, 3)), left)
+    }
 
     sealed class Landing {
         data object InNetwork : Landing()
@@ -169,12 +181,6 @@ object Claim {
             else -> Step.Retry
         }
     }
-
-    /**
-     * The wait before claim attempt [attempt] (from 0) is tried again: doubling from half a
-     * second, at most 4 (the manager's loop on iOS).
-     */
-    fun retryDelay(attempt: Int): Duration = min(0.5 * 2.0.pow(attempt), 4.0).seconds
 }
 
 /** Someone's apps stopped being shared with this phone. */

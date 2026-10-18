@@ -3,6 +3,7 @@ package com.snowyghost.ovenlight
 import java.net.URI
 import java.time.Instant
 import java.util.UUID
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import org.junit.Assert.assertEquals
@@ -51,9 +52,19 @@ class GuestManagerRulesTests {
     }
 
     @Test
-    fun testClaimsWaitLongerEachTryUpToFourSeconds() {
-        assertEquals(listOf(500.milliseconds, 1.seconds, 2.seconds, 4.seconds, 4.seconds), (0..4).map(Claim::retryDelay))
-        assertEquals(25.seconds, Claim.claimTime)
+    fun testAClaimTriesWithinItsBudget() {
+        var left = Claim.budget
+        val waits = mutableListOf<Duration>()
+        while (true) {
+            val wait = Claim.wait(after = waits.size, left = left) ?: break
+            waits += wait
+            left -= wait
+        }
+        assertEquals(listOf(500.milliseconds, 1.seconds, 2.seconds, 4.seconds, 4.seconds), waits.take(5))
+        assertEquals("the waits alone end at the budget", Claim.budget, waits.fold(Duration.ZERO, Duration::plus))
+        assertEquals(8.seconds, Claim.tryTimeout(left = 20.seconds))
+        assertEquals("no longer than what's left", 5.seconds, Claim.tryTimeout(left = 5.seconds))
+        assertEquals("the try after a last wait still gets a moment", 2.seconds, Claim.tryTimeout(left = Duration.ZERO))
     }
 
     @Test

@@ -38,7 +38,7 @@ class SupportMailTests {
     }
 
     @Test
-    fun testProblemReportForOwnAppLoadedDirectly() {
+    fun testProblemReportWithoutAConnection() {
         val draft = report(appName = "Coach", host = "coach.example.com", sharedBy = null, connection = null, version = "1.0 (1)")
         assertFalse(draft.body.contains("Shared by"))
         assertFalse("no node, no connection to report", draft.body.contains("Connection"))

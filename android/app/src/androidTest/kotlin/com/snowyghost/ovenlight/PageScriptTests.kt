@@ -222,7 +222,7 @@ class PageScriptTests {
 
     /** WebRTC's UDP would go around the proxy, so it's gone from the page, its frames, and a fresh about:blank frame as it's made. */
     @Test
-    fun testWebRTCIsRemoved() {
+    fun testPagesAndTheirFramesHaveNoWebRTC() {
         open(
             """
             <!doctype html><meta charset="utf-8"><title>page</title>

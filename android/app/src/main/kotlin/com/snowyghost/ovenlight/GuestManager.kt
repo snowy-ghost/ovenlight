@@ -2,6 +2,7 @@ package com.snowyghost.ovenlight
 
 import java.util.UUID
 import kotlin.coroutines.cancellation.CancellationException
+import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -21,7 +22,7 @@ class GuestManager(
     private val registry: AppRegistry,
     private val router: Router,
     private val scope: CoroutineScope,
-    /** Milliseconds on a monotonic clock, for the claim's deadline. */
+    /** Milliseconds on a clock that stops while the phone sleeps, for the claim's budget. */
     private val now: () -> Long,
     private val log: (String) -> Unit,
 ) {
@@ -259,30 +260,34 @@ class GuestManager(
 
     /**
      * Posts the invite's key to the app's connector. Right after joining, the connector may not
-     * know the device yet, so connection failures and "Unknown caller" retry, for up to
-     * [Claim.claimTime] in all.
+     * know the device yet, so connection failures and "Unknown caller" retry for up to
+     * [Claim.budget] in all (docs/protocol.md), each try with a new session from the node,
+     * which may have been replaced meanwhile. The budget is kept on [now], which stops while the
+     * phone sleeps, and a try always follows a wait, so a suspension by itself doesn't fail the
+     * claim.
      */
     private suspend fun claim(invite: InviteLink, node: MembershipNode): Claim.Step {
-        val session = node.makeSession(timeoutMillis = 8_000) ?: return Claim.Step.Retry
-        val deadline = now() + Claim.claimTime.inWholeMilliseconds
+        val deadline = now() + Claim.budget.inWholeMilliseconds
         var attempt = 0
-        while (now() < deadline) {
-            val response = try {
-                session(Claim.request(invite))
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Exception) {
-                null
+        while (true) {
+            val timeout = Claim.tryTimeout((deadline - now()).milliseconds).inWholeMilliseconds
+            val response = node.makeSession(timeout, timeout)?.let { session ->
+                try {
+                    session(Claim.request(invite))
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    null
+                }
             }
             if (response != null) {
                 val step = Claim.interpret(response.status, response.header(ConnectorError.header), response.body)
                 if (step != Claim.Step.Retry) return step
                 log("claim answered ${response.status}, trying again")
             }
-            delay(Claim.retryDelay(attempt))
+            delay(Claim.wait(after = attempt, left = (deadline - now()).milliseconds) ?: return Claim.Step.Retry)
             attempt += 1
         }
-        return Claim.Step.Retry
     }
 
     // Access ending

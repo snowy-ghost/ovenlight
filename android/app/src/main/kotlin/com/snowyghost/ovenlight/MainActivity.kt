@@ -246,9 +246,9 @@ class MainActivity : ComponentActivity() {
         if (intent.action != Intent.ACTION_VIEW) return
         val url = intent.dataString?.let { runCatching { URI(it) }.getOrNull() } ?: return
         // The link goes in front of an invite not yet made, as iOS's composer goes with the sheet
-        // under it. One being made or made stays, since its link shows only once.
+        // under it. One being made or not sent yet stays, since its link shows only once.
         val composer = OvenlightApp.model.composer
-        composer.value?.let { if (it.result == null && !it.working) composer.value = null }
+        composer.value?.let { if (!it.holdsLinks) composer.value = null }
         OvenlightApp.router.handle(url, OvenlightApp.model.registry.apps)
     }
 

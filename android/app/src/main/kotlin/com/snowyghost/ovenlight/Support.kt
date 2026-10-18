@@ -44,10 +44,10 @@ data class MailDraft(val to: String = AppLinks.supportEmail, val subject: String
 
         /**
          * Report a Problem for one app: what it is and where it comes from, how its connection
-         * is doing (none for an app loaded directly) and where opening it got, with room at the
-         * top for what went wrong. Nothing else is attached. Where iOS ends with its `iOS`
-         * version, Android gives [android] (`Build.VERSION.RELEASE`), [webView] (the WebView
-         * package's version) and [model] (`Build.MANUFACTURER` and `Build.MODEL`).
+         * is doing (whether it was refused, for an app with no node) and where opening it got,
+         * with room at the top for what went wrong. Nothing else is attached. Where iOS ends with
+         * its `iOS` version, Android gives [android] (`Build.VERSION.RELEASE`), [webView] (the
+         * WebView package's version) and [model] (`Build.MANUFACTURER` and `Build.MODEL`).
          */
         fun problemReport(
             appName: String, host: String, sharedBy: String?, connection: String?, opening: String? = null,
@@ -68,7 +68,8 @@ data class MailDraft(val to: String = AppLinks.supportEmail, val subject: String
          */
         fun problemReport(context: Context, nodes: NodeManager, pool: WebViewPool, app: WebApp): MailDraft = problemReport(
             appName = app.name, host = app.host, sharedBy = app.sharedBy,
-            connection = nodes.node(app)?.let { connection(it.state.value, it.isListedOffline(app.host)) },
+            connection = nodes.node(app)?.let { connection(it.state.value, it.isListedOffline(app.host)) }
+                ?: "Refused (on no known tailnet)".takeUnless { app.isShared },
             opening = pool.gate(app.id)?.logDescription,
             version = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
             android = Build.VERSION.RELEASE,

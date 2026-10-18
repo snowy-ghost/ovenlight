@@ -574,6 +574,9 @@ class InviteComposer(
     /** The invite was sent or its link copied, so closing loses nothing. */
     var linkUsed by mutableStateOf(false)
 
+    /** An invite being made, or made and not sent yet, which a link must not close (iOS's `holdingLinks`). */
+    val holdsLinks: Boolean get() = working || (result != null && !linkUsed)
+
     val trimmed: String get() = name.text.toString().trimmingWhitespaceAndNewlines()
     val choices: List<GuestPerson> get() = GuestPerson.invitable(machine.guests)
 
