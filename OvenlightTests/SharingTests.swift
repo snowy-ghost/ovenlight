@@ -344,8 +344,7 @@ final class GuestCleanupTests: XCTestCase {
     }
 
     /// A join that fails for good with its screen closed loses its launcher row with the
-    /// invite, so a notice says why; its screen says it itself, and Try Again can still fix
-    /// a network failure.
+    /// invite, so a notice says why; with its screen open, the screen says it.
     func testAJoinThatFailsWithItsScreenClosedSaysWhy() {
         let invite = InviteLink(control: URL(string: "https://c.example")!, key: "k", owner: "Riley", app: "echo-board",
                                 invite: "i", host: echo, name: "Echo Board", to: "Sam")
@@ -353,7 +352,6 @@ final class GuestCleanupTests: XCTestCase {
         XCTAssertEqual(notice?.title, "This Invite No Longer Works")
         XCTAssertEqual(notice?.message, "Invites expire, and each works only once. Ask Riley for a new one.")
         XCTAssertNil(GuestNotice.joinFailed(.expired, invite: invite, screenShown: true))
-        XCTAssertNil(GuestNotice.joinFailed(.network, invite: invite, screenShown: false))
     }
 
     /// With no network, a join fails at once rather than after its 45 s wait, and keeps the
@@ -789,6 +787,11 @@ final class AdminAPITests: XCTestCase {
         XCTAssertEqual(kept.first?.apps.map(\.online), [false])
         XCTAssertEqual(OwnerSharing.keepingFailed([], failed: [:], previous: [coach], asleep: []).count, 0,
                        "one the network no longer lists at all goes")
+        var computer = coach
+        computer.apps.append(AdminApp(slug: "notes", name: "Notes", url: "https://notes.t.ts.net/", online: true, shareable: false, guests: 0))
+        let notes = OwnerSharing.Machine(adminHost: "notes.t.ts.net", apps: [computer.apps[1]])
+        XCTAssertEqual(OwnerSharing.keepingFailed([notes], failed: [:], previous: [computer], asleep: ["coach.t.ts.net"]).map(\.adminHost),
+                       ["notes.t.ts.net"], "the same computer answered through another app's host")
     }
 
     /// A connector marks commands with backticks, which the phone would show as they are:

@@ -178,9 +178,9 @@ struct GuestNotice: Identifiable, Equatable {
         GuestNotice(title: ConnectionCopy.noLongerSharedTitle, message: ConnectionCopy.noLongerShared(apps: apps, owner: owner))
     }
 
-    /// Nil while the join's screen shows why, and for a failure Try Again can still fix.
+    /// Nil while the join's screen shows why.
     static func joinFailed(_ error: JoinError, invite: InviteLink, screenShown: Bool) -> GuestNotice? {
-        guard !screenShown, !error.isRetryable else { return nil }
+        guard !screenShown else { return nil }
         return GuestNotice(title: error.title(owner: invite.owner, app: invite.name), message: error.message(owner: invite.owner, app: invite.name))
     }
 }

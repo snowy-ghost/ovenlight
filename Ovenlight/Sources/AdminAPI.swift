@@ -685,7 +685,10 @@ final class OwnerSharing: ObservableObject {
                                           asleep: Set<String>) -> [Machine] {
         let covered = Set(found.flatMap { [$0.adminHost] + $0.apps.compactMap(\.host) })
         return found + previous.compactMap { machine in
-            guard let error = failed[machine.adminHost] ?? (asleep.contains(machine.adminHost) ? .unreachable : nil),
+            // Asleep counts only when no answer covers any of its apps: one app node can stay
+            // offline after its app is unpublished while the computer answers on another.
+            let isAsleep = asleep.contains(machine.adminHost) && covered.isDisjoint(with: machine.apps.compactMap(\.host))
+            guard let error = failed[machine.adminHost] ?? (isAsleep ? .unreachable : nil),
                   !covered.contains(machine.adminHost) else { return nil }
             var kept = machine
             kept.problem = error.message

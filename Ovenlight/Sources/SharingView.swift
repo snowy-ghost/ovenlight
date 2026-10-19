@@ -631,8 +631,9 @@ struct FeedbackInbox: View {
     @StateObject private var shots = ScreenshotCache()
     @AppStorage(FeedbackInbox.seenKey) private var seenUntil: Double = 0
 
-    /// The newest feedback an inbox has shown, as seconds since 1970: the counts show only
-    /// what came after it. The connector has no read marks to keep.
+    /// The newest feedback the full inbox has shown, as seconds since 1970: the counts show
+    /// only what came after it. The connector has no read marks to keep. One app's inbox
+    /// leaves it, since other apps may have older items no one has seen.
     static let seenKey = "feedbackSeenUntil"
 
     /// How many of `items` came after what an inbox last showed.
@@ -678,7 +679,7 @@ struct FeedbackInbox: View {
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await sharing.refresh(apps: registry.apps) }
         .onChange(of: items.first?.1.at, initial: true) { _, newest in
-            if let newest, newest.timeIntervalSince1970 > seenUntil { seenUntil = newest.timeIntervalSince1970 }
+            if only == nil, let newest, newest.timeIntervalSince1970 > seenUntil { seenUntil = newest.timeIntervalSince1970 }
         }
     }
 

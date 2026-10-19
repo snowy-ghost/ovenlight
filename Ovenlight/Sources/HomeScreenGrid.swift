@@ -225,8 +225,7 @@ struct HomeScreenGrid<Menu: View, Preview: View>: View {
 
     // MARK: Dragging
 
-    /// Picks an icon up after a short hold, as the Home Screen does, so a swipe that starts on
-    /// one scrolls the grid.
+    /// Picks an icon up after a short hold (see `HoldToDrag`).
     private func dragGesture(_ app: WebApp, index: Int, layout: HomeGridLayout) -> HoldToDrag {
         HoldToDrag(space: Self.space) { location in
             if drag == nil {

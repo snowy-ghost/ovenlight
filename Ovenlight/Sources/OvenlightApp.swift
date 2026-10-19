@@ -137,8 +137,7 @@ final class Router: ObservableObject {
     }
 
     /// Sheets with work a link would lose (an invite being made or not yet sent, a note in
-    /// Send Feedback) hold links until they close, even once the work is gone; the last link
-    /// waits.
+    /// Send Feedback) hold links until they close; the last link waits.
     private var holds: Set<UUID> = []
     private var heldLink: (url: URL, apps: [WebApp])?
 
@@ -181,8 +180,7 @@ final class Router: ObservableObject {
 }
 
 extension View {
-    /// Once `held`, a deep link waits until this sheet closes instead of closing it (see
-    /// `Router.hold`).
+    /// Once `held`, a deep link waits for this sheet to close (see `Router.hold`).
     func holdingLinks(_ held: Bool) -> some View { modifier(LinkHold(held: held)) }
 }
 
