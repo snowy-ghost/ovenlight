@@ -15,9 +15,10 @@ struct LockScreen: View {
                     Label(error, systemImage: "exclamationmark.circle.fill")
                         .labelStyle(ErrorLabelStyle())
                 } else {
+                    // Over the light, secondary text falls short of 4.5:1.
                     Text("Locked")
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.primary)
                 }
             }
             .transition(.opacity)
@@ -144,7 +145,7 @@ private struct ErrorLabelStyle: LabelStyle {
     func makeBody(configuration: Configuration) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             configuration.icon.foregroundStyle(.red)
-            configuration.title.foregroundStyle(.secondary)
+            configuration.title.foregroundStyle(.primary)
         }
         .font(.subheadline)
     }

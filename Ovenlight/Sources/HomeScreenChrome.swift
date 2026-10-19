@@ -58,6 +58,7 @@ struct HomeTopBar<Status: View, MenuItems: View>: View {
                 // A menu tints its label with the accent; match the Lock button beside it.
                 .tint(.primary)
                 .accessibilityLabel("More")
+                .accessibilityShowsLargeContentViewer { Label("More", systemImage: "ellipsis") }
             }
         }
         .padding(.horizontal, 16)
@@ -75,6 +76,8 @@ struct GlassIconButton: View {
         Button(action: action) { GlassIconLabel(systemName: systemName) }
             .buttonStyle(.plain)
             .accessibilityLabel(label)
+            // The bars stop growing at the largest text sizes; a long press shows it large.
+            .accessibilityShowsLargeContentViewer { Label(label, systemImage: systemName) }
     }
 }
 

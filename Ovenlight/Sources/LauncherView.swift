@@ -18,6 +18,7 @@ struct LauncherView: View {
     @ObservedObject private var sharing = OwnerSharing.shared
     @ObservedObject private var network = NetworkPath.shared
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         let welcome = registry.apps.isEmpty && !node.ownerEnabled && node.memberships.memberships.isEmpty
@@ -33,10 +34,6 @@ struct LauncherView: View {
             }
             // Stops growing where the system's bars do.
             .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
-            TailnetBanner(state: node.ownerEnabled ? node.state : .idle, signedInBefore: node.owner.magicDNSSuffixSeen != nil,
-                          connect: { router.present(.login($0)) }, approve: { router.present(.approve) })
-            PendingInvitesBanner { router.present(.join(JoinRequest(invite: .success($0)))) }
-                .padding(.horizontal, 26)
             if welcome {
                 LauncherWelcome { router.present(.join(JoinRequest())) }
             } else {
@@ -51,6 +48,15 @@ struct LauncherView: View {
                 AppPreviewCard(app: app, icon: registry.icon(for: app))
                     // The menu is open: bring its People count and Share up to date.
                     .task { if !app.isShared { await refreshSharing() } }
+            } header: {
+                VStack(spacing: 0) {
+                    TailnetBanner(state: node.ownerEnabled ? node.state : .idle, signedInBefore: node.owner.magicDNSSuffixSeen != nil,
+                                  connect: { router.present(.login($0)) }, approve: { router.present(.approve) })
+                    PendingInvitesBanner { router.present(.join(JoinRequest(invite: .success($0)))) }
+                        .padding(.horizontal, 26)
+                }
+                // The reader's own size: the grid's limit is for its names.
+                .dynamicTypeSize(typeSize)
             }
             // Any larger and names break inside words.
             .dynamicTypeSize(...DynamicTypeSize.accessibility1)
@@ -385,6 +391,8 @@ struct AddAppView: View {
                 if let ownerSuffix {
                     Section {
                         TextField("Address", text: $text, prompt: Text(verbatim: "my-app.\(ownerSuffix)"))
+                            // A field with a prompt passes neither its title nor a name to VoiceOver.
+                            .accessibilityLabel("Address")
                             .keyboardType(.URL)
                             .textContentType(.URL)
                             .textInputAutocapitalization(.never)

@@ -249,6 +249,8 @@ struct RootView: View {
                 .fullScreenCover(item: $router.openApp, onDismiss: router.appDismissed) { app in
                     AppHostView(app: app) { router.openApp = nil }
                         .launchDestination(for: app, in: launch)
+                        // The launcher under it leaves VoiceOver's reach.
+                        .accessibilityAddTraits(.isModal)
                         // Pulling down or pinching would fight the page's own gestures.
                         .interactiveDismissDisabled()
                         .onAppear(perform: router.appAppeared)
@@ -516,5 +518,6 @@ extension Color {
     static let onEmber = Color("OnEmber")
     /// Secondary content text (details, row values): `.secondary` is about 3.2:1 on the warm
     /// paper, this is 4.5:1 or more on it, its rows and the system backgrounds, light and dark.
+    /// With Increase Contrast, 4.5:1 or more over the welcome's light too.
     static let secondaryText = Color("SecondaryText")
 }

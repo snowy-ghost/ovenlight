@@ -111,6 +111,8 @@ struct FeedbackSheet: View {
             Form {
                 Section {
                     TextField("What’s working, or what isn’t?", text: $note, axis: .vertical)
+                        // Once a note is typed, VoiceOver would read only the note.
+                        .accessibilityLabel("Note")
                         .lineLimit(4...10)
                         .focused($focused)
                 } footer: {

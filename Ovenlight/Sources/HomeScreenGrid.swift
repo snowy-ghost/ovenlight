@@ -63,7 +63,7 @@ enum HomeReorder {
 /// The apps as one scrolling grid of icons, like the Home Screen. Long-press an icon for
 /// its menu or long-press empty space to edit. While editing, icons jiggle, show a remove
 /// badge and can be dragged to a new place among the ones on screen.
-struct HomeScreenGrid<Menu: View, Preview: View>: View {
+struct HomeScreenGrid<Menu: View, Preview: View, Header: View>: View {
     let apps: [WebApp]
     /// Set up for the owner's own machines: the empty grid invites their apps. A guest's
     /// stays blank while the first invite joins.
@@ -77,6 +77,9 @@ struct HomeScreenGrid<Menu: View, Preview: View>: View {
     let addApp: () -> Void
     @ViewBuilder let menu: (WebApp) -> Menu
     @ViewBuilder let preview: (WebApp) -> Preview
+    /// Above the icons, scrolling with them, so a card that grows with the text keeps every
+    /// control in reach.
+    @ViewBuilder let header: Header
 
     @EnvironmentObject private var registry: AppRegistry
     @Environment(\.launchNamespace) private var launchNamespace
@@ -111,34 +114,37 @@ struct HomeScreenGrid<Menu: View, Preview: View>: View {
             let layout = layout(width: geo.size.width)
             ScrollView {
                 let order = displayed
-                VStack(alignment: .leading, spacing: 14) {
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 0), count: layout.columns),
-                              spacing: HomeGridLayout.rowGap) {
+                VStack(spacing: 0) {
+                    header
+                    VStack(alignment: .leading, spacing: 14) {
+                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 0), count: layout.columns),
+                                  spacing: HomeGridLayout.rowGap) {
+                            if apps.isEmpty && ownerEnabled {
+                                EmptyHomeSlot(size: layout.iconSize, action: addApp)
+                                    .frame(width: layout.tileSize.width, height: layout.tileSize.height, alignment: .top)
+                            }
+                            ForEach(Array(order.enumerated()), id: \.element.id) { index, app in
+                                tile(app, index: index, in: order, layout: layout)
+                            }
+                        }
+                        // Under the Add App slot it describes, from the slot's edge. In the tile
+                        // labels' color, which stays legible where the light is brightest.
                         if apps.isEmpty && ownerEnabled {
-                            EmptyHomeSlot(size: layout.iconSize, action: addApp)
-                                .frame(width: layout.tileSize.width, height: layout.tileSize.height, alignment: .top)
-                        }
-                        ForEach(Array(order.enumerated()), id: \.element.id) { index, app in
-                            tile(app, index: index, in: order, layout: layout)
+                            Text("Apps you publish with the [Ovenlight connector](https://ovenlight.app/support#own-computer) on your computers show up here. If one doesn’t, run ovenlight doctor on its computer.")
+                                .font(.footnote)
+                                .foregroundStyle(.primary)
+                                .padding(.horizontal, (layout.columnWidth - layout.iconSize) / 2)
                         }
                     }
-                    // Under the Add App slot it describes, from the slot's edge. In the tile
-                    // labels' color, which stays legible where the light is brightest.
-                    if apps.isEmpty && ownerEnabled {
-                        Text("Apps you publish with the [Ovenlight connector](https://ovenlight.app/support#own-computer) on your computers show up here. If one doesn’t, run ovenlight doctor on its computer.")
-                            .font(.footnote)
-                            .foregroundStyle(.primary)
-                            .padding(.horizontal, (layout.columnWidth - layout.iconSize) / 2)
-                    }
+                    .padding(.horizontal, layout.sideMargin)
+                    .padding(.top, HomeGridLayout.topMargin)
+                    .padding(.bottom, HomeGridLayout.rowGap)
+                    .animation(.spring(response: 0.38, dampingFraction: 0.82), value: order.map(\.id))
+                    .overlay(alignment: .topLeading) { lifted(layout) }
+                    .coordinateSpace(.named(Self.space))
                 }
-                .padding(.horizontal, layout.sideMargin)
-                .padding(.top, HomeGridLayout.topMargin)
-                .padding(.bottom, HomeGridLayout.rowGap)
-                .animation(.spring(response: 0.38, dampingFraction: 0.82), value: order.map(\.id))
                 .frame(maxWidth: .infinity, minHeight: geo.size.height, alignment: .top)
                 .background { background }
-                .overlay(alignment: .topLeading) { lifted(layout) }
-                .coordinateSpace(.named(Self.space))
             }
             .scrollDisabled(drag != nil)
             .scrollBounceBehavior(.basedOnSize)

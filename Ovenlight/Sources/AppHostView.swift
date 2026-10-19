@@ -138,6 +138,8 @@ private struct AppPage: View {
                 )
             )
             .zIndex(2)
+            // VoiceOver reaches the way home first, not after the whole page.
+            .accessibilitySortPriority(1)
             if let notice = coordinator.notice {
                 VStack {
                     Spacer()
@@ -337,6 +339,14 @@ struct NodeActionOverlay: View {
     }
 
     var body: some View {
+        // Scrolls only when the largest text sizes don't fit.
+        ViewThatFits(in: .vertical) {
+            content
+            ScrollView { content }
+        }
+    }
+
+    private var content: some View {
         VStack(spacing: 14) {
             switch action {
             case .signIn:

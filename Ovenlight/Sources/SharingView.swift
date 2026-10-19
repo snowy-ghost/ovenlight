@@ -395,6 +395,14 @@ struct InviteComposer: View {
         people.first { $0.name.caseInsensitiveCompare(trimmed) == .orderedSame }
     }
 
+    /// Why Create waits, under the name, while an error isn't showing there instead.
+    private var namesakeWarning: String? {
+        guard let namesake, error == nil else { return nil }
+        return choices.contains { $0.id == namesake.id }
+            ? "\(namesake.name) is already in the list below. Choose them there, or use a name that tells them apart, like \(namesake.name) L."
+            : "\(namesake.name) already has an invite. Use a name that tells them apart, like \(namesake.name) L."
+    }
+
     var body: some View {
         if let result {
             InviteResultView(result: result, appName: app.name)
@@ -433,6 +441,7 @@ struct InviteComposer: View {
                 .ovenlightGroupedBackground()
                 .navigationTitle("Share \(app.name)")
                 .announcing(error)
+                .announcing(namesakeWarning)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
@@ -457,6 +466,8 @@ struct InviteComposer: View {
     private var newPerson: some View {
         Section {
             TextField("Their name, like Sam", text: $name)
+                // Once a name is typed, VoiceOver would read only the name.
+                .accessibilityLabel("Name")
                 .textContentType(.name)
                 .submitLabel(.done)
                 .focused($focused)
@@ -464,10 +475,8 @@ struct InviteComposer: View {
         } header: {
             Text("Someone New")
         } footer: {
-            if let namesake, error == nil {
-                Label(choices.contains { $0.id == namesake.id }
-                      ? "\(namesake.name) is already in the list below. Choose them there, or use a name that tells them apart, like \(namesake.name) L."
-                      : "\(namesake.name) already has an invite. Use a name that tells them apart, like \(namesake.name) L.", systemImage: "person.2.fill")
+            if let namesakeWarning {
+                Label(namesakeWarning, systemImage: "person.2.fill")
                     .labelStyle(.warning)
             } else {
                 footer("\(trimmed.isEmpty ? "They see" : "\(trimmed) sees") this name on the invite, and \(app.name) knows them by it. You send the invite yourself next, by message or QR code. It works once, on one phone, for 7 days.")

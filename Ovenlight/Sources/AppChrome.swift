@@ -110,6 +110,7 @@ struct AppChrome: View {
                     .contentShape(Rectangle())
             }
             .accessibilityLabel("All Apps")
+            .accessibilityShowsLargeContentViewer { Label("All Apps", systemImage: "square.grid.2x2") }
 
             Divider().frame(height: 18)
 
