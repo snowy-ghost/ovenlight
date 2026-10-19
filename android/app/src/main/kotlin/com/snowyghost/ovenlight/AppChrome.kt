@@ -36,6 +36,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -102,7 +103,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.isTraversalGroup
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.traversalIndex
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
@@ -512,7 +515,11 @@ fun AppChrome(
     // Gone at once for the frame a snapshot takes, mid-animation or not. Back, it shows as it
     // was without animating in: AnimatedVisibility doesn't animate what is visible from the start.
     if (controller.hiddenForSnapshot) return
-    Box(Modifier.fillMaxSize().windowInsetsPadding(chromeTop.union(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)))) {
+    Box(
+        Modifier.fillMaxSize().windowInsetsPadding(chromeTop.union(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)))
+            // TalkBack reaches the way home and the menu before the page under them.
+            .semantics { isTraversalGroup = true; traversalIndex = -1f },
+    ) {
         AnimatedVisibility(
             visible = controller.isShown || touchExploration,
             modifier = Modifier.align(Alignment.TopCenter).padding(top = 4.dp, start = 16.dp, end = 16.dp),
@@ -646,22 +653,28 @@ val chromeTop: WindowInsets
 /**
  * What stays of the chrome while it's tucked away: a small handle at the top center, in the band
  * just below the status bar, which takes its own touches (they pull down the shade). The whole
- * band takes a tap for it. It works on any page, however the page scrolls.
+ * band takes a tap for it, and so does a 48 dp target around the mark, reaching below the band:
+ * with no status bar above, in the bottom half of split screen, the divider's grip takes taps on
+ * the mark itself. Narrow, so the page's top row keeps its own taps. It works on any page,
+ * however the page scrolls.
  */
 @Composable
 private fun ChromeHandle(header: Color, reveal: () -> Unit) {
     val label = stringResource(R.string.chrome_show_menu)
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .height(ChromeHandleHeight)
-            .clickable(role = Role.Button, onClick = reveal)
-            .semantics { contentDescription = label },
-        contentAlignment = Alignment.Center,
-    ) {
-        // At 80 percent the mark keeps 3:1 against any band (3.2 at worst, a saturated red).
-        val mark = if (header.isLight()) Color.Black else Color.White
-        Box(Modifier.size(width = 32.dp, height = 4.dp).background(mark.copy(alpha = 0.8f), CircleShape))
+    Box(Modifier.fillMaxWidth()) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(ChromeHandleHeight)
+                .clickable(role = Role.Button, onClick = reveal)
+                .semantics { contentDescription = label },
+            contentAlignment = Alignment.Center,
+        ) {
+            // At 80 percent the mark keeps 3:1 against any band (3.2 at worst, a saturated red).
+            val mark = if (header.isLight()) Color.Black else Color.White
+            Box(Modifier.size(width = 32.dp, height = 4.dp).background(mark.copy(alpha = 0.8f), CircleShape))
+        }
+        Box(Modifier.align(Alignment.TopCenter).size(width = 120.dp, height = 48.dp).pointerInput(reveal) { detectTapGestures { reveal() } })
     }
 }
 

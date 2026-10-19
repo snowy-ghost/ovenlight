@@ -6,11 +6,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.Snapshot
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.net.URI
@@ -83,6 +88,21 @@ class AppChromeTests {
         inEveryLook { assertShown(recipes) }
         node("All apps").performClick()
         assertEquals(listOf("home"), done)
+    }
+
+    /**
+     * Android only: a tap just below the band counts as the handle's near its mark, where the split
+     * screen divider's grip can cover the mark itself, and stays the page's off to the side.
+     */
+    @Test
+    fun testATapJustBelowTheHandleBringsThePillBack() {
+        show(recipes, controller())
+        val below = with(composeRule.density) { ChromeHandleHeight.toPx() + 16.dp.toPx() }
+        val aside = with(composeRule.density) { 100.dp.toPx() }
+        composeRule.onRoot().performTouchInput { click(Offset(centerX - aside, below)) }
+        assertTucked()
+        composeRule.onRoot().performTouchInput { click(Offset(centerX, below)) }
+        assertShown(recipes)
     }
 
     @Test
