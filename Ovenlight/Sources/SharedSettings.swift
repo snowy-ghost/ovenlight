@@ -32,7 +32,7 @@ struct SharedSettingsSections: View {
             } header: {
                 Text("Shared with You")
             } footer: {
-                Text("Leaving removes their apps and everything they stored on this iPhone.")
+                Text("Leaving removes their apps and everything they stored on this \(ConnectionCopy.device).")
             }
             .ovenlightRows()
             .leaveConfirmation($leaving)

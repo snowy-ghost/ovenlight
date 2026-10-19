@@ -72,7 +72,7 @@ enum JoinError: Error, Equatable {
         case .keyUsed, .usedOnAnotherDevice: "Each invite works once. Ask \(owner) for a new one."
         case .expired: "Invites expire, and each works only once. Ask \(owner) for a new one."
         case .keyRefused, .notInvited: "\(owner) may have canceled it. Ask \(owner) for a new one."
-        case .someoneElses: "This iPhone already joined \(owner)’s apps under another name. Ask \(owner) to invite that name instead."
+        case .someoneElses: "This \(ConnectionCopy.device) already joined \(owner)’s apps under another name. Ask \(owner) to invite that name instead."
         case .network: "Check that you’re online. \(owner)’s computer may also be asleep or offline. Try again in a moment."
         case .canceled: "Nothing was added to Ovenlight."
         case .ownApp: "This invite is for one of your own apps. Open it from your apps instead."

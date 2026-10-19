@@ -1,4 +1,4 @@
-import Foundation
+import UIKit
 
 /// When an app reached through Ovenlight's node may load its page. Opening the app shows its
 /// placeholder at once; the first navigation waits until the node is ready and a probe
@@ -109,6 +109,8 @@ enum AppLoadGate: Equatable {
 /// owner to act in their Tailscale account lives only in the sign-in card, Settings and the
 /// approval prompt over the owner's apps.
 enum ConnectionCopy {
+    /// "iPhone", or "iPad" where Ovenlight runs on one, for copy that says "this iPhone".
+    static let device = UIDevice.current.model
     static let connecting = "Connecting…"
     static let stopped = "Ovenlight lost its connection."
     static let couldNotStart = "Ovenlight couldn’t connect."
@@ -156,7 +158,7 @@ enum ConnectionCopy {
     static func noLongerShared(apps: [String], owner: String) -> String {
         let names = ListFormatter.localizedString(byJoining: apps)
         let them = apps.count == 1 ? "it and everything it" : "them and everything they"
-        return "\(owner) stopped sharing \(names) with you, so Ovenlight removed \(them) stored on this iPhone."
+        return "\(owner) stopped sharing \(names) with you, so Ovenlight removed \(them) stored on this \(device)."
     }
     static let joinWithInvite = "Join with Invite"
     static let invitePrompt = "Paste the invite link you were sent, or scan its code."
@@ -172,9 +174,9 @@ enum ConnectionCopy {
     static func leaveApps(_ owner: String) -> String { "Leave \(owner)’s Apps" }
     static func leaveTitle(_ owner: String) -> String { "Leave \(owner)’s Apps?" }
     static func leaveDetail(_ owner: String) -> String {
-        "\(owner)’s apps and everything they stored on this iPhone will be removed. You’ll need a new invite from \(owner) to open them again."
+        "\(owner)’s apps and everything they stored on this \(device) will be removed. You’ll need a new invite from \(owner) to open them again."
     }
     static func removeSharedDetail(_ owner: String) -> String {
-        "This removes the app and everything it stored on this iPhone. You’ll need a new invite from \(owner) to open it again."
+        "This removes the app and everything it stored on this \(device). You’ll need a new invite from \(owner) to open it again."
     }
 }

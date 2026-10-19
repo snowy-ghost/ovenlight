@@ -72,9 +72,13 @@ private struct AppPage: View {
                 ZStack {
                     // Files that finished while the person was back in the launcher, once the
                     // page is in a window to present over (it isn't yet as the view appears).
+                    // And the keys of a hardware keyboard, which scroll it, without a tap first.
                     // The page stays visible under the opaque placeholder, which fades out over
                     // it, and takes no touches until it has loaded.
-                    WebViewContainer(webView: webView, onWindow: { coordinator.appeared() })
+                    WebViewContainer(webView: webView, onWindow: {
+                        coordinator.appeared()
+                        webView.becomeFirstResponder()
+                    })
                         .ignoresSafeArea(edges: coordinator.fitsCover ? [.bottom, .horizontal] : .bottom)
                         // Moves at once, under the placeholder, rather than with its fade.
                         .transaction { $0.animation = nil }

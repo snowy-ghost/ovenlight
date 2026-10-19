@@ -91,7 +91,7 @@ struct LauncherView: View {
             Button("Cancel", role: .cancel) {}
             Button("Clear App Data", role: .destructive) { Task { await registry.clearData(app.id) } }
         } message: { _ in
-            Text("This deletes the app’s cookies and storage on this iPhone.")
+            Text("This deletes the app’s cookies and storage on this \(ConnectionCopy.device).")
         }
         .alert(removing.map { "Remove \($0.name)?" } ?? "", isPresented: isPresent($removing),
                presenting: removing) { app in
@@ -102,7 +102,7 @@ struct LauncherView: View {
             }
         } message: { app in
             Text(app.sharedBy.map(ConnectionCopy.removeSharedDetail)
-                 ?? "This removes the app from Ovenlight and deletes everything it stored on this iPhone."
+                 ?? "This removes the app from Ovenlight and deletes everything it stored on this \(ConnectionCopy.device)."
                  + (app.discovered ? " It won’t come back on its own. Add it again with Add App." : ""))
         }
         .sensoryFeedback(.success, trigger: removals)
@@ -258,7 +258,7 @@ struct OwnerApprovalPrompt: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
                 SettingsSymbol(systemName: "checkmark.shield", color: .ember)
-                Text("Approve This iPhone")
+                Text("Approve This \(ConnectionCopy.device)")
                     .font(.headline)
                     .accessibilityAddTraits(.isHeader)
             }
@@ -417,7 +417,7 @@ struct AddAppView: View {
                         } else if case .needsLogin(let url) = node.state {
                             Button("Sign In to Your Computers") { router.present(.login(url)) }
                         } else if node.state == .awaitingApproval {
-                            Button("Approve This iPhone") { router.present(.approve) }
+                            Button("Approve This \(ConnectionCopy.device)") { router.present(.approve) }
                         }
                     }
                     .ovenlightRows()
@@ -482,7 +482,7 @@ struct SettingsView: View {
                     }
                 } footer: {
                     if lock.noPasscode {
-                        Text("Ovenlight can’t lock until this iPhone has a passcode. Set one in the Settings app.")
+                        Text("Ovenlight can’t lock until this \(ConnectionCopy.device) has a passcode. Set one in the Settings app.")
                     } else {
                         Text("How long Ovenlight can stay in the background before it locks.")
                     }
@@ -502,7 +502,7 @@ struct SettingsView: View {
                                 }
                             }
                             if node.state == .awaitingApproval {
-                                Button("Approve This iPhone") { router.present(.approve) }
+                                Button("Approve This \(ConnectionCopy.device)") { router.present(.approve) }
                             }
                             if signedIn {
                                 Button("Sign Out", role: .destructive) { confirming = true }
@@ -524,7 +524,7 @@ struct SettingsView: View {
                                         isPresented: $confirming, titleVisibility: .visible) {
                         Button(signedIn ? "Sign Out" : "Stop Using My Own Computers", role: .destructive) { stopUsingMyOwnComputers() }
                     } message: {
-                        Text("This removes the apps found on your computers and everything they stored on this iPhone.")
+                        Text("This removes the apps found on your computers and everything they stored on this \(ConnectionCopy.device).")
                     }
                     Section {
                         NavigationLink("Advanced") { AdvancedSettingsView() }
@@ -611,7 +611,7 @@ struct AdvancedSettingsView: View {
                 if let tailnet = node.status?.tailnet?.name, !tailnet.isEmpty {
                     LabeledContent("Tailnet", value: tailnet)
                 }
-                LabeledContent("This iPhone", value: node.deviceName)
+                LabeledContent("This \(ConnectionCopy.device)", value: node.deviceName)
             }
             .ovenlightRows()
         }
