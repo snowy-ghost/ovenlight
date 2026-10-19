@@ -3,6 +3,7 @@ package com.snowyghost.ovenlight
 import java.net.URI
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -107,5 +108,19 @@ class NodeMachineTests {
         val needsLogin = TailnetStatus.decode("""{"BackendState":"NeedsLogin","AuthURL":"https://login.tailscale.com/a/abc","Peer":null}""")!!
         assertEquals(NodeEvent.Backend("NeedsLogin", login), needsLogin.event)
         assertEquals(emptyList<TailnetStatus.Peer>(), needsLogin.peers)
+    }
+
+    /** Polls repeat while nothing changes, and only a change redraws: the same status is equal, whatever order its peers come in. */
+    @Test
+    fun testTheSameStatusTwiceIsEqual() {
+        val peers = listOf(
+            """"nodekey:1":{"HostName":"interview-coach","DNSName":"interview-coach.tailabc123.ts.net.","OS":"macOS","Online":true,"UserID":42}""",
+            """"nodekey:2":{"HostName":"laptop","DNSName":"laptop.tailabc123.ts.net.","OS":"macOS","Online":false,"UserID":42}""",
+            """"nodekey:3":{"HostName":"phone","DNSName":"phone.tailabc123.ts.net.","OS":"iOS","Online":true,"UserID":42}""",
+        )
+        fun status(peers: List<String>) = TailnetStatus.decode("""{"BackendState":"Running","Peer":{${peers.joinToString(",")}}}""")!!
+        assertEquals(status(peers), status(peers))
+        assertEquals(status(peers), status(peers.reversed()))
+        assertNotEquals("a peer coming online is a change", status(peers), status(peers.map { it.replace("false", "true") }))
     }
 }

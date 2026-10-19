@@ -257,7 +257,8 @@ class AppRegistry(
 
     /**
      * Fetches the app's page and manifest to fill in its name, theme color and icon. A
-     * connector's ovenlight.json comes first when the app has one.
+     * connector's app takes its ovenlight.json alone when it has one: the connector already
+     * looked in the page and its manifest for the icon.
      */
     suspend fun refreshMetadata(id: UUID) {
         val app = apps.firstOrNull { it.id == id } ?: return
@@ -275,12 +276,9 @@ class AppRegistry(
                         slug = it.slug ?: manifest.slug,
                     )
                 }
-                save()
                 val iconURL = DiscoveredApp(Discovery.normalizedHost(app.host), manifest).iconURL
-                if (iconURL != null) {
-                    saveIcon(iconURL, id)
-                    return
-                }
+                if (iconURL != null) saveIcon(iconURL, id)
+                return
             }
         }
         // As iOS decodes a page: bytes that aren't UTF-8 become replacement characters.
@@ -302,7 +300,6 @@ class AppRegistry(
                 themeColorHex = meta.themeColorHex ?: it.themeColorHex,
             )
         }
-        save()
         val iconURL = meta.iconURL ?: links.touchIcon
         if (iconURL != null) saveIcon(iconURL, id)
     }
@@ -322,7 +319,6 @@ class AppRegistry(
             return
         }
         update(id) { it.copy(iconFile = name) }
-        save()
         icons.value += id to ((icons.value[id] ?: 0) + 1)
     }
 
@@ -333,7 +329,11 @@ class AppRegistry(
         }
     }
 
+    /** Saves only a change: refreshes repeat on every return to the front. */
     private fun update(id: UUID, change: (WebApp) -> WebApp) {
-        apps = apps.map { if (it.id == id) change(it) else it }
+        val updated = apps.map { if (it.id == id) change(it) else it }
+        if (updated == apps) return
+        apps = updated
+        save()
     }
 }

@@ -216,6 +216,37 @@ class AppRegistryTests {
         assertEquals("${app.id.toString().uppercase()}.png", app.iconFile)
         assertArrayEquals("icon".toByteArray(), registry.iconFile(app)!!.readBytes())
     }
+
+    /**
+     * Coming to the front looks again for each missing icon. A connector's app with none stops
+     * after its manifest, and a manifest that changes nothing writes nothing.
+     */
+    @Test
+    fun testARefreshThatChangesNothingSavesNothing() = runTest {
+        val fetched = mutableListOf<String>()
+        var manifest = """{"name":"Coach","version":1}"""
+        val registry = AppRegistry(
+            dir, session = { { url -> fetched += url.path; FetchResponse(200, manifest.toByteArray()) } },
+            webData = object : AppRegistry.WebData {
+                override fun discard(app: UUID) {}
+                override suspend fun clear(store: UUID) {}
+                override fun delete(store: UUID) {}
+                override suspend fun stores() = emptyList<UUID>()
+            },
+            iconPNG = { it }, scope = backgroundScope,
+        )
+        registry.mergeDiscovered(listOf(DiscoveredApp("coach.tailabc123.ts.net", OvenlightManifest(name = "Coach", version = 1))))
+        val saved = File(dir, "apps.json")
+        assertTrue(saved.delete())
+        registry.refreshAllMissingIcons { true }
+        assertEquals("the manifest only, not the start page", listOf(OvenlightManifest.path), fetched)
+        assertFalse("nothing was saved", saved.exists())
+
+        manifest = """{"name":"Coach","themeColor":"#336699","version":1}"""
+        registry.refreshAllMissingIcons { true }
+        assertEquals("#336699", registry.apps.single().themeColorHex)
+        assertTrue("a change is saved", saved.exists())
+    }
 }
 
 /** The registry's tests that need Android's own image decoding, run under Robolectric with its native graphics. */
