@@ -158,7 +158,9 @@ output is gitignored and cached; `--force` rebuilds. It needs Go, and fetches th
 `go1.27.2` toolchain itself. On top of upstream it:
 
 - builds with the `ts_omit_debug` tag, which drops the node's debug LocalAPI, pprof and
-  debug HTTP handlers;
+  debug HTTP handlers, `ts_omit_peerapiserver` and `ts_omit_cachenetmap` (the script says
+  why), and `ts_omit_webclient`, which leaves out Tailscale's web client and the font and
+  JavaScript bundle it embeds;
 - turns off log upload to `log.tailscale.com` from a Go `init`, for every node the app
   runs, guests' included;
 - raises `golang.org/x` modules past libtailscale's own when they have security fixes;

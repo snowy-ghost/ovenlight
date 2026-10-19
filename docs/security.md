@@ -439,17 +439,19 @@ website open in this computer's browser, can choose.
   own tailnet (its MagicDNS suffix, remembered from the node's status). Any other
   address, such as an app from a tailnet the owner was signed in to before, is refused:
   it shows Can't Reach and sends nothing, not even a probe, and Ovenlight never looks
-  its name up in public DNS or loads it outside the tailnet. The owner's node only ever
+  its name up in public DNS or loads it outside the tailnet. Only debug builds load an app
+  at `localhost` directly, for screenshots of a local demo. The owner's node only ever
   carries names on that known tailnet. Until the tailnet is known, a `*.ts.net` app is
   routed to the owner's node and waits behind Sign In, loading nothing. The route is
   checked before every probe and load, and a view whose route changed is made again
   through the right node, or refused. A change of the remembered tailnet closes every
   view whose route it changed. Sign Out and Stop Using My Own Computers forget it, close
   every view that went through the owner's node, kept in the background or not, and
-  remove the apps found on the owner's computers with their data. A closed view's data
-  store is set to a proxy that refuses every connection, as is a refused app's, and the
-  app loads again through its route, at once if it's on screen. A shared app always goes
-  through its owner's guest node.
+  remove the apps found on the owner's computers with their data. A Sign Out cut short by
+  a quit finishes at the next launch. A closed view's data store is set to a proxy that
+  refuses every connection, as is a refused app's, and the app loads again through its
+  route, at once if it's on screen. A shared app always goes through its owner's guest
+  node.
 - Pages have no WebRTC. Its traffic wouldn't go through the node's proxy: through a TURN
   relay a page could reach any address it names, the phone's own network included. A
   script at the start of every document, in every frame, removes it, and WebKit runs it in
@@ -462,7 +464,7 @@ website open in this computer's browser, can choose.
 - An app's downloads come only from its own host (or a blob or data URL its pages made),
   none while Ovenlight is locked, and leave Ovenlight only through the share sheet. The
   files wait in Ovenlight's temporary folder until the next launch, shared or cancelled,
-  since AirDrop may still be sending.
+  since AirDrop may still be sending, but go at once with their app or its data.
 - The owner's admin calls go through the owner's own node to each connector's port 8443.
   The phone holds no API credentials. It asks only the owner's own machines: peers of
   the owner's own user, or tagged `tag:ovenlight-app-*`, on the owner's own tailnet (not
