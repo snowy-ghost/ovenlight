@@ -665,6 +665,8 @@ func cmdPublish(args []string) error {
 			printChecks([]Check{*c}, true)
 		} else {
 			fmt.Printf("\nServing at %s\n", res.URL)
+			fmt.Println("Open it in Ovenlight on your phone: choose Use My Own Computers, tap Connect and sign in with the same Tailscale account. " +
+				"This address works only in your tailnet, so a browser on this computer can't open it unless Tailscale runs here too.")
 		}
 	default:
 		fmt.Println("\nThe node is still starting; run `ovenlight status` in a moment.")
