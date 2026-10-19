@@ -21,9 +21,10 @@ GO_UPGRADES="golang.org/x/net@v0.60.0"
 # through: nothing uses it, and its DNS endpoint answers any untagged node of the same user,
 # which an inviter can arrange for a guest's node, from the phone's own networks.
 # ts_omit_cachenetmap keeps a node from starting on a saved network map, which would hide a
-# guest's removal from the tailnet. libtailscale's Makefile has no knob for tags, so it is
-# edited.
-BUILD_TAGS=ios,ts_omit_debug,ts_omit_peerapiserver,ts_omit_cachenetmap
+# guest's removal from the tailnet. ts_omit_webclient leaves out Tailscale's web client,
+# which Ovenlight never serves, and the font and JavaScript bundle it embeds, as the
+# connector's release does. libtailscale's Makefile has no knob for tags, so it is edited.
+BUILD_TAGS=ios,ts_omit_debug,ts_omit_peerapiserver,ts_omit_cachenetmap,ts_omit_webclient
 # Every node would otherwise upload its logs to log.tailscale.com, guests' phones
 # included. The knob is read in Go, so it is set from a Go init: a setenv from Swift
 # comes after the Go runtime has copied the environment. logtail.Disable keeps tsnet from
