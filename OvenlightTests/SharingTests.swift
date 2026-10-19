@@ -631,10 +631,31 @@ final class AdminAPITests: XCTestCase {
         let status = try XCTUnwrap(TailnetStatus.decode(Data(json.utf8)))
         let (coach, notes, tv) = ("coach.tailabc123.ts.net", "notes.tailabc123.ts.net", "tv.tailabc123.ts.net")
         let hosts = [coach, notes, tv]
-        XCTAssertEqual(Discovery.watchedHosts(hosts, in: status, found: [], seenBefore: []), [coach, notes, tv], "all new")
-        XCTAssertEqual(Discovery.watchedHosts(hosts, in: status, found: [notes], seenBefore: Set(hosts)), [coach, notes],
+        XCTAssertEqual(Discovery.watchedHosts(hosts, in: status, found: [], apps: [], seenBefore: []), [coach, notes, tv], "all new")
+        XCTAssertEqual(Discovery.watchedHosts(hosts, in: status, found: [notes], apps: [], seenBefore: Set(hosts)), [coach, notes],
                        "the private app found on the untagged node, not the TV")
-        XCTAssertEqual(Discovery.watchedHosts(hosts, in: status, found: [], seenBefore: Set(hosts)), [coach])
+        XCTAssertEqual(Discovery.watchedHosts(hosts, in: status, found: [], apps: [], seenBefore: Set(hosts)), [coach])
+    }
+
+    /// A private app that misses a look leaves the node's list, but its tile stays on the
+    /// launcher, so its host stays watched and the next miss brings another look. An app
+    /// added by its address isn't watched for this, nor one someone shared.
+    func testAPrivateAppOnTheLauncherStaysWatchedAfterAMiss() throws {
+        let json = """
+        {"BackendState":"Running","CurrentTailnet":{"Name":"owen@","MagicDNSSuffix":"tailabc123.ts.net"},
+         "Self":{"DNSName":"phone.tailabc123.ts.net.","OS":"iOS","UserID":1},
+         "Peer":{"b":{"DNSName":"notes.tailabc123.ts.net.","OS":"linux","Online":true,"UserID":1},
+                 "c":{"DNSName":"tv.tailabc123.ts.net.","OS":"linux","Online":true,"UserID":1},
+                 "d":{"DNSName":"book.tailabc123.ts.net.","OS":"linux","Online":true,"UserID":1}}}
+        """
+        let status = try XCTUnwrap(TailnetStatus.decode(Data(json.utf8)))
+        let hosts = ["notes.tailabc123.ts.net", "tv.tailabc123.ts.net", "book.tailabc123.ts.net"]
+        let notes = WebApp(name: "Notes", startURL: URL(string: "https://Notes.tailabc123.ts.net/")!, discovered: true)
+        let typed = WebApp(name: "TV", startURL: URL(string: "https://tv.tailabc123.ts.net/")!)
+        var shared = WebApp(name: "Book Club", startURL: URL(string: "https://book.tailabc123.ts.net/")!, discovered: true)
+        shared.membershipID = "riley"
+        XCTAssertEqual(Discovery.watchedHosts(hosts, in: status, found: [], apps: [notes, typed, shared], seenBefore: Set(hosts)),
+                       ["notes.tailabc123.ts.net"])
     }
 
     func testAsksOnlyOnlineMachines() throws {

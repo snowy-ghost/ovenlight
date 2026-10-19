@@ -20,6 +20,7 @@ struct OvenlightApp: App {
             if let open = router?.openApp, open.discovered, !open.isShared { router?.openApp = nil }
             await registry?.removeDiscovered()
         }
+        NodeManager.shared.owner.launcherApps = { [weak registry] in registry?.apps ?? [] }
         #if DEBUG
         // Simulator testing: `-resetTips YES` shows first-run tips again.
         if UserDefaults.standard.bool(forKey: "resetTips") { try? Tips.resetDatastore() }

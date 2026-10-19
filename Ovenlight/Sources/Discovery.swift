@@ -65,11 +65,13 @@ enum Discovery {
 
     /// Among an owner's probed hosts, those whose silence brings another look in a minute:
     /// shareable app nodes (by their tag), hosts of apps already found (a private app's node
-    /// is untagged), and hosts this look sees for the first time. A laptop or TV without a
-    /// connector misses once, and then no more.
-    static func watchedHosts(_ hosts: [String], in status: TailnetStatus?, found: Set<String>,
+    /// is untagged), and hosts this look sees for the first time. Found is the node's last
+    /// look or a launcher tile the owner's own discovery added, which a miss doesn't take
+    /// away. A laptop or TV without a connector misses once, and then no more.
+    static func watchedHosts(_ hosts: [String], in status: TailnetStatus?, found: Set<String>, apps: [WebApp],
                              seenBefore: Set<String>) -> Set<String> {
         let tagged = Set((status?.peers ?? []).filter { $0.tags.contains(where: OvenlightTag.isApp) }.map { normalizedHost($0.dnsName) })
+        let found = found.union(apps.filter { $0.discovered && !$0.isShared }.map { normalizedHost($0.host) })
         return Set(hosts).filter { tagged.contains($0) || found.contains($0) || !seenBefore.contains($0) }
     }
 

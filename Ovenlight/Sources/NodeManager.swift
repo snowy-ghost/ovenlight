@@ -242,6 +242,9 @@ final class MembershipNode: ObservableObject {
     var onLoginLost: () -> Void = {}
     /// For a guest: app hosts gone from the node's peers for a few minutes (see `PeerAbsence`).
     var onPeersGone: (Set<String>) -> Void = { _ in }
+    /// For the owner: the launcher's apps, whose discovered tiles count as found (see
+    /// `Discovery.watchedHosts`).
+    var launcherApps: () -> [WebApp] = { [] }
 
     /// Nil once the membership is gone, so a late start can't bring back a node for it.
     private let settings: () -> Settings?
@@ -560,7 +563,7 @@ final class MembershipNode: ObservableObject {
         }
         // An owner's laptop or TV without a connector never answers: only app hosts count.
         let watched = isOwner
-            ? Discovery.watchedHosts(hosts, in: status, found: Set(discovered.map(\.host)), seenBefore: seenHosts)
+            ? Discovery.watchedHosts(hosts, in: status, found: Set(discovered.map(\.host)), apps: launcherApps(), seenBefore: seenHosts)
             : Set(hosts)
         // Seen only by a look whose path worked: one that failed outright says nothing of them.
         if isOwner, outcome.reachable { seenHosts.formUnion(hosts) }
