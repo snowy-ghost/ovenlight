@@ -258,6 +258,32 @@ class GuestManagerTests {
         assertEquals(JoinPhase.Joined(s.registry.apps.single().id), s.guests.phases.value[echoInvite.invite])
     }
 
+    /**
+     * Leave forgets how the membership's joins went, so the same invite opened again asks to
+     * join, never says an app that's gone is ready: one that joined, and one still waiting.
+     */
+    @Test
+    fun testJoiningAgainAfterLeavingAsksAgain() = runTest {
+        var online = true
+        val s = setup(online = { online })
+        s.clients.anyStatus = guestRunning
+        s.clients.respond = { request -> if (request.url.toString() == claimURL) answer(200, "{}") else null }
+        s.guests.accept(echoInvite)
+        assertEquals(JoinPhase.Joined(s.registry.apps.single().id), s.guests.phases.value[echoInvite.invite])
+        s.guests.leave(s.nodes.memberships.memberships.single().id)
+        assertNull(s.guests.phases.value[echoInvite.invite])
+
+        online = false
+        s.guests.accept(echoInvite)
+        assertEquals(JoinPhase.Failed(JoinError.Network), s.guests.phases.value[echoInvite.invite])
+        s.guests.leave(s.nodes.memberships.memberships.single().id)
+        assertNull(s.guests.phases.value[echoInvite.invite])
+
+        online = true
+        s.guests.accept(echoInvite)
+        assertEquals("it joins again", JoinPhase.Joined(s.registry.apps.single().id), s.guests.phases.value[echoInvite.invite])
+    }
+
     /** A shared app's tile follows the name its connector gives it now, unless the guest renamed it. */
     @Test
     fun testASharedAppTakesItsNewName() = runTest {

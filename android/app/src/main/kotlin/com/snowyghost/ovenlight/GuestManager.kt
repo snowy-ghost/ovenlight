@@ -325,10 +325,16 @@ class GuestManager(
         }
     }
 
-    /** Leaves someone's network on purpose: removes their apps and data, and logs out. */
+    /**
+     * Leaves someone's network on purpose: removes their apps and data, and logs out. How its
+     * joins went goes too, so the same invite opened again asks to join.
+     */
     suspend fun leave(membershipID: String) = withContext(NonCancellable) {
+        val invites = store[membershipID]?.pendingClaims.orEmpty().map { it.invite.invite }.toSet()
+        val apps = registry.apps.filter { it.membershipID == membershipID }.map { it.id }.toSet()
+        mutablePhases.value = mutablePhases.value.filter { (invite, phase) -> invite !in invites && (phase as? JoinPhase.Joined)?.app !in apps }
         store.update(membershipID) { it.copy(pendingClaims = emptyList()) }
-        for (app in registry.apps.filter { it.membershipID == membershipID }) registry.remove(app.id)
+        for (app in apps) registry.remove(app)
         nodes.removeGuest(membershipID)
     }
 

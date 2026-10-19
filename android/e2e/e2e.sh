@@ -39,8 +39,8 @@
 # joins twice, each through the claim: by an App Link and by a link pasted under Join with
 # invite, and the invite scanner opens with the camera. An invite arriving from the join
 # page while Recipes is open closes it and shows the join screen. A revoke on the connector takes
-# the app away and says so once, and Leave removes it and logs the phone out. No invite's key
-# reaches the system log.
+# the app away and says so once, and Leave removes it and logs the phone out, after which the
+# same link asks to join again. No invite's key reaches the system log.
 # sharing makes Recipes shareable and shares it from the phone: the tile menu's Share, the
 # invite composer with the screen lock asked for again, Send invite and Copy link, then People
 # from the menu, where the owner cancels the invite and removes a guest who joined from a
@@ -667,6 +667,17 @@ sys.exit(0 if nodes and not live else 1)'
   }
   until_ok 20 guest_out || fail "Kim's device is still signed in: $($HS -c $D/headscale.yaml nodes list)"
   note "Leave removed Recipes and the guest node's state, and logged the phone out"
+
+  say "guests: Kim's link again, after Leave"
+  tap_text "Join with invite"
+  await_text 10 "Paste" "Invite link" || fail "no Join with invite: $(screen_text | tr '\n' '|')"
+  type_link
+  tap_text Continue || { a shell input keyevent KEYCODE_BACK; sleep 1; tap_text Continue; }
+  # Leave forgot how the join went, so the screen asks again rather than saying Recipes is ready.
+  await_text 20 "$question" Join "Not now" || { shot guests-failed; fail "the link after Leave didn't ask to join: $(screen_text | tr '\n' '|')"; }
+  tap_text "Not now"
+  await_text 10 "Welcome to Ovenlight" || fail "Not now didn't go back to the welcome: $(screen_text | tr '\n' '|')"
+  note "after Leave, the same link asks to join again"
 
   say "guests: the invite scanner"
   # The emulator's camera can't be pointed at a code once booted from its snapshot (it keeps the
