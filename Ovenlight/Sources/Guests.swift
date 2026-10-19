@@ -519,13 +519,16 @@ final class GuestManager: ObservableObject {
         }
     }
 
-    /// Leaves someone's network on purpose: removes their apps and data, logs out.
+    /// Leaves someone's network on purpose: removes their apps and data, logs out. Its
+    /// invites still waiting are withdrawn, as Cancel withdraws one.
     func leave(_ membershipID: String) async {
+        for claim in store[membershipID]?.pendingClaims ?? [] { phases[claim.invite.invite] = nil }
         store.update(membershipID) { $0.pendingClaims = [] }
         for app in (registry?.apps ?? []) where app.membershipID == membershipID {
             await registry?.remove(app.id)
         }
         await nodes.removeGuest(membershipID)
+        await collectOrphans()
     }
 
     /// Memberships left with no app and no invite waiting log out and delete their state.
@@ -537,6 +540,11 @@ final class GuestManager: ObservableObject {
             await registry.remove(app.id)
         }
         let apps = registry.apps
+        // A join whose app is gone is over, however it went: its invite, opened again, asks
+        // to join again rather than saying the app is ready.
+        for (invite, phase) in phases {
+            if case .joined(let id) = phase, !apps.contains(where: { $0.id == id }) { phases[invite] = nil }
+        }
         for id in GuestCleanup.orphans(store.memberships, apps: apps) {
             log.notice("\(id, privacy: .public): no apps left, leaving")
             await nodes.removeGuest(id)

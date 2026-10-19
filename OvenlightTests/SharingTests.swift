@@ -373,6 +373,35 @@ final class GuestCleanupTests: XCTestCase {
         if let membershipID { await NodeManager.shared.removeGuest(membershipID) }
     }
 
+    /// After Leave, the same invite opened again asks to join, rather than saying its app is
+    /// ready: App Review is told to Leave, and may open the same link again.
+    @MainActor
+    func testJoiningAgainAfterLeavingAsksAgain() async throws {
+        func invite(_ host: String) -> InviteLink {
+            InviteLink(control: URL(string: "http://127.0.0.1:9")!, key: "tskey-1", owner: "Riley", app: "a",
+                       invite: UUID().uuidString, host: host, name: "App", to: "Sam")
+        }
+        let guests = GuestManager.shared
+        let registry = try XCTUnwrap(guests.registry, "the test host's launcher set it")
+        NetworkPath.shared.pretend(satisfied: false)
+        defer { NetworkPath.shared.pretend(satisfied: true) }
+        let joined = invite(echo)
+        await guests.accept(joined)
+        let membershipID = try XCTUnwrap(guests.membershipID(for: joined.invite))
+        let app = registry.addShared(name: "Echo Board", host: echo, slug: "echo-board", membershipID: membershipID, sharedBy: "Riley")
+        // The app is here, so the join ends as joined even offline.
+        await guests.accept(joined)
+        XCTAssertEqual(guests.phases[joined.invite], .joined(app.id))
+        let waiting = invite(notes)
+        await guests.accept(waiting)
+        XCTAssertEqual(guests.phases[waiting.invite], .failed(.network))
+
+        await guests.leave(membershipID)
+        XCTAssertNil(guests.phases[joined.invite], "its app is gone")
+        XCTAssertNil(guests.phases[waiting.invite], "withdrawn")
+        XCTAssertNil(guests.membershipID(for: waiting.invite))
+    }
+
     func testJoinErrorsFromTheControlServer() {
         XCTAssertEqual(JoinError(upMessage: "tsnet.Up: backend: authkey already used"), .keyUsed)
         XCTAssertEqual(JoinError(upMessage: "tsnet.Up: backend: authkey expired"), .expired)
