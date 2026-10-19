@@ -76,6 +76,8 @@
 # bash, not zsh: zsh skips its EXIT trap when err_exit fires inside a function, which would
 # leave Headscale, the connector and the emulator running after a failure.
 set -Eeuo pipefail
+# A grep fed by a pipe reads all its input (>/dev/null, never -q): one that stops at its first
+# match can leave the writer a closed pipe, which pipefail counts as a failure and ! as a pass.
 # A shell that didn't read the profile may lack adb, and the free port check would then count
 # every port as free.
 PATH=${ANDROID_HOME:?set ANDROID_HOME}/platform-tools:$PATH
@@ -285,7 +287,7 @@ until_ok 120 sh -c "env HOME=$D/home $D/ovenlight status --config $D/config.json
 
 say "$AVD, booted from ready with a network capture, and the app"
 for p in ${OVENLIGHT_E2E_PORTS:-$(seq 5554 2 5582)}; do
-  if ! adb devices | grep -q "^emulator-${p}[[:space:]]"; then emulator_port=$p; break; fi
+  if ! adb devices | grep "^emulator-${p}[[:space:]]" >/dev/null; then emulator_port=$p; break; fi
 done
 [[ -n $emulator_port ]] || fail "no free emulator port"
 OVENLIGHT_AVD_FLAGS="${OVENLIGHT_AVD_FLAGS:-} -tcpdump $D/emulator.pcap" $ROOT/android/scripts/avds.sh boot $AVD $emulator_port >/dev/null || { emulator_port=; fail "the emulator didn't boot"; }
@@ -395,7 +397,7 @@ night() { a shell cmd uimode night $1 >/dev/null; sleep 3; }
 nav() { a shell cmd overlay enable-exclusive --category com.android.internal.systemui.navbar.$1 >/dev/null; sleep 3; }
 rotate() { a shell settings put system accelerometer_rotation 0; a shell settings put system user_rotation $1; sleep 3; }
 font() { a shell settings put system font_scale $1; sleep 3; }
-locked() { screen_text | grep -qxE 'Unlock Ovenlight|Ovenlight is locked'; }
+locked() { screen_text | grep -xE 'Unlock Ovenlight|Ovenlight is locked' >/dev/null; }
 # Locks Ovenlight where it is. The activity pauses and resumes for the intent, so the system's
 # unlock prompt ("Unlock Ovenlight") opens over the lock screen at once, as on a return; its
 # window is secure (black in a screenshot) and the only one uiautomator reads, so either counts.
@@ -409,8 +411,8 @@ lock_now() {
 unlock_now() {
   # The prompt may still be on its way over the lock screen.
   local i
-  for i in 1 2 3 4; do screen_text | grep -qxF "Unlock Ovenlight" && break; sleep 1; done
-  screen_text | grep -qxF "Unlock Ovenlight" || { tap_text Unlock || true; sleep 2; }
+  for i in 1 2 3 4; do screen_text | grep -xF "Unlock Ovenlight" >/dev/null && break; sleep 1; done
+  screen_text | grep -xF "Unlock Ovenlight" >/dev/null || { tap_text Unlock || true; sleep 2; }
   for i in 1 2 3; do
     a emu finger touch 1 >/dev/null
     sleep 2
@@ -422,7 +424,6 @@ unlock_now() {
 # The activity in front, as the activity manager names it.
 front() { a shell dumpsys activity activities | LC_ALL=C grep -m1 -E 'topResumedActivity|mResumedActivity' || true; }
 # Whether service $1 (a component) has a binding from app $2's process.
-# grep reads it all, so adb never sees a closed pipe and fails the pipeline.
 bound() { a shell dumpsys activity services "$1" | LC_ALL=C grep -E "ProcessRecord\{[^}]* [0-9]+:$2/" >/dev/null; }
 # Waits up to $1 seconds for an activity other than Ovenlight in front, with the address $2 in its intent.
 await_outside() {
@@ -564,7 +565,7 @@ if [[ $SCENARIO == guests ]]; then
   a shell "am start -W 'intent://join#${link#*#}#Intent;scheme=ovenlight;package=$PKG;end'" >/dev/null
   # Joined this session, so the screen says so; after a relaunch it would offer Join again too.
   await_text 20 "Recipes is ready" "Open Recipes" || { shot guests-failed; fail "no join screen over the open app: $(screen_text | tr '\n' '|')"; }
-  ! screen_text | grep -qxF "Recipe Box" || fail "Recipes is still open under the join screen"
+  ! screen_text | grep -xF "Recipe Box" >/dev/null || fail "Recipes is still open under the join screen"
   shot guests-again
   note "Recipes closed, and the join screen says it's ready"
   start_line=$(a logcat -d | LC_ALL=C grep -E 'START u0 .*dat=ovenlight:' | tail -1 || true)
@@ -584,7 +585,7 @@ if [[ $SCENARIO == guests ]]; then
   shot guests-revoked
   tap_text OK
   await_text 20 "Welcome to Ovenlight" || fail "not back to the welcome: $(screen_text | tr '\n' '|')"
-  ! screen_text | grep -qxF "No longer shared with you" || fail "the notice showed again"
+  ! screen_text | grep -xF "No longer shared with you" >/dev/null || fail "the notice showed again"
   [[ -z $(a shell run-as $PKG sh -c "'ls no_backup/tailscale 2>/dev/null'" | tr -d '\r') ]] || fail "the guest node's state is still on the phone"
   note "the notice showed once; the welcome is back, and the guest node's state is gone"
 
@@ -641,7 +642,7 @@ print(html.unescape(text.group(1)) if text else "")
   a shell input swipe $(((tile[0] + tile[2]) / 2)) $(((tile[1] + tile[3]) / 2)) $(((tile[0] + tile[2]) / 2)) $(((tile[1] + tile[3]) / 2)) 800
   # Recipes is Owen's only app here, so its tile's Remove app does what Leave would, and Leave isn't there.
   await_text 10 "Remove app" || { shot guests-failed; fail "no Remove app in the tile's menu: $(screen_text | tr '\n' '|')"; }
-  ! screen_text | grep -qxF "Leave Owen’s apps" || fail "the tile's menu has Leave beside Remove app"
+  ! screen_text | grep -xF "Leave Owen’s apps" >/dev/null || fail "the tile's menu has Leave beside Remove app"
   a shell input keyevent KEYCODE_BACK
   await_text 10 "Recipes, from Owen" || fail "Back didn't close the tile's menu"
   tap_text "Recipes, from Owen"
@@ -680,11 +681,11 @@ sys.exit(0 if nodes and not live else 1)'
   tap_text "Scan invite code"
   # Android asks for the camera the first time.
   for i in $(seq 1 10); do
-    if screen_text | grep -qxE 'While using the app|Allow'; then tap_matching '^(While using the app|Allow)$'; break; fi
+    if screen_text | grep -xE 'While using the app|Allow' >/dev/null; then tap_matching '^(While using the app|Allow)$'; break; fi
     sleep 1
   done
   await_text 10 "Point at the invite code" Cancel || { shot guests-failed; fail "the scanner didn't open: $(screen_text | tr '\n' '|')"; }
-  scanning() { a shell dumpsys media.camera | tr -d '\r' | sed -n '/Active Camera Clients/,/Allowed user IDs/p' | grep -q "Client Package Name: $PKG,"; }
+  scanning() { a shell dumpsys media.camera | tr -d '\r' | sed -n '/Active Camera Clients/,/Allowed user IDs/p' | grep "Client Package Name: $PKG," >/dev/null; }
   until_ok 15 scanning || fail "the scanner doesn't have the camera"
   shot guests-scanner
   tap_text Cancel
@@ -694,7 +695,7 @@ sys.exit(0 if nodes and not live else 1)'
 
   say "guests: no invite's key in the system log"
   # Not adbd's lines: Android 17's adbd logs each command this script sends it, links and all.
-  for key in "${keys[@]}"; do ! LC_ALL=C grep -v ' adbd *: ' $OUT/logcat-guests.log | LC_ALL=C grep -qF -- "$key" || fail "an invite's key is in the system log"; done
+  for key in "${keys[@]}"; do ! LC_ALL=C grep -v ' adbd *: ' $OUT/logcat-guests.log | LC_ALL=C grep -F -- "$key" >/dev/null || fail "an invite's key is in the system log"; done
   note "none of the ${#keys[@]} keys is in the $(wc -l < $OUT/logcat-guests.log | tr -d ' ') lines logged"
   say "PASSED"
   exit 0
@@ -752,7 +753,7 @@ if [[ $SCENARIO == chrome ]]; then
   await_text 40 "Recipe Box" || { shot chrome-failed; fail "Recipes never loaded: $(screen_text | tr '\n' '|')"; }
   # The tip closed, the pill tucks itself away as the page appears, leaving its handle.
   await_text 10 "Show app menu" || { shot chrome-failed; fail "the pill didn't tuck away: $(screen_text | tr '\n' '|')"; }
-  ! screen_text | grep -qxF "Recipes options" || fail "the pill still shows beside its handle"
+  ! screen_text | grep -xF "Recipes options" >/dev/null || fail "the pill still shows beside its handle"
   shot chrome-tucked
   note "the tip showed with the pill; once closed, the pill tucked away to its handle after the load"
   tap_text "Show app menu"
@@ -781,8 +782,8 @@ if [[ $SCENARIO == chrome ]]; then
   tap_text Send || fail "no Send button"
   await_text 30 "Feedback sent" || { shot chrome-failed; fail "the feedback wasn't sent: $(screen_text | tr '\n' '|')"; }
   # It closes by itself 1.4 s later.
-  for i in $(seq 1 10); do screen_text | grep -qxF "Feedback sent" || break; sleep 1; done
-  ! screen_text | grep -qxF "Feedback sent" || fail "Send feedback didn't close after sending"
+  for i in $(seq 1 10); do screen_text | grep -xF "Feedback sent" >/dev/null || break; sleep 1; done
+  ! screen_text | grep -xF "Feedback sent" >/dev/null || fail "Send feedback didn't close after sending"
   await_text 5 "Recipe Box" || fail "the page isn't back after Send feedback: $(screen_text | tr '\n' '|')"
   note "Send feedback showed Feedback sent and closed by itself"
   inbox=$(env HOME=$D/home $D/ovenlight feedback --config $D/config.json --state $D/st --app recipes --json)
@@ -895,7 +896,7 @@ EOF
   tap_text "Download blob"
   await_text 30 "note.txt" Save Share || { shot downloads-failed; fail "no sheet for the blob download: $(screen_text | tr '\n' '|')"; }
   shot downloads-blob-sheet
-  if screen_text | grep -qxF Open; then note "the blob's sheet offers Open, for plain text"; fi
+  if screen_text | grep -xF Open >/dev/null; then note "the blob's sheet offers Open, for plain text"; fi
   got=$(downloaded note.txt)
   [[ $got == "blob from the page" ]] || fail "the blob download's bytes: $got"
   note "the blob arrived, though the page revoked its URL right after the click"
@@ -909,7 +910,7 @@ EOF
   await_text 10 "Download blob" || fail "not back on the page after the Sharesheet: $(screen_text | tr '\n' '|')"
   tap_text "Download blob"
   await_text 30 "note.txt" Save Share || { shot downloads-failed; fail "no sheet for the blob again: $(screen_text | tr '\n' '|')"; }
-  if screen_text | grep -qxF Open; then
+  if screen_text | grep -xF Open >/dev/null; then
     tap_text Open; sleep 3
     [[ $(top_task) != "$own" ]] || fail "Open's viewer runs in Ovenlight's task"
     note "Open's viewer runs in a task of its own"
@@ -961,14 +962,14 @@ EOF
   # Ovenlight's camera clients, as the camera service lists them: "(Camera ID: 1, ..., Client
   # Package Name: <package>, ...)" lines between "Active Camera Clients:" and "Allowed user IDs".
   camera_clients() { a shell dumpsys media.camera | tr -d '\r' | sed -n '/Active Camera Clients/,/Allowed user IDs/p' | grep -c "Client Package Name: $PKG," || true; }
-  for i in $(seq 1 15); do screen_text | grep -qE '^Camera (live|error)' && break; sleep 1; done
-  if screen_text | grep -qxF "Camera live"; then
+  for i in $(seq 1 15); do screen_text | grep -E '^Camera (live|error)' >/dev/null && break; sleep 1; done
+  if screen_text | grep -xF "Camera live" >/dev/null; then
     note "the page has the camera after Ovenlight's prompt"
     (( $(camera_clients) > 0 )) || fail "the camera service lists no client while the page captures, so it can't show one closing: $(a shell dumpsys media.camera | grep -A5 'Active Camera Clients')"
     lock_now
     sleep 3
     (( $(camera_clients) == 0 )) || fail "the camera is still open under the lock: $(a shell dumpsys media.camera | grep -A3 'Active Camera Clients')"
-    ! a logcat -d -s Ovenlight | grep -q 'still capturing after the stop' || fail "the page script didn't stop the camera, so the view went"
+    ! a logcat -d -s Ovenlight | grep 'still capturing after the stop' >/dev/null || fail "the page script didn't stop the camera, so the view went"
     unlock_now
     await_text 20 "Camera ended" || fail "after the unlock the page isn't the one that captured: $(screen_text | tr '\n' '|')"
     note "the lock stopped the page's track, the camera closed, and the same page came back"
@@ -1204,7 +1205,7 @@ if [[ $SCENARIO == screens ]]; then
   note "back through the icon: locked"
   # The prompt opened by itself; cancel it, and it must stay closed.
   a shell input keyevent KEYCODE_BACK; sleep 6
-  ! screen_text | grep -qxF 'Unlock Ovenlight' || fail "the canceled prompt came back by itself"
+  ! screen_text | grep -xF 'Unlock Ovenlight' >/dev/null || fail "the canceled prompt came back by itself"
   KEEP_LOCK=1 await_text 5 "Ovenlight is locked" || fail "the lock screen went away: $(screen_text | tr '\n' '|')"
   note "a canceled prompt stays closed, and the lock screen stays"
   unlock_now
@@ -1261,7 +1262,7 @@ if [[ $SCENARIO == sharing ]]; then
   tap_text "Copy link"
   await_text 5 Copied || fail "Copy link didn't say Copied"
   # A key in a link is a credential until used: the system log, which adb and bug reports read, never has one.
-  ! a logcat -d 2>/dev/null | LC_ALL=C grep -q 'ovenlight\.app/join' || fail "an invite link reached the system log"
+  ! a logcat -d 2>/dev/null | LC_ALL=C grep 'ovenlight\.app/join' >/dev/null || fail "an invite link reached the system log"
   note "Send invite opened the Sharesheet, Back came back to the invite, Copy link says Copied, and no link reached the system log"
   tap_text Close
   await_text 10 Recipes Pantry || fail "Close didn't close the invite"
@@ -1285,8 +1286,8 @@ if [[ $SCENARIO == sharing ]]; then
 
   say "sharing: Cancel invite takes Sam's invite back"
   tap_text "For Sam options" && await_text 5 "Cancel invite" && tap_text "Cancel invite" || fail "no Cancel invite in Sam's invite's menu"
-  for i in $(seq 1 15); do screen_text | grep -qxF "For Sam" || break; sleep 1; done
-  ! screen_text | grep -qxF "For Sam" || fail "Sam's invite is still listed"
+  for i in $(seq 1 15); do screen_text | grep -xF "For Sam" >/dev/null || break; sleep 1; done
+  ! screen_text | grep -xF "For Sam" >/dev/null || fail "Sam's invite is still listed"
   guests | python3 -c 'import json, sys; sys.exit(0 if all(i["state"] != "sent" for i in json.load(sys.stdin)["invites"] if i["id"] == sys.argv[1]) else 1)' "$invite" ||
     fail "the connector still has Sam's invite open"
   note "Sam's invite left the list, and the connector has it canceled"
@@ -1296,12 +1297,12 @@ if [[ $SCENARIO == sharing ]]; then
   await_text 5 "Remove Kim?" || fail "Remove Kim didn't ask first"
   tap_text Remove
   confirm_with_finger "Remove Kim"
-  for i in $(seq 1 20); do screen_text | grep -qxF Kim || break; sleep 1; done
-  ! screen_text | grep -qxF Kim || { shot sharing-failed; fail "Kim is still listed"; }
+  for i in $(seq 1 20); do screen_text | grep -xF Kim >/dev/null || break; sleep 1; done
+  ! screen_text | grep -xF Kim >/dev/null || { shot sharing-failed; fail "Kim is still listed"; }
   shot sharing-removed
   guests | python3 -c 'import json, sys; sys.exit(0 if all(g.get("removedAt") for g in json.load(sys.stdin)["guests"] if g["name"] == "Kim") else 1)' ||
     fail "the connector still has Kim"
-  ! $HS -c $D/headscale.yaml nodes list -o json | grep -q '"ovenlight-guest' || fail "Kim's phone is still in the owner's network"
+  ! $HS -c $D/headscale.yaml nodes list -o json | grep '"ovenlight-guest' >/dev/null || fail "Kim's phone is still in the owner's network"
   note "Kim left the list, the connector removed her, and her phone left the owner's network"
   a shell input keyevent KEYCODE_BACK; sleep 2
   await_text 10 Recipes Pantry || fail "Back didn't close People"
@@ -1496,7 +1497,7 @@ EOF
   # Back within the lock's minute: the time it went to the background outlives the process.
   ! locked || fail "Recents brought Ovenlight back locked within the lock's time: $(screen_text | tr '\n' '|')"
   await_text 60 Recipes Pantry || { shot conditions-failed; fail "no launcher after the restart: $(screen_text | tr '\n' '|')"; }
-  ! screen_text | grep -qxF "Recipe Box conditions" || fail "the page came back from the ended process"
+  ! screen_text | grep -xF "Recipe Box conditions" >/dev/null || fail "the page came back from the ended process"
   note "back from Recents unlocked, within the lock's time, to the launcher with no app open"
   tap_text Recipes
   await_text 40 "Recipe Box conditions" || { shot conditions-failed; fail "Recipes didn't open after the restart: $(screen_text | tr '\n' '|')"; }
@@ -1651,7 +1652,7 @@ if [[ $SCENARIO == shortcuts ]]; then
   unlock_now
   await_text 20 Pantry "Lock Ovenlight" || fail "no launcher after the link: $(screen_text | tr '\n' '|')"
   sleep 3
-  screen_text | grep -qxF "Lock Ovenlight" || fail "the link opened an app: $(screen_text | tr '\n' '|')"
+  screen_text | grep -xF "Lock Ovenlight" >/dev/null || fail "the link opened an app: $(screen_text | tr '\n' '|')"
   [[ $(front) == *$PKG* && -n $(a shell pidof $PKG) ]] || fail "Ovenlight isn't running after the link"
   note "Ovenlight shows the launcher, with no app open"
   say "PASSED"
@@ -1838,7 +1839,7 @@ note "no route: $line"
 opened=$since
 sleep 3
 corelog "$opened" | grep '^proxy: ' | sort -u | while read -r l; do note "  $l"; done
-! corelog "$opened" | grep '^proxy: ' | grep -q -v ': 502 no route$' || fail "with no route, a CONNECT got something other than a refusal"
+! corelog "$opened" | grep '^proxy: ' | grep -v ': 502 no route$' >/dev/null || fail "with no route, a CONNECT got something other than a refusal"
 lab "proxy"
 await 10 '^proxy override' >/dev/null
 
