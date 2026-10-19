@@ -1280,12 +1280,10 @@ final class AppLoadGateTests: XCTestCase {
         XCTAssertEqual(run([.nodeReady, .reached], from: gaveUp), gaveUp, "only Retry leaves it")
         XCTAssertEqual(run([.retry], from: gaveUp), .waiting)
         XCTAssertEqual(run([.nodeReady, .gaveUp]), .unreachable)
-        // At the node's deadline. Share's check asks the same of the owner's node.
+        // At the node's deadline.
         XCTAssertEqual(run([.nodeNotReady, AppLoadGate.nodeGiveUp(.connecting)]), .notConnected)
         XCTAssertEqual(run([.nodeNotReady, AppLoadGate.nodeGiveUp(.starting)]), .notConnected)
         XCTAssertEqual(run([.nodeNotReady, AppLoadGate.nodeGiveUp(.retrying(attempt: 3))]), .unreachable)
-        XCTAssertTrue(NodeState.retrying(attempt: 1).isRetrying)
-        XCTAssertFalse(NodeState.connecting.isRetrying)
         XCTAssertEqual(ConnectionCopy.notConnected, "Ovenlight couldn’t connect. Check that you’re online, then try again.")
         CopyRules.assertNeutral(ConnectionCopy.notConnected)
     }

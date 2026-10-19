@@ -495,7 +495,7 @@ final class MembershipNode: ObservableObject {
                     watchPeers(status)
                     if !onlineReported, GuestProbe.reportsOnline(status) { UserDefaults.standard.set(true, forKey: onlineReportedKey) }
                 }
-                if state == .connecting || { if case .retrying = state { return true } else { return false } }() {
+                if state == .connecting || state.isRetrying {
                     await checkReachability(generation: current)
                     continue
                 }
