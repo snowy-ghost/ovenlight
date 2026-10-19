@@ -583,7 +583,7 @@ final class AppRegistryTests: XCTestCase {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: dir) }
         let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [IconlessConnectorProtocol.self]
+        config.protocolClasses = [SlowHostProtocol.self]
         let session = URLSession(configuration: config)
         defer { session.invalidateAndCancel() }
         let registry = AppRegistry(directory: dir, session: { _ in session })
@@ -591,36 +591,16 @@ final class AppRegistryTests: XCTestCase {
                                                       manifest: OvenlightManifest(name: "Coach", version: 1))])
         let file = dir.appendingPathComponent("apps.json")
         try FileManager.default.removeItem(at: file)
-        IconlessConnectorProtocol.paths = []
+        SlowHostProtocol.paths = []
         var changes = 0
         let watch = registry.objectWillChange.sink { changes += 1 }
         defer { watch.cancel() }
 
         await registry.refreshAllMissingIcons()
-        XCTAssertEqual(IconlessConnectorProtocol.paths, [OvenlightManifest.path], "not the start page")
+        XCTAssertEqual(SlowHostProtocol.paths, [OvenlightManifest.path], "not the start page")
         XCTAssertFalse(FileManager.default.fileExists(atPath: file.path), "nothing saved")
         XCTAssertEqual(changes, 0, "nothing redrawn")
     }
-}
-
-/// A connector's app whose manifest names no icon.
-private final class IconlessConnectorProtocol: URLProtocol {
-    /// What was asked for, in order. Set from the loading thread, read once the fetches end.
-    static var paths: [String] = []
-
-    override class func canInit(with request: URLRequest) -> Bool { true }
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
-
-    override func startLoading() {
-        guard let url = request.url else { return }
-        Self.paths.append(url.path)
-        client?.urlProtocol(self, didReceive: HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!,
-                            cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: Data(url.path == OvenlightManifest.path ? #"{"name":"Coach","version":1}"#.utf8 : "<title>Coach</title>".utf8))
-        client?.urlProtocolDidFinishLoading(self)
-    }
-
-    override func stopLoading() {}
 }
 
 @MainActor
@@ -1038,16 +1018,20 @@ final class DiscoveryTests: XCTestCase {
     }
 }
 
-/// Serves every host a connector's manifest at once, except `host`, which fails after `delay`.
+/// Serves every host a connector's manifest (with no icon) at once, except `host`, which fails
+/// after `delay`.
 private final class SlowHostProtocol: URLProtocol {
     static let host = "slow.tailabc123.ts.net"
     static let delay: TimeInterval = 1
+    /// The paths asked for, in order: set from the loading thread, read once the fetches end.
+    static var paths: [String] = []
 
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
         guard let url = request.url else { return }
+        Self.paths.append(url.path)
         if url.host == Self.host {
             DispatchQueue.global().asyncAfter(deadline: .now() + Self.delay) { [self] in
                 client?.urlProtocol(self, didFailWithError: URLError(.timedOut))

@@ -78,8 +78,8 @@ struct LampLight: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var source = LightSource.current
-    /// The safe area's insets, which show a status bar down one side.
-    @State private var insets = EdgeInsets()
+    /// The side a status bar runs down, if it does.
+    @State private var statusBarSide: LightSource?
 
     var body: some View {
         // Drawn on a square as long as the screen, so turning the phone never changes the
@@ -87,11 +87,11 @@ struct LampLight: View {
         // the old shape, a hard edge of light, until the turn ends.
         GeometryReader { geo in
             let side = max(geo.size.width, geo.size.height)
-            LightCone(level: level, source: source.besideStatusBar(insets), visible: geo.size)
+            LightCone(level: level, source: statusBarSide ?? source, visible: geo.size)
                 .frame(width: side, height: side)
         }
         .ignoresSafeArea()
-        .onGeometryChange(for: EdgeInsets.self) { $0.safeAreaInsets } action: { insets = $0 }
+        .onGeometryChange(for: LightSource?.self) { LightSource.statusBarSide($0.safeAreaInsets) } action: { statusBarSide = $0 }
         // The square hangs off the screen's right or bottom edge; right to left, it would hang
         // off the left instead and take the light with it, and the insets' sides would swap.
         .environment(\.layoutDirection, .leftToRight)
@@ -126,8 +126,8 @@ enum LightSource {
     @MainActor static var current: LightSource { LightSource(scene?.effectiveGeometry.interfaceOrientation) }
 
     /// With no top inset and a wider one at one side, the status bar runs down that side.
-    func besideStatusBar(_ insets: EdgeInsets) -> LightSource {
-        guard insets.top == 0, insets.leading != insets.trailing else { return self }
+    static func statusBarSide(_ insets: EdgeInsets) -> LightSource? {
+        guard insets.top == 0, insets.leading != insets.trailing else { return nil }
         return insets.trailing > insets.leading ? .right : .left
     }
 
