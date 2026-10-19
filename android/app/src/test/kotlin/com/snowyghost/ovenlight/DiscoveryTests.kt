@@ -165,10 +165,6 @@ class DiscoveryTests {
         assertEquals(Reach.Unreachable, GuestProbe.whoami("off.tailabc123.ts.net", fetch))
     }
 
-    /**
-     * Android's twin asserts refusal where iOS asserts `.direct`: Android has no direct route
-     * (plan decision 9), so a host on no known tailnet is refused, never loaded directly.
-     */
     /** A ready node looks again when computers come or go, and a minute after a look that missed a host; not on a timer otherwise, which would keep every app node's connection out of idle. */
     @Test
     fun testLooksAgainOnlyOnAChangeOrAfterAMiss() {
@@ -179,12 +175,17 @@ class DiscoveryTests {
         assertTrue(Discovery.lookAgain(hostsChanged = false, lastLookMillis = t0, missed = true, nowMillis = t0 + 61_000))
     }
 
+    /**
+     * A host on no known tailnet is refused, never loaded directly, as on iPhone. Android's twin
+     * leaves out the iPhone's `localhost` cases: only its debug builds load that directly.
+     */
     @Test
     fun testRoutesOnlyTheOwnersTailnetThroughTheOwnersNode() {
         val own = "tailabc123.ts.net"
         assertEquals(Routing.Route.TailnetNode, Routing.route("interview-coach.tailabc123.ts.net", own))
         assertEquals(Routing.Route.TailnetNode, Routing.route("Interview-Coach.TAILABC123.ts.net.", "TailABC123.ts.net."))
         assertEquals("another tailnet's Funnel name", Routing.Route.Refused, Routing.route("recorder.tail0000.ts.net", own))
+        assertFalse("no tailnet known: the owner's node carries nothing yet", Routing.isOnOwnersTailnet("interview-coach.tailabc123.ts.net", null))
         assertEquals(Routing.Route.Refused, Routing.route("eviltailabc123.ts.net", own))
         assertEquals(Routing.Route.Refused, Routing.route("example.com", own))
         assertEquals(Routing.Route.Refused, Routing.route("tailabc123.ts.net.example.com", own))

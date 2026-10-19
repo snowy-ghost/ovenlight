@@ -728,7 +728,7 @@ fun AppChromeHost(model: AppModel, page: AppPage, icon: Bitmap?, header: Color, 
     val machines by model.sharing.machines.collectAsState()
     val shareable = remember(machines, app) { model.sharing.info(app)?.takeIf { it.second.shareable } }
     LaunchedEffect(app.id) { if (!app.isShared && app.discovered) model.sharing.refreshIfStale(model.registry.apps) }
-    var noMailApp by remember { mutableStateOf(false) }
+    var noMailApp by remember { mutableStateOf<MailDraft?>(null) }
     var leaving by remember { mutableStateOf<Membership?>(null) }
     val density = LocalDensity.current.density
     val dark = isSystemInDarkTheme()
@@ -773,7 +773,7 @@ fun AppChromeHost(model: AppModel, page: AppPage, icon: Bitmap?, header: Color, 
             } else {
                 null
             },
-            reportProblem = { if (!MailDraft.problemReport(context, model.nodes, model.pool, app).send(context)) noMailApp = true },
+            reportProblem = { noMailApp = MailDraft.problemReport(context, model.nodes, model.pool, app).takeUnless { it.send(context) } },
             leave = membership?.let { owner -> AppChromeActions.Leave(owner.ownerName) { leaving = owner } },
             lock = model.lock::lock,
         ),
@@ -789,7 +789,7 @@ fun AppChromeHost(model: AppModel, page: AppPage, icon: Bitmap?, header: Color, 
             scope = model.scope,
         )
     }
-    if (noMailApp) NoEmailAppDialog(onDismiss = { noMailApp = false })
+    noMailApp?.let { NoEmailAppDialog(it, onDismiss = { noMailApp = null }) }
     leaving?.let { membership ->
         LeaveConfirmation(membership.ownerName, onDismiss = { leaving = null }) {
             // As iOS: the app closes first, then its owner's apps go, this one among them.

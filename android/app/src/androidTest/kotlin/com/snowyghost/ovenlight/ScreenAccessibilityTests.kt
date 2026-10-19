@@ -147,7 +147,7 @@ class ScreenAccessibilityTests {
     }) { LauncherView(grid) }
 
     @Test
-    fun testTheNoEmailAppDialog() = check { NoEmailAppDialog {} }
+    fun testTheNoEmailAppDialog() = check { NoEmailAppDialog(MailDraft(subject = "Ovenlight", body = "")) {} }
 
     @Test
     fun testTheLockDelayDialog() = check(open = { composeRule.onNodeWithText("Require screen lock").performClick() }) {
@@ -305,7 +305,7 @@ class ScreenAccessibilityTests {
     fun testTheCapturePrompt() = check { CapturePromptDialog("Allow Recipe Box to use the camera?") {} }
 
     @Test
-    fun testTheWebViewUpdateScreen() = check { WebViewUpdateScreen("com.google.android.webview") }
+    fun testTheWebViewUpdateScreen() = check { WebViewUpdateScreen(WebViewSetup.State.NeedsUpdate("com.google.android.webview", "133.0.6943.137")) { MailDraft(subject = "Ovenlight", body = "") } }
 
     @Test
     fun testAcknowledgements() = check(open = { composeRule.onNodeWithText("Acknowledgements").performScrollTo().performClick() }) {

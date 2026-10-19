@@ -33,8 +33,8 @@ import kotlinx.coroutines.flow.StateFlow
 object WebViewSetup {
     sealed interface State {
         data object Starting : State
-        /** This phone's WebView is too old or lacks a feature Ovenlight needs. */
-        data class NeedsUpdate(val webViewPackage: String) : State
+        /** This phone's WebView is too old ([version], when that's the reason) or lacks a feature Ovenlight needs. */
+        data class NeedsUpdate(val webViewPackage: String, val version: String? = null) : State
         data object Ready : State
     }
 
@@ -76,7 +76,8 @@ object WebViewSetup {
     private fun afterStartUp(context: Context) {
         val webView = WebViewCompat.getCurrentWebViewPackage(context)
         if (pretendingOld || !meetsRequirement(webView?.versionName) || !requiredFeatures.all(WebViewFeature::isFeatureSupported)) {
-            mutableState.value = State.NeedsUpdate(webView?.packageName ?: DEFAULT_WEBVIEW_PACKAGE)
+            // The version only when it's the reason: a new enough one may lack a feature.
+            mutableState.value = State.NeedsUpdate(webView?.packageName ?: DEFAULT_WEBVIEW_PACKAGE, webView?.versionName?.takeUnless(::meetsRequirement))
             return
         }
         ProfileDeletions.run(context)

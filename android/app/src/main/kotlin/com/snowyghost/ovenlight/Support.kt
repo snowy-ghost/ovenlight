@@ -40,7 +40,20 @@ data class MailDraft(val to: String = AppLinks.supportEmail, val subject: String
         get() = uri("mailto:$to?subject=${encoded(subject)}&body=${encoded(body)}")
 
     companion object {
-        fun contactUs(version: String) = MailDraft(subject = "Ovenlight", body = "\n\nOvenlight $version")
+        /**
+         * Contact us: room to write, then the lines Report a Problem ends with, and how the
+         * owner's own computers are connected ([computers]) when they're on.
+         */
+        fun contactUs(version: String, android: String, webView: String, model: String, computers: String?): MailDraft {
+            val lines = listOf("", "", "") + device(version, android, webView, model) + listOfNotNull(computers?.let { "Your computers: $it" })
+            return MailDraft(subject = "Ovenlight", body = lines.joinToString("\n"))
+        }
+
+        /** Contact us as things are now. */
+        fun contactUs(context: Context, nodes: NodeManager): MailDraft = contactUs(
+            version, Build.VERSION.RELEASE, webView(context), model,
+            computers = if (nodes.ownerEnabled.value) connection(nodes.owner.state.value, listedOffline = false) else null,
+        )
 
         /**
          * Report a Problem for one app: what it is and where it comes from, how its connection
@@ -57,9 +70,12 @@ data class MailDraft(val to: String = AppLinks.supportEmail, val subject: String
             sharedBy?.let { lines += "Shared by: $it" }
             connection?.let { lines += "Connection: $it" }
             opening?.let { lines += "Opening: $it" }
-            lines += listOf("Ovenlight: $version", "Android: $android", "WebView: $webView", "Model: $model")
+            lines += device(version, android, webView, model)
             return MailDraft(subject = "Ovenlight report: $appName", body = lines.joinToString("\n"))
         }
+
+        private fun device(version: String, android: String, webView: String, model: String) =
+            listOf("Ovenlight: $version", "Android: $android", "WebView: $webView", "Model: $model")
 
         /**
          * Report a Problem for one app as it is now: its connection, where opening it got, and
@@ -70,12 +86,16 @@ data class MailDraft(val to: String = AppLinks.supportEmail, val subject: String
             appName = app.name, host = app.host, sharedBy = app.sharedBy,
             connection = nodes.node(app)?.let { connection(it.state.value, it.isListedOffline(app.host)) }
                 ?: "Refused (on no known tailnet)".takeUnless { app.isShared },
-            opening = pool.gate(app.id)?.logDescription,
-            version = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+            opening = pool.opening(app.id),
+            version = version,
             android = Build.VERSION.RELEASE,
-            webView = WebViewCompat.getCurrentWebViewPackage(context)?.versionName ?: "unknown",
-            model = "${Build.MANUFACTURER} ${Build.MODEL}",
+            webView = webView(context),
+            model = model,
         )
+
+        private val version: String get() = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})"
+        private val model: String get() = "${Build.MANUFACTURER} ${Build.MODEL}"
+        private fun webView(context: Context): String = WebViewCompat.getCurrentWebViewPackage(context)?.versionName ?: "unknown"
 
         /**
          * The state as shown, then in detail as the log has it (no sign-in link), and whether
@@ -83,6 +103,9 @@ data class MailDraft(val to: String = AppLinks.supportEmail, val subject: String
          */
         fun connection(state: NodeState, listedOffline: Boolean): String =
             "${state.summary} (${state.logDescription}${if (listedOffline) ", computer listed offline" else ""})"
+
+        /** Where opening the app got, then what a page that failed to load came to (see [AppLoadGate.loadFailure]). */
+        fun opening(gate: AppLoadGate, failure: String?): String = gate.logDescription + (failure?.let { ", $it" } ?: "")
 
         /**
          * Percent-encoded as iOS encodes a query value: UTF-8, leaving only letters, digits and
@@ -104,26 +127,26 @@ fun MailDraft.intent(): Intent = Intent(Intent.ACTION_SENDTO, (mailtoURL?.toStri
 /** Opens the draft in the person's mail app; false when the phone has none. */
 fun MailDraft.send(context: Context): Boolean = context.startOrFalse(intent())
 
-/** For a phone with no email app: where to write instead, with the address to copy. */
+/** For a phone with no email app: where to write instead, with the address and the filled-in [draft] to copy. */
 @Composable
-fun NoEmailAppDialog(onDismiss: () -> Unit) {
+fun NoEmailAppDialog(draft: MailDraft, onDismiss: () -> Unit) {
     val clipboard = LocalClipboard.current
     val haptics = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
+    // Closes once copied: closing first would cancel the copy with the dialog's scope.
+    fun copy(label: String, text: String) = scope.launch {
+        clipboard.setClipEntry(ClipEntry(ClipData.newPlainText(label, text)))
+        haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+        onDismiss()
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.mail_no_app_title)) },
         text = { Text(stringResource(R.string.mail_no_app_body, AppLinks.supportEmail)) },
         confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.ok)) } },
         dismissButton = {
-            TextButton(onClick = {
-                // Closes once copied: closing first would cancel the copy with the dialog's scope.
-                scope.launch {
-                    clipboard.setClipEntry(ClipEntry(ClipData.newPlainText(AppLinks.supportEmail, AppLinks.supportEmail)))
-                    haptics.performHapticFeedback(HapticFeedbackType.Confirm)
-                    onDismiss()
-                }
-            }) { Text(stringResource(R.string.mail_copy_address)) }
+            TextButton(onClick = { copy(AppLinks.supportEmail, AppLinks.supportEmail) }) { Text(stringResource(R.string.mail_copy_address)) }
+            TextButton(onClick = { copy(draft.subject, draft.body) }) { Text(stringResource(R.string.mail_copy_report)) }
         },
     )
 }

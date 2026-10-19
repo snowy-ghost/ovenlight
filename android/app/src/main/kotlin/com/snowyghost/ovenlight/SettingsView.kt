@@ -130,8 +130,8 @@ data class SettingsState(
     val approve: () -> Unit = {},
     /** Sign out, and Stop using my own computers before a sign-in: one action (see [NodeManager.disableOwner]). */
     val stopUsingMyOwnComputers: () -> Unit = {},
-    /** False when the phone has no email app. */
-    val contactUs: () -> Boolean = { true },
+    /** Opens Contact us in the mail app; the draft when the phone has none. */
+    val contactUs: () -> MailDraft? = { null },
     val privacyPolicy: () -> Unit = {},
     /** The licenses for Acknowledgements, or null when the build lacks them. */
     val notices: suspend () -> String? = { null },
@@ -188,7 +188,7 @@ fun SettingsView(model: AppModel, pages: SnapshotStateList<SettingsPage>, onClos
             model.scope.launch { nodes.disableOwner() }
             onClose()
         },
-        contactUs = { MailDraft.contactUs(version).send(context) },
+        contactUs = { MailDraft.contactUs(context, nodes).takeUnless { it.send(context) } },
         privacyPolicy = { CustomTabs.open(context, AppLinks.privacyPolicy, model.lifecycle) },
         notices = { withContext(Dispatchers.IO) { Acknowledgements.notices { context.assets.open(it) } } },
     )
@@ -230,7 +230,7 @@ private fun SettingsList(state: SettingsState, scroll: ScrollState, onClose: () 
     var leaving by remember { mutableStateOf<SharedOwner?>(null) }
     /** The row asking first, by its name, which the dialog's button repeats. */
     var confirming by remember { mutableStateOf<Int?>(null) }
-    var noEmailApp by remember { mutableStateOf(false) }
+    var noEmailApp by remember { mutableStateOf<MailDraft?>(null) }
     val error = MaterialTheme.colorScheme.error
     val primary = MaterialTheme.colorScheme.primary
     GroupedScreen(stringResource(R.string.settings), onBack = onClose, scroll = scroll) {
@@ -292,7 +292,7 @@ private fun SettingsList(state: SettingsState, scroll: ScrollState, onClose: () 
             }
             SettingsGroup(header = stringResource(R.string.settings_support)) {
                 row { shape ->
-                    SettingsRow(shape, stringResource(R.string.settings_contact_us), icon = R.drawable.ic_mail, onClick = { if (!state.contactUs()) noEmailApp = true })
+                    SettingsRow(shape, stringResource(R.string.contact_us), icon = R.drawable.ic_mail, onClick = { noEmailApp = state.contactUs() })
                 }
                 row { shape -> SettingsRow(shape, stringResource(R.string.settings_privacy_policy), icon = R.drawable.ic_privacy_tip, onClick = state.privacyPolicy) }
                 row { shape -> SettingsRow(shape, stringResource(R.string.settings_acknowledgements), icon = R.drawable.ic_description, onClick = onAcknowledgements) }
@@ -339,7 +339,7 @@ private fun SettingsList(state: SettingsState, scroll: ScrollState, onClose: () 
             onDismiss = { confirming = null }, action = state.stopUsingMyOwnComputers,
         )
     }
-    if (noEmailApp) NoEmailAppDialog(onDismiss = { noEmailApp = false })
+    noEmailApp?.let { NoEmailAppDialog(it, onDismiss = { noEmailApp = null }) }
 }
 
 /**

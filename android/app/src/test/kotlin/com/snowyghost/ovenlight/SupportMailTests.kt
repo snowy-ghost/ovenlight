@@ -68,4 +68,26 @@ class SupportMailTests {
         assertEquals("Ovenlight report: Echo & Notes+", items["subject"])
         assertEquals(draft.body, items["body"])
     }
+
+    /** Opening says what failed after the gate opened: WebView's name for the error or its code, never an address or words. */
+    @Test
+    fun testTheOpeningLineSaysWhatFailed() {
+        assertEquals("ready, page failed (net::ERR_TOO_MANY_REDIRECTS)", MailDraft.opening(AppLoadGate.Ready, AppLoadGate.loadFailure(-9, "net::ERR_TOO_MANY_REDIRECTS")))
+        assertEquals("ready, app not responding (502 unavailable)", MailDraft.opening(AppLoadGate.Ready, AppLoadGate.appDownFailure))
+        assertEquals("page failed (error -2)", AppLoadGate.loadFailure(-2, "Couldn't load https://notes.tailabc123.ts.net/?token=1"))
+        assertEquals("unreachable", MailDraft.opening(AppLoadGate.Unreachable, null))
+    }
+
+    /** Android's lines where the iPhone's has `iOS:`. */
+    @Test
+    fun testContactUsGivesThePhonesLines() {
+        val draft = MailDraft.contactUs("1.0.2 (15)", android = "16", webView = "145.0.7632.218", model = "Google Pixel 9", computers = "Connected (ready)")
+        assertEquals("Ovenlight", draft.subject)
+        assertEquals("\n\n\nOvenlight: 1.0.2 (15)\nAndroid: 16\nWebView: 145.0.7632.218\nModel: Google Pixel 9\nYour computers: Connected (ready)", draft.body)
+        assertFalse(
+            "not for someone who doesn't use their own computers",
+            MailDraft.contactUs("1.0.2 (15)", "16", "145.0.7632.218", "Google Pixel 9", computers = null).body.contains("Your computers"),
+        )
+        assertEquals("${NodeState.Ready.summary} (ready)", MailDraft.connection(NodeState.Ready, listedOffline = false))
+    }
 }

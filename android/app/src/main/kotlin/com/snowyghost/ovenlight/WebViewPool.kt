@@ -101,8 +101,8 @@ class WebViewPool(
     /** The phone's font size changed: every live page's text follows it. */
     fun fontScaleChanged(fontScale: Float) = pages.values.forEach { WebViewSetup.followTextSize(it.view, fontScale) }
 
-    /** Where opening the app got, while it has a page, for Report a Problem. */
-    fun gate(id: UUID): AppLoadGate? = pages[id]?.gate?.value
+    /** Where opening the app got, while it has a page, for Report a Problem (see [MailDraft.opening]). */
+    fun opening(id: UUID): String? = pages[id]?.let { MailDraft.opening(it.gate.value, it.loadFailure) }
 
     /** Every app but [open] is closed, so its Send feedback goes. */
     fun appClosed(open: UUID?) {

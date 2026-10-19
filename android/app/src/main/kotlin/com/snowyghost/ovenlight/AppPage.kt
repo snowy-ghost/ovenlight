@@ -63,6 +63,11 @@ class AppPage(
     private val error = MutableStateFlow<String?>(null)
     val loadError: StateFlow<String?> = error
 
+    /** What [loadError] came from, in codes only, for Report a Problem (see [AppLoadGate.loadFailure]). */
+    var loadFailure: String? = null
+        get() = field.takeIf { error.value != null }
+        private set
+
     /**
      * Whether the page lays itself out under the bars, and its colors, read as each page finishes
      * loading and before the first one shows, so it never moves (and again by the chrome).
@@ -324,7 +329,8 @@ class AppPage(
         clearHistoryOnLoad = true
         if (appDownLoads >= AppLoadGate.appDownRetries.size) {
             appDownLoads = 0
-            error.value = ConnectionCopy.notResponding(app.name)
+            loadFailure = AppLoadGate.appDownFailure
+            error.value = ConnectionCopy.notResponding(app)
             return
         }
         val wait = AppLoadGate.appDownRetries[appDownLoads]
@@ -353,7 +359,8 @@ class AppPage(
         failedLoads = 0
         // Chromium's description is a code ("net::ERR_TOO_MANY_REDIRECTS"): the log keeps it, the page says it plainly.
         if (code !in retryableThroughNode) OvenlightLog.i("${app.host}: error $code, $description")
-        error.value = if (code in retryableThroughNode) ConnectionCopy.cantReachDetail(app.sharedBy) else ConnectionCopy.pageFailed
+        loadFailure = AppLoadGate.loadFailure(code, description)
+        error.value = if (code in retryableThroughNode) ConnectionCopy.cantReachDetail(app) else ConnectionCopy.pageFailed
     }
 
     // Leaving

@@ -210,7 +210,7 @@ fun LauncherView(state: LauncherState) {
     var clearing by remember { mutableStateOf<WebApp?>(null) }
     var removing by remember { mutableStateOf<WebApp?>(null) }
     var leaving by remember { mutableStateOf<Membership?>(null) }
-    var noMailApp by remember { mutableStateOf(false) }
+    var noMailApp by remember { mutableStateOf<MailDraft?>(null) }
     // Covered by a screen or an app, the launcher stays composed beneath it. Touch doesn't reach
     // it, and this keeps TalkBack and a keyboard's Tab off its hidden buttons and tiles, which an
     // open app's band, drawn over the top bar, would otherwise leave reachable.
@@ -246,7 +246,7 @@ fun LauncherView(state: LauncherState) {
                             SharingFixture.apply(app), close, state,
                             rename = { renaming = app },
                             refreshIcon = { state.refreshIcon(app.id) },
-                            reportProblem = { state.problemReport(app)?.let { if (!it.send(context)) noMailApp = true } },
+                            reportProblem = { state.problemReport(app)?.let { if (!it.send(context)) noMailApp = it } },
                             leave = { leaving = state.memberships.firstOrNull { it.id == app.membershipID } },
                             clearData = { clearing = app },
                             remove = { removing = app },
@@ -279,7 +279,7 @@ fun LauncherView(state: LauncherState) {
     leaving?.let { membership ->
         LeaveConfirmation(membership.ownerName, onDismiss = { leaving = null }) { state.leave(membership.id) }
     }
-    if (noMailApp) NoEmailAppDialog(onDismiss = { noMailApp = false })
+    noMailApp?.let { NoEmailAppDialog(it, onDismiss = { noMailApp = null }) }
 }
 
 /** The text in the top row and the pill stops growing at 1.3 times, so the row keeps its height. */
@@ -454,7 +454,7 @@ private fun ColumnScope.AppMenu(
                 text = {
                     Column {
                         Text(stringResource(R.string.share_ellipsis))
-                        Text(AppMenuPlan.notShareableDetail, style = MaterialTheme.typography.bodySmall)
+                        info?.let { Text(AppMenuPlan.notShareableDetail(it.second.slug), style = MaterialTheme.typography.bodySmall) }
                     }
                 },
                 leadingIcon = { Icon(painterResource(R.drawable.ic_share), contentDescription = null) },

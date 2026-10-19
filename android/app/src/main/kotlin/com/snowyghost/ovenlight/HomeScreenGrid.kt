@@ -475,7 +475,8 @@ fun HomeScreenGrid(
                         }
                     }
                 }
-                if (emptySlot) {
+                // Until the owner has an app of their own, beside apps someone shared too.
+                if (ownerEnabled && apps.none { !it.isShared }) {
                     EmptyGridFooter(openLink, Modifier.padding(horizontal = (2 * layout.sideMargin).dp).padding(bottom = HomeGridLayout.rowGap.dp))
                 }
             }
@@ -651,7 +652,7 @@ private fun EmptyHomeSlot(size: Dp, onClick: () -> Unit, modifier: Modifier = Mo
     }
 }
 
-/** Under the empty slot: where the owner's apps come from, with the connector linked. */
+/** Under the empty slot, or apps someone shared: where the owner's apps come from, with the connector linked. */
 @Composable
 private fun EmptyGridFooter(openLink: (String) -> Unit, modifier: Modifier = Modifier) {
     val link = stringResource(R.string.launcher_connector)

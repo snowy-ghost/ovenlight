@@ -330,12 +330,13 @@ class SettingsViewTests {
     @Test
     fun testContactUsWithNoEmailAppSaysWhereToWrite() {
         var privacy = false
-        show { SettingsState(contactUs = { false }, privacyPolicy = { privacy = true }) }
+        show { SettingsState(contactUs = { MailDraft(subject = "Ovenlight", body = "Ovenlight: 1.0 (1)") }, privacyPolicy = { privacy = true }) }
         inEveryLook {
             row("Contact us").performClick()
             inDialog("No email app").assertIsDisplayed()
             inDialog("Write to team@snowyghost.com.").assertIsDisplayed()
             inDialog("Copy address").assertIsDisplayed()
+            inDialog("Copy report").assertIsDisplayed()
             composeRule.checkAccessibility()
             inDialog("OK").performClick()
             composeRule.onNode(isDialog()).assertDoesNotExist()

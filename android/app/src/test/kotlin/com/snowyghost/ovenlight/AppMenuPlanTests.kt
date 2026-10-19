@@ -45,7 +45,7 @@ class AppMenuPlanTests {
         val app = WebApp(name = "Coach", startURL = URI("https://coach.tail1.ts.net/"))
         val plan = AppMenuPlan.plan(app, admin(shareable = false) to AdminGuestList(guests = listOf(guest("Sam"))), listOf(app))
         assertEquals(AppMenuPlan(share = AppMenuPlan.Share.NotShareable), plan)
-        CopyRules.assertNeutral(AppMenuPlan.notShareableDetail)
+        CopyRules.assertNeutral(AppMenuPlan.notShareableDetail("coach"))
     }
 
     @Test

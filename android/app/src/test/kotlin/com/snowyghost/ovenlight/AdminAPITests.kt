@@ -140,16 +140,29 @@ class AdminAPITests {
         assertEquals("the admin API is for the owner only", AdminAPI.errorMessage("""{"error":"the admin API is for the owner only"}""".toByteArray()))
     }
 
-    /** Only the nodes a connector made for its apps count as missed: a laptop or TV of the owner's without a connector never answers. */
+    /**
+     * An owner's host that doesn't answer brings another look when it's a shareable app's node, a
+     * private app's untagged node already found, or new this look; a laptop or TV without a
+     * connector misses once, and then no more.
+     */
     @Test
-    fun testAppHostsAreTheTaggedOnes() {
+    fun testWatchesAppHostsAndNewOnes() {
         val json = """
         {"BackendState":"Running","CurrentTailnet":{"Name":"owen@","MagicDNSSuffix":"tailabc123.ts.net"},
          "Self":{"DNSName":"phone.tailabc123.ts.net.","OS":"android","UserID":1},
          "Peer":{"a":{"DNSName":"Coach.tailabc123.ts.net.","OS":"linux","Online":true,"Tags":["tag:ovenlight-app-coach"]},
-                 "b":{"DNSName":"tv.tailabc123.ts.net.","OS":"tvOS","Online":true,"UserID":1}}}
+                 "b":{"DNSName":"notes.tailabc123.ts.net.","OS":"linux","Online":true,"UserID":1},
+                 "c":{"DNSName":"tv.tailabc123.ts.net.","OS":"tvOS","Online":true,"UserID":1}}}
         """
-        assertEquals(setOf("coach.tailabc123.ts.net"), Discovery.appHosts(TailnetStatus.decode(json)))
+        val status = TailnetStatus.decode(json)
+        val (coach, notes, tv) = listOf("coach.tailabc123.ts.net", "notes.tailabc123.ts.net", "tv.tailabc123.ts.net")
+        val hosts = listOf(coach, notes, tv)
+        assertEquals("all new", setOf(coach, notes, tv), Discovery.watchedHosts(hosts, status, found = emptySet(), seenBefore = emptySet()))
+        assertEquals(
+            "the private app found on the untagged node, not the TV",
+            setOf(coach, notes), Discovery.watchedHosts(hosts, status, found = setOf(notes), seenBefore = hosts.toSet()),
+        )
+        assertEquals(setOf(coach), Discovery.watchedHosts(hosts, status, found = emptySet(), seenBefore = hosts.toSet()))
     }
 
     @Test
@@ -313,14 +326,19 @@ class AdminAPITests {
         assertTrue("the next menu asks again", asked > before)
     }
 
-    /** A computer that stops answering keeps what it said last, and the problem says why. */
+    /**
+     * A computer that fails a pass, with any error, keeps what it said last, with why, and the
+     * problem says it too. Its apps show offline only when it couldn't be reached.
+     */
     @Test
     fun testAFailedRefreshKeepsTheMachineAsItWas() = runTest {
         var asleep = false
+        var failing: FetchResponse? = null
         val nodes = connectedOwner { request ->
             if (asleep) return@connectedOwner null
+            failing?.let { return@connectedOwner it }
             when (request.url.encodedPath) {
-                "/v1/apps" -> FetchResponse(200, """[{"slug":"coach","name":"Coach","url":"https://coach.tailabc123.ts.net/","shareable":true},{"slug":"notes","name":"Notes","url":"https://notes.tailabc123.ts.net/"}]""".toByteArray())
+                "/v1/apps" -> FetchResponse(200, """[{"slug":"coach","name":"Coach","url":"https://coach.tailabc123.ts.net/","online":true,"shareable":true},{"slug":"notes","name":"Notes","url":"https://notes.tailabc123.ts.net/"}]""".toByteArray())
                 "/v1/guests" -> FetchResponse(200, """{"guests":[{"deviceId":"7","person":"p1","name":"Sam","app":"coach","claimedAt":"2026-09-28T17:05:00Z"}]}""".toByteArray())
                 else -> FetchResponse(200, "[]".toByteArray())
             }
@@ -328,9 +346,16 @@ class AdminAPITests {
         val sharing = OwnerSharing(nodes, backgroundScope, { testScheduler.currentTime }, {})
         sharing.refresh(ownApps)
         val machine = sharing.machines.value.single()
+        failing = FetchResponse(500, """{"error":"couldn't read the guest list: run `ovenlight doctor`"}""".toByteArray())
+        sharing.refresh(ownApps)
+        val reason = "Couldn't read the guest list: run ovenlight doctor"
+        assertEquals("an error keeps it as it was, without the connector's backticks", listOf(machine.copy(problem = reason)), sharing.machines.value)
+        assertEquals(reason, sharing.problem.value)
+        failing = null
         asleep = true
         sharing.refresh(ownApps)
-        assertEquals("Share and People stay while it sleeps", listOf(machine), sharing.machines.value)
+        val offline = machine.copy(apps = machine.apps.map { it.copy(online = false) }, problem = AdminError.Unreachable.message)
+        assertEquals("Share and People stay while it sleeps, its apps offline", listOf(offline), sharing.machines.value)
         assertEquals(AdminError.Unreachable.message, sharing.problem.value)
         asleep = false
         sharing.refresh(ownApps)

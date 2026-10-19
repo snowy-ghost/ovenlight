@@ -74,7 +74,6 @@ class WebViewPoolTests {
         assertNull("nothing loaded through the owner's node", stale.view.url)
         val current = pool.page(funnel)
         assertNotSame(stale, current)
-        // iOS loads it directly; Android has no direct route, so it's refused.
         assertNull("made again, refused", current.node)
         pool.discard(funnel.id)
     }

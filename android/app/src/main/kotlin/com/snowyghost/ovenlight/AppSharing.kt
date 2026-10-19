@@ -21,7 +21,7 @@ data class AppMenuPlan(
     }
 
     companion object {
-        const val notShareableDetail = "Make it shareable on your computer first"
+        fun notShareableDetail(slug: String) = "Make it shareable first: on your computer, run ${SharingList.shareableCommand(slug)}"
 
         /** [admin] is the connector's view of the app and its computer's guests, when there is one; [apps], every app on this phone. */
         fun plan(app: WebApp, admin: Pair<AdminApp, AdminGuestList>?, apps: List<WebApp>): AppMenuPlan {

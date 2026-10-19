@@ -1,6 +1,7 @@
 package com.snowyghost.ovenlight
 
 import java.io.File
+import java.io.FileOutputStream
 import java.net.URI
 import java.nio.file.Files
 import java.nio.file.NoSuchFileException
@@ -292,14 +293,23 @@ object SavedJSON {
         null
     }
 
-    /** Replaces the file in one step, so a reader sees the old list or the new one, never part of one. */
+    /**
+     * Replaces the file in one step, so a reader sees the old list or the new one, never part of
+     * one. The new one is on the disk before the move, so a power loss can't leave it empty.
+     */
     fun write(text: String, file: File) = write(text.toByteArray(), file)
 
     /** [write], for bytes. */
-    fun write(bytes: ByteArray, file: File) {
+    fun write(bytes: ByteArray, file: File) = write(file) { it.write(bytes) }
+
+    /** [write], with what [fill] writes. One that throws leaves the old file and no temporary one, as AtomicFile does. */
+    internal fun write(file: File, fill: (FileOutputStream) -> Unit) {
         val temporary = File(file.parentFile, ".${file.name}.tmp")
-        temporary.writeBytes(bytes)
         try {
+            FileOutputStream(temporary).use { stream ->
+                fill(stream)
+                stream.fd.sync()
+            }
             Files.move(temporary.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
         } catch (e: Exception) {
             temporary.delete()

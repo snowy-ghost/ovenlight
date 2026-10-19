@@ -22,6 +22,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.window.Dialog
@@ -266,11 +267,12 @@ private fun Root(model: AppModel, onUnlock: () -> Unit) {
     OvenlightTheme {
         val locked by lock.isLocked.collectAsState()
         val state by WebViewSetup.state.collectAsState()
+        val context = LocalContext.current
         // While locked, nothing is in the activity's window, so neither TalkBack nor a keyboard
         // can reach what's behind the lock.
         if (!locked) {
             when (val s = state) {
-                is WebViewSetup.State.NeedsUpdate -> WebViewUpdateScreen(s.webViewPackage)
+                is WebViewSetup.State.NeedsUpdate -> WebViewUpdateScreen(s) { MailDraft.contactUs(context, model.nodes) }
                 WebViewSetup.State.Ready -> RootView(model)
                 WebViewSetup.State.Starting -> Unit
             }

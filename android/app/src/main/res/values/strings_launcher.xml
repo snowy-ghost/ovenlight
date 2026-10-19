@@ -12,7 +12,7 @@
     <string name="launcher_open_machines">Open Machines page</string>
 
     <string name="launcher_connector">Ovenlight connector</string>
-    <string name="launcher_empty_footer">Apps you publish with the %1$s on your computers show up here.</string>
+    <string name="launcher_empty_footer">Apps you publish with the %1$s on your computers show up here. If one doesn’t, run ovenlight doctor on its computer.</string>
 
     <string name="add_app_address">Address</string>
     <string name="add_app_add">Add</string>

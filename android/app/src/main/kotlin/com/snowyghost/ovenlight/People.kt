@@ -119,7 +119,7 @@ internal fun SharingPeopleList(state: SharingState, place: SharingPlace, scroll:
         },
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
-            error?.let { SharingError(it) }
+            (error ?: machines.firstNotNullOfOrNull { it.problem })?.let { SharingError(it) }
             if (groups.isEmpty()) Unavailable(stringResource(R.string.sharing_no_one_yet), stringResource(R.string.people_no_one))
             for ((machine, people) in groups) {
                 val last = machine.id == groups.last().first.id
@@ -227,7 +227,7 @@ internal fun SharingPersonView(state: SharingState, page: SharingPage.Person, sc
 
     GroupedScreen(person?.name.orEmpty(), onBack = back, scroll = scroll, refresh = state.refresh) {
         Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
-            error?.let { SharingError(it) }
+            (error ?: machine?.problem)?.let { SharingError(it) }
             if (machine == null || person == null) {
                 if (!working) state.problem?.let { Unavailable(stringResource(R.string.sharing_no_computers), it) } ?: Unavailable(stringResource(R.string.person_not_shared))
                 return@Column

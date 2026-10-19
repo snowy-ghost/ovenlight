@@ -100,9 +100,16 @@ object Discovery {
         }
     }
 
-    /** The hosts of the nodes a connector made for its apps, by their tag. */
-    fun appHosts(status: TailnetStatus?): Set<String> =
-        (status?.peers ?: emptyList()).filter { peer -> peer.tags.any(OvenlightTag::isApp) }.map { normalizedHost(it.dnsName) }.toSet()
+    /**
+     * Among an owner's probed hosts, those whose silence brings another look in a minute:
+     * shareable app nodes (by their tag), hosts of apps already found (a private app's node is
+     * untagged), and hosts this look sees for the first time. A laptop or TV without a connector
+     * misses once, and then no more.
+     */
+    fun watchedHosts(hosts: List<String>, status: TailnetStatus?, found: Set<String>, seenBefore: Set<String>): Set<String> {
+        val tagged = (status?.peers ?: emptyList()).filter { peer -> peer.tags.any(OvenlightTag::isApp) }.map { normalizedHost(it.dnsName) }.toSet()
+        return hosts.filter { it in tagged || it in found || it !in seenBefore }.toSet()
+    }
 
     /**
      * Whether a ready node looks at its hosts again: when a computer comes online or goes away
@@ -176,11 +183,11 @@ object Discovery {
 /**
  * Which node an app's traffic takes. Android has no direct route (plan decision 9): every app
  * goes through a node, and a host on no known tailnet is refused, never looked up in public DNS
- * or loaded directly, where iOS loads it directly.
+ * or loaded directly, as on iPhone. Only the iPhone's debug builds load `localhost` directly.
  */
 object Routing {
     enum class Route {
-        /** On no tailnet Ovenlight knows: nothing loads. iOS's `direct`. */
+        /** On no tailnet Ovenlight knows: nothing loads, not even a probe. */
         Refused,
 
         /** Through Ovenlight's embedded node (its local proxy). */

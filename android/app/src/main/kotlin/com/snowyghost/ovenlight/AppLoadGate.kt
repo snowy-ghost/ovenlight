@@ -92,6 +92,18 @@ enum class AppLoadGate {
          * rather than showing the connector's text.
          */
         val appDownRetries: List<Duration> = listOf(1.seconds, 2.seconds, 4.seconds)
+
+        /** Report a Problem's words for a first page that came back down after its retries ([appIsDown]). */
+        const val appDownFailure = "app not responding (502 unavailable)"
+
+        /**
+         * Report a Problem's words for a first page that failed to load: WebView's name for the
+         * error (its description, such as `net::ERR_TOO_MANY_REDIRECTS`), else its code. Never an
+         * address, or any other text.
+         */
+        fun loadFailure(code: Int, description: String): String = "page failed (${description.takeIf(netError::matches) ?: "error $code"})"
+
+        private val netError = Regex("net::ERR_[A-Z0-9_]+")
     }
 }
 
@@ -119,9 +131,9 @@ class NodeDeadline(private val clock: TimeSource = TimeSource.Monotonic) {
 
 /**
  * Words for connection states that anyone may see. None of them names Tailscale or the tailnet,
- * so a guest, who never signs in, can be shown every one. Copy that asks the owner to act on
- * their Tailscale account lives only in the sign-in card, Settings and the approval prompt over
- * the owner's apps.
+ * so a guest, who never signs in, can be shown every one; the owner's own apps get their own
+ * words for a few. Copy that asks the owner to act on their Tailscale account lives only in the
+ * sign-in card, Settings and the approval prompt over the owner's apps.
  */
 object ConnectionCopy {
     const val connecting = "Connecting…"
@@ -133,9 +145,20 @@ object ConnectionCopy {
     /** For an app someone shared, [owner] is who to tell. */
     fun cantReachDetail(owner: String?) = owner?.let { "$it’s computer may be asleep or offline. Try again in a moment, or let $it know." }
         ?: "Its computer may be asleep or offline. Try again in a moment."
+
+    /** [cantReachDetail], or for the owner's own app what to do: on its computer, or when its route is [refused], on this phone. */
+    fun cantReachDetail(app: WebApp, refused: Boolean = false) = when {
+        app.isShared -> cantReachDetail(app.sharedBy)
+        refused -> "${app.name} isn’t on the account you’re signed in to. Sign in with the account it’s on, or remove it."
+        else -> "Your computer may be asleep or offline. Wake it, or run ovenlight doctor on it, then try again."
+    }
     const val offline = "You’re offline"
     const val offlineDetail = "Connect to Wi-Fi or mobile data, and Ovenlight tries again."
     fun notResponding(app: String) = "$app isn’t responding on its computer right now. Try again in a moment."
+
+    /** [notResponding], or for the owner's own app what to run on its computer. */
+    fun notResponding(app: WebApp) =
+        if (app.isShared) notResponding(app.name) else "${app.name} isn’t running on your computer. Run ovenlight doctor there, then try again."
     const val pageFailed = "This page couldn’t load. Try again in a moment."
     fun signIn(toOpen: String) = "Sign in to open $toOpen"
 

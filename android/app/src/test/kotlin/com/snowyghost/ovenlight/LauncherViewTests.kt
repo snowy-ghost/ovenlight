@@ -184,7 +184,7 @@ class LauncherViewTests {
         composeRule.onNodeWithText(LauncherWelcome.title).assertDoesNotExist()
         composeRule.onNodeWithText("Add app").performClick()
         assertEquals(listOf<RootSheet>(RootSheet.AddApp), presented)
-        composeRule.onNodeWithText("Apps you publish with the Ovenlight connector on your computers show up here.").assertIsDisplayed().performFirstLinkClick()
+        composeRule.onNodeWithText("Apps you publish with the Ovenlight connector on your computers show up here. If one doesn’t, run ovenlight doctor on its computer.").assertIsDisplayed().performFirstLinkClick()
         assertEquals(listOf(AppLinks.ownComputersHelp), links)
     }
 
@@ -321,7 +321,7 @@ class LauncherViewTests {
         val machine = OwnerSharing.Machine(recipes.host, listOf(unshared))
         show(LauncherState(apps = apps, sharing = { if (it.id == recipes.id) machine to unshared else null }))
         tile("Recipe Box").performTouchInput { longClick() }
-        composeRule.onNodeWithText(AppMenuPlan.notShareableDetail, useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNodeWithText("Make it shareable first: on your computer, run ovenlight publish --slug recipe-box --shareable", useUnmergedTree = true).assertIsDisplayed()
         composeRule.onNode(hasText("Share…", substring = true) and hasClickAction()).assertIsNotEnabled()
         composeRule.onNodeWithText("People", substring = true).assertDoesNotExist()
     }

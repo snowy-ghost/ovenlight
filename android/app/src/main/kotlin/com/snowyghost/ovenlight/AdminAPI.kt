@@ -573,7 +573,8 @@ sealed class AdminError : Exception() {
         get() = when (this) {
             NotOwner -> "The Ovenlight connector on this computer is set up for another owner. To make it yours, run ovenlight setup-sharing --owner with your login there."
             Unreachable -> "Couldn’t reach the computer. It may be asleep or offline."
-            is Failed -> reason.replaceFirstChar { it.uppercase() }
+            // The connector quotes commands in backticks, as a terminal reads them.
+            is Failed -> reason.replace("`", "").replaceFirstChar { it.uppercase() }
         }
 }
 
@@ -664,6 +665,8 @@ class OwnerSharing(
         val apps: List<AdminApp>,
         val guests: AdminGuestList = AdminGuestList(),
         val feedback: List<AdminFeedback> = emptyList(),
+        /** Why the last pass couldn't list it, when it kept what the pass before listed. */
+        val problem: String? = null,
     ) {
         val id: String get() = adminHost
         val hosts: List<String> get() = listOf(adminHost) + apps.mapNotNull { it.host }
@@ -746,11 +749,11 @@ class OwnerSharing(
         val covered = mutableSetOf<String>()
         val asked = mutableSetOf<String>()
         val failures = mutableListOf<String>()
-        val failedHosts = mutableSetOf<String>()
+        val failedHosts = mutableMapOf<String, AdminError>()
         fun failed(host: String, error: AdminError) {
             log("admin $host: $error")
             failures += error.message
-            if (error == AdminError.Unreachable) failedHosts += host
+            failedHosts[host] = error
         }
         var round = firstRound(candidates, mutableMachines.value)
         while (round.isNotEmpty()) {
@@ -785,12 +788,17 @@ class OwnerSharing(
             }
             round = candidates.filter { it !in covered && it !in asked }
         }
-        // A computer that couldn't be reached this time, asleep or between networks, keeps what it
-        // said last, its apps offline, so its pages and menus don't empty out meanwhile. One that
-        // answered on another host, or answered with an error, doesn't.
+        // A computer whose admin host failed this pass, with any error, keeps what it said last
+        // and shows why, so its pages and menus don't empty out meanwhile; its apps show offline
+        // only when it couldn't be reached. One that answered on another host doesn't, and one
+        // Tailscale already lists offline isn't asked, so it drops out.
         val answered = found.flatMap { it.hosts }.toSet()
-        val kept = mutableMachines.value.filter { it.hosts.any(failedHosts::contains) && it.hosts.none(answered::contains) }
-        mutableMachines.value = found + kept.map { machine -> machine.copy(apps = machine.apps.map { it.copy(online = false) }) }
+        val kept = mutableMachines.value.mapNotNull { machine ->
+            val error = failedHosts[machine.adminHost]?.takeIf { machine.adminHost !in answered } ?: return@mapNotNull null
+            val apps = if (error == AdminError.Unreachable) machine.apps.map { it.copy(online = false) } else machine.apps
+            machine.copy(apps = apps, problem = error.message)
+        }
+        mutableMachines.value = found + kept
         // A pass that only failed doesn't count as fresh: the next menu asks again.
         if (found.isNotEmpty() || failures.isEmpty()) lastRefresh = now()
         mutableProblem.value = if (found.isEmpty()) failures.firstOrNull() else null

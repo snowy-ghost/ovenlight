@@ -18,7 +18,7 @@ class StaleRouteTests {
     /** Stands in for a membership's node: the routing rules only compare them. */
     private class Node(val id: String)
 
-    /** On Android a route with no node is refused (plan decision 9), where iOS loads it directly. */
+    /** A route with no node is refused (plan decision 9), as on iPhone. */
     @Test
     fun testAViewIsStaleOnceTheRouteNamesAnotherNode() {
         val owner = Node(Membership.ownerID)

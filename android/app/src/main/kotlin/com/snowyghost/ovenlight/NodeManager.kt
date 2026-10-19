@@ -291,6 +291,9 @@ class MembershipNode(
 
     /** The last look had a host that didn't answer. */
     private var lastProbeMissed = false
+
+    /** Every host this node has looked at. */
+    private var seenHosts = emptySet<String>()
     private var loginLostPolls = 0
     private var absence = PeerAbsence()
     private val silence = GuestSilence()
@@ -419,6 +422,7 @@ class MembershipNode(
         preferences.remove(onlineReportedKey)
         mutableAnswers.value = null
         mutableDiscovered.value = emptyList()
+        seenHosts = emptySet()
     }
 
     // Status and reachability
@@ -523,9 +527,15 @@ class MembershipNode(
             probedHosts = hosts
             GuestProbe.probe(hosts, fetch(), firstAnswer).also { if (it.notInvited.isNotEmpty()) onNotInvited(it.notInvited) }.base
         }
-        // Only app nodes count: an owner's laptop or TV without a connector never answers.
-        val apps = if (isOwner) Discovery.appHosts(mutableStatus.value) else hosts.toSet()
-        lastProbeMissed = hosts.any { it in apps && outcome.answered[it] != true }
+        // An owner's laptop or TV without a connector never answers: only app hosts count.
+        val watched = if (isOwner) {
+            Discovery.watchedHosts(hosts, mutableStatus.value, found = mutableDiscovered.value.map { it.host }.toSet(), seenBefore = seenHosts)
+        } else {
+            hosts.toSet()
+        }
+        // Seen only by a look whose path worked: one that failed outright says nothing of them.
+        if (isOwner && outcome.reachable) seenHosts = seenHosts + hosts
+        lastProbeMissed = watched.any { outcome.answered[it] != true }
         return outcome
     }
 

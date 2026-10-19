@@ -4,6 +4,7 @@
 
     <string name="webview_update_title">Update Android System WebView</string>
     <string name="webview_update_body">Ovenlight opens apps with Android System WebView, and the version on this phone is too old. Update it in Google Play, then come back.</string>
+    <string name="webview_update_version">This phone has version %1$s. Ovenlight needs %2$d or later.</string>
     <string name="webview_update_button">Open Google Play</string>
 
     <string name="lock_locked">Locked</string>
@@ -32,9 +33,11 @@
     <string name="use_my_own_computers">Use my own computers</string>
     <string name="sign_in_to_your_computers">Sign in to your computers</string>
     <string name="approve_this_phone">Approve this phone</string>
+    <string name="contact_us">Contact us</string>
 
     <!-- Contact us and Report a problem, on a phone with no email app. -->
     <string name="mail_no_app_title">No email app</string>
     <string name="mail_no_app_body">Write to %1$s.</string>
     <string name="mail_copy_address">Copy address</string>
+    <string name="mail_copy_report">Copy report</string>
 </resources>

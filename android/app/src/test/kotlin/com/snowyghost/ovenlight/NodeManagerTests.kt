@@ -271,7 +271,11 @@ class NodeManagerTests {
         assertEquals(reads + 3, clients.statusReads)
     }
 
-    /** Through the poll: an app node that missed is asked each minute, and once every one answered nothing is asked again. */
+    /**
+     * Through the poll: an app node that missed is asked each minute, and once every one answered
+     * nothing is asked again. A private app's node has no tag: new to a look, or once found, its
+     * miss counts too; a TV's counts only while it's new (testWatchesAppHostsAndNewOnes).
+     */
     @Test
     fun testOnlyAMissedHostIsProbedAgain() = runTest {
         val clients = FakeClients()
@@ -294,6 +298,26 @@ class NodeManagerTests {
         val asked = clients.fetched.size
         advanceTimeBy(300_000)
         assertEquals("every host answered, so nothing is asked again", asked, clients.fetched.size)
+
+        val asks = { host: String -> clients.fetched.count { it.second == manifest(host) } }
+        val notes = """"k3":{"HostName":"notes","DNSName":"notes.tailabc123.ts.net.","OS":"linux","Online":true,"UserID":1}"""
+        val tv = """"k4":{"HostName":"tv","DNSName":"tv.tailabc123.ts.net.","OS":"tvOS","Online":true,"UserID":1}"""
+        clients.status[Membership.ownerID] = status("Running", self = ownerSelf, peers = "$laptop,$desktop,$notes,$tv")
+        advanceTimeBy(15_000)
+        assertEquals(listOf(1, 1), listOf(asks("notes"), asks("tv")))
+        clients.pages[manifest("notes")] = FetchResponse(200, """{"name":"Notes","version":1}""".toByteArray())
+        advanceTimeBy(70_000)
+        assertEquals("a new private app that missed is asked again a minute later", 2, asks("notes"))
+        assertTrue(nodes.owner.discovered.value.any { it.host == "notes.tailabc123.ts.net" })
+        advanceTimeBy(300_000)
+        assertEquals("a TV without a connector gets no timer", 2, asks("tv"))
+
+        clients.pages.remove(manifest("notes"))
+        clients.status[Membership.ownerID] = status("Running", self = ownerSelf, peers = "$laptop,$desktop,$notes")
+        advanceTimeBy(15_000)
+        val stopped = asks("notes")
+        advanceTimeBy(70_000)
+        assertEquals("a found private app that stops answering is asked again a minute later", stopped + 1, asks("notes"))
     }
 
     /** A probe canceled under way, as when its app's screen closes, says nothing about the host. */

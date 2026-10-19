@@ -327,7 +327,7 @@ private fun SharingListPage(state: SharingState, scroll: ScrollState, open: (Sha
                 machines.isEmpty() -> Unavailable(stringResource(R.string.sharing_no_computers), state.problem ?: stringResource(R.string.sharing_no_computers_detail))
             }
             for (machine in machines) {
-                SettingsGroup(header = if (machines.size > 1) machine.adminHost else stringResource(R.string.sharing_apps)) {
+                SettingsGroup(header = if (machines.size > 1) machine.adminHost else stringResource(R.string.sharing_apps), footer = machine.problem?.let { { Footer(it) } }) {
                     for (app in machine.apps) {
                         row { shape ->
                             SettingsRow(
@@ -468,7 +468,7 @@ private fun SharingAppPage(state: SharingState, page: SharingPage.App, scroll: S
             val people = GuestPerson.all(machine.guests.guests.filter { it.app == page.slug })
             val invites = machine.guests.invites.filter { it.app == page.slug && it.state == AdminInvite.sent }
             val feedback = machine.feedback.count { it.app == page.slug }
-            error?.let { SharingError(it) }
+            (error ?: machine.problem)?.let { SharingError(it) }
             SettingsGroup(
                 footer = {
                     if (app.shareable) Footer(stringResource(R.string.sharing_share_footer)) else NotShareableFooter(app.slug)

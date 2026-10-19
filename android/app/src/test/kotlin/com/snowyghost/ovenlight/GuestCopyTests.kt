@@ -1,5 +1,7 @@
 package com.snowyghost.ovenlight
 
+import java.net.URI
+import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class GuestCopyTests {
@@ -31,5 +33,17 @@ class GuestCopyTests {
         copy += listOf(report.subject, report.body)
         copy += JoinError.entries.flatMap { listOf(it.title(owner = "Riley", app = "Echo"), it.message(owner = "Riley", app = "Echo")) }
         for (text in copy) CopyRules.assertNeutral(text)
+    }
+
+    /** Android only: the owner's own apps say what to do about them; an app someone shared keeps a guest's words. */
+    @Test
+    fun testTheOwnersOwnAppsSayWhatToDo() {
+        val own = WebApp(name = "Notes", startURL = URI("https://notes.tailabc123.ts.net/"))
+        val shared = own.copy(membershipID = "m1", sharedBy = "Riley")
+        assertEquals("Your computer may be asleep or offline. Wake it, or run ovenlight doctor on it, then try again.", ConnectionCopy.cantReachDetail(own))
+        assertEquals("Notes isn’t on the account you’re signed in to. Sign in with the account it’s on, or remove it.", ConnectionCopy.cantReachDetail(own, refused = true))
+        assertEquals("Notes isn’t running on your computer. Run ovenlight doctor there, then try again.", ConnectionCopy.notResponding(own))
+        assertEquals(ConnectionCopy.cantReachDetail(owner = "Riley"), ConnectionCopy.cantReachDetail(shared, refused = true))
+        assertEquals(ConnectionCopy.notResponding("Notes"), ConnectionCopy.notResponding(shared))
     }
 }
