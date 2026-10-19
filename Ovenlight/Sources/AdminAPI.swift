@@ -283,7 +283,7 @@ struct AdminRevokeResult: Decodable, Equatable {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         removed = (try? c.decodeIfPresent(EachDecoded<AdminGuest>.self, forKey: .removed))?.elements ?? []
-        errors = try? c.decodeIfPresent([String].self, forKey: .errors)
+        errors = (try? c.decodeIfPresent([String].self, forKey: .errors))?.map(AdminAPI.shown)
     }
 
     private enum CodingKeys: String, CodingKey { case removed, errors }
@@ -385,7 +385,13 @@ enum AdminAPI {
 
     /// The `{"error": "...", "code": "..."}` the connector answers with.
     static func errorMessage(_ data: Data) -> String? {
-        (try? JSONDecoder().decode(ErrorBody.self, from: data))?.error
+        (try? JSONDecoder().decode(ErrorBody.self, from: data))?.error.map(shown)
+    }
+
+    /// A connector's message as the phone shows it, read through here: a connector marks
+    /// commands with backticks, which the phone would show as they are.
+    static func shown(_ message: String) -> String {
+        message.replacingOccurrences(of: "`", with: "")
     }
 
     fileprivate struct ErrorBody: Decodable {
@@ -431,10 +437,7 @@ enum AdminError: Error, Equatable {
         switch self {
         case .notOwner: return "The Ovenlight connector on this computer is set up for another owner. To make it yours, run ovenlight setup-sharing --owner with your login there."
         case .unreachable: return "Couldn’t reach the computer. It may be asleep or offline."
-        case .failed(let message):
-            // A connector marks commands with backticks, which the phone would show as is.
-            let text = message.replacingOccurrences(of: "`", with: "")
-            return text.prefix(1).uppercased() + text.dropFirst()
+        case .failed(let message): return message.prefix(1).uppercased() + message.dropFirst()
         }
     }
 }

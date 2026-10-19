@@ -704,8 +704,15 @@ final class AdminAPITests: XCTestCase {
         XCTAssertEqual(kept[1].apps.map(\.online), [false], "a computer that couldn't be reached is offline")
         XCTAssertEqual(kept[2].problem, "An answer this version can't read")
         XCTAssertEqual(kept[2].apps.map(\.online), [true], "one that answered badly isn't")
-        XCTAssertEqual(AdminError.failed("run `ovenlight doctor` there").message, "Run ovenlight doctor there", "no backticks")
         XCTAssertNil(kept[0].problem)
+    }
+
+    /// A connector marks commands with backticks, which the phone would show as they are:
+    /// every message it sends loses them as it's read.
+    func testConnectorMessagesLoseTheirBackticks() throws {
+        XCTAssertEqual(AdminAPI.errorMessage(Data(#"{"error":"run `ovenlight doctor` there"}"#.utf8)), "run ovenlight doctor there")
+        let result = try AdminAPI.decoder.decode(AdminRevokeResult.self, from: Data(#"{"removed":[],"errors":["run `ovenlight doctor` there"]}"#.utf8))
+        XCTAssertEqual(result.errors, ["run ovenlight doctor there"])
     }
 
     func testGoTimestamps() {
