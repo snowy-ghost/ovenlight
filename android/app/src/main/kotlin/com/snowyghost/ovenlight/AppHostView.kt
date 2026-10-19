@@ -113,18 +113,18 @@ object NodeActionOverlay {
 @Composable
 fun AppHostView(model: AppModel, app: WebApp, origin: TransformOrigin = TransformOrigin.Center, onClose: () -> Unit) {
     val apps by model.registry.appsFlow.collectAsState()
-    // An app removed while it closes (Leave, access ended) gets no new view: the pool would
-    // make its profile again, and load it.
-    if (apps.none { it.id == app.id }) return Box(Modifier.fillMaxSize().background(LocalOvenColors.current.pageBackground))
+    // As listed now, so a rename reaches the open app. One removed while it closes (Leave,
+    // access ended) gets no new view: the pool would make its profile again, and load it.
+    val listed = apps.firstOrNull { it.id == app.id } ?: return Box(Modifier.fillMaxSize().background(LocalOvenColors.current.pageBackground))
     // The same live page every time, unless the app's route changed since it was made.
     val revision by model.pool.revision.collectAsState()
     val page = remember(app.id, revision) { model.pool.page(app) }
-    key(page) { AppPageView(model, page, origin, onClose) }
+    key(page) { AppPageView(model, page, listed, origin, onClose) }
 }
 
+/** The [page] of [app], as the registry lists it now. */
 @Composable
-private fun AppPageView(model: AppModel, page: AppPage, origin: TransformOrigin, onClose: () -> Unit) {
-    val app = page.app
+private fun AppPageView(model: AppModel, page: AppPage, app: WebApp, origin: TransformOrigin, onClose: () -> Unit) {
     val activity = LocalContext.current
     val loaded by page.hasLoadedOnce.collectAsState()
     val error by page.loadError.collectAsState()
@@ -217,7 +217,7 @@ private fun AppPageView(model: AppModel, page: AppPage, origin: TransformOrigin,
                 }
             }
         }
-        AppChromeHost(model, page, icon, band, onClose)
+        AppChromeHost(model, page, app, icon, band, onClose)
         // Last, so full screen covers everything else and its Back comes first.
         PageEdgesLayer(page.edges)
     }
@@ -229,7 +229,7 @@ private fun AppPageView(model: AppModel, page: AppPage, origin: TransformOrigin,
             confirmButton = { TextButton(onClick = { page.cantReachAlert.value = false }) { Text(stringResource(R.string.ok)) } },
         )
     }
-    CapturePrompt(page)
+    CapturePrompt(page, app.name)
     DownloadSheet(model, page)
 }
 
@@ -323,17 +323,19 @@ private fun LoadErrorView(icon: Int, title: String, message: String, retry: (() 
 private fun NodeActionCard(app: WebApp, action: NodeActionOverlay.Action, deviceName: String, connect: () -> Unit, retry: () -> Unit, close: () -> Unit) {
     CenteredScroll(Modifier.background(LocalOvenColors.current.pageBackground)) {
         val card = Modifier.padding(24.dp).widthIn(max = 480.dp)
+        // On the page's white the launcher's white card would show only its shadow: a step off white.
+        val container = if (isSystemInDarkTheme()) cardColor else MaterialTheme.colorScheme.surfaceContainerLow
         val back: @Composable ColumnScope.() -> Unit = {
             TextButton(onClick = close, Modifier.align(Alignment.CenterHorizontally)) { Text(stringResource(R.string.app_back_to_apps)) }
         }
         when (action) {
             NodeActionOverlay.Action.SignIn ->
-                LauncherCard(R.drawable.ic_lan, ConnectionCopy.signIn(toOpen = app.name), null, stringResource(R.string.app_sign_in), card, back, connect)
+                LauncherCard(R.drawable.ic_lan, ConnectionCopy.signIn(toOpen = app.name), null, stringResource(R.string.app_sign_in), card, container, back, connect)
             NodeActionOverlay.Action.OwnerApproval -> LauncherCard(
                 R.drawable.ic_verified_user, stringResource(R.string.approve_this_phone), approveBody(deviceName), stringResource(R.string.launcher_open_machines),
-                card, back, connect,
+                card, container, back, connect,
             )
-            is NodeActionOverlay.Action.Failed -> LauncherCard(R.drawable.ic_wifi_off, action.message, null, stringResource(R.string.try_again), card, back, retry)
+            is NodeActionOverlay.Action.Failed -> LauncherCard(R.drawable.ic_wifi_off, action.message, null, stringResource(R.string.try_again), card, container, back, retry)
         }
     }
 }

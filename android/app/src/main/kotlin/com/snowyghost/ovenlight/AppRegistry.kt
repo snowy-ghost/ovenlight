@@ -257,10 +257,10 @@ class AppRegistry(
 
     /**
      * Fetches the app's page and manifest to fill in its name, theme color and icon. A
-     * connector's app takes its ovenlight.json alone when it has one: the connector already
-     * looked in the page and its manifest for the icon.
+     * connector's ovenlight.json comes first when the app has one, and with [manifestOnly] it's
+     * all: the connector looked in the page and its manifest for the icon as it last read them.
      */
-    suspend fun refreshMetadata(id: UUID) {
+    suspend fun refreshMetadata(id: UUID, manifestOnly: Boolean = false) {
         val app = apps.firstOrNull { it.id == id } ?: return
         val fetch = session(app) ?: return
         if (app.hasConnector) {
@@ -277,8 +277,8 @@ class AppRegistry(
                     )
                 }
                 val iconURL = DiscoveredApp(Discovery.normalizedHost(app.host), manifest).iconURL
-                if (iconURL != null) saveIcon(iconURL, id)
-                return
+                if (iconURL != null) return saveIcon(iconURL, id)
+                if (manifestOnly) return
             }
         }
         // As iOS decodes a page: bytes that aren't UTF-8 become replacement characters.
@@ -322,10 +322,10 @@ class AppRegistry(
         icons.value += id to ((icons.value[id] ?: 0) + 1)
     }
 
-    /** Each app's missing icon, once [reachable] says its node can carry the fetch. */
+    /** Each app's missing icon, once [reachable] says its node can carry the fetch. Runs on every return to the front. */
     suspend fun refreshAllMissingIcons(reachable: suspend (WebApp) -> Boolean) = coroutineScope {
         for (app in apps.filter { it.iconFile == null }) {
-            launch { if (reachable(app) && apps.firstOrNull { it.id == app.id }?.iconFile == null) refreshMetadata(app.id) }
+            launch { if (reachable(app) && apps.firstOrNull { it.id == app.id }?.iconFile == null) refreshMetadata(app.id, manifestOnly = true) }
         }
     }
 

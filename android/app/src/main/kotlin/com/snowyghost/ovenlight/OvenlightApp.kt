@@ -112,7 +112,8 @@ class AppModel(context: Context) {
         preferences, hasSavedData = { OvenlightApp.hasSavedData(ovenlight, nodesDirectory) }, now = SystemClock::elapsedRealtime,
         bootCount = { android.provider.Settings.Global.getInt(context.contentResolver, android.provider.Settings.Global.BOOT_COUNT, 0) },
     )
-    val router = Router(isLocked = { lock.holdsLinks }, prepare = { pool.page(it) })
+    // No page before WebView is ready: the update screen holds every one back.
+    val router = Router(isLocked = { lock.holdsLinks }, prepare = { if (WebViewSetup.state.value == WebViewSetup.State.Ready) pool.page(it) })
     val nodes = NodeManager(
         TailnetCore, preferences, MembershipStore(ovenlight), nodesDirectory, scope, Dispatchers.IO, SystemClock::elapsedRealtime,
         log = { OvenlightLog.i(it) }, debugBuild = BuildConfig.DEBUG,

@@ -404,9 +404,28 @@ class SharingViewTests {
         composeRule.onNodeWithContentDescription("Back").performClick()
         composeRule.onNode(row).performScrollTo().assertIsDisplayed()
         composeRule.onNode(row and (hasText("1") or hasText("2"))).assertDoesNotExist()
+
+        // One app's inbox, from its People page, sees up to its newest too, unless another app
+        // has feedback not seen yet, whose count that would lose.
+        val garden = AdminFeedback("f2", now.minusSeconds(600), "garden", "Kim", "guest", note = "Add the bean rows.")
+        val machines = base.machines as MutableStateFlow
+        machines.value = listOf(two.copy(feedback = two.feedback + garden))
+        seen = older.at
+        composeRule.runOnIdle { place.pages += SharingPage.Feedback(two.id, "book-club") }
+        text("The cover is blurry.").assertIsDisplayed()
+        assertEquals("Garden's is still new", older.at, seen)
+        composeRule.onNodeWithContentDescription("Back").performClick()
+        machines.value = listOf(two)
+        composeRule.runOnIdle { place.pages += SharingPage.Feedback(two.id, "book-club") }
+        text("The cover is blurry.").assertIsDisplayed()
+        assertEquals("one app's inbox sees up to its newest", machine.feedback[0].at, seen)
     }
 
-    /** Share says the phone's own connection is down before it asks for the screen lock, as Can't reach does. */
+    /**
+     * Share says the phone's own connection is down before it asks for the screen lock, as Can't
+     * reach does. A node that's retrying is up, and only its computers didn't answer: that's
+     * the computer's side, so neither says so then.
+     */
     @Test
     fun testCantReachSaysWhenThePhoneNeverConnected() {
         val detail = "Ovenlight couldn’t connect. Check that you’re online, then try again."
@@ -414,12 +433,24 @@ class SharingViewTests {
         assertEquals(detail, ConnectionCopy.cantReachDetail(own, neverConnected = true))
         assertEquals("a guest hears it too", detail, ConnectionCopy.cantReachDetail(own.copy(membershipID = "m1", sharedBy = "Riley"), neverConnected = true))
         CopyRules.assertNeutral(detail)
-        composeRule.setContent { OvenlightTheme { InviteComposerDialog(InviteComposer(machine, club), state().copy(isAvailable = false), rememberCoroutineScope(), onDismiss = {}) } }
+        assertTrue(AppLoadGate.neverConnected(NodeState.Starting))
+        assertTrue(AppLoadGate.neverConnected(NodeState.Connecting))
+        assertFalse("its computers didn't answer", AppLoadGate.neverConnected(NodeState.Retrying(3)))
+        var owner by mutableStateOf<NodeState>(NodeState.Connecting)
+        val composer = InviteComposer(machine, club)
+        composeRule.setContent {
+            OvenlightTheme { InviteComposerDialog(composer, state().copy(isAvailable = false, ownerState = owner), rememberCoroutineScope(), onDismiss = {}) }
+        }
         composeRule.onNodeWithText("Their name, like Sam").performTextInput("Jo")
         inDialog("Create").performClick()
         inDialog(detail).assertIsDisplayed()
         assertEquals("no screen lock, and nothing sent", emptyList<String>(), confirmed)
         assertTrue(requests.isEmpty())
+        owner = NodeState.Retrying(3)
+        inDialog("Create").performClick()
+        composeRule.waitForIdle()
+        assertEquals("the screen lock, then the computer is asked", 1, confirmed.size)
+        inDialog(detail).assertDoesNotExist()
     }
 
     @Test

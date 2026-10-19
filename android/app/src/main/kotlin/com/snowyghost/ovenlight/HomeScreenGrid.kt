@@ -269,7 +269,7 @@ fun HomeScreenGrid(
     }
     Column(modifier.verticalScroll(rememberScrollState(), enabled = drag == null)) {
         // A card or invite coming or going moves the grid smoothly.
-        Column(Modifier.animateContentSize()) { header() }
+        Column(Modifier.fillMaxWidth().animateContentSize()) { header() }
         BoxWithConstraints(Modifier.fillMaxWidth()) {
             val labelHeight = labelLines + (if (apps.any { it.isShared }) sharedByLine else 0f)
             val layout = remember(maxWidth, labelHeight, largeText) { HomeGridLayout(maxWidth.value.toDouble(), labelHeight.toDouble(), largeText) }

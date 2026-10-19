@@ -662,6 +662,7 @@ val chromeTop: WindowInsets
 private fun ChromeHandle(header: Color, reveal: () -> Unit) {
     val label = stringResource(R.string.chrome_show_menu)
     Box(Modifier.fillMaxWidth()) {
+        Box(Modifier.align(Alignment.TopCenter).size(width = 120.dp, height = 48.dp).pointerInput(reveal) { detectTapGestures { reveal() } })
         Box(
             Modifier
                 .fillMaxWidth()
@@ -674,7 +675,6 @@ private fun ChromeHandle(header: Color, reveal: () -> Unit) {
             val mark = if (header.isLight()) Color.Black else Color.White
             Box(Modifier.size(width = 32.dp, height = 4.dp).background(mark.copy(alpha = 0.8f), CircleShape))
         }
-        Box(Modifier.align(Alignment.TopCenter).size(width = 120.dp, height = 48.dp).pointerInput(reveal) { detectTapGestures { reveal() } })
     }
 }
 
@@ -739,11 +739,10 @@ private suspend fun WebView.evaluate(script: String): String? = suspendCancellab
 /**
  * The chrome over one open app, from the model: the pill and its menu, the page watched for the
  * pill to follow, the header color remembered as each load reads it, Send feedback, Report a
- * problem and Leave.
+ * problem and Leave. [app] is as the registry lists it now, so a rename shows.
  */
 @Composable
-fun AppChromeHost(model: AppModel, page: AppPage, icon: Bitmap?, header: Color, onClose: () -> Unit) {
-    val app = page.app
+fun AppChromeHost(model: AppModel, page: AppPage, app: WebApp, icon: Bitmap?, header: Color, onClose: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val loaded by page.hasLoadedOnce.collectAsState()

@@ -420,6 +420,15 @@ class OpenPageTests {
         assertTrue("the lock screen shows: $locked", locked.any { it.contains("Ovenlight is locked") || it.contains("Unlock") })
     }
 
+    /** Android only: an open app's pill takes a new name as soon as it's renamed. */
+    @Test
+    fun testAnOpenAppTakesItsNewName() {
+        onMain { model.registry.rename(app.id, "Renamed Check") }
+        waitFor("the handle") { find("Show app menu") != null }
+        tap(find("Show app menu")!!)
+        waitFor("the pill, renamed") { find("Renamed Check options") != null }
+    }
+
     /** Android only: a keyboard scrolls the page as soon as it opens, with no tap on it first. */
     @Test
     fun testAKeyboardReachesThePageAsItOpens() {

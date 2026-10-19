@@ -76,6 +76,12 @@ enum class AppLoadGate {
         /** How long to wait for the node itself before giving up on this app. */
         val nodeTimeout: Duration = 30.seconds
 
+        /**
+         * Whether a node not ready in [state] means the phone's own connection: one that's
+         * retrying is up, and only the computers didn't answer.
+         */
+        fun neverConnected(state: NodeState): Boolean = state !is NodeState.Retrying
+
         /** Between quiet retries of an app whose computer is listed offline. */
         val quietRetryInterval: Duration = 3.seconds
 

@@ -255,12 +255,12 @@ object RuntimePermissions {
  * good. Leaving the question unanswered denies.
  */
 @Composable
-fun CapturePrompt(page: AppPage) {
+fun CapturePrompt(page: AppPage, appName: String) {
     val prompt by page.capture.prompt.collectAsState()
     val refused by page.capture.refused.collectAsState()
     prompt?.let { open ->
         DisposableEffect(open) { onDispose { open.answer.dropped() } }
-        CapturePromptDialog(capturePromptTitle(open, page.app.name), open.answer::invoke)
+        CapturePromptDialog(capturePromptTitle(open, appName), open.answer::invoke)
     }
     refused?.let { type ->
         val context = LocalContext.current
@@ -268,7 +268,7 @@ fun CapturePrompt(page: AppPage) {
         AlertDialog(
             onDismissRequest = done,
             title = { Text(stringResource(if (type == MediaCaptureType.Camera) R.string.capture_refused_camera else R.string.capture_refused_microphone)) },
-            text = { Text(stringResource(R.string.capture_refused_body, page.app.name)) },
+            text = { Text(stringResource(R.string.capture_refused_body, appName)) },
             confirmButton = {
                 TextButton(onClick = {
                     done()

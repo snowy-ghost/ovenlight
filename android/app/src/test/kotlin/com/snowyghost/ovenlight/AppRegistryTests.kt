@@ -219,7 +219,7 @@ class AppRegistryTests {
 
     /**
      * Coming to the front looks again for each missing icon. A connector's app with none stops
-     * after its manifest, and a manifest that changes nothing writes nothing.
+     * after its manifest there, and a manifest that changes nothing writes nothing.
      */
     @Test
     fun testARefreshThatChangesNothingSavesNothing() = runTest {
@@ -246,6 +246,11 @@ class AppRegistryTests {
         registry.refreshAllMissingIcons { true }
         assertEquals("#336699", registry.apps.single().themeColorHex)
         assertTrue("a change is saved", saved.exists())
+
+        // Refresh icon reads the page too: an icon added since the connector last read it isn't in its manifest yet.
+        fetched.clear()
+        registry.refreshMetadata(registry.apps.single().id)
+        assertEquals(listOf(OvenlightManifest.path, "/"), fetched)
     }
 }
 

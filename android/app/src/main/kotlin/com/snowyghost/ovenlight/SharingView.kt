@@ -162,6 +162,8 @@ data class SharingState(
     val machines: StateFlow<List<OwnerSharing.Machine>>,
     /** The owner is connected, which the admin API needs. */
     val isAvailable: Boolean = true,
+    /** The owner's node, for what Share says while it isn't connected. */
+    val ownerState: NodeState = NodeState.Ready,
     /** Nothing listed yet, and a refresh under way. */
     val isLoading: Boolean = false,
     val problem: String? = null,
@@ -216,6 +218,7 @@ fun sharingState(model: AppModel): SharingState {
     return SharingState(
         sharing.machines,
         isAvailable = ownerEnabled && ownerState == NodeState.Ready,
+        ownerState = ownerState,
         // Once a pass failed, its problem shows rather than a spinner while the next one runs.
         isLoading = loading && machines.isEmpty() && problem == null,
         problem = problem,
@@ -615,7 +618,7 @@ class InviteComposer(
         val who = chosen?.name ?: trimmed
         if (who.isEmpty() || (chosen == null && namesake != null) || working) return
         // Without the phone's own connection no computer could answer, so it says so before the screen lock.
-        if (!sharing.isAvailable) {
+        if (!sharing.isAvailable && AppLoadGate.neverConnected(sharing.ownerState)) {
             error = ConnectionCopy.notConnected
             return
         }
@@ -885,9 +888,11 @@ private fun FeedbackInbox(state: SharingState, page: SharingPage.Feedback, list:
     // one client a computer.
     val clients = remember(machines) { machines.associate { it.id to state.client(it) } }
     val direction = LocalLayoutDirection.current
-    // Opened across computers, it's seen up to its newest, and the list's count starts over from there.
+    // Opened, it's seen up to its newest, and the list's count starts over from there. One app's
+    // inbox leaves the mark while another app has feedback not seen yet, whose count it would lose.
     val newest = items.firstOrNull()?.second?.at
-    LaunchedEffect(newest) { if (page.machineID == null && newest != null) state.seeFeedback(newest) }
+    val others = machines.flatMap { machine -> machine.feedback.filter { page.machineID != null && (machine.id != page.machineID || it.app != page.slug) } }
+    LaunchedEffect(newest) { if (newest != null && SharingList.newFeedback(others, state.feedbackSeen) == 0) state.seeFeedback(newest) }
     GroupedScreen(stringResource(R.string.sharing_feedback), onBack = back, refresh = state.refresh) { padding ->
         if (items.isEmpty()) {
             // Scrolls, so it pulls to refresh too.

@@ -110,7 +110,7 @@ class NodeMachineTests {
         assertEquals(emptyList<TailnetStatus.Peer>(), needsLogin.peers)
     }
 
-    /** Polls repeat while nothing changes, and only a change redraws: the same status is equal, whatever order its peers come in. */
+    /** The same status polled twice is equal, whatever order its peers come in, so a poll that finds nothing new publishes nothing. */
     @Test
     fun testTheSameStatusTwiceIsEqual() {
         val peers = listOf(

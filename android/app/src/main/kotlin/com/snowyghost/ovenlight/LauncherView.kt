@@ -471,11 +471,12 @@ internal fun LauncherCard(
     body: AnnotatedString?,
     button: String,
     modifier: Modifier = Modifier,
+    container: Color = cardColor,
     below: @Composable ColumnScope.() -> Unit = {},
     action: () -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
-    ElevatedCard(shape = RoundedCornerShape(28.dp), colors = CardDefaults.elevatedCardColors(containerColor = cardColor), modifier = modifier.fillMaxWidth()) {
+    ElevatedCard(shape = RoundedCornerShape(28.dp), colors = CardDefaults.elevatedCardColors(containerColor = container), modifier = modifier.fillMaxWidth()) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(40.dp).background(colors.primaryContainer, CircleShape), contentAlignment = Alignment.Center) {

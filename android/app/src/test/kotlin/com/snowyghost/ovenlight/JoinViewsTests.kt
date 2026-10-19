@@ -174,6 +174,9 @@ class JoinViewsTests {
         inEveryLook(ConnectionCopy.joined("Echo Board"), "It’s with your apps now, shared by Riley.", "Open Echo Board")
         tap("Open Echo Board")
         assertEquals(listOf(echo), opened)
+        // Gone since, however it went (Remove app, or its access ended), the same invite asks again.
+        state = state.copy(apps = emptyList())
+        inEveryLook(ConnectionCopy.joinTitle("Riley", "Echo Board"), "Join")
     }
 
     @Test

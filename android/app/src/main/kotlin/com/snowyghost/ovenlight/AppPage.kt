@@ -128,6 +128,12 @@ class AppPage(
     /** First pages the connector answered for because the app itself was down. */
     private var appDownLoads = 0
 
+    /**
+     * A try of an app-down page is waiting. The same page can report it twice: WebView may send
+     * its HTTP error before onPageStarted, and the page's script reads it again as it finishes.
+     */
+    private var appDownRetryPending = false
+
     /** The navigation under way failed, so its finished page doesn't count as loaded. */
     private var navigationFailed = false
 
@@ -260,7 +266,7 @@ class AppPage(
                 probingSince = null
                 // Sign-in and node failures have their own screens and wait for the owner.
                 val left = deadline.left(state)
-                if (!left.isPositive()) return giveUp(neverConnected = true)
+                if (!left.isPositive()) return giveUp(neverConnected = AppLoadGate.neverConnected(state))
                 // Until the node, its tailnet or the phone's network changes, or a busy node's time runs out.
                 // Only a value other than the one read above ends the wait, so the loop can't spin.
                 val seen = Triple(state, node.status.value, online)
@@ -307,6 +313,7 @@ class AppPage(
 
     /** Loads the start page, or with [reload] the page the view has, unless the route changed or its node may not carry it. */
     private fun loadStart(reload: Boolean = false) {
+        appDownRetryPending = false
         if (!routeIsCurrent() || !nodeMayCarry || destroyed) return
         error.value = null
         val current = view.url
@@ -332,6 +339,7 @@ class AppPage(
 
     /** The first page's app is down on its computer: the placeholder stays while it's tried again, then the error says so. */
     private fun appIsDown() {
+        if (appDownRetryPending) return
         clearHistoryOnLoad = true
         if (appDownLoads >= AppLoadGate.appDownRetries.size) {
             appDownLoads = 0
@@ -342,6 +350,7 @@ class AppPage(
         val wait = AppLoadGate.appDownRetries[appDownLoads]
         appDownLoads += 1
         OvenlightLog.i("${app.host}: the app is down, trying again in $wait")
+        appDownRetryPending = true
         gateJob?.cancel()
         gateJob = scope.launch {
             delay(wait)

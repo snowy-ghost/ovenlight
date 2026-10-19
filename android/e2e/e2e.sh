@@ -706,6 +706,7 @@ sys.exit(0 if nodes and not live else 1)'
 
   say "guests: no invite's key in the system log"
   # Not adbd's lines: Android 17's adbd logs each command this script sends it, links and all.
+  [[ -s $OUT/logcat-guests.log ]] || fail "no system log was captured"
   for key in "${keys[@]}"; do ! LC_ALL=C grep -v ' adbd *: ' $OUT/logcat-guests.log | LC_ALL=C grep -F -- "$key" >/dev/null || fail "an invite's key is in the system log"; done
   note "none of the ${#keys[@]} keys is in the $(wc -l < $OUT/logcat-guests.log | tr -d ' ') lines logged"
   say "PASSED"
@@ -912,7 +913,7 @@ EOF
   [[ $got == "blob from the page" ]] || fail "the blob download's bytes: $got"
   note "the blob arrived, though the page revoked its URL right after the click"
   # Share and Open run in tasks of their own, so Recents never shows the file under Ovenlight's card.
-  top_task() { a shell dumpsys activity activities | grep -m1 topResumedActivity | grep -o ' t[0-9]*}'; }
+  top_task() { a shell dumpsys activity activities | grep -m1 topResumedActivity | grep -o ' t[0-9]*}' || true; }
   own=$(top_task)
   tap_text Share; sleep 3
   [[ $(top_task) != "$own" ]] || fail "the Sharesheet runs in Ovenlight's task"
@@ -1273,7 +1274,8 @@ if [[ $SCENARIO == sharing ]]; then
   tap_text "Copy link"
   await_text 5 Copied || fail "Copy link didn't say Copied"
   # A key in a link is a credential until used: the system log, which adb and bug reports read, never has one.
-  ! a logcat -d 2>/dev/null | LC_ALL=C grep 'ovenlight\.app/join' >/dev/null || fail "an invite link reached the system log"
+  log=$(a logcat -d 2>/dev/null) || fail "couldn't read the system log"
+  ! LC_ALL=C grep 'ovenlight\.app/join' <<<"$log" >/dev/null || fail "an invite link reached the system log"
   note "Send invite opened the Sharesheet, Back came back to the invite, Copy link says Copied, and no link reached the system log"
   tap_text Close
   await_text 10 Recipes Pantry || fail "Close didn't close the invite"

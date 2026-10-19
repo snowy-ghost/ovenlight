@@ -335,7 +335,8 @@ private fun CantUseInvite(message: String, tryAnother: () -> Unit) = CenteredScr
 @Composable
 private fun JoinInvite(invite: InviteLink, state: JoinState, close: () -> Unit) {
     val colors = MaterialTheme.colorScheme
-    val phase = state.phases[invite.invite]
+    // Joined, but the app went since (removed, or its access ended): the invite asks again.
+    val phase = state.phases[invite.invite]?.takeUnless { it is JoinPhase.Joined && state.apps.none { app -> app.id == it.app } }
     val preflight = state.preflight(invite)
     // The invited app once it's on this phone, joined now or before. Its icon can't be fetched
     // until joining gives this phone access to its computer; adding the app fetches it, so the
