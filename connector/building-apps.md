@@ -364,8 +364,9 @@ only to adjust presentation: anyone can send that string.
   address load in the same view; any other site opens in a Safari sheet.
 - **Service workers and offline copies.** Ovenlight doesn't run them: assume the app is
   online.
-- **WebRTC.** Its traffic doesn't go through Ovenlight's connection to the computer; don't
-  build calls or peer-to-peer features on it.
+- **WebRTC.** It isn't available: Ovenlight removes it from pages, since its traffic would
+  go around Ovenlight's connection to the computer. Don't build calls or peer-to-peer
+  features.
 - **Location.** Ovenlight doesn't ask iOS for location, so `navigator.geolocation`
   always fails with a permission error.
 
