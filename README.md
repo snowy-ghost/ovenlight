@@ -425,4 +425,6 @@ open pull requests: describe the change you'd like in an issue.
 <sub>Apple, the Apple logo, App Store, Face ID, iPhone, Mac and macOS are trademarks of
 Apple Inc., registered in the U.S. and other countries and regions. IOS is a trademark or
 registered trademark of Cisco in the U.S. and other countries and is used under
-license. Android, Google Play and the Google Play logo are trademarks of Google LLC.</sub>
+license. Android, Google Play and the Google Play logo are trademarks of Google LLC.
+Tailscale is a trademark of Tailscale Inc. Ovenlight is made by Snowy Ghost and is not
+affiliated with or endorsed by Tailscale.</sub>
