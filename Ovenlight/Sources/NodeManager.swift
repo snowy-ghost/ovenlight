@@ -177,7 +177,9 @@ struct TailnetStatus: Decodable, Equatable {
         backendState = try c.decodeIfPresent(String.self, forKey: .backendState) ?? "NoState"
         authURL = try c.decodeIfPresent(String.self, forKey: .authURL) ?? ""
         selfNode = try c.decodeIfPresent(Peer.self, forKey: .selfNode)
-        peers = try c.decodeIfPresent([String: Peer].self, forKey: .peers).map { Array($0.values) } ?? []
+        // In key order: a dictionary's order differs from one decode to the next, and the same
+        // status must compare equal, or every poll would redraw.
+        peers = try c.decodeIfPresent([String: Peer].self, forKey: .peers).map { $0.sorted { $0.key < $1.key }.map(\.value) } ?? []
         users = try c.decodeIfPresent([String: User].self, forKey: .users) ?? [:]
         tailnet = try c.decodeIfPresent(Tailnet.self, forKey: .tailnet)
     }

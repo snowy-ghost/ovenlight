@@ -264,21 +264,23 @@ final class AppRegistry: ObservableObject {
     }
 
     /// Fetches the app's page and manifest to fill in its name, theme color and icon. A
-    /// connector's ovenlight.json comes first when the app has one.
+    /// connector's ovenlight.json comes first when the app has one, and is all it needs: the
+    /// connector already looked in the page for an icon. Saves only a change.
     func refreshMetadata(for id: UUID) async {
         guard let app = apps.first(where: { $0.id == id }), let session = session(app) else { return }
         if app.hasConnector, let url = URL(string: "https://\(app.host)\(OvenlightManifest.path)"),
            let (data, _) = try? await session.data(from: url), let manifest = OvenlightManifest.parse(data),
            let index = apps.firstIndex(where: { $0.id == id }) {
-            if apps[index].hasDefaultName { apps[index].name = manifest.name }
-            apps[index].manifestName = manifest.name
-            if let theme = manifest.themeColor { apps[index].themeColorHex = theme }
-            if apps[index].slug == nil { apps[index].slug = manifest.slug }
-            save()
+            var updated = apps[index]
+            if updated.hasDefaultName { updated.name = manifest.name }
+            updated.manifestName = manifest.name
+            if let theme = manifest.themeColor { updated.themeColorHex = theme }
+            if updated.slug == nil { updated.slug = manifest.slug }
+            if updated != apps[index] { apps[index] = updated; save() }
             if let iconURL = DiscoveredApp(host: Discovery.normalizedHost(app.host), manifest: manifest).iconURL {
                 await saveIcon(from: iconURL, for: id)
-                return
             }
+            return
         }
         guard let (data, _) = try? await session.data(from: app.startURL) else { return }
         let html = String(decoding: data, as: UTF8.self)
@@ -292,12 +294,13 @@ final class AppRegistry: ObservableObject {
             meta.iconURL = fromManifest.iconURL
         }
         guard let index = apps.firstIndex(where: { $0.id == id }) else { return }
+        var updated = apps[index]
         // Keep a name the user typed; only replace the placeholder host name.
-        if let name = InviteLink.label(meta.name), apps[index].hasDefaultName, !apps[index].hasConnector {
-            apps[index].name = name
+        if let name = InviteLink.label(meta.name), updated.hasDefaultName, !updated.hasConnector {
+            updated.name = name
         }
-        if let theme = meta.themeColorHex { apps[index].themeColorHex = theme }
-        save()
+        if let theme = meta.themeColorHex { updated.themeColorHex = theme }
+        if updated != apps[index] { apps[index] = updated; save() }
         if let iconURL = meta.iconURL ?? links.touchIcon {
             await saveIcon(from: iconURL, for: id)
         }

@@ -576,6 +576,51 @@ final class AppRegistryTests: XCTestCase {
         try png.write(to: registry.iconsDirectory.appendingPathComponent("coach.png"))
         XCTAssertEqual(registry.icon(for: app)?.cgImage.map { [$0.width, $0.height] }, [288, 144])
     }
+
+    /// Each return to Ovenlight refreshes the apps without an icon. One whose connector
+    /// names none asks for its manifest only, and with nothing new saves and redraws nothing.
+    func testARefreshThatChangesNothingSavesNothing() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [IconlessConnectorProtocol.self]
+        let session = URLSession(configuration: config)
+        defer { session.invalidateAndCancel() }
+        let registry = AppRegistry(directory: dir, session: { _ in session })
+        await registry.mergeDiscovered([DiscoveredApp(host: "coach.tailabc123.ts.net",
+                                                      manifest: OvenlightManifest(name: "Coach", version: 1))])
+        let file = dir.appendingPathComponent("apps.json")
+        try FileManager.default.removeItem(at: file)
+        IconlessConnectorProtocol.paths = []
+        var changes = 0
+        let watch = registry.objectWillChange.sink { changes += 1 }
+        defer { watch.cancel() }
+
+        await registry.refreshAllMissingIcons()
+        XCTAssertEqual(IconlessConnectorProtocol.paths, [OvenlightManifest.path], "not the start page")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: file.path), "nothing saved")
+        XCTAssertEqual(changes, 0, "nothing redrawn")
+    }
+}
+
+/// A connector's app whose manifest names no icon.
+private final class IconlessConnectorProtocol: URLProtocol {
+    /// What was asked for, in order. Set from the loading thread, read once the fetches end.
+    static var paths: [String] = []
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        guard let url = request.url else { return }
+        Self.paths.append(url.path)
+        client?.urlProtocol(self, didReceive: HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!,
+                            cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data(url.path == OvenlightManifest.path ? #"{"name":"Coach","version":1}"#.utf8 : "<title>Coach</title>".utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
 }
 
 @MainActor
@@ -823,6 +868,17 @@ final class NodeMachineTests: XCTestCase {
         let needsLogin = try XCTUnwrap(TailnetStatus.decode(Data(#"{"BackendState":"NeedsLogin","AuthURL":"https://login.tailscale.com/a/abc","Peer":null}"#.utf8)))
         XCTAssertEqual(needsLogin.event, .backend(state: "NeedsLogin", authURL: login))
         XCTAssertEqual(needsLogin.peers, [])
+    }
+
+    /// Polls repeat the same status while nothing changes, and only a change redraws: the
+    /// peers must come out in the same order every time.
+    func testTheSameStatusTwiceIsEqual() throws {
+        let peers = (1...20).map { #""nodekey:\#($0)":{"HostName":"computer-\#($0)","DNSName":"computer-\#($0).tailabc123.ts.net.","Online":true}"# }
+        let json = Data(#"{"BackendState":"Running","Peer":{\#(peers.joined(separator: ","))}}"#.utf8)
+        let first = try XCTUnwrap(TailnetStatus.decode(json))
+        for _ in 0..<5 {
+            XCTAssertEqual(TailnetStatus.decode(json), first)
+        }
     }
 }
 
