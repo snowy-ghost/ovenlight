@@ -22,6 +22,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import okhttp3.Authenticator
 import okhttp3.Call
 import okhttp3.Callback
+import okhttp3.ConnectionPool
 import okhttp3.Credentials
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -194,7 +195,10 @@ object TailnetCore : Platform, TailnetClients {
 
     // Redirects are followed, as iOS's sessions follow them (an app's start page that sends
     // `/` to `/login` still names the app), but never from https to http.
-    private val http = OkHttpClient.Builder().cache(null).followSslRedirects(false).build()
+    // Idle connections go after 90 s, before the connector closes them at 2 minutes: a pooled
+    // GET on a closed one fails at once, as retries are off.
+    private val http = OkHttpClient.Builder().cache(null).followSslRedirects(false)
+        .connectionPool(ConnectionPool(5, 90, TimeUnit.SECONDS)).build()
     /** Above the connector's 5 MiB for a feedback screenshot, the largest answer Ovenlight reads. */
     private const val MAX_BODY = 6L shl 20
 

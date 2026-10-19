@@ -422,7 +422,7 @@ data class AdminRevokeResult(val removed: List<AdminGuest>, val errors: List<Str
                 removed = fields.each("removed", AdminGuest.decoder),
                 errors = fields["errors"]?.let {
                     try {
-                        ovenlightJSON.decodeFromJsonElement(ListSerializer(String.serializer()), it)
+                        ovenlightJSON.decodeFromJsonElement(ListSerializer(String.serializer()), it).map(AdminAPI::connectorText)
                     } catch (_: Exception) {
                         null
                     }
@@ -520,7 +520,10 @@ object AdminAPI {
     private const val PATH_ALLOWED = "!$&'()*+,-.:;=@_~"
 
     /** The `{"error": "...", "code": "..."}` the connector answers with. */
-    fun errorMessage(data: ByteArray): String? = errorBody(data)?.error
+    fun errorMessage(data: ByteArray): String? = errorBody(data)?.error?.let(::connectorText)
+
+    /** A message the connector wrote, which marks commands with backticks as a terminal reads them: the phone leaves them out. */
+    fun connectorText(text: String): String = text.replace("`", "")
 
     internal fun errorBody(data: ByteArray): ErrorBody? = try {
         ovenlightJSON.decodeFromString(ErrorBody.serializer(), strictUTF8(data))
@@ -573,8 +576,7 @@ sealed class AdminError : Exception() {
         get() = when (this) {
             NotOwner -> "The Ovenlight connector on this computer is set up for another owner. To make it yours, run ovenlight setup-sharing --owner with your login there."
             Unreachable -> "Couldn’t reach the computer. It may be asleep or offline."
-            // The connector quotes commands in backticks, as a terminal reads them.
-            is Failed -> reason.replace("`", "").replaceFirstChar { it.uppercase() }
+            is Failed -> reason.replaceFirstChar { it.uppercase() }
         }
 }
 
@@ -790,11 +792,16 @@ class OwnerSharing(
         }
         // A computer whose admin host failed this pass, with any error, keeps what it said last
         // and shows why, so its pages and menus don't empty out meanwhile; its apps show offline
-        // only when it couldn't be reached. One that answered on another host doesn't, and one
-        // Tailscale already lists offline isn't asked, so it drops out.
+        // only when it couldn't be reached. So does one asleep, the owner's but listed offline,
+        // which was asked nothing, while no answer covers any of its apps: one app node can stay
+        // offline after its app is unpublished while the computer answers on another. One that
+        // answered on another host doesn't, nor one no longer among the owner's computers.
+        val asleep = owners - nodes.ownersOnlineHosts
         val answered = found.flatMap { it.hosts }.toSet()
         val kept = mutableMachines.value.mapNotNull { machine ->
-            val error = failedHosts[machine.adminHost]?.takeIf { machine.adminHost !in answered } ?: return@mapNotNull null
+            val isAsleep = machine.adminHost in asleep && machine.apps.none { it.host in answered }
+            val error = (failedHosts[machine.adminHost] ?: AdminError.Unreachable.takeIf { isAsleep })
+                ?.takeIf { machine.adminHost !in answered } ?: return@mapNotNull null
             val apps = if (error == AdminError.Unreachable) machine.apps.map { it.copy(online = false) } else machine.apps
             machine.copy(apps = apps, problem = error.message)
         }

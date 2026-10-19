@@ -154,7 +154,8 @@ data class InviteLink(
             fun required(name: String): String =
                 value(name)?.trimmingWhitespaceAndNewlines()?.takeIf { it.isNotEmpty() } ?: throw ParseError.MissingField(name)
 
-            if (value("v") != version) throw ParseError.UnsupportedVersion
+            // The connector sorts the fields, so v comes last and a link cut short loses it first.
+            if (required("v") != version) throw ParseError.UnsupportedVersion
 
             val control = uri(required("control"))
             val controlHost = control?.bareHost

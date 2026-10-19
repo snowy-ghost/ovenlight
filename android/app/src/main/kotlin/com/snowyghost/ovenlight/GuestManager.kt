@@ -27,12 +27,14 @@ class GuestManager(
     /** Milliseconds on a clock that stops while the phone sleeps, for the claim's budget. */
     private val now: () -> Long,
     private val log: (String) -> Unit,
+    /** The phone has a network (see [TailnetCore.online]). */
+    private val isOnline: () -> Boolean = { true },
 ) {
     private val mutablePhases = MutableStateFlow<Map<String, JoinPhase>>(emptyMap())
 
     /** Invites being accepted this session, by invite ID. */
     val phases: StateFlow<Map<String, JoinPhase>> = mutablePhases
-    val notice = MutableStateFlow<AccessEndedNotice?>(null)
+    val notice = MutableStateFlow<Notice?>(null)
 
     private val inFlight = mutableSetOf<String>()
 
@@ -58,6 +60,7 @@ class GuestManager(
                 for (app in GuestCleanup.revokedApps(membership, registry.apps, hosts)) scope.launch { verifyAccess(app) }
             }
         }
+        node.onAppNames = { names -> registry.renameShared(id, names) }
         // The connector can't say "not invited" through a path that's gone: the owner stopped
         // sharing an app with a guest who keeps another (see GuestProbe.absentHosts).
         node.onPeersGone = { hosts ->
@@ -182,6 +185,8 @@ class GuestManager(
         }
 
         log("joining ${invite.host} (invite $inviteID, membership $membershipID)")
+        // With no network, waiting can't help: it says so now, and tries again as Ovenlight comes to the front.
+        if (!isOnline()) return fail(inviteID, membershipID, JoinError.Network, node)
         val wasJoined = store[membershipID]?.joined == true
         var up: JoinError? = JoinError.Canceled
         // A return to the front can replace a node, which ends this wait; keep waiting on the
@@ -237,7 +242,8 @@ class GuestManager(
 
     private suspend fun fail(inviteID: String, membershipID: String, error: JoinError, node: MembershipNode) {
         log("invite $inviteID failed: $error")
-        val failure = JoinFailure.of(error, pendingInvite(inviteID, membershipID), membershipID, registry.apps)
+        val invite = pendingInvite(inviteID, membershipID)
+        val failure = JoinFailure.of(error, invite, membershipID, registry.apps)
         setPhase(inviteID, failure.phase)
         // A node that never joined shouldn't sit on a refused or unused key; the next start
         // registers with the next invite's key.
@@ -245,6 +251,11 @@ class GuestManager(
         if (!failure.dropsInvite) return
         store.update(membershipID) { m -> m.copy(pendingClaims = m.pendingClaims.filter { it.invite.invite != inviteID }) }
         collectOrphans()
+        // Gone for good with its screen closed, it says why once the screens have closed, as access ending does.
+        if (invite != null && failure.phase is JoinPhase.Failed && !router.showsInvite(inviteID)) {
+            val notice = Notice(error.title(invite.owner, invite.name), error.message(invite.owner, invite.name))
+            router.afterClear { this@GuestManager.notice.value = notice }
+        }
     }
 
     private fun pendingInvite(inviteID: String, membershipID: String): InviteLink? =
@@ -302,7 +313,7 @@ class GuestManager(
 
     /** Takes apps away whose owner stopped sharing them: closes them, wipes their data, and says so once. */
     fun accessEnded(apps: List<WebApp>) {
-        val notice = AccessEndedNotice.of(apps, registry.apps) ?: return
+        val notice = Notice.accessEnded(apps, registry.apps) ?: return
         val ended = apps.filter { app -> registry.apps.any { it.id == app.id } }
         log("access ended for ${ended.joinToString(", ") { it.host }}")
         router.openApp.value?.let { open -> if (ended.any { it.id == open.id }) router.openApp.value = null }

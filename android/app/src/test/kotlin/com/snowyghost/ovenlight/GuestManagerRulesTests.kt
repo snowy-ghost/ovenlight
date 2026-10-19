@@ -101,13 +101,13 @@ class GuestManagerRulesTests {
     fun testAnEndedShareIsNamedByItsFirstAppsOwner() {
         val shared = WebApp(name = "Echo", startURL = URI("https://$echo/"), membershipID = "m1", sharedBy = "Riley")
         val notes = shared.copy(id = UUID.randomUUID(), name = "Notes", sharedBy = null)
-        val notice = AccessEndedNotice.of(listOf(shared, notes), listed = listOf(shared, notes))!!
-        assertEquals("Riley", notice.owner)
-        assertEquals(listOf("Echo", "Notes"), notice.apps)
-        val later = AccessEndedNotice.of(listOf(shared, notes), listed = listOf(notes))
-        assertEquals("only what's still listed", listOf("Its owner", "Notes"), listOf(later?.owner, later?.apps?.single()))
-        assertNull("a second sweep of the same apps says nothing", AccessEndedNotice.of(listOf(shared), listed = listOf(notes)))
-        assertNull(AccessEndedNotice.of(emptyList(), listed = listOf(shared)))
+        val notice = Notice.accessEnded(listOf(shared, notes), listed = listOf(shared, notes))!!
+        assertEquals(ConnectionCopy.noLongerSharedTitle, notice.title)
+        assertEquals(ConnectionCopy.noLongerShared(listOf("Echo", "Notes"), "Riley"), notice.message)
+        val later = Notice.accessEnded(listOf(shared, notes), listed = listOf(notes))
+        assertEquals("only what's still listed", ConnectionCopy.noLongerShared(listOf("Notes"), "Its owner"), later?.message)
+        assertNull("a second sweep of the same apps says nothing", Notice.accessEnded(listOf(shared), listed = listOf(notes)))
+        assertNull(Notice.accessEnded(emptyList(), listed = listOf(shared)))
         CopyRules.assertNeutral(notice.message)
     }
 

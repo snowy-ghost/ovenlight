@@ -22,6 +22,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
@@ -269,12 +270,15 @@ private fun Root(model: AppModel, onUnlock: () -> Unit) {
         val state by WebViewSetup.state.collectAsState()
         val context = LocalContext.current
         // While locked, nothing is in the activity's window, so neither TalkBack nor a keyboard
-        // can reach what's behind the lock.
+        // can reach what's behind the lock. What it held, text typed in a field among it, comes back.
+        val saved = rememberSaveableStateHolder()
         if (!locked) {
-            when (val s = state) {
-                is WebViewSetup.State.NeedsUpdate -> WebViewUpdateScreen(s) { MailDraft.contactUs(context, model.nodes) }
-                WebViewSetup.State.Ready -> RootView(model)
-                WebViewSetup.State.Starting -> Unit
+            saved.SaveableStateProvider("root") {
+                when (val s = state) {
+                    is WebViewSetup.State.NeedsUpdate -> WebViewUpdateScreen(s) { MailDraft.contactUs(context, model.nodes) }
+                    WebViewSetup.State.Ready -> RootView(model)
+                    WebViewSetup.State.Starting -> Unit
+                }
             }
         }
         LockWindow(lock, locked, onUnlock)

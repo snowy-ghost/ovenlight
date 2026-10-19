@@ -148,7 +148,7 @@ class PageScriptTests {
             }
             capture = PageCapture(
                 app, ownersHosts = { emptySet() }, isLocked = { false }, isOnScreen = { onScreen }, scope = scope,
-                permissions = { needed, done -> asked += needed; done(true) }, stillCapturing = { false }, destroy = {},
+                permissions = { needed, _, done -> asked += needed; done(true) }, stillCapturing = { false }, destroy = {},
             )
             downloads = PageDownloads(app.id, app.host, temp.root, scope, mayStart = { true }, isLocked = { false }, client = { refetch }, freeBytes = { DownloadShelf.freeBytes(context) })
             view.webChromeClient = object : WebChromeClient() {

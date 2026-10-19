@@ -9,6 +9,10 @@
     <string name="capture_frame_both">%1$s, inside %2$s, wants to use the camera and microphone</string>
     <string name="capture_allow">Allow</string>
     <string name="capture_dont_allow">Don’t allow</string>
+    <!-- When Android refuses without asking: turned off for Ovenlight in Settings. -->
+    <string name="capture_refused_camera">Ovenlight can’t use the camera</string>
+    <string name="capture_refused_microphone">Ovenlight can’t use the microphone</string>
+    <string name="capture_refused_body">Allow it in Settings, then try again in %1$s.</string>
 
     <!-- A finished download's sheet. -->
     <string name="download_share">Share</string>

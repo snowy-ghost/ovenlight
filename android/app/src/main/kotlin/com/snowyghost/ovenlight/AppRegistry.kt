@@ -107,7 +107,9 @@ class AppRegistry(
     /** The app's cached icon on disk, if one was fetched. Decoding it for the launcher is Android's. */
     fun iconFile(app: WebApp): File? = app.iconFile?.let { File(iconsDirectory, it) }
 
+    /** Adds an app by its address. One of the owner's already listed at that host is returned as it is, and nothing is added. */
     fun add(url: URI): WebApp {
+        apps.firstOrNull { !it.isShared && Discovery.normalizedHost(it.host) == Discovery.normalizedHost(url.host ?: "") }?.let { return it }
         val app = WebApp(name = url.host ?: url.toString(), startURL = url)
         dismissedHosts = dismissedHosts - Discovery.normalizedHost(app.host)
         apps = apps + app
@@ -142,6 +144,20 @@ class AppRegistry(
         save()
         scope.launch { refreshMetadata(app.id) }
         return app
+    }
+
+    /**
+     * The connectors of a membership's apps name them anew, by host (whoami's `appName`): each
+     * tile takes its new name unless the guest renamed it, as the owner's discovered apps do.
+     */
+    fun renameShared(membershipID: String, names: Map<String, String>) {
+        val renamed = apps.map { app ->
+            val name = names[Discovery.normalizedHost(app.host)]?.takeIf { app.membershipID == membershipID && it != app.manifestName } ?: return@map app
+            app.copy(name = if (app.hasDefaultName) name else app.name, manifestName = name)
+        }
+        if (renamed == apps) return
+        apps = renamed
+        save()
     }
 
     /** The app was opened: its tile loses the new dot, for good. */

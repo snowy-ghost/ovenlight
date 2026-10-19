@@ -51,6 +51,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -111,7 +112,7 @@ class AppModel(context: Context) {
         preferences, hasSavedData = { OvenlightApp.hasSavedData(ovenlight, nodesDirectory) }, now = SystemClock::elapsedRealtime,
         bootCount = { android.provider.Settings.Global.getInt(context.contentResolver, android.provider.Settings.Global.BOOT_COUNT, 0) },
     )
-    val router = Router(isLocked = { lock.holdsLinks })
+    val router = Router(isLocked = { lock.holdsLinks }, prepare = { pool.page(it) })
     val nodes = NodeManager(
         TailnetCore, preferences, MembershipStore(ovenlight), nodesDirectory, scope, Dispatchers.IO, SystemClock::elapsedRealtime,
         log = { OvenlightLog.i(it) }, debugBuild = BuildConfig.DEBUG,
@@ -121,7 +122,7 @@ class AppModel(context: Context) {
         ovenlight, session = nodes::fetch, webData = WebProfiles(context, discard = pool::discard),
         iconPNG = { withContext(Dispatchers.Default) { IconDecoder.png(it) } }, scope = scope,
     )
-    val guests = GuestManager(nodes, registry, router, scope, SystemClock::uptimeMillis, log = { OvenlightLog.i(it) })
+    val guests = GuestManager(nodes, registry, router, scope, SystemClock::uptimeMillis, log = { OvenlightLog.i(it) }, isOnline = { TailnetCore.online.value })
         .also { pool.guests = it }
     val sharing = OwnerSharing(nodes, scope, SystemClock::elapsedRealtime, log = { OvenlightLog.i(it) })
 
@@ -142,6 +143,7 @@ class AppModel(context: Context) {
 
     init {
         nodes.canHear = { TailnetCore.online.value && !lifecycle.inExcursion }
+        nodes.owner.launcherApps = { registry.apps }
         scope.launch {
             registry.appsFlow.drop(1).collect { apps ->
                 router.appsChanged(apps)
@@ -185,10 +187,14 @@ class AppModel(context: Context) {
         }
         scope.launch { lock.isLocked.collect { locked -> if (locked) pool.stopCapture() } }
         // Which apps can be shared follows the owner's computers: ask again once the connection is
-        // up and whenever a computer comes or goes.
+        // up, whenever a computer comes or goes, and as discovery adds or drops the owner's apps.
         scope.launch {
             combine(nodes.ownerEnabled, nodes.owner.state, nodes.owner.status) { _, _, _ -> if (nodes.ownerIsConnected) nodes.ownersOnlineHosts else null }
                 .distinctUntilChanged().collectLatest { if (it != null) refreshSharing(force = true) }
+        }
+        scope.launch {
+            registry.appsFlow.map { apps -> apps.filter { !it.isShared && it.discovered }.map { it.host }.toSet() }
+                .distinctUntilChanged().drop(1).collectLatest { refreshSharing(force = true) }
         }
         // An app a link asked for while locked opens once Ovenlight unlocks.
         scope.launch { lock.isLocked.drop(1).collect { locked -> if (!locked) router.appsChanged(registry.apps) } }
@@ -249,7 +255,11 @@ class AppModel(context: Context) {
  * first and waits until it's gone: the screens call [appDismissed] and [sheetDismissed] once
  * they have finished closing, after [openApp] or [sheet] is already null.
  */
-class Router(private val isLocked: () -> Boolean = { false }) {
+class Router(
+    private val isLocked: () -> Boolean = { false },
+    /** Makes the app's page, so it loads while a screen closes before it opens. */
+    private val prepare: (WebApp) -> Unit = {},
+) {
     val openApp = MutableStateFlow<WebApp?>(null)
     val sheet = MutableStateFlow<RootSheet?>(null)
 
@@ -269,15 +279,19 @@ class Router(private val isLocked: () -> Boolean = { false }) {
     private val isClear: Boolean
         get() = openApp.value == null && sheet.value == null && !appOnScreen && !sheetOnScreen
 
-    /** Opens an app, closing any sheet first. */
+    /** Opens an app, closing any sheet first, while its page starts loading. */
     fun open(app: WebApp) {
         if (sheet.value == null && !sheetOnScreen) {
             openApp.value = app
             return
         }
+        prepare(app)
         sheet.value = null
         afterClear { openApp.value = app }
     }
+
+    /** Whether the join screen shows the invite with this ID. */
+    fun showsInvite(id: String): Boolean = (sheet.value as? RootSheet.Join)?.request?.invite?.getOrNull()?.invite == id
 
     /** Shows a sheet, closing the open app first. */
     fun present(sheet: RootSheet) {
@@ -524,7 +538,8 @@ private fun ScreenLayer(model: AppModel) {
 
 /**
  * The router's Add App, a dialog over the launcher that reports when it shows and goes as the
- * screens do, and "No longer shared with you" once each time a share ends.
+ * screens do, and the guests' notices: "No longer shared with you" once each time a share ends,
+ * and why a join failed with its screen closed.
  */
 @Composable
 private fun DialogLayer(model: AppModel) {

@@ -157,12 +157,34 @@ class AdminAPITests {
         val status = TailnetStatus.decode(json)
         val (coach, notes, tv) = listOf("coach.tailabc123.ts.net", "notes.tailabc123.ts.net", "tv.tailabc123.ts.net")
         val hosts = listOf(coach, notes, tv)
-        assertEquals("all new", setOf(coach, notes, tv), Discovery.watchedHosts(hosts, status, found = emptySet(), seenBefore = emptySet()))
+        assertEquals("all new", setOf(coach, notes, tv), Discovery.watchedHosts(hosts, status, found = emptySet(), apps = emptyList(), seenBefore = emptySet()))
         assertEquals(
             "the private app found on the untagged node, not the TV",
-            setOf(coach, notes), Discovery.watchedHosts(hosts, status, found = setOf(notes), seenBefore = hosts.toSet()),
+            setOf(coach, notes), Discovery.watchedHosts(hosts, status, found = setOf(notes), apps = emptyList(), seenBefore = hosts.toSet()),
         )
-        assertEquals(setOf(coach), Discovery.watchedHosts(hosts, status, found = emptySet(), seenBefore = hosts.toSet()))
+        assertEquals(setOf(coach), Discovery.watchedHosts(hosts, status, found = emptySet(), apps = emptyList(), seenBefore = hosts.toSet()))
+    }
+
+    /**
+     * A private app that misses a look leaves the node's list, but its tile stays on the
+     * launcher, so its host stays watched and the next miss brings another look. An app added
+     * by its address isn't watched for this, nor one someone shared.
+     */
+    @Test
+    fun testAPrivateAppOnTheLauncherStaysWatchedAfterAMiss() {
+        val json = """
+        {"BackendState":"Running","CurrentTailnet":{"Name":"owen@","MagicDNSSuffix":"tailabc123.ts.net"},
+         "Self":{"DNSName":"phone.tailabc123.ts.net.","OS":"android","UserID":1},
+         "Peer":{"b":{"DNSName":"notes.tailabc123.ts.net.","OS":"linux","Online":true,"UserID":1},
+                 "c":{"DNSName":"tv.tailabc123.ts.net.","OS":"linux","Online":true,"UserID":1},
+                 "d":{"DNSName":"book.tailabc123.ts.net.","OS":"linux","Online":true,"UserID":1}}}
+        """
+        val status = TailnetStatus.decode(json)
+        val hosts = listOf("notes.tailabc123.ts.net", "tv.tailabc123.ts.net", "book.tailabc123.ts.net")
+        val notes = WebApp(name = "Notes", startURL = URI("https://Notes.tailabc123.ts.net/"), discovered = true)
+        val typed = WebApp(name = "TV", startURL = URI("https://tv.tailabc123.ts.net/"))
+        val shared = WebApp(name = "Book Club", startURL = URI("https://book.tailabc123.ts.net/"), discovered = true, membershipID = "riley")
+        assertEquals(setOf("notes.tailabc123.ts.net"), Discovery.watchedHosts(hosts, status, found = emptySet(), apps = listOf(notes, typed, shared), seenBefore = hosts.toSet()))
     }
 
     @Test
@@ -196,6 +218,15 @@ class AdminAPITests {
             listOf("notes.t.ts.net", "echo.t.ts.net", "web.t.ts.net"),
             OwnerSharing.firstRound(candidates, known),
         )
+    }
+
+    /** A connector marks commands with backticks, which the phone would show as they are: every message it sends loses them as it's read. */
+    @Test
+    fun testConnectorMessagesLoseTheirBackticks() {
+        assertEquals("run ovenlight doctor there", AdminAPI.errorMessage("""{"error":"run `ovenlight doctor` there"}""".toByteArray()))
+        val result = AdminAPI.decode(AdminRevokeResult.decoder, """{"removed":[],"errors":["run `ovenlight doctor` there"]}""".toByteArray())
+        assertEquals(listOf("run ovenlight doctor there"), result.errors)
+        assertEquals("a guest's feedback upload too", FeedbackResult.Failed("Run ovenlight doctor there."), FeedbackResult.interpret(500, """{"error":"run `ovenlight doctor` there"}""".toByteArray()))
     }
 
     @Test
@@ -261,10 +292,10 @@ class AdminAPITests {
      * The owner signed in, with two app nodes on one computer, whose connector's admin API answers
      * with [respond]. The apps themselves answer, so the node counts as connected.
      */
-    private fun TestScope.connectedOwner(respond: (okhttp3.Request) -> FetchResponse?): NodeManager {
-        val clients = FakeClients()
-        val self = """"Self":{"HostName":"phone","DNSName":"pixel-ab12.tailabc123.ts.net.","OS":"android","Online":true,"UserID":1},"""
-        clients.status[Membership.ownerID] = status("Running", self = self, peers = appNodes)
+    private val ownerSelf = """"Self":{"HostName":"phone","DNSName":"pixel-ab12.tailabc123.ts.net.","OS":"android","Online":true,"UserID":1},"""
+
+    private fun TestScope.connectedOwner(clients: FakeClients = FakeClients(), respond: (okhttp3.Request) -> FetchResponse?): NodeManager {
+        clients.status[Membership.ownerID] = status("Running", self = ownerSelf, peers = appNodes)
         clients.respond = { if (it.url.port == AdminAPI.port) respond(it) else FetchResponse(404) }
         val nodes = NodeManager(
             clients, MemoryStore(), MembershipStore(File(temp.root, "Ovenlight").apply { mkdirs() }), File(temp.root, "tailscale"),
@@ -361,5 +392,49 @@ class AdminAPITests {
         sharing.refresh(ownApps)
         assertEquals(listOf(machine), sharing.machines.value)
         assertNull(sharing.problem.value)
+    }
+
+    /**
+     * A computer Tailscale lists offline, asleep most likely, isn't asked, and keeps its listing
+     * as one that couldn't be reached; one that leaves the owner's computers drops out.
+     */
+    @Test
+    fun testAnAsleepComputerKeepsItsListing() = runTest {
+        val clients = FakeClients()
+        var coachPublished = true
+        val notesApp = """{"slug":"notes","name":"Notes","url":"https://notes.tailabc123.ts.net/"}"""
+        val nodes = connectedOwner(clients) { request ->
+            when (request.url.encodedPath) {
+                "/v1/apps" -> FetchResponse(
+                    200,
+                    (if (coachPublished) """[{"slug":"coach","name":"Coach","url":"https://coach.tailabc123.ts.net/","online":true,"shareable":true},$notesApp]""" else "[$notesApp]").toByteArray(),
+                )
+                "/v1/guests" -> FetchResponse(200, """{"guests":[{"deviceId":"7","person":"p1","name":"Sam","app":"coach","claimedAt":"2026-09-28T17:05:00Z"}]}""".toByteArray())
+                else -> FetchResponse(200, "[]".toByteArray())
+            }
+        }
+        val sharing = OwnerSharing(nodes, backgroundScope, { testScheduler.currentTime }, {})
+        sharing.refresh(ownApps)
+        val machine = sharing.machines.value.single()
+        clients.status[Membership.ownerID] = status("Running", self = ownerSelf, peers = appNodes.replace(""""Online":true""", """"Online":false"""))
+        advanceTimeBy(11_000)
+        assertEquals("nothing online to ask", emptySet<String>(), nodes.ownersOnlineHosts)
+        val asked = clients.fetched.size
+        sharing.refresh(ownApps)
+        assertEquals("it isn't asked", asked, clients.fetched.size)
+        val asleep = machine.copy(apps = machine.apps.map { it.copy(online = false) }, problem = AdminError.Unreachable.message)
+        assertEquals("its apps and people stay, offline", listOf(asleep), sharing.machines.value)
+
+        // Coach unpublished, its node stays offline while the computer answers on Notes'.
+        coachPublished = false
+        clients.status[Membership.ownerID] = status("Running", self = ownerSelf, peers = appNodes.replace(""""coach","DNSName":"coach.tailabc123.ts.net.","OS":"linux","Online":true""", """"coach","DNSName":"coach.tailabc123.ts.net.","OS":"linux","Online":false"""))
+        advanceTimeBy(11_000)
+        sharing.refresh(ownApps)
+        assertEquals("the same computer answered through another app's host", listOf("notes.tailabc123.ts.net"), sharing.machines.value.map { it.adminHost })
+
+        clients.status[Membership.ownerID] = status("Running", self = ownerSelf, peers = "")
+        advanceTimeBy(11_000)
+        sharing.refresh(ownApps)
+        assertEquals("gone from the owner's computers, it goes", emptyList<OwnerSharing.Machine>(), sharing.machines.value)
     }
 }

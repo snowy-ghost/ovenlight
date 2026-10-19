@@ -100,7 +100,10 @@ class JoinViewsTests {
 
     @Test
     fun testTypedTextThatIsntAnInviteSaysSo() {
+        ApplicationProvider.getApplicationContext<Context>().getSystemService(ClipboardManager::class.java).clearPrimaryClip()
         show(JoinRequest())
+        tap("Paste")
+        inEveryLook("Nothing to paste. Copy the invite link, then tap Paste.")
         composeRule.onNodeWithText("Scan invite code").assertDoesNotExist()
         composeRule.onNode(hasSetTextAction()).performTextInput("https://ovenlight.app/support")
         tap("Continue")

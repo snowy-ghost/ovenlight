@@ -235,7 +235,7 @@ private fun FeedbackForm(
             modifier = Modifier.widthIn(max = 640.dp).fillMaxWidth().focusRequester(focus),
         )
         if (screenshot != null) {
-            Surface(color = LocalOvenColors.current.groupedRow, shape = RoundedCornerShape(28.dp), modifier = Modifier.widthIn(max = 640.dp).fillMaxWidth()) {
+            Surface(color = LocalOvenColors.current.groupedRow, shape = MaterialTheme.shapes.large, modifier = Modifier.widthIn(max = 640.dp).fillMaxWidth()) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     ListItem(
                         headlineContent = { Text(stringResource(R.string.feedback_include_screenshot)) },

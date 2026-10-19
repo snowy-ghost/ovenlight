@@ -271,8 +271,14 @@ class MembershipNode(
     /** For a guest: the app hosts to probe, its apps and the invites being claimed. */
     var guestHosts: () -> List<String> = { emptyList() }
 
+    /** For the owner: the launcher's apps (see [Discovery.watchedHosts]). */
+    var launcherApps: () -> List<WebApp> = { emptyList() }
+
     /** For a guest: hosts whose connector said "not invited" in a probe. */
     var onNotInvited: (Set<String>) -> Unit = {}
+
+    /** For a guest: each app's name as its connector gives it in a probe, by host. */
+    var onAppNames: (Map<String, String>) -> Unit = {}
 
     /** For a guest: the backend has needed a login for a few polls in a row. */
     var onLoginLost: () -> Unit = {}
@@ -525,11 +531,14 @@ class MembershipNode(
             // A guest's hosts count as looked at even when none answers: they come back with a
             // change to the list, or in a minute, not every poll.
             probedHosts = hosts
-            GuestProbe.probe(hosts, fetch(), firstAnswer).also { if (it.notInvited.isNotEmpty()) onNotInvited(it.notInvited) }.base
+            GuestProbe.probe(hosts, fetch(), firstAnswer).also {
+                if (it.notInvited.isNotEmpty()) onNotInvited(it.notInvited)
+                if (it.appNames.isNotEmpty()) onAppNames(it.appNames)
+            }.base
         }
         // An owner's laptop or TV without a connector never answers: only app hosts count.
         val watched = if (isOwner) {
-            Discovery.watchedHosts(hosts, mutableStatus.value, found = mutableDiscovered.value.map { it.host }.toSet(), seenBefore = seenHosts)
+            Discovery.watchedHosts(hosts, mutableStatus.value, found = mutableDiscovered.value.map { it.host }.toSet(), apps = launcherApps(), seenBefore = seenHosts)
         } else {
             hosts.toSet()
         }
@@ -880,14 +889,21 @@ class NodeManager(
 
 /** How a guest node checks its apps: `/__ovenlight/whoami` answers 200 for an admitted guest and 403 `not_invited` for anyone else. */
 object GuestProbe {
-    data class Outcome(val base: Discovery.Outcome = Discovery.Outcome(), val notInvited: Set<String> = emptySet())
+    data class Outcome(
+        val base: Discovery.Outcome = Discovery.Outcome(),
+        val notInvited: Set<String> = emptySet(),
+        /** Each admitted app's name as its connector gives it now, by host. */
+        val appNames: Map<String, String> = emptyMap(),
+    )
 
     /** [firstAnswer] as in [Discovery.probeEach]. */
     suspend fun probe(hosts: List<String>, fetch: Fetch?, firstAnswer: () -> Unit = {}): Outcome {
         if (fetch == null || hosts.isEmpty()) return Outcome()
-        val reaches = Discovery.probeEach(hosts, firstAnswer) { host -> whoami(host, fetch).takeIf { it != Reach.Unreachable } }
+        val responses = Discovery.probeEach(hosts, firstAnswer) { host -> whoamiResponse(host, fetch) }
+        val reaches = responses.mapValues { it.value?.let(::classify) }
         val answered = reaches.mapValues { it.value != null }
-        return Outcome(Discovery.Outcome(reachable = answered.containsValue(true), answered = answered), reaches.filterValues { it == Reach.NotInvited }.keys)
+        val names = responses.mapNotNull { (host, response) -> response?.takeIf { it.status == 200 }?.let { appName(it.body) }?.let { host to it } }.toMap()
+        return Outcome(Discovery.Outcome(reachable = answered.containsValue(true), answered = answered), reaches.filterValues { it == Reach.NotInvited }.keys, names)
     }
 
     /**
@@ -909,9 +925,17 @@ object GuestProbe {
      */
     fun reportsOnline(status: TailnetStatus): Boolean = status.peers.any { it.online }
 
-    suspend fun whoami(host: String, fetch: Fetch): Reach {
-        val response = uri("https://$host/__ovenlight/whoami")?.let { fetchOrNull(fetch, it) } ?: return Reach.Unreachable
-        return classify(response.status, response.header(ConnectorError.header), response.body)
+    suspend fun whoami(host: String, fetch: Fetch): Reach = whoamiResponse(host, fetch)?.let(::classify) ?: Reach.Unreachable
+
+    private suspend fun whoamiResponse(host: String, fetch: Fetch): FetchResponse? = uri("https://$host/__ovenlight/whoami")?.let { fetchOrNull(fetch, it) }
+
+    private fun classify(response: FetchResponse): Reach = classify(response.status, response.header(ConnectorError.header), response.body)
+
+    /** The app's name in an admitted guest's whoami answer, cleaned as an invite's names are. */
+    fun appName(body: ByteArray): String? = try {
+        InviteLink.label(ovenlightJSON.decodeFromString(ClaimResponse.serializer(), strictUTF8(body)).appName)
+    } catch (_: Exception) {
+        null
     }
 
     /**

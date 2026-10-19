@@ -47,6 +47,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -144,6 +145,12 @@ object SharingList {
         }
         return "Your shareable apps and your guests’ devices use $share in your Tailscale network. Tailscale’s plans include a set number and charge for more."
     }
+
+    /** How many of [feedback] are newer than [seen], the newest the full inbox showed when last opened: all of them before it ever was. */
+    fun newFeedback(feedback: List<AdminFeedback>, seen: Instant?): Int = feedback.count { seen == null || it.at > seen }
+
+    /** Where [seen] is kept, iOS's name for it. */
+    const val FEEDBACK_SEEN_KEY = "feedbackSeenUntil"
 }
 
 /**
@@ -163,6 +170,9 @@ data class SharingState(
     /** Goes up with each icon saved, so a refreshed icon redraws. */
     val iconRevisions: Map<UUID, Int> = emptyMap(),
     val icon: (WebApp) -> Bitmap? = { null },
+    /** The newest feedback the inbox showed when last opened (see [SharingList.newFeedback]). */
+    val feedbackSeen: Instant? = null,
+    val seeFeedback: (Instant) -> Unit = {},
     val refresh: suspend () -> Unit = {},
     val refreshIfStale: suspend () -> Unit = {},
     val client: (OwnerSharing.Machine) -> AdminClient? = { null },
@@ -201,6 +211,8 @@ fun sharingState(model: AppModel): SharingState {
     val iconRevisions by model.registry.iconRevisions.collectAsState()
     val ownerEnabled by model.nodes.ownerEnabled.collectAsState()
     val ownerState by model.nodes.owner.state.collectAsState()
+    val preferences = remember { PreferencesStore(context) }
+    var feedbackSeen by remember { mutableStateOf(preferences.getString(SharingList.FEEDBACK_SEEN_KEY)?.let(AdminAPI::parseDate)) }
     return SharingState(
         sharing.machines,
         isAvailable = ownerEnabled && ownerState == NodeState.Ready,
@@ -210,6 +222,13 @@ fun sharingState(model: AppModel): SharingState {
         localApp = { admin -> apps.firstOrNull { !it.isShared && Discovery.normalizedHost(it.host) == admin.host } },
         iconRevisions = iconRevisions,
         icon = { IconDecoder.load(model.registry.iconFile(it)) },
+        feedbackSeen = feedbackSeen,
+        seeFeedback = { newest ->
+            if (feedbackSeen?.let { newest > it } != false) {
+                feedbackSeen = newest
+                preferences.putString(SharingList.FEEDBACK_SEEN_KEY, newest.toString())
+            }
+        },
         refresh = { sharing.refresh(model.registry.apps) },
         refreshIfStale = { sharing.refreshIfStale(model.registry.apps) },
         client = sharing::client,
@@ -316,7 +335,7 @@ internal fun <T : Any> PageStack(pages: SnapshotStateList<T>, content: @Composab
 @Composable
 private fun SharingListPage(state: SharingState, scroll: ScrollState, open: (SharingPage) -> Unit, back: () -> Unit) {
     val machines by state.machines.collectAsState()
-    val feedbackCount = machines.sumOf { it.feedback.size }
+    val feedbackCount = SharingList.newFeedback(machines.flatMap { it.feedback }, state.feedbackSeen)
     val peopleCount = machines.sumOf { GuestPerson.all(it.guests.guests).size }
     LaunchedEffect(Unit) { state.refresh() }
     GroupedScreen(stringResource(R.string.launcher_people_sharing), onBack = back, scroll = scroll, refresh = state.refresh) {
@@ -402,7 +421,11 @@ private fun TaggedDevicesFooter(text: String, openLink: (URI) -> Unit) {
 }
 
 @Composable
-private fun Count(count: Int) = Text("$count", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+private fun Count(count: Int) = Value("$count")
+
+/** What a row says at its end. */
+@Composable
+private fun Value(text: String) = Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
 /** A connector's app with its icon from the launcher, or a plain tile when it isn't there. */
 @Composable
@@ -467,7 +490,7 @@ private fun SharingAppPage(state: SharingState, page: SharingPage.App, scroll: S
             }
             val people = GuestPerson.all(machine.guests.guests.filter { it.app == page.slug })
             val invites = machine.guests.invites.filter { it.app == page.slug && it.state == AdminInvite.sent }
-            val feedback = machine.feedback.count { it.app == page.slug }
+            val feedback = SharingList.newFeedback(machine.feedback.filter { it.app == page.slug }, state.feedbackSeen)
             (error ?: machine.problem)?.let { SharingError(it) }
             SettingsGroup(
                 footer = {
@@ -591,6 +614,11 @@ class InviteComposer(
     suspend fun create(chosen: GuestPerson?, sharing: SharingState, reason: (who: String) -> String) {
         val who = chosen?.name ?: trimmed
         if (who.isEmpty() || (chosen == null && namesake != null) || working) return
+        // Without the phone's own connection no computer could answer, so it says so before the screen lock.
+        if (!sharing.isAvailable) {
+            error = ConnectionCopy.notConnected
+            return
+        }
         error = null
         if (!sharing.confirm(reason(who))) return
         val client = sharing.client(machine) ?: run {
@@ -679,7 +707,7 @@ private fun InviteForm(composer: InviteComposer, sharing: SharingState, scope: C
                         if (error != null) Box(Modifier.semantics { liveRegion = LiveRegionMode.Polite }) { Footer(error) } else Footer(stringResource(R.string.sharing_adds_a_phone, target.name, app.name))
                     },
                 ) {
-                    row { shape -> SettingsRow(shape, target.name, trailing = { Text(target.devices, color = MaterialTheme.colorScheme.onSurfaceVariant) }) }
+                    row { shape -> SettingsRow(shape, target.name, trailing = { Value(target.devices) }) }
                 }
                 return@Column
             }
@@ -695,7 +723,7 @@ private fun InviteForm(composer: InviteComposer, sharing: SharingState, scope: C
                                 else -> person.devices
                             }
                             SettingsRow(
-                                shape, person.name, trailing = { Text(value, color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                                shape, person.name, trailing = { Value(value) },
                                 onClick = { if (!composer.working) create(person) },
                             )
                         }
@@ -801,7 +829,7 @@ private fun InviteResultView(result: AdminShareResult, appName: String, used: ()
                 ) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(painterResource(if (copied) R.drawable.ic_check else R.drawable.ic_content_copy), contentDescription = null)
-                        Text(stringResource(if (copied) R.string.sharing_copied else R.string.sharing_copy_link))
+                        Text(stringResource(if (copied) R.string.sharing_copied else R.string.sharing_copy_link), style = MaterialTheme.typography.titleMedium)
                     }
                 }
             }
@@ -857,9 +885,15 @@ private fun FeedbackInbox(state: SharingState, page: SharingPage.Feedback, list:
     // one client a computer.
     val clients = remember(machines) { machines.associate { it.id to state.client(it) } }
     val direction = LocalLayoutDirection.current
-    GroupedScreen(stringResource(R.string.sharing_feedback), onBack = back) { padding ->
+    // Opened across computers, it's seen up to its newest, and the list's count starts over from there.
+    val newest = items.firstOrNull()?.second?.at
+    LaunchedEffect(newest) { if (page.machineID == null && newest != null) state.seeFeedback(newest) }
+    GroupedScreen(stringResource(R.string.sharing_feedback), onBack = back, refresh = state.refresh) { padding ->
         if (items.isEmpty()) {
-            return@GroupedScreen Column(Modifier.padding(padding)) { Unavailable(stringResource(R.string.feedback_inbox_none), stringResource(R.string.feedback_inbox_none_detail)) }
+            // Scrolls, so it pulls to refresh too.
+            return@GroupedScreen Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(padding)) {
+                Unavailable(stringResource(R.string.feedback_inbox_none), stringResource(R.string.feedback_inbox_none_detail))
+            }
         }
         val outer = MaterialTheme.shapes.large
         val inner = MaterialTheme.shapes.extraSmall
@@ -935,17 +969,20 @@ private fun FeedbackDetail(state: SharingState, page: SharingPage.FeedbackItem, 
                 }
             }
             if (item.hasScreenshot) {
-                val image = shots.image(item.id, ScreenshotCache.Size.Screen)
+                // The row's thumbnail stands in while the full one comes: the same shape, so nothing moves.
+                val screen = ScreenshotCache.Size.Screen
+                val image = shots.image(item.id, screen) ?: shots.image(item.id, ScreenshotCache.Size.Thumbnail)?.takeUnless { shots.failed(item.id, screen) }
                 val bitmap = remember(image) { image?.asImageBitmap() }
                 if (bitmap != null) {
                     val shape = RoundedCornerShape(14.dp)
                     Image(
                         bitmap, contentDescription = stringResource(R.string.feedback_inbox_screenshot), contentScale = ContentScale.Fit,
-                        modifier = Modifier.fillMaxWidth().clip(shape).border(0.5.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f), shape),
+                        modifier = Modifier.fillMaxWidth().aspectRatio(bitmap.width.toFloat() / bitmap.height).clip(shape)
+                            .border(0.5.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f), shape),
                     )
                 } else {
                     Box(Modifier.fillMaxWidth().heightIn(min = 200.dp), contentAlignment = Alignment.Center) {
-                        if (shots.failed(item.id, ScreenshotCache.Size.Screen)) {
+                        if (shots.failed(item.id, screen)) {
                             Text(stringResource(R.string.feedback_inbox_screenshot_failed), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         } else {
                             CircularProgressIndicator()

@@ -1,10 +1,12 @@
 package com.snowyghost.ovenlight
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.ScrollState
@@ -24,6 +26,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
@@ -269,7 +272,10 @@ internal fun SharingPersonView(state: SharingState, page: SharingPage.Person, sc
             SettingsGroup {
                 row { shape ->
                     if (working) {
-                        Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                        // In the row's place, its size and on its background.
+                        Box(Modifier.fillMaxWidth().heightIn(min = 56.dp).clip(shape).background(LocalOvenColors.current.groupedRow), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.5.dp)
+                        }
                     } else {
                         SettingsRow(shape, stringResource(R.string.sharing_remove_person, person.name), color = MaterialTheme.colorScheme.error, onClick = { removing = Removal.Everything })
                     }

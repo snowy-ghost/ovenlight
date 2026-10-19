@@ -15,7 +15,9 @@
 # the owner's node in with a preauth key, takes the launcher, Settings and lock screenshots in
 # light and dark, and checks the lock: at Immediately, Home and back through the icon or Recents asks
 # for it, and a canceled prompt doesn't come back by itself. app opens Recipes from the
-# launcher and waits for its page.
+# launcher and waits for its page, then stops Pantry on the connector and checks that opening it
+# says it isn't running, never showing the connector's 502 text as the page, and that Try again
+# opens it once it runs again.
 # chrome opens Recipes, closes the pill's one-time tip, brings the pill back with its handle,
 # opens the app menu and writes feedback, locks and unlocks with the note still there, sends
 # it, and checks that the connector got it, screenshot and all, with no pill or handle in the
@@ -592,19 +594,40 @@ if [[ $SCENARIO == guests ]]; then
   keys+=("$(key_of "$link")")
   tap_text "Join with invite"
   await_text 10 "Paste" "Invite link" || fail "no Join with invite: $(screen_text | tr '\n' '|')"
-  tap_class android.widget.EditText
-  # input text drops what comes after its first 150 or so characters, so the link goes in parts.
-  for ((i = 0; i < ${#link}; i += 100)); do a shell "input text '${link:i:100}'"; done
-  if (( $(a shell getprop ro.build.version.sdk | tr -d '\r') >= 33 )); then
-    # Into the clipboard and out of the field, then back with Paste.
+  # The text of the field, and whether it holds the whole link or none of it.
+  field_text() {
+    a exec-out uiautomator dump /dev/tty 2>/dev/null | python3 -c '
+import html, re, sys
+node = re.search(r"<node[^>]*class=\"android.widget.EditText\"[^>]*>", sys.stdin.read())
+text = node and re.search(r"(?<![\w-])text=\"([^\"]*)\"", node.group(0))
+print(html.unescape(text.group(1)) if text else "")
+'
+  }
+  typed() { [[ $(field_text) == "$link" ]]; }
+  emptied() { [[ $(field_text) != *"${link: -12}"* ]]; }
+  type_link() {
+    tap_class android.widget.EditText
+    # input text drops what comes after its first 150 or so characters, so the link goes in parts.
+    for ((i = 0; i < ${#link}; i += 100)); do a shell "input text '${link:i:100}'"; done
+    until_ok 15 typed || note "the field didn't show the whole link"
+  }
+  # Into the clipboard and out of the field, once every part has landed, then back with Paste.
+  paste_link() {
+    type_link
     a shell input keycombination KEYCODE_CTRL_LEFT KEYCODE_A
     a shell input keycombination KEYCODE_CTRL_LEFT KEYCODE_C
     a shell input keyevent KEYCODE_DEL
-    sleep 1
+    until_ok 10 emptied || note "the field didn't empty"
     # On a phone on its side the keyboard takes the whole screen; Back puts it away.
     tap_text Paste || { a shell input keyevent KEYCODE_BACK; sleep 1; tap_text Paste; }
+  }
+  if (( $(a shell getprop ro.build.version.sdk | tr -d '\r') >= 33 )); then
+    # Under load a copy can miss: then it goes once more.
+    paste_link
+    await_text 20 "$question" || { note "the first paste didn't take, so it goes again"; paste_link; }
     how="pasted"
   else
+    type_link
     tap_text Continue
     how="typed (no key combinations before Android 13)"
   fi
@@ -697,6 +720,23 @@ if [[ $SCENARIO == app ]]; then
   tap_text Recipes
   await_text 10 "Recipe Box" || fail "Recipes didn't reopen from the pool"
   note "Back closed it, and it reopened from the pool"
+  # An app that isn't running: after its tries, Ovenlight says so in its own words, never the
+  # connector's 502 text as the page, and Try again opens it once it runs again.
+  a shell input keyevent KEYCODE_BACK; sleep 2
+  c publish --config $D/config.json --state $D/st --slug pantry --run= >> $D/publish.log 2>&1 || fail "stopping Pantry: $(tail -5 $D/publish.log)"
+  tap_text Pantry
+  await_text 40 "Pantry isn’t running on your computer. Run ovenlight doctor there, then try again." "Try again" ||
+    { shot app-down-failed; fail "a stopped app didn't say so: $(screen_text | tr '\n' '|')"; }
+  shot app-down
+  c publish --config $D/config.json --state $D/st --slug pantry --run "python3 $ROOT/android/e2e/app.py" --dir "$D/pantry" >> $D/publish.log 2>&1 || fail "starting Pantry: $(tail -5 $D/publish.log)"
+  # It takes a moment to start: Try again until it opens.
+  opened=
+  for i in $(seq 1 5); do
+    tap_text "Try again" || true
+    if await_text 15 Pantry; then opened=1; break; fi
+  done
+  [[ -n $opened ]] || { shot app-down-retry-failed; fail "Try again didn't open Pantry: $(screen_text | tr '\n' '|')"; }
+  note "a stopped Pantry said it isn't running, with Try again, which opened it once it ran again"
   say "PASSED"
   exit 0
 fi

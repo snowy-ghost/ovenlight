@@ -360,17 +360,29 @@ object NavigationPolicy {
  * come by an invite, or by discovery once their owner publishes them.
  */
 object AppAddress {
-    fun url(from: String): URI? {
+    /**
+     * What's typed, as an https address. A host with no dot takes [suffix], the owner's tailnet,
+     * when it's known, as the removal dialog's "Add it again" suggests: notes is notes.<tailnet>.
+     */
+    fun url(from: String, suffix: String? = null): URI? {
         var text = from.trimmingWhitespaceAndNewlines()
         if (!text.contains("://")) text = "https://$text"
-        val url = uri(text) ?: return null
+        var url = uri(text) ?: return null
+        val host = url.host
+        val tailnet = suffix?.let(Discovery::normalizedHost)
+        if (host != null && '.' !in host && !tailnet.isNullOrEmpty()) {
+            url = runCatching { URI(url.scheme, url.userInfo, "$host.$tailnet", url.port, url.path, url.query, url.fragment) }.getOrNull() ?: return null
+        }
         if (url.scheme?.lowercase() != "https" || url.host?.contains('.') != true) return null
         return url
     }
 
-    /** The address, only if it's on the owner's own tailnet. A null [ownerSuffix] (owner mode off, or not signed in yet) takes nothing. */
-    fun url(from: String, ownerSuffix: String?): URI? {
-        val url = url(from) ?: return null
+    /**
+     * The address, bare names completed, only if it's on the owner's own tailnet. A null
+     * [ownerSuffix] (owner mode off, or not signed in yet) takes nothing.
+     */
+    fun ownURL(from: String, ownerSuffix: String?): URI? {
+        val url = url(from, ownerSuffix) ?: return null
         return if (Routing.isOnOwnersTailnet(url.host ?: "", ownerSuffix)) url else null
     }
 

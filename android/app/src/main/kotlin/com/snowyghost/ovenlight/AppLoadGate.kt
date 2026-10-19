@@ -146,19 +146,29 @@ object ConnectionCopy {
     fun cantReachDetail(owner: String?) = owner?.let { "$it’s computer may be asleep or offline. Try again in a moment, or let $it know." }
         ?: "Its computer may be asleep or offline. Try again in a moment."
 
-    /** [cantReachDetail], or for the owner's own app what to do: on its computer, or when its route is [refused], on this phone. */
-    fun cantReachDetail(app: WebApp, refused: Boolean = false) = when {
+    /**
+     * [cantReachDetail], or for the owner's own app what to do: on its computer, or when its route
+     * is [refused], on this phone. When the phone's own connection never came up, it says so.
+     */
+    fun cantReachDetail(app: WebApp, refused: Boolean = false, neverConnected: Boolean = false) = when {
+        neverConnected -> notConnected
         app.isShared -> cantReachDetail(app.sharedBy)
         refused -> "${app.name} isn’t on the account you’re signed in to. Sign in with the account it’s on, or remove it."
         else -> "Your computer may be asleep or offline. Wake it, or run ovenlight doctor on it, then try again."
     }
+
+    /** The phone's own connection never came up, so no computer was asked. */
+    const val notConnected = "$couldNotStart Check that you’re online, then try again."
     const val offline = "You’re offline"
     const val offlineDetail = "Connect to Wi-Fi or mobile data, and Ovenlight tries again."
-    fun notResponding(app: String) = "$app isn’t responding on its computer right now. Try again in a moment."
+    /** For an app someone shared, [owner] is who to tell. */
+    fun notResponding(app: String, owner: String?) =
+        owner?.let { "$app isn’t responding on $it’s computer right now. Try again in a moment, or let $it know." }
+            ?: "$app isn’t responding on its computer right now. Try again in a moment."
 
     /** [notResponding], or for the owner's own app what to run on its computer. */
     fun notResponding(app: WebApp) =
-        if (app.isShared) notResponding(app.name) else "${app.name} isn’t running on your computer. Run ovenlight doctor there, then try again."
+        if (app.isShared) notResponding(app.name, app.sharedBy) else "${app.name} isn’t running on your computer. Run ovenlight doctor there, then try again."
     const val pageFailed = "This page couldn’t load. Try again in a moment."
     fun signIn(toOpen: String) = "Sign in to open $toOpen"
 

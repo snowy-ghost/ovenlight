@@ -3,11 +3,14 @@ package com.snowyghost.ovenlight
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.hardware.camera2.CameraManager
 import android.media.AudioManager
+import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
 import android.webkit.PermissionRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.AlertDialog
@@ -17,6 +20,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.core.content.ContextCompat
 import com.snowyghost.ovenlight.MediaCapturePolicy.MediaCaptureType
@@ -43,8 +47,11 @@ class PageCapture(
     private val isLocked: () -> Boolean,
     private val isOnScreen: () -> Boolean,
     private val scope: CoroutineScope,
-    /** Asks Android for these runtime permissions as needed; true once Ovenlight holds them all. */
-    private val permissions: (List<String>, (Boolean) -> Unit) -> Unit,
+    /**
+     * Asks Android for these runtime permissions as needed ([RuntimePermissions.request]): those it
+     * refused for good, then true once Ovenlight holds them all.
+     */
+    private val permissions: (List<String>, (List<String>) -> Unit, (Boolean) -> Unit) -> Unit,
     /** Whether Ovenlight still records or holds a camera ([CaptureMonitor]). */
     private val stillCapturing: () -> Boolean,
     /** Ends the page's view for good: the pool drops it. */
@@ -55,6 +62,9 @@ class PageCapture(
 
     private val mutablePrompt = MutableStateFlow<Prompt?>(null)
     val prompt: StateFlow<Prompt?> = mutablePrompt
+
+    /** What Android refused without asking when the page last asked, so Ovenlight says where to allow it. */
+    val refused = MutableStateFlow<MediaCaptureType?>(null)
 
     /** The request waiting on Android's permission or Ovenlight's prompt; one at a time. */
     private var pending: PermissionRequest? = null
@@ -80,7 +90,10 @@ class PageCapture(
         val grant = if (decision == PermissionDecision.Grant) setOf(PermissionRequest.RESOURCE_AUDIO_CAPTURE) else resources
         val asked = decision == PermissionDecision.Grant || allowed[key]?.containsAll(resources) == true
         pending = request
-        permissions(androidPermissions(resources)) { held ->
+        val refusedForGood = { denied: List<String> ->
+            refused.value = if (Manifest.permission.CAMERA in denied) MediaCaptureType.Camera else MediaCaptureType.Microphone
+        }
+        permissions(androidPermissions(resources), refusedForGood) { held ->
             if (pending !== request) return@permissions
             if (!held || decide() == PermissionDecision.Deny) return@permissions finish(request, null)
             if (asked) return@permissions finish(request, grant)
@@ -123,6 +136,7 @@ class PageCapture(
     fun stop() {
         stopTracks?.invoke()
         allowed.clear()
+        refused.value = null
         dropPending()
         if (!granted) return
         scope.launch {
@@ -210,23 +224,60 @@ object CaptureMonitor {
  * went meanwhile.
  */
 object RuntimePermissions {
-    fun request(context: Context, permissions: List<String>, done: (Boolean) -> Unit) {
+    /**
+     * [refusedForGood] gets those Android refused without asking, turned off for Ovenlight until
+     * Settings allows them, before [done] hears false. Android gives no rationale both before a
+     * first question and after a dismissed one, so only a refusal of one asked before, at any
+     * launch, counts.
+     */
+    fun request(context: Context, permissions: List<String>, refusedForGood: (List<String>) -> Unit = {}, done: (Boolean) -> Unit) {
         val missing = permissions.filter { ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED }
         if (missing.isEmpty()) return done(true)
         val activity = context.componentActivity() ?: return done(false)
+        val store = PreferencesStore(context)
+        val quiet = missing.filter { store.getBoolean(askedKey(it)) && !activity.shouldShowRequestPermissionRationale(it) }
         activity.launchOnce(ActivityResultContracts.RequestMultiplePermissions(), missing.toTypedArray(), failed = { done(false) }) { result ->
+            missing.forEach { store.putBoolean(askedKey(it), true) }
+            quiet.filter { result[it] != true && !activity.shouldShowRequestPermissionRationale(it) }.takeIf { it.isNotEmpty() }?.let(refusedForGood)
             done(missing.all { result[it] == true })
         }
     }
+
+    /** Ovenlight's page in the phone's Settings, where its permissions are. */
+    fun openSettings(context: Context) =
+        context.startOrFalse(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null)))
+
+    private fun askedKey(permission: String) = "askedPermission.$permission"
 }
 
-/** Ovenlight's capture question for the page on screen. Leaving it unanswered denies. */
+/**
+ * Ovenlight's capture question for the page on screen, or where to allow what Android refused for
+ * good. Leaving the question unanswered denies.
+ */
 @Composable
 fun CapturePrompt(page: AppPage) {
     val prompt by page.capture.prompt.collectAsState()
-    val open = prompt ?: return
-    DisposableEffect(open) { onDispose { open.answer.dropped() } }
-    CapturePromptDialog(capturePromptTitle(open, page.app.name), open.answer::invoke)
+    val refused by page.capture.refused.collectAsState()
+    prompt?.let { open ->
+        DisposableEffect(open) { onDispose { open.answer.dropped() } }
+        CapturePromptDialog(capturePromptTitle(open, page.app.name), open.answer::invoke)
+    }
+    refused?.let { type ->
+        val context = LocalContext.current
+        val done = { page.capture.refused.value = null }
+        AlertDialog(
+            onDismissRequest = done,
+            title = { Text(stringResource(if (type == MediaCaptureType.Camera) R.string.capture_refused_camera else R.string.capture_refused_microphone)) },
+            text = { Text(stringResource(R.string.capture_refused_body, page.app.name)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    done()
+                    RuntimePermissions.openSettings(context)
+                }) { Text(stringResource(R.string.open_settings)) }
+            },
+            dismissButton = { TextButton(onClick = done) { Text(stringResource(R.string.not_now)) } },
+        )
+    }
 }
 
 @Composable

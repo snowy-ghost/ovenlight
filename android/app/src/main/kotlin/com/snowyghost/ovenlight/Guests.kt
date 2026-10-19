@@ -94,7 +94,7 @@ sealed class JoinPhase {
     data class Failed(val error: JoinError) : JoinPhase()
 }
 
-/** The connector's answer to `POST /__ovenlight/claim`. */
+/** The connector's names for an app: its answer to `POST /__ovenlight/claim`, and to `GET /__ovenlight/whoami` too. */
 @Serializable
 data class ClaimResponse(val app: String? = null, val appName: String? = null, val owner: String? = null) {
     data class Names(val owner: String, val appName: String, val app: String)
@@ -181,21 +181,18 @@ object Claim {
     }
 }
 
-/** Someone's apps stopped being shared with this phone. */
-data class AccessEndedNotice(val owner: String, val apps: List<String>, val id: UUID = UUID.randomUUID()) {
-    val title: String get() = ConnectionCopy.noLongerSharedTitle
-    val message: String get() = ConnectionCopy.noLongerShared(apps, owner)
-
+/** What a guest is told once, over the launcher: someone's apps stopped being shared, or a join failed with its screen closed. */
+data class Notice(val title: String, val message: String, val id: UUID = UUID.randomUUID()) {
     companion object {
         /**
          * The notice for apps taken away together, named by the first one's owner, or none when
          * every one of them is already gone from [listed], the registry's apps, so two sweeps of
          * the same app say so once (`GuestManager.accessEnded` on iOS).
          */
-        fun of(apps: List<WebApp>, listed: List<WebApp>): AccessEndedNotice? {
+        fun accessEnded(apps: List<WebApp>, listed: List<WebApp>): Notice? {
             val remaining = apps.filter { app -> listed.any { it.id == app.id } }
             val first = remaining.firstOrNull() ?: return null
-            return AccessEndedNotice(first.sharedBy ?: "Its owner", remaining.map { it.name })
+            return Notice(ConnectionCopy.noLongerSharedTitle, ConnectionCopy.noLongerShared(remaining.map { it.name }, first.sharedBy ?: "Its owner"))
         }
     }
 }

@@ -103,12 +103,14 @@ object Discovery {
     /**
      * Among an owner's probed hosts, those whose silence brings another look in a minute:
      * shareable app nodes (by their tag), hosts of apps already found (a private app's node is
-     * untagged), and hosts this look sees for the first time. A laptop or TV without a connector
+     * untagged) or whose tile discovery left on the launcher ([apps]: a miss drops it from
+     * [found]), and hosts this look sees for the first time. A laptop or TV without a connector
      * misses once, and then no more.
      */
-    fun watchedHosts(hosts: List<String>, status: TailnetStatus?, found: Set<String>, seenBefore: Set<String>): Set<String> {
+    fun watchedHosts(hosts: List<String>, status: TailnetStatus?, found: Set<String>, apps: List<WebApp>, seenBefore: Set<String>): Set<String> {
         val tagged = (status?.peers ?: emptyList()).filter { peer -> peer.tags.any(OvenlightTag::isApp) }.map { normalizedHost(it.dnsName) }.toSet()
-        return hosts.filter { it in tagged || it in found || it !in seenBefore }.toSet()
+        val tiles = apps.filter { it.discovered && !it.isShared }.map { normalizedHost(it.host) }.toSet()
+        return hosts.filter { it in tagged || it in found || it in tiles || it !in seenBefore }.toSet()
     }
 
     /**

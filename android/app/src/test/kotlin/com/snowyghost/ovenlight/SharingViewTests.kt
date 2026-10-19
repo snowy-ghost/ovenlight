@@ -7,7 +7,10 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
@@ -15,6 +18,8 @@ import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -27,6 +32,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeDown
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.zxing.BinaryBitmap
@@ -356,7 +362,7 @@ class SharingViewTests {
         val close = composeRule.onNodeWithContentDescription("Close")
         close.performClick()
         inDialog("Close without sending?").assertIsDisplayed()
-        inDialog("You can cancel this invite in People & sharing.").assertIsDisplayed()
+        inDialog("This link won’t show again. The invite stays open until it expires, and you can cancel it in People & sharing.").assertIsDisplayed()
         inDialog("Keep").performClick()
         inDialog("Close without sending?").assertDoesNotExist()
         assertEquals(0, dismissed)
@@ -368,6 +374,52 @@ class SharingViewTests {
         close.performClick()
         inDialog("Close without sending?").assertDoesNotExist()
         assertEquals(2, dismissed)
+    }
+
+    /**
+     * The count is of feedback newer than the newest the inbox showed when last opened, with no
+     * number once there's none new; the inbox pulls to refresh.
+     */
+    @Test
+    fun testTheFeedbackCountShowsOnlyNewOnes() {
+        val older = AdminFeedback("f0", now.minusSeconds(7_200), "book-club", "Kim", "guest", note = "The cover is blurry.")
+        val two = machine.copy(feedback = machine.feedback + older)
+        assertEquals("before the inbox was ever opened, all of it", 2, SharingList.newFeedback(two.feedback, seen = null))
+        assertEquals(1, SharingList.newFeedback(two.feedback, seen = older.at))
+        assertEquals(0, SharingList.newFeedback(two.feedback, seen = machine.feedback[0].at))
+        var seen by mutableStateOf<Instant?>(older.at)
+        val base = state(listOf(two))
+        val place = SharingPlace(SharingPage.List)
+        composeRule.setContent {
+            OvenlightTheme { SharingScreen(base.copy(feedbackSeen = seen, seeFeedback = { seen = it }), place, onClose = {}, scope = rememberCoroutineScope()) }
+        }
+        val row = hasText("Feedback") and hasClickAction()
+        composeRule.onNode(row and hasText("1")).performScrollTo().performClick()
+        text("The cover is blurry.").assertIsDisplayed()
+        assertEquals("opening it sees up to the newest", machine.feedback[0].at, seen)
+        val before = refreshes
+        composeRule.onNode(hasScrollAction()).performTouchInput { swipeDown() }
+        composeRule.waitForIdle()
+        assertTrue("it pulls to refresh", refreshes > before)
+        composeRule.onNodeWithContentDescription("Back").performClick()
+        composeRule.onNode(row).performScrollTo().assertIsDisplayed()
+        composeRule.onNode(row and (hasText("1") or hasText("2"))).assertDoesNotExist()
+    }
+
+    /** Share says the phone's own connection is down before it asks for the screen lock, as Can't reach does. */
+    @Test
+    fun testCantReachSaysWhenThePhoneNeverConnected() {
+        val detail = "Ovenlight couldn’t connect. Check that you’re online, then try again."
+        val own = WebApp(name = "Book Club", startURL = URI("https://book-club.tail1.ts.net/"), discovered = true)
+        assertEquals(detail, ConnectionCopy.cantReachDetail(own, neverConnected = true))
+        assertEquals("a guest hears it too", detail, ConnectionCopy.cantReachDetail(own.copy(membershipID = "m1", sharedBy = "Riley"), neverConnected = true))
+        CopyRules.assertNeutral(detail)
+        composeRule.setContent { OvenlightTheme { InviteComposerDialog(InviteComposer(machine, club), state().copy(isAvailable = false), rememberCoroutineScope(), onDismiss = {}) } }
+        composeRule.onNodeWithText("Their name, like Sam").performTextInput("Jo")
+        inDialog("Create").performClick()
+        inDialog(detail).assertIsDisplayed()
+        assertEquals("no screen lock, and nothing sent", emptyList<String>(), confirmed)
+        assertTrue(requests.isEmpty())
     }
 
     @Test

@@ -23,6 +23,7 @@ class GuestCopyTests {
             ConnectionCopy.connecting(to = "Echo"), ConnectionCopy.cantReach("Echo"),
             ConnectionCopy.cantReachDetail(owner = null), ConnectionCopy.cantReachDetail(owner = "Riley"),
             ConnectionCopy.signIn(toOpen = "Echo"), ConnectionCopy.pageFailed, ConnectionCopy.offline, ConnectionCopy.offlineDetail,
+            ConnectionCopy.notConnected, ConnectionCopy.notResponding("Echo", owner = "Riley"), ConnectionCopy.notResponding("Echo", owner = null),
             NodeState.Starting.summary, NodeMachine.next(NodeState.Ready, NodeEvent.Backend("Stopped", null)).summary,
             LauncherWelcome.title, LauncherWelcome.message,
         )
@@ -44,6 +45,6 @@ class GuestCopyTests {
         assertEquals("Notes isn’t on the account you’re signed in to. Sign in with the account it’s on, or remove it.", ConnectionCopy.cantReachDetail(own, refused = true))
         assertEquals("Notes isn’t running on your computer. Run ovenlight doctor there, then try again.", ConnectionCopy.notResponding(own))
         assertEquals(ConnectionCopy.cantReachDetail(owner = "Riley"), ConnectionCopy.cantReachDetail(shared, refused = true))
-        assertEquals(ConnectionCopy.notResponding("Notes"), ConnectionCopy.notResponding(shared))
+        assertEquals("Notes isn’t responding on Riley’s computer right now. Try again in a moment, or let Riley know.", ConnectionCopy.notResponding(shared))
     }
 }

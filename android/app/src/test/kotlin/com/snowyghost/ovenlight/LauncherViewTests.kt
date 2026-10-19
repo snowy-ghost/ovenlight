@@ -106,7 +106,7 @@ class LauncherViewTests {
     @Test
     fun testGuestsSeeNoNetworkName() {
         val context = ApplicationProvider.getApplicationContext<Context>()
-        val ownerOnly = setOf("launcher_connect_body", "launcher_approve_body")
+        val ownerOnly = setOf("launcher_connect_body", "launcher_approve_body", "launcher_sign_in_again_body")
         val labels = R.string::class.java.fields.filter { it.name.startsWith("launcher_") && it.name !in ownerOnly }
         assertTrue(labels.size > 20)
         for (field in labels) CopyRules.assertNeutral(context.getString(field.getInt(null), "Riley"))
@@ -226,6 +226,19 @@ class LauncherViewTests {
         assertEquals(listOf<RootSheet>(RootSheet.Login(login)), presented)
     }
 
+    /** A phone that was connected, and didn't sign out, says its sign-in ended rather than greeting the owner again. */
+    @Test
+    fun testAnEndedSignInSaysSo() {
+        val presented = mutableListOf<RootSheet>()
+        val login = URI("https://login.tailscale.com/a/abc123")
+        show(LauncherState(apps = listOf(recipes), ownerEnabled = true, ownerState = NodeState.NeedsLogin(login), signedInBefore = true, present = { presented += it }))
+        composeRule.onNodeWithText("Sign in again").assertIsDisplayed()
+        composeRule.onNodeWithText("This phone’s Tailscale sign-in ended. Sign in again to reach your computers.").assertIsDisplayed()
+        composeRule.onNodeWithText("Connect your computers").assertDoesNotExist()
+        composeRule.onNodeWithText("Sign in").performClick()
+        assertEquals(listOf<RootSheet>(RootSheet.Login(login)), presented)
+    }
+
     @Test
     @Config(qualifiers = "+night")
     fun testApproveCard() {
@@ -259,6 +272,14 @@ class LauncherViewTests {
     fun testStatusPillConnecting() {
         show(LauncherState(apps = listOf(recipes), ownerEnabled = true, ownerState = NodeState.Connecting))
         composeRule.onNodeWithText(ConnectionCopy.connecting).assertIsDisplayed()
+    }
+
+    /** With no network, the owner's node can't come up: the pill says the phone is offline, without a spinner. */
+    @Test
+    fun testThePillSaysOfflineWhenThePhoneIs() {
+        show(LauncherState(apps = listOf(recipes), ownerEnabled = true, ownerState = NodeState.Connecting, phoneOffline = true))
+        composeRule.onNodeWithText(ConnectionCopy.offline).assertIsDisplayed()
+        composeRule.onNodeWithText(ConnectionCopy.connecting).assertDoesNotExist()
     }
 
     @Test
@@ -393,6 +414,29 @@ class LauncherViewTests {
         field.performTextReplacement(" Kitchen ")
         composeRule.onNodeWithText("Save").performClick()
         assertEquals(listOf(recipes.id to "Kitchen"), renamed)
+    }
+
+    /** Android only: an app a link opens over the launcher takes its open dialog or menu away, which would stay on top of it. */
+    @Test
+    fun testCoveringTheLauncherClosesItsDialogs() {
+        var covered by mutableStateOf(false)
+        composeRule.setContent { OvenlightTheme { LauncherView(LauncherState(apps = apps, covered = covered)) } }
+        tile("Recipe Box").performTouchInput { longClick() }
+        composeRule.onNodeWithText("Remove app").performClick()
+        composeRule.onNodeWithText("Remove Recipe Box?").assertIsDisplayed()
+        composeRule.runOnIdle { covered = true }
+        composeRule.onNodeWithText("Remove Recipe Box?").assertDoesNotExist()
+        // And a tile's menu, and More's.
+        composeRule.runOnIdle { covered = false }
+        tile("Recipe Box").performTouchInput { longClick() }
+        composeRule.onNodeWithText("Rename").assertIsDisplayed()
+        composeRule.runOnIdle { covered = true }
+        composeRule.onNodeWithText("Rename").assertDoesNotExist()
+        composeRule.runOnIdle { covered = false }
+        composeRule.onNodeWithContentDescription("More").performClick()
+        composeRule.onNodeWithText("Settings").assertIsDisplayed()
+        composeRule.runOnIdle { covered = true }
+        composeRule.onNodeWithText("Settings").assertDoesNotExist()
     }
 
     @Test

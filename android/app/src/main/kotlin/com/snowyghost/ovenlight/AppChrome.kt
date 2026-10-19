@@ -359,8 +359,21 @@ data class PageLook(val cover: Boolean = true, val header: String? = null, val b
   const background = [document.documentElement, document.body].map(e => e && getComputedStyle(e).backgroundColor)
     .find(c => c && c !== "transparent" && !/^rgba\(.*,\s*0\)$/.test(c)) ?? null;
   const viewport = [...document.querySelectorAll('meta[name="viewport" i]')].pop();
-  return { cover: /viewport-fit\s*=\s*cover/i.test(viewport?.content ?? ""), header: header ?? background, background };
+  const navigation = performance.getEntriesByType("navigation")[0];
+  const down = navigation?.responseStatus === 502 && document.contentType === "text/plain";
+  return { cover: /viewport-fit\s*=\s*cover/i.test(viewport?.content ?? ""), header: header ?? background, background, down };
 })()"""
+
+        /**
+         * Whether the page the script read is a plain-text 502, the connector's answer for an app
+         * that isn't running (see [AppLoadGate.appIsDown]): WebView shows that page, and may finish
+         * it before it reports the error. A script can't read the connector's code, so an app's
+         * own plain-text 502 first page counts too.
+         */
+        fun appIsDown(result: String?): Boolean {
+            val fields = result?.let { runCatching { ovenlightJSON.parseToJsonElement(it) as? JsonObject }.getOrNull() }
+            return (fields?.get("down") as? JsonPrimitive)?.booleanOrNull == true
+        }
 
         /** The script's answer, a JSON object; anything else is a page that didn't ask to cover the screen. */
         fun decoded(result: String?): PageLook {

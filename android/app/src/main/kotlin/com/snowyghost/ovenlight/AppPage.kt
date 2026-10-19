@@ -63,6 +63,10 @@ class AppPage(
     private val error = MutableStateFlow<String?>(null)
     val loadError: StateFlow<String?> = error
 
+    /** The gate gave up because the node never came up, not because the app didn't answer: the phone's own connection. */
+    private val mutableNeverConnected = MutableStateFlow(false)
+    val neverConnected: StateFlow<Boolean> = mutableNeverConnected
+
     /** What [loadError] came from, in codes only, for Report a Problem (see [AppLoadGate.loadFailure]). */
     var loadFailure: String? = null
         get() = field.takeIf { error.value != null }
@@ -110,9 +114,9 @@ class AppPage(
     /** Its microphone and camera (PageCapture.kt). */
     val capture = PageCapture(
         app, ownersHosts = { nodes.ownersHosts }, isLocked = { pool.isLocked.value }, isOnScreen = { shown }, scope = scope,
-        permissions = { needed, done ->
+        permissions = { needed, refusedForGood, done ->
             CaptureMonitor.watch(this.context)
-            RuntimePermissions.request(this.context, needed, done)
+            RuntimePermissions.request(this.context, needed, refusedForGood, done)
         },
         stillCapturing = { CaptureMonitor.capturing(this.context) },
         destroy = { pool.replace(this) },
@@ -191,6 +195,7 @@ class AppPage(
         failedLoads = 0
         appDownLoads = 0
         error.value = null
+        mutableNeverConnected.value = false
         mutableGate.value = mutableGate.value.next(AppLoadGate.Event.Retry)
         openGate()
     }
@@ -255,7 +260,7 @@ class AppPage(
                 probingSince = null
                 // Sign-in and node failures have their own screens and wait for the owner.
                 val left = deadline.left(state)
-                if (!left.isPositive()) return giveUp()
+                if (!left.isPositive()) return giveUp(neverConnected = true)
                 // Until the node, its tailnet or the phone's network changes, or a busy node's time runs out.
                 // Only a value other than the one read above ends the wait, so the loop can't spin.
                 val seen = Triple(state, node.status.value, online)
@@ -289,8 +294,9 @@ class AppPage(
         }
     }
 
-    private fun giveUp() {
+    private fun giveUp(neverConnected: Boolean = false) {
         OvenlightLog.i("${app.host}: unreachable")
+        mutableNeverConnected.value = neverConnected
         mutableGate.value = mutableGate.value.next(AppLoadGate.Event.GaveUp)
         // A page already on screen keeps it; the person's Reload checks the path again.
         if (loaded.value) {
@@ -347,7 +353,11 @@ class AppPage(
         // Once the app has rendered, a failed load leaves the page as it is. A link the person
         // tapped that can't reach the computer says so; what the page loads by itself never does.
         if (loaded.value) {
-            if (tapped && code in retryableThroughNode) cantReachAlert.value = true
+            if (tapped && code in retryableThroughNode) {
+                // The node carried the link, so its computer is what didn't answer.
+                mutableNeverConnected.value = false
+                cantReachAlert.value = true
+            }
             return
         }
         if (code in retryableThroughNode && failedLoads < MAX_FAILED_LOADS) {
@@ -406,13 +416,19 @@ class AppPage(
                 view.clearHistory()
             }
             view.evaluateJavascript(PageLook.script) {
-                if (destroyed) return@evaluateJavascript
+                // An error that came meanwhile, the app-down one among them, has been seen to.
+                if (destroyed || navigationFailed) return@evaluateJavascript
+                if (!loaded.value && PageLook.appIsDown(it)) {
+                    navigationFailed = true
+                    return@evaluateJavascript appIsDown()
+                }
                 look.value = PageLook.decoded(it)
                 loaded.value = true
+                // Only a page that counts starts the tries over: an app-down one keeps its count.
+                error.value = null
+                failedLoads = 0
+                appDownLoads = 0
             }
-            error.value = null
-            failedLoads = 0
-            appDownLoads = 0
         }
 
         override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
@@ -425,6 +441,8 @@ class AppPage(
             if (!request.isForMainFrame) return
             val header = response.responseHeaders?.entries?.firstOrNull { it.key.equals(ConnectorError.header, ignoreCase = true) }?.value
             if (!loaded.value && AppLoadGate.appIsDown(response.statusCode, header)) {
+                // The page's script found it first.
+                if (navigationFailed) return
                 navigationFailed = true
                 view.stopLoading()
                 return appIsDown()

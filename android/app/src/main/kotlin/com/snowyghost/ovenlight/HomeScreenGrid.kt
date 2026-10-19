@@ -2,6 +2,7 @@ package com.snowyghost.ovenlight
 
 import android.graphics.Bitmap
 import android.util.LruCache
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector2D
 import androidx.compose.animation.core.Spring
@@ -106,6 +107,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.Hyphens
 import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
@@ -236,6 +238,8 @@ fun HomeScreenGrid(
     addApp: () -> Unit,
     openLink: (String) -> Unit,
     modifier: Modifier = Modifier,
+    /** A screen or an open app covers the grid: an open menu goes, or it would stay on top. */
+    covered: Boolean = false,
     header: @Composable ColumnScope.() -> Unit = {},
     menu: @Composable ColumnScope.(app: WebApp, close: () -> Unit) -> Unit,
 ) {
@@ -253,6 +257,7 @@ fun HomeScreenGrid(
     }
     var drag by remember { mutableStateOf<IconDrag?>(null) }
     var menuFor by remember { mutableStateOf<UUID?>(null) }
+    LaunchedEffect(covered) { if (covered) menuFor = null }
     var pressed by remember { mutableStateOf<UUID?>(null) }
     // While dragging, the moved app sits in its target slot.
     val order = drag?.let { d -> HomeReorder.moving(apps, d.id, d.target) { it.id } } ?: apps
@@ -263,7 +268,8 @@ fun HomeScreenGrid(
         drag = null
     }
     Column(modifier.verticalScroll(rememberScrollState(), enabled = drag == null)) {
-        header()
+        // A card or invite coming or going moves the grid smoothly.
+        Column(Modifier.animateContentSize()) { header() }
         BoxWithConstraints(Modifier.fillMaxWidth()) {
             val labelHeight = labelLines + (if (apps.any { it.isShared }) sharedByLine else 0f)
             val layout = remember(maxWidth, labelHeight, largeText) { HomeGridLayout(maxWidth.value.toDouble(), labelHeight.toDouble(), largeText) }
@@ -476,8 +482,10 @@ fun HomeScreenGrid(
                     }
                 }
                 // Until the owner has an app of their own, beside apps someone shared too.
+                // Its text starts where the slot's icon does.
                 if (ownerEnabled && apps.none { !it.isShared }) {
-                    EmptyGridFooter(openLink, Modifier.padding(horizontal = (2 * layout.sideMargin).dp).padding(bottom = HomeGridLayout.rowGap.dp))
+                    val inset = layout.sideMargin + (layout.columnWidth - layout.iconSize) / 2
+                    EmptyGridFooter(openLink, Modifier.padding(horizontal = inset.dp).padding(bottom = HomeGridLayout.rowGap.dp))
                 }
             }
         }
@@ -537,9 +545,7 @@ private fun AppTile(
     focused: Boolean,
 ) {
     val colors = MaterialTheme.colorScheme
-    // In the dark, the light behind the top rows is bright enough that only white reads on it:
-    // 4.8:1 at its brightest, measured, where the usual text is 3.7 and secondary text 2.8.
-    val label = if (isSystemInDarkTheme()) Color.White else colors.onSurface
+    val label = labelColor
     val scale by animateFloatAsState(if (pressed) 0.92f else if (lifted) 1.12f else 1f, label = "tile scale")
     val elevation by animateDpAsState(if (lifted) 12.dp else 2.dp, label = "tile shadow")
     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -578,6 +584,14 @@ private fun AppTile(
         }
     }
 }
+
+/**
+ * Text over the light: the tiles' names, the empty slot's and its footer. In the dark, the light
+ * behind the top rows is bright enough that only white reads on it: 4.8:1 at its brightest,
+ * measured, where the usual text is 3.7 and secondary text 2.8.
+ */
+private val labelColor: Color
+    @Composable get() = if (isSystemInDarkTheme()) Color.White else MaterialTheme.colorScheme.onSurface
 
 /** An app's icon: its cached image, or a monogram on its theme color (the ember without one). */
 @Composable
@@ -648,7 +662,7 @@ private fun EmptyHomeSlot(size: Dp, onClick: () -> Unit, modifier: Modifier = Mo
             Icon(painterResource(R.drawable.ic_add), contentDescription = null, tint = colors.onSurfaceVariant, modifier = Modifier.size(size * 0.36f))
         }
         Spacer(Modifier.height(HomeGridLayout.labelGap.dp))
-        Text(stringResource(R.string.launcher_add_app), style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant, maxLines = 1)
+        Text(stringResource(R.string.launcher_add_app), style = MaterialTheme.typography.bodySmall, color = labelColor, maxLines = 1)
     }
 }
 
@@ -657,21 +671,18 @@ private fun EmptyHomeSlot(size: Dp, onClick: () -> Unit, modifier: Modifier = Mo
 private fun EmptyGridFooter(openLink: (String) -> Unit, modifier: Modifier = Modifier) {
     val link = stringResource(R.string.launcher_connector)
     val text = stringResource(R.string.launcher_empty_footer, link)
-    val primary = MaterialTheme.colorScheme.primary
-    val annotated = remember(text, link, primary) {
+    // Underlined, in the text's own color: on the light the ember measures 4.3:1 at worst, and 1.5:1 in the dark.
+    val annotated = remember(text, link) {
         buildAnnotatedString {
             append(text)
             val start = text.indexOf(link)
             if (start >= 0) {
                 addLink(
-                    LinkAnnotation.Url(AppLinks.ownComputersHelp, TextLinkStyles(SpanStyle(color = primary))) { openLink(AppLinks.ownComputersHelp) },
+                    LinkAnnotation.Url(AppLinks.ownComputersHelp, TextLinkStyles(SpanStyle(textDecoration = TextDecoration.Underline))) { openLink(AppLinks.ownComputersHelp) },
                     start, start + link.length,
                 )
             }
         }
     }
-    Text(
-        annotated, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-        textAlign = TextAlign.Center, modifier = modifier.fillMaxWidth(),
-    )
+    Text(annotated, style = MaterialTheme.typography.bodySmall, color = labelColor, modifier = modifier.fillMaxWidth())
 }

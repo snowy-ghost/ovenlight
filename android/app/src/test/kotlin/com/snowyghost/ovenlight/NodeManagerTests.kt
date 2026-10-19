@@ -312,12 +312,16 @@ class NodeManagerTests {
         advanceTimeBy(300_000)
         assertEquals("a TV without a connector gets no timer", 2, asks("tv"))
 
+        // The launcher keeps the app it found, as the app model tells the node.
+        nodes.owner.launcherApps = { listOf(WebApp(name = "Notes", startURL = URI("https://notes.tailabc123.ts.net/"), discovered = true)) }
         clients.pages.remove(manifest("notes"))
         clients.status[Membership.ownerID] = status("Running", self = ownerSelf, peers = "$laptop,$desktop,$notes")
         advanceTimeBy(15_000)
         val stopped = asks("notes")
         advanceTimeBy(70_000)
         assertEquals("a found private app that stops answering is asked again a minute later", stopped + 1, asks("notes"))
+        advanceTimeBy(70_000)
+        assertEquals("and each minute after, while its tile is on the launcher", stopped + 2, asks("notes"))
     }
 
     /** A probe canceled under way, as when its app's screen closes, says nothing about the host. */

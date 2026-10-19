@@ -8,6 +8,9 @@
     <string name="launcher_connect_title">Connect your computers</string>
     <string name="launcher_connect_body">Ovenlight connects privately to your own computers with your Tailscale account, without a VPN.</string>
     <string name="launcher_connect">Connect</string>
+    <!-- The card instead, once the phone was connected and its sign-in ended. -->
+    <string name="launcher_sign_in_again_title">Sign in again</string>
+    <string name="launcher_sign_in_again_body">This phone’s Tailscale sign-in ended. Sign in again to reach your computers.</string>
     <string name="launcher_approve_body">Your Tailscale network asks you to approve each new device once. On the Machines page, find %1$s, open its ••• menu and choose Approve. Ovenlight connects as soon as you do.</string>
     <string name="launcher_open_machines">Open Machines page</string>
 

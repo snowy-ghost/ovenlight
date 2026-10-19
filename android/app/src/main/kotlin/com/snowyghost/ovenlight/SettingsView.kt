@@ -350,10 +350,13 @@ private fun SettingsList(state: SettingsState, scroll: ScrollState, onClose: () 
 @Composable
 private fun OwnerGroups(owner: OwnerSettings, state: SettingsState, confirm: (Int) -> Unit) {
     val primary = MaterialTheme.colorScheme.primary
+    // Every row has an icon, so their text lines up.
+    @Composable
+    fun icon(drawable: Int) = Icon(painterResource(drawable), contentDescription = null, tint = primary)
     SettingsGroup {
         val login = owner.state as? NodeState.NeedsLogin
         if (login != null) {
-            row { shape -> SettingsRow(shape, stringResource(R.string.sign_in_to_your_computers), color = primary, onClick = { state.signIn(login.url) }) }
+            row { shape -> SettingsRow(shape, stringResource(R.string.sign_in_to_your_computers), color = primary, leading = { icon(R.drawable.ic_lan) }, onClick = { state.signIn(login.url) }) }
         } else {
             row { shape ->
                 SettingsRow(
@@ -362,10 +365,9 @@ private fun OwnerGroups(owner: OwnerSettings, state: SettingsState, confirm: (In
                 )
             }
             if (owner.state == NodeState.AwaitingApproval) {
-                row { shape -> SettingsRow(shape, stringResource(R.string.approve_this_phone), color = primary, onClick = state.approve) }
+                row { shape -> SettingsRow(shape, stringResource(R.string.approve_this_phone), color = primary, leading = { icon(R.drawable.ic_verified_user) }, onClick = state.approve) }
             }
             if (owner.account != null) {
-                // With an icon, as Your computers has, so the two line up.
                 row { shape ->
                     val error = MaterialTheme.colorScheme.error
                     SettingsRow(
@@ -379,7 +381,9 @@ private fun OwnerGroups(owner: OwnerSettings, state: SettingsState, confirm: (In
         // While no account is signed in, Use my own computers can still be taken back.
         if (owner.hasNoAccount) {
             val stop = R.string.settings_stop_using_my_own_computers
-            row { shape -> SettingsRow(shape, stringResource(stop), color = primary, onClick = { if (owner.hasFoundApps) confirm(stop) else state.stopUsingMyOwnComputers() }) }
+            row { shape ->
+                SettingsRow(shape, stringResource(stop), color = primary, leading = { icon(R.drawable.ic_logout) }, onClick = { if (owner.hasFoundApps) confirm(stop) else state.stopUsingMyOwnComputers() })
+            }
         }
     }
     SettingsGroup(header = stringResource(R.string.settings_advanced)) {
@@ -427,9 +431,9 @@ private fun AcknowledgementsScreen(notices: suspend () -> String?, onBack: () ->
 /**
  * A full-screen destination on the grouped background, which its top app bar shares, with a
  * back arrow (or [navigationIcon]) and [actions]. With [scroll] the content scrolls in a
- * centered column, and [refresh] adds a pull to refresh; without, it gets the bars' padding and
- * scrolls itself. Its title names the pane for TalkBack, since it replaces another screen in
- * the same window.
+ * centered column; without, it gets the bars' padding and scrolls itself. [refresh] adds a pull
+ * to refresh. Its title names the pane for TalkBack, since it replaces another screen in the
+ * same window.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -471,10 +475,14 @@ internal fun GroupedScreen(
         // Clear of a navigation bar or cutout at the side, in landscape.
         val start = bars.calculateStartPadding(direction)
         val end = bars.calculateEndPadding(direction)
+        val top = bars.calculateTopPadding()
         if (scroll == null) {
-            return@Scaffold content(PaddingValues(start = start, top = bars.calculateTopPadding() + 8.dp, end = end, bottom = bars.calculateBottomPadding() + 16.dp))
+            val bottom = bars.calculateBottomPadding() + 16.dp
+            if (refresh == null) return@Scaffold content(PaddingValues(start = start, top = top + 8.dp, end = end, bottom = bottom))
+            // Below the bar, where the pull's indicator shows.
+            return@Scaffold Refreshable(refresh, Modifier.fillMaxSize().padding(top = top)) { content(PaddingValues(start = start, top = 8.dp, end = end, bottom = bottom)) }
         }
-        val modifier = Modifier.fillMaxSize().padding(start = start, top = bars.calculateTopPadding(), end = end)
+        val modifier = Modifier.fillMaxSize().padding(start = start, top = top, end = end)
         val column = @Composable {
             Column(Modifier.widthIn(max = 640.dp).fillMaxWidth().verticalScroll(scroll).padding(horizontal = 16.dp)) {
                 Spacer(Modifier.height(8.dp))
@@ -483,24 +491,31 @@ internal fun GroupedScreen(
             }
         }
         if (refresh == null) return@Scaffold Box(modifier, contentAlignment = Alignment.TopCenter) { column() }
-        val scope = rememberCoroutineScope()
-        var refreshing by remember { mutableStateOf(false) }
-        PullToRefreshBox(
-            isRefreshing = refreshing,
-            onRefresh = {
-                scope.launch {
-                    refreshing = true
-                    try {
-                        refresh()
-                    } finally {
-                        refreshing = false
-                    }
-                }
-            },
-            modifier = modifier,
-            contentAlignment = Alignment.TopCenter,
-        ) { column() }
+        Refreshable(refresh, modifier) { column() }
     }
+}
+
+/** Pull to refresh over [content], which scrolls. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun Refreshable(refresh: suspend () -> Unit, modifier: Modifier, content: @Composable () -> Unit) {
+    val scope = rememberCoroutineScope()
+    var refreshing by remember { mutableStateOf(false) }
+    PullToRefreshBox(
+        isRefreshing = refreshing,
+        onRefresh = {
+            scope.launch {
+                refreshing = true
+                try {
+                    refresh()
+                } finally {
+                    refreshing = false
+                }
+            }
+        },
+        modifier = modifier,
+        contentAlignment = Alignment.TopCenter,
+    ) { content() }
 }
 
 /**

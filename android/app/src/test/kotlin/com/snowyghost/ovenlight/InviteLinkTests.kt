@@ -57,7 +57,7 @@ class InviteLinkTests {
         assertEquals(link, parse(fragment))
         assertTrue(InviteLink.isInvite(URI(fragment)))
         assertEquals("the query wins when both are there", link, parse(connectorLink + "#v=2"))
-        assertEquals(InviteLink.ParseError.UnsupportedVersion, error("ovenlight://join"))
+        assertEquals("no fields at all is incomplete", InviteLink.ParseError.MissingField("v"), error("ovenlight://join"))
         assertEquals("found in a message too", "3f9a1c2b7e", InviteLink.parse(text = "Open this: $fragment", allowLocalHTTP = false).invite)
         assertEquals("an empty address is none, as iOS's URL(string:) says", null, uri(""))
     }
@@ -97,7 +97,6 @@ class InviteLinkTests {
         assertEquals(InviteLink.ParseError.NotAnInvite, error("ovenlight://open?app=Coach"))
         assertEquals(InviteLink.ParseError.NotAnInvite, error("https://example.com/join?v=1"))
         assertEquals(InviteLink.ParseError.UnsupportedVersion, error(connectorLink.replace("&v=1", "&v=2")))
-        assertEquals(InviteLink.ParseError.UnsupportedVersion, error(connectorLink.replace("&v=1", "")))
         assertEquals(InviteLink.ParseError.InsecureControl, error(connectorLink.replace("https%3A%2F%2F", "http%3A%2F%2F")))
         for (field in listOf("key", "app", "invite", "host", "control")) {
             val without = connectorLink.replace(Regex("""(^|[?&])$field=[^&]*"""), "$1")
@@ -107,6 +106,16 @@ class InviteLinkTests {
             InviteLink.ParseError.MissingField("key"),
             error(connectorLink.replace("key=tskey-auth-kX1abc-DEF%2Bghi", "key=")),
         )
+    }
+
+    /** The connector writes v last, so a link cut short loses it first: it's incomplete, not for a newer Ovenlight. */
+    @Test
+    fun testAnInviteMissingItsVersionIsIncomplete() {
+        val cut = connectorLink.substringBefore("&to=")
+        assertEquals(InviteLink.ParseError.MissingField("v"), error(cut))
+        assertEquals("This link is incomplete. Ask for it again and copy the whole link.", error(cut)?.message)
+        assertEquals(InviteLink.ParseError.MissingField("v"), error(connectorLink.replace("&v=1", "&v=")))
+        assertEquals(InviteLink.ParseError.UnsupportedVersion, error(connectorLink.replace("&v=1", "&v=2")))
     }
 
     @Test

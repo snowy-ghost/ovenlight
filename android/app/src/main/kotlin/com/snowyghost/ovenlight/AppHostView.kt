@@ -16,13 +16,13 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -34,7 +34,6 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
@@ -114,7 +113,7 @@ fun AppHostView(model: AppModel, app: WebApp, origin: TransformOrigin = Transfor
     val apps by model.registry.appsFlow.collectAsState()
     // An app removed while it closes (Leave, access ended) gets no new view: the pool would
     // make its profile again, and load it.
-    if (apps.none { it.id == app.id }) return Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background))
+    if (apps.none { it.id == app.id }) return Box(Modifier.fillMaxSize().background(LocalOvenColors.current.pageBackground))
     // The same live page every time, unless the app's route changed since it was made.
     val revision by model.pool.revision.collectAsState()
     val page = remember(app.id, revision) { model.pool.page(app) }
@@ -133,6 +132,7 @@ private fun AppPageView(model: AppModel, page: AppPage, origin: TransformOrigin,
     val iconRevisions by model.registry.iconRevisions.collectAsState()
     val icon = rememberIcon(app, iconRevisions[app.id] ?: 0) { IconDecoder.load(model.registry.iconFile(it)) }
     val cantReach by page.cantReachAlert.collectAsState()
+    val neverConnected by page.neverConnected.collectAsState()
     val look by page.look.collectAsState()
 
     DisposableEffect(page) {
@@ -148,7 +148,7 @@ private fun AppPageView(model: AppModel, page: AppPage, origin: TransformOrigin,
     val back = rememberAppBack(canGoBack = page.view::canGoBack, goBack = page.view::goBack, close = onClose)
     val tint = rememberStatusBarTint(app)
 
-    val plain = MaterialTheme.colorScheme.background
+    val plain = LocalOvenColors.current.pageBackground
     val color = { css: String? -> css?.let(StatusBarTint::opaqueHex)?.let(::themeColor) }
     // The band under the status bar and the handle: the page's header, or until it loads the one from its last load.
     val header = if (loaded) color(look.header) else tint
@@ -156,12 +156,13 @@ private fun AppPageView(model: AppModel, page: AppPage, origin: TransformOrigin,
     val appNode: MembershipNode? = page.node
     val retryNode: () -> Unit = { appNode?.let { node -> model.scope.launch { node.restart() } } }
     val action = appNode?.let { nodeState?.let { NodeActionOverlay.action(it, app, ownerEnabled) } }
+    // What each cover says goes with it, so one fading out keeps its words.
     val showing = when {
-        error != null -> Cover.Error
+        error != null -> Cover.Error(error.orEmpty())
         loaded -> Cover.None
         gate == AppLoadGate.Offline -> Cover.Offline
-        action != null -> Cover.Node
-        gate == AppLoadGate.Unreachable -> Cover.CantReach
+        action != null -> Cover.Node(action)
+        gate == AppLoadGate.Unreachable -> Cover.CantReach(ConnectionCopy.cantReachDetail(app, refused = appNode == null, neverConnected = neverConnected))
         else -> Cover.Placeholder
     }
     StatusBarIcons(band)
@@ -177,7 +178,8 @@ private fun AppPageView(model: AppModel, page: AppPage, origin: TransformOrigin,
                 modifier = if (look.cover) Modifier.fillMaxSize() else Modifier.fillMaxSize().windowInsetsPadding(insideBars),
             )
             // The page takes no touches until it has loaded; the placeholder or overlay over it does.
-            if (!loaded) Box(Modifier.fillMaxSize().pointerInput(Unit) { awaitEachGesture { awaitFirstDown().consume() } })
+            // Its background keeps an empty web view's white from showing as the covers fade.
+            if (!loaded) Box(Modifier.fillMaxSize().background(LocalOvenColors.current.pageBackground).pointerInput(Unit) { awaitEachGesture { awaitFirstDown().consume() } })
             AnimatedContent(
                 targetState = showing,
                 transitionSpec = { fadeIn(tween(250)) togetherWith fadeOut(tween(250)) },
@@ -188,14 +190,15 @@ private fun AppPageView(model: AppModel, page: AppPage, origin: TransformOrigin,
                     when (cover) {
                         Cover.None -> Unit
                         Cover.Placeholder -> LaunchPlaceholder(app, icon)
-                        Cover.CantReach -> LoadErrorView(
-                            R.drawable.ic_wifi_off, ConnectionCopy.cantReach(app.name), ConnectionCopy.cantReachDetail(app, refused = appNode == null), page::reload, onClose,
+                        // A refused app has no way in that Try again could find.
+                        is Cover.CantReach -> LoadErrorView(
+                            R.drawable.ic_wifi_off, ConnectionCopy.cantReach(app.name), cover.detail, page::reload.takeIf { appNode != null }, onClose,
                         )
                         Cover.Offline -> LoadErrorView(R.drawable.ic_wifi_off, ConnectionCopy.offline, ConnectionCopy.offlineDetail, page::reload, onClose)
-                        Cover.Error -> LoadErrorView(R.drawable.ic_warning, stringResource(R.string.app_cant_open, app.name), error.orEmpty(), page::reload, onClose)
-                        Cover.Node -> action?.let {
+                        is Cover.Error -> LoadErrorView(R.drawable.ic_warning, stringResource(R.string.app_cant_open, app.name), cover.message, page::reload, onClose)
+                        is Cover.Node -> {
                             NodeActionCard(
-                                app, it, deviceName = model.nodes.deviceName,
+                                app, cover.action, deviceName = model.nodes.deviceName,
                                 connect = {
                                     when (val state = model.nodes.owner.state.value) {
                                         is NodeState.NeedsLogin -> model.router.presentTab(RootSheet.Login(state.url))
@@ -219,7 +222,7 @@ private fun AppPageView(model: AppModel, page: AppPage, origin: TransformOrigin,
         AlertDialog(
             onDismissRequest = { page.cantReachAlert.value = false },
             title = { Text(ConnectionCopy.cantReach(app.name)) },
-            text = { Text(ConnectionCopy.cantReachDetail(app)) },
+            text = { Text(ConnectionCopy.cantReachDetail(app, neverConnected = neverConnected)) },
             confirmButton = { TextButton(onClick = { page.cantReachAlert.value = false }) { Text(stringResource(R.string.ok)) } },
         )
     }
@@ -227,7 +230,14 @@ private fun AppPageView(model: AppModel, page: AppPage, origin: TransformOrigin,
     DownloadSheet(model, page)
 }
 
-private enum class Cover { None, Placeholder, CantReach, Offline, Error, Node }
+private sealed interface Cover {
+    data object None : Cover
+    data object Placeholder : Cover
+    data class CantReach(val detail: String) : Cover
+    data object Offline : Cover
+    data class Error(val message: String) : Cover
+    data class Node(val action: NodeActionOverlay.Action) : Cover
+}
 
 /** The status bar's icons over [band], the color Ovenlight paints behind them. */
 @Composable
@@ -287,43 +297,40 @@ private fun LaunchPlaceholder(app: WebApp, icon: Bitmap?) {
  * it: Try again, and the way back to the apps. Its title is the join screen's display title.
  */
 @Composable
-private fun LoadErrorView(icon: Int, title: String, message: String, retry: () -> Unit, close: () -> Unit) {
+private fun LoadErrorView(icon: Int, title: String, message: String, retry: (() -> Unit)?, close: () -> Unit) {
     // A pane, so TalkBack says it as it replaces the placeholder.
     CenteredScroll(Modifier.background(LocalOvenColors.current.pageBackground).semantics { paneTitle = title }, contentPadding = 32.dp) {
         Icon(painterResource(icon), contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(40.dp))
         Text(title, Modifier.padding(top = 16.dp).semantics { heading() }, style = OvenType.displayTitle, textAlign = TextAlign.Center)
         Text(message, Modifier.padding(top = 8.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
-        Button(onClick = retry, Modifier.padding(top = 24.dp).heightIn(min = 48.dp)) { Text(stringResource(R.string.try_again)) }
-        TextButton(onClick = close, Modifier.padding(top = 8.dp)) { Text(stringResource(R.string.app_back_to_apps)) }
+        retry?.let {
+            Button(onClick = it, Modifier.padding(top = 24.dp).widthIn(max = 640.dp).fillMaxWidth().height(56.dp)) {
+                Text(stringResource(R.string.try_again), style = MaterialTheme.typography.titleMedium)
+            }
+        }
+        TextButton(onClick = close, Modifier.padding(top = if (retry == null) 24.dp else 8.dp)) { Text(stringResource(R.string.app_back_to_apps)) }
     }
 }
 
-/** The owner's sign-in or device approval, or a failure, with the way back to the apps. A guest sees only a failure. */
+/**
+ * The owner's sign-in or device approval, or a failure, in the launcher's card for the same step,
+ * with the way back to the apps. A guest sees only a failure.
+ */
 @Composable
 private fun NodeActionCard(app: WebApp, action: NodeActionOverlay.Action, deviceName: String, connect: () -> Unit, retry: () -> Unit, close: () -> Unit) {
     CenteredScroll(Modifier.background(LocalOvenColors.current.pageBackground)) {
-        ElevatedCard(Modifier.padding(24.dp).widthIn(max = 480.dp)) {
-            Column(Modifier.padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                when (action) {
-                    NodeActionOverlay.Action.SignIn -> {
-                        Text(ConnectionCopy.signIn(toOpen = app.name), style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
-                        Button(onClick = connect, Modifier.padding(top = 16.dp).heightIn(min = 48.dp)) { Text(stringResource(R.string.app_sign_in)) }
-                    }
-                    NodeActionOverlay.Action.OwnerApproval -> {
-                        Text(stringResource(R.string.approve_this_phone), style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
-                        Text(
-                            stringResource(R.string.launcher_approve_body, deviceName), Modifier.padding(top = 8.dp),
-                            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center,
-                        )
-                        Button(onClick = connect, Modifier.padding(top = 16.dp).heightIn(min = 48.dp)) { Text(stringResource(R.string.launcher_open_machines)) }
-                    }
-                    is NodeActionOverlay.Action.Failed -> {
-                        Text(action.message, style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center)
-                        Button(onClick = retry, Modifier.padding(top = 16.dp).heightIn(min = 48.dp)) { Text(stringResource(R.string.try_again)) }
-                    }
-                }
-                TextButton(onClick = close, Modifier.padding(top = 8.dp)) { Text(stringResource(R.string.app_back_to_apps)) }
-            }
+        val card = Modifier.padding(24.dp).widthIn(max = 480.dp)
+        val back: @Composable ColumnScope.() -> Unit = {
+            TextButton(onClick = close, Modifier.align(Alignment.CenterHorizontally)) { Text(stringResource(R.string.app_back_to_apps)) }
+        }
+        when (action) {
+            NodeActionOverlay.Action.SignIn ->
+                LauncherCard(R.drawable.ic_lan, ConnectionCopy.signIn(toOpen = app.name), null, stringResource(R.string.app_sign_in), card, back, connect)
+            NodeActionOverlay.Action.OwnerApproval -> LauncherCard(
+                R.drawable.ic_verified_user, stringResource(R.string.approve_this_phone), approveBody(deviceName), stringResource(R.string.launcher_open_machines),
+                card, back, connect,
+            )
+            is NodeActionOverlay.Action.Failed -> LauncherCard(R.drawable.ic_wifi_off, action.message, null, stringResource(R.string.try_again), card, back, retry)
         }
     }
 }

@@ -3,11 +3,8 @@ package com.snowyghost.ovenlight
 import android.Manifest
 import android.content.ClipboardManager
 import android.content.Context
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
-import android.net.Uri
-import android.provider.Settings
 import androidx.camera.compose.CameraXViewfinder
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
@@ -23,7 +20,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -253,7 +249,11 @@ private fun InviteEntry(canScan: Boolean, found: (InviteLink) -> Unit) {
     ) {
         Text(ConnectionCopy.invitePrompt, style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp))
         // The clipboard is read only on a tap, and Android says when it is.
-        FilledTonalButton(onClick = { use(clipboardText(context)) }, modifier = Modifier.fillMaxWidth().height(56.dp)) {
+        val nothingToPaste = stringResource(R.string.join_nothing_to_paste)
+        FilledTonalButton(
+            onClick = { clipboardText(context).let { if (it.isBlank()) error = nothingToPaste else use(it) } },
+            modifier = Modifier.fillMaxWidth().height(56.dp),
+        ) {
             Icon(painterResource(R.drawable.ic_content_paste), contentDescription = null, modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(8.dp))
             Text(stringResource(R.string.join_paste), style = MaterialTheme.typography.titleMedium)
@@ -285,16 +285,9 @@ private fun InviteEntry(canScan: Boolean, found: (InviteLink) -> Unit) {
         if (canScan) {
             OutlinedButton(
                 onClick = {
-                    val activity = context.componentActivity()
-                    val rationale = { activity?.shouldShowRequestPermissionRationale(Manifest.permission.CAMERA) == true }
-                    val before = rationale()
-                    val askedBefore = cameraAsked
-                    RuntimePermissions.request(context, listOf(Manifest.permission.CAMERA)) { granted ->
-                        cameraAsked = true
-                        // Turned off for good, the scanner says so, with the way to Settings. Android
-                        // gives no rationale both before the first question and after a dismissed one,
-                        // so only a refusal of a question asked before counts.
-                        if (granted || (askedBefore && !before && !rationale())) scanning = true
+                    // Turned off for good, the scanner says so, with the way to Settings.
+                    RuntimePermissions.request(context, listOf(Manifest.permission.CAMERA), refusedForGood = { scanning = true }) { granted ->
+                        if (granted) scanning = true
                     }
                 },
                 modifier = Modifier.fillMaxWidth().height(56.dp),
@@ -315,9 +308,6 @@ private fun InviteEntry(canScan: Boolean, found: (InviteLink) -> Unit) {
     }
 }
 
-/** Whether this process asked for the camera already, for telling a refusal for good from a first one. */
-private var cameraAsked = false
-
 /** What's on the clipboard as plain text, or nothing: never a copied file, which reading would open. */
 private fun clipboardText(context: Context): String {
     val clip = context.getSystemService(ClipboardManager::class.java)?.primaryClip ?: return ""
@@ -330,7 +320,7 @@ private fun CantUseInvite(message: String, tryAnother: () -> Unit) = CenteredScr
     Icon(painterResource(R.drawable.ic_error), contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(48.dp))
     Text(
         stringResource(R.string.join_cant_use), Modifier.padding(top = 16.dp).semantics { heading() },
-        style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center,
+        style = OvenType.displayTitle, textAlign = TextAlign.Center,
     )
     Text(
         message, Modifier.padding(top = 8.dp),
@@ -475,7 +465,7 @@ private fun JoinInvite(invite: InviteLink, state: JoinState, close: () -> Unit) 
                     phase != null -> Unit
                     else -> {
                         primary(stringResource(R.string.join_join)) { state.accept(invite) }
-                        TextButton(onClick = close) { Text(stringResource(R.string.join_not_now)) }
+                        TextButton(onClick = close) { Text(stringResource(R.string.not_now)) }
                     }
                 }
             }
@@ -510,9 +500,7 @@ private fun InviteScannerView(found: (String) -> Unit, cancel: () -> Unit) {
                     verticalArrangement = Arrangement.spacedBy(24.dp),
                 ) {
                     Text(stringResource(R.string.join_camera_denied), color = Color.White, style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center)
-                    Button(onClick = {
-                        context.startOrFalse(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null)))
-                    }) { Text(stringResource(R.string.join_open_settings)) }
+                    Button(onClick = { RuntimePermissions.openSettings(context) }) { Text(stringResource(R.string.open_settings)) }
                 }
             }
             Row(
@@ -626,13 +614,12 @@ fun LauncherWelcome(join: () -> Unit, useOwnComputers: () -> Unit, modifier: Mod
 fun PendingInvitesBanner(invites: List<InviteLink>, phases: Map<String, JoinPhase>, open: (InviteLink) -> Unit, modifier: Modifier = Modifier) {
     if (invites.isEmpty()) return
     val colors = MaterialTheme.colorScheme
-    val container = if (isSystemInDarkTheme()) colors.surfaceContainerHigh else colors.surfaceContainerLowest
     Column(modifier.padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         for (invite in invites.distinctBy { it.invite }) {
             key(invite.invite) {
                 val failed = (phases[invite.invite] as? JoinPhase.Failed)?.error
                 val app = remember(invite.invite) { WebApp(name = invite.name, startURL = invite.appURL) }
-                Surface(onClick = { open(invite) }, shape = RoundedCornerShape(16.dp), color = container, modifier = Modifier.fillMaxWidth()) {
+                Surface(onClick = { open(invite) }, shape = RoundedCornerShape(16.dp), color = cardColor, modifier = Modifier.fillMaxWidth()) {
                     Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                         AppIconView(app, image = null, size = 36.dp)
                         Column(Modifier.weight(1f)) {

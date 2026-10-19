@@ -45,6 +45,18 @@ class AppRegistryTests {
     val temp = TemporaryFolder()
     private val dir: File get() = temp.root
 
+    /** Add app with a host already listed returns that app, which Add app then opens, rather than a second tile. */
+    @Test
+    fun testAddingAnAppAlreadyListedOpensIt() {
+        val registry = offlineRegistry(dir)
+        val notes = registry.add(URI("https://notes.tailabc123.ts.net/"))
+        assertEquals(notes, registry.add(URI("https://Notes.TailABC123.ts.net/")))
+        assertEquals(listOf(notes), registry.apps)
+        val shared = registry.addShared("Echo", "echo.taildef456.ts.net", "echo", "m1", "Riley")
+        assertTrue("a shared app at the host isn't the owner's", registry.add(URI("https://echo.taildef456.ts.net/")) != shared)
+        assertEquals(3, registry.apps.size)
+    }
+
     @Test
     fun testStartsEmptyAndPersistsChanges() {
         val first = offlineRegistry(dir)

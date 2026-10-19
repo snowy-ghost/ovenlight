@@ -1,6 +1,10 @@
 package com.snowyghost.ovenlight
 
 import android.graphics.Bitmap
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusGroup
@@ -50,6 +54,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -57,6 +62,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -80,6 +86,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import java.net.URI
 import java.util.UUID
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -93,6 +100,10 @@ data class LauncherState(
     val ownerState: NodeState = NodeState.Idle,
     /** This phone as the owner's tailnet lists it, for the approval card. */
     val deviceName: String = "",
+    /** The owner was connected before and didn't sign out, so a sign-in card means theirs ended. */
+    val signedInBefore: Boolean = false,
+    /** The phone has no network (see [TailnetCore.online]). */
+    val phoneOffline: Boolean = false,
     val memberships: List<Membership> = emptyList(),
     /** Invites being accepted this session, by invite ID. */
     val phases: Map<String, JoinPhase> = emptyMap(),
@@ -147,6 +158,7 @@ fun LauncherView(model: AppModel) {
     val ownerState by nodes.owner.state.collectAsState()
     val ownerStatus by nodes.owner.status.collectAsState()
     val ownerAnswers by nodes.owner.answers.collectAsState()
+    val online by TailnetCore.online.collectAsState()
     val guestNodes by nodes.guests.collectAsState()
     // Each node's state and answers, so a tile dims or brightens as its computer comes and goes.
     val guestStates = guestNodes.values.map { node -> key(node.id) { node.state.collectAsState().value to node.answers.collectAsState().value } }
@@ -169,6 +181,8 @@ fun LauncherView(model: AppModel) {
             // The owner's own connection only once they set Ovenlight up for their computers.
             ownerState = if (ownerEnabled) ownerState else NodeState.Idle,
             deviceName = NodeManager.deviceName(ownerStatus, nodes.hostName),
+            signedInBefore = nodes.owner.magicDNSSuffixSeen != null,
+            phoneOffline = !online,
             memberships = memberships,
             phases = phases,
             offline = offline,
@@ -206,7 +220,9 @@ fun LauncherView(state: LauncherState) {
     val colors = MaterialTheme.colorScheme
     val haptics = LocalHapticFeedback.current
     val context = LocalContext.current
-    var renaming by remember { mutableStateOf<WebApp?>(null) }
+    // By ID, so the lock, which takes the launcher apart, keeps a rename and its text.
+    var renamingID by rememberSaveable { mutableStateOf<UUID?>(null) }
+    val renaming = state.apps.firstOrNull { it.id == renamingID }
     var clearing by remember { mutableStateOf<WebApp?>(null) }
     var removing by remember { mutableStateOf<WebApp?>(null) }
     var leaving by remember { mutableStateOf<Membership?>(null) }
@@ -215,9 +231,18 @@ fun LauncherView(state: LauncherState) {
     // it, and this keeps TalkBack and a keyboard's Tab off its hidden buttons and tiles, which an
     // open app's band, drawn over the top bar, would otherwise leave reachable.
     val focus = if (state.covered) Modifier.clearAndSetSemantics {}.focusProperties { onEnter = { cancelFocusChange() } }.focusGroup() else Modifier
-    // And focus already inside, on More just tapped from a keyboard, say, lets go as it's covered.
+    // And focus already inside, on More just tapped from a keyboard, say, lets go as it's covered,
+    // as does a dialog of its own, which would stay over an app a link opens.
     val focusManager = LocalFocusManager.current
-    LaunchedEffect(state.covered) { if (state.covered) focusManager.clearFocus(force = true) }
+    LaunchedEffect(state.covered) {
+        if (!state.covered) return@LaunchedEffect
+        focusManager.clearFocus(force = true)
+        renamingID = null
+        clearing = null
+        removing = null
+        leaving = null
+        noMailApp = null
+    }
     Box(Modifier.fillMaxSize().background(LocalOvenColors.current.ovenInterior).then(focus)) {
         LampLight(level = 0.6f)
         CompositionLocalProvider(LocalContentColor provides colors.onSurface) {
@@ -233,9 +258,9 @@ fun LauncherView(state: LauncherState) {
                         apps = state.apps, ownerEnabled = state.ownerEnabled, icon = state.icon, iconRevisions = state.iconRevisions,
                         offline = state.offline, open = state.open, move = state.move,
                         addApp = { state.present(RootSheet.AddApp) }, openLink = state.openLink,
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f), covered = state.covered,
                         header = {
-                            TailnetBanner(state.ownerState, state.deviceName, connect = { state.present(RootSheet.Login(it)) }, approve = { state.present(RootSheet.Approve) })
+                            TailnetBanner(state, connect = { state.present(RootSheet.Login(it)) }, approve = { state.present(RootSheet.Approve) })
                             PendingInvitesBanner(
                                 state.pendingInvites, state.phases, open = { state.present(RootSheet.Join(JoinRequest(Result.success(it)))) },
                                 modifier = Modifier.padding(horizontal = 24.dp),
@@ -244,7 +269,7 @@ fun LauncherView(state: LauncherState) {
                     ) { app, close ->
                         AppMenu(
                             SharingFixture.apply(app), close, state,
-                            rename = { renaming = app },
+                            rename = { renamingID = app.id },
                             refreshIcon = { state.refreshIcon(app.id) },
                             reportProblem = { state.problemReport(app)?.let { if (!it.send(context)) noMailApp = it } },
                             leave = { leaving = state.memberships.firstOrNull { it.id == app.membershipID } },
@@ -257,7 +282,7 @@ fun LauncherView(state: LauncherState) {
         }
     }
 
-    renaming?.let { app -> RenameDialog(app, onDismiss = { renaming = null }) { state.rename(app.id, it) } }
+    renaming?.let { app -> RenameDialog(app, onDismiss = { renamingID = null }) { state.rename(app.id, it) } }
     clearing?.let { app ->
         Confirmation(
             title = stringResource(R.string.launcher_clear_data_title, app.name), message = stringResource(R.string.launcher_clear_data_message),
@@ -308,10 +333,12 @@ private fun HomeTopBar(state: LauncherState) {
                 }
             }
             Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                TailnetStatusPill(state.ownerState, state.retry)
+                TailnetStatusPill(state.ownerState, state.phoneOffline, state.retry)
             }
             Box {
                 var expanded by remember { mutableStateOf(false) }
+                // As the launcher's dialogs: covered, the menu goes rather than stay over what covers it.
+                LaunchedEffect(state.covered) { if (state.covered) expanded = false }
                 IconButton(onClick = { expanded = true }) {
                     Icon(painterResource(R.drawable.ic_more_vert), contentDescription = stringResource(R.string.launcher_more))
                 }
@@ -331,34 +358,63 @@ private fun HomeTopBar(state: LauncherState) {
     }
 }
 
+/** What the pill between the corner controls says. */
+private sealed interface Pill {
+    data object Connecting : Pill
+    data object Offline : Pill
+    data class Failed(val message: String) : Pill
+}
+
 /**
- * Connecting, or a failure with a retry, in a small pill between the corner controls. Nothing
- * when connected or off; signing in and approval have a card instead.
+ * Connecting, or You're offline while the phone has no network, or a failure with a retry, in a
+ * small pill between the corner controls, fading from one to the next. Nothing when connected or
+ * off; signing in and approval have a card instead.
  */
 @Composable
-private fun TailnetStatusPill(state: NodeState, retry: () -> Unit) {
+private fun TailnetStatusPill(state: NodeState, phoneOffline: Boolean, retry: () -> Unit) {
     val colors = MaterialTheme.colorScheme
+    // Only after a beat busy, as an app's placeholder waits, so a quick reconnect never shows it.
+    var busyAWhile by remember { mutableStateOf(false) }
+    LaunchedEffect(state.isBusy) {
+        busyAWhile = false
+        if (state.isBusy) {
+            delay(700)
+            busyAWhile = true
+        }
+    }
+    val shown = when {
+        state.isBusy -> if (!busyAWhile) null else if (phoneOffline) Pill.Offline else Pill.Connecting
+        state is NodeState.Failed -> Pill.Failed(state.message)
+        else -> null
+    }
     val pill = Modifier.minimumInteractiveComponentSize().height(32.dp).clip(CircleShape).background(colors.surfaceContainerHigh)
     val text = MaterialTheme.typography.labelLarge
-    when {
-        state.isBusy -> Row(
-            pill.semantics(mergeDescendants = true) {}.padding(horizontal = 14.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically,
-        ) {
-            CircularProgressIndicator(Modifier.size(16.dp).clearAndSetSemantics {}, strokeWidth = 2.dp)
-            Text(ConnectionCopy.connecting, style = text, color = colors.onSurfaceVariant, maxLines = 1)
-        }
-        state is NodeState.Failed -> {
-            val tryAgain = stringResource(R.string.try_again)
-            Row(
-                // Read as what it shows, "Try again" included.
-                pill.clickable(role = Role.Button, onClick = retry).padding(horizontal = 14.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically,
+    AnimatedContent(shown, transitionSpec = { fadeIn() togetherWith fadeOut() }, contentAlignment = Alignment.Center, label = "pill") { current ->
+        when (current) {
+            null -> Unit
+            Pill.Connecting, Pill.Offline -> Row(
+                pill.semantics(mergeDescendants = true) {}.padding(horizontal = 14.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(painterResource(R.drawable.ic_warning), contentDescription = null, tint = colors.tertiary, modifier = Modifier.size(18.dp))
-                // The message gives way to Try again when the pill runs out of room.
-                Text(state.message, style = text, color = colors.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-                Text(tryAgain, style = text, color = colors.primary, maxLines = 1)
+                if (current == Pill.Offline) {
+                    Icon(painterResource(R.drawable.ic_wifi_off), contentDescription = null, tint = colors.onSurfaceVariant, modifier = Modifier.size(16.dp))
+                } else {
+                    CircularProgressIndicator(Modifier.size(16.dp).clearAndSetSemantics {}, strokeWidth = 2.dp)
+                }
+                Text(if (current == Pill.Offline) ConnectionCopy.offline else ConnectionCopy.connecting, style = text, color = colors.onSurfaceVariant, maxLines = 1)
+            }
+            is Pill.Failed -> {
+                val tryAgain = stringResource(R.string.try_again)
+                Row(
+                    // Read as what it shows, "Try again" included.
+                    pill.clickable(role = Role.Button, onClick = retry).padding(horizontal = 14.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(painterResource(R.drawable.ic_warning), contentDescription = null, tint = colors.tertiary, modifier = Modifier.size(18.dp))
+                    // The message gives way to Try again when the pill runs out of room.
+                    Text(current.message, style = text, color = colors.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                    Text(tryAgain, style = text, color = colors.primary, maxLines = 1)
+                }
             }
         }
     }
@@ -369,33 +425,54 @@ private fun TailnetStatusPill(state: NodeState, retry: () -> Unit) {
  * tailnet. The only place on the launcher that names Tailscale.
  */
 @Composable
-private fun TailnetBanner(state: NodeState, deviceName: String, connect: (URI) -> Unit, approve: () -> Unit) {
-    when (state) {
-        is NodeState.NeedsLogin -> LauncherCard(
-            R.drawable.ic_lan, stringResource(R.string.launcher_connect_title), AnnotatedString(stringResource(R.string.launcher_connect_body)),
-            stringResource(R.string.launcher_connect),
-        ) { connect(state.url) }
-        NodeState.AwaitingApproval -> {
-            val body = stringResource(R.string.launcher_approve_body, deviceName)
-            val start = body.indexOf(deviceName)
-            val text = buildAnnotatedString {
-                append(body)
-                if (deviceName.isNotEmpty() && start >= 0) addStyle(SpanStyle(fontWeight = FontWeight.Bold), start, start + deviceName.length)
-            }
-            LauncherCard(R.drawable.ic_verified_user, stringResource(R.string.approve_this_phone), text, stringResource(R.string.launcher_open_machines), approve)
+private fun TailnetBanner(state: LauncherState, connect: (URI) -> Unit, approve: () -> Unit) {
+    val card = Modifier.padding(horizontal = 24.dp, vertical = 6.dp)
+    when (val node = state.ownerState) {
+        // Once connected before, without a sign-out since, it says the sign-in ended.
+        is NodeState.NeedsLogin -> {
+            val again = state.signedInBefore
+            LauncherCard(
+                R.drawable.ic_lan, stringResource(if (again) R.string.launcher_sign_in_again_title else R.string.launcher_connect_title),
+                AnnotatedString(stringResource(if (again) R.string.launcher_sign_in_again_body else R.string.launcher_connect_body)),
+                stringResource(if (again) R.string.app_sign_in else R.string.launcher_connect), card,
+            ) { connect(node.url) }
         }
+        NodeState.AwaitingApproval -> LauncherCard(
+            R.drawable.ic_verified_user, stringResource(R.string.approve_this_phone), approveBody(state.deviceName), stringResource(R.string.launcher_open_machines),
+            card, action = approve,
+        )
         else -> Unit
     }
 }
 
+/** How to approve this phone, its name in bold. */
 @Composable
-private fun LauncherCard(icon: Int, title: String, body: AnnotatedString, button: String, action: () -> Unit) {
+internal fun approveBody(deviceName: String): AnnotatedString {
+    val body = stringResource(R.string.launcher_approve_body, deviceName)
+    val start = body.indexOf(deviceName)
+    return buildAnnotatedString {
+        append(body)
+        if (deviceName.isNotEmpty() && start >= 0) addStyle(SpanStyle(fontWeight = FontWeight.Bold), start, start + deviceName.length)
+    }
+}
+
+/** The launcher's cards, and an invite joining: white on the light, a step up from the dark. */
+internal val cardColor: Color
+    @Composable get() = MaterialTheme.colorScheme.let { if (isSystemInDarkTheme()) it.surfaceContainerHigh else it.surfaceContainerLowest }
+
+/** A step the owner takes, on the launcher or over an open app: its icon and title, what to do, the button, and [below] that. */
+@Composable
+internal fun LauncherCard(
+    icon: Int,
+    title: String,
+    body: AnnotatedString?,
+    button: String,
+    modifier: Modifier = Modifier,
+    below: @Composable ColumnScope.() -> Unit = {},
+    action: () -> Unit,
+) {
     val colors = MaterialTheme.colorScheme
-    ElevatedCard(
-        shape = RoundedCornerShape(28.dp),
-        colors = CardDefaults.elevatedCardColors(containerColor = if (isSystemInDarkTheme()) colors.surfaceContainerHigh else colors.surfaceContainerLowest),
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 6.dp),
-    ) {
+    ElevatedCard(shape = RoundedCornerShape(28.dp), colors = CardDefaults.elevatedCardColors(containerColor = cardColor), modifier = modifier.fillMaxWidth()) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(40.dp).background(colors.primaryContainer, CircleShape), contentAlignment = Alignment.Center) {
@@ -403,10 +480,11 @@ private fun LauncherCard(icon: Int, title: String, body: AnnotatedString, button
                 }
                 Text(title, style = MaterialTheme.typography.titleMedium, color = colors.onSurface, modifier = Modifier.semantics { heading() })
             }
-            Text(body, style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
+            body?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant) }
             Button(onClick = action, modifier = Modifier.fillMaxWidth().height(56.dp)) {
                 Text(button, style = MaterialTheme.typography.titleMedium)
             }
+            below()
         }
     }
 }
@@ -515,9 +593,15 @@ fun AddAppView(model: AppModel, onClose: () -> Unit) {
     AddAppDialog(
         ownerSuffix, ownerEnabled, ownerState,
         add = { url ->
-            registry.add(url)
-            // An app discovery already found (one removed, then added back) joins it at once.
-            model.scope.launch { registry.mergeDiscovered(nodes.owner.discovered.value) }
+            val listed = registry.apps
+            val app = registry.add(url)
+            if (app in listed) {
+                // Already here: it opens rather than coming twice.
+                model.router.open(app)
+            } else {
+                // An app discovery already found (one removed, then added back) joins it at once.
+                model.scope.launch { registry.mergeDiscovered(nodes.owner.discovered.value) }
+            }
         },
         useOwnComputers = nodes::enableOwner, present = model.router::present, onClose = onClose,
     )
@@ -543,9 +627,9 @@ fun AddAppDialog(
     var refused by remember { mutableStateOf<String?>(null) }
     val haptics = LocalHapticFeedback.current
     val submit = {
-        val url = AppAddress.url(text, ownerSuffix)
+        val url = AppAddress.ownURL(text, ownerSuffix)
         if (url == null) {
-            refused = text.takeIf { AppAddress.url(it) != null }
+            refused = text.takeIf { AppAddress.url(it, ownerSuffix) != null }
         } else {
             add(url)
             haptics.performHapticFeedback(HapticFeedbackType.Confirm)
@@ -592,7 +676,7 @@ fun AddAppDialog(
         },
         confirmButton = {
             if (ownerSuffix != null) {
-                TextButton(onClick = submit, enabled = AppAddress.url(text) != null) { Text(stringResource(R.string.add_app_add)) }
+                TextButton(onClick = submit, enabled = AppAddress.url(text, ownerSuffix) != null) { Text(stringResource(R.string.add_app_add)) }
             } else {
                 next?.let { (label, action) -> TextButton(onClick = action) { Text(label) } }
             }

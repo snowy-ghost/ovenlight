@@ -106,7 +106,7 @@ class PageEdgesTests {
             // No camera or microphone for these pages: Android's permission is never held.
             val capture = PageCapture(
                 app, ownersHosts = { emptySet() }, isLocked = { locked.value }, isOnScreen = { shown }, scope = scope,
-                permissions = { _, done -> done(false) }, stillCapturing = { false }, destroy = {},
+                permissions = { _, _, done -> done(false) }, stillCapturing = { false }, destroy = {},
             )
             edges = PageEdges(app, view, activity, scope, locked, lifecycle, capture, isShown = { shown }, home = { homes += 1; view.loadDataWithBaseURL(base, home, "text/html", "utf-8", base) })
             view.webViewClient = object : WebViewClient() {

@@ -6,7 +6,7 @@
     <string name="sharing_not_connected">Not connected</string>
     <string name="sharing_not_connected_detail">Ovenlight needs to be connected to your computers to manage sharing.</string>
     <string name="sharing_no_computers">No computers answered</string>
-    <string name="sharing_no_computers_detail">Check that the Ovenlight connector is running on your computers.</string>
+    <string name="sharing_no_computers_detail">Your computers may be asleep or offline. Wake one, or run ovenlight doctor on it.</string>
     <string name="sharing_apps">Apps</string>
     <string name="sharing_online">Online</string>
     <string name="sharing_offline">Offline</string>
@@ -61,7 +61,7 @@
     <string name="sharing_copy_link">Copy link</string>
     <string name="sharing_copied">Copied</string>
     <string name="sharing_close_unsent_title">Close without sending?</string>
-    <string name="sharing_close_unsent_message">You can cancel this invite in People &amp; sharing.</string>
+    <string name="sharing_close_unsent_message">This link won’t show again. The invite stays open until it expires, and you can cancel it in People &amp; sharing.</string>
     <string name="sharing_keep">Keep</string>
     <string name="sharing_invite_footer">%1$s can join without your approval and reaches only %2$s. Until it’s used, the link works like a key, so send it privately.</string>
 
