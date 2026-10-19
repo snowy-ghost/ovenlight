@@ -49,7 +49,7 @@ struct SharingProblemView: View {
 
     var body: some View {
         ContentUnavailableView("No Computers Answered", systemImage: "desktopcomputer.trianglebadge.exclamationmark",
-                               description: Text(problem ?? "Check that the Ovenlight connector is running on your computers."))
+                               description: Text(problem ?? "Your computers may be asleep or offline. Wake one, or run ovenlight doctor on it."))
             .ovenlightRows()
     }
 }
@@ -72,8 +72,9 @@ struct SharingList: View {
     @EnvironmentObject private var registry: AppRegistry
     @ObservedObject private var sharing = OwnerSharing.shared
     @State private var showingPricing = false
+    @AppStorage(FeedbackInbox.seenKey) private var feedbackSeenUntil: Double = 0
 
-    private var feedbackCount: Int { sharing.machines.reduce(0) { $0 + $1.feedback.count } }
+    private var feedbackCount: Int { FeedbackInbox.unseen(sharing.machines.flatMap(\.feedback), seenUntil: feedbackSeenUntil) }
     private var peopleCount: Int { sharing.machines.reduce(0) { $0 + GuestPerson.all($1.guests.guests).count } }
 
     var body: some View {
@@ -206,6 +207,7 @@ struct SharingAppView: View {
     @State private var composing: Composing?
     @State private var removing: GuestPerson?
     @State private var error: String?
+    @AppStorage(FeedbackInbox.seenKey) private var feedbackSeenUntil: Double = 0
 
     private var machine: OwnerSharing.Machine? { sharing.machines.first { $0.id == machineID } }
     private var app: AdminApp? { machine?.apps.first { $0.slug == slug } }
@@ -232,7 +234,7 @@ struct SharingAppView: View {
             if let app, let machine {
                 let people = GuestPerson.all(machine.guests.guests.filter { $0.app == slug })
                 let invites = machine.guests.invites.filter { $0.app == slug && $0.state == AdminInvite.sent }
-                let feedback = machine.feedback.filter { $0.app == slug }.count
+                let feedback = FeedbackInbox.unseen(machine.feedback.filter { $0.app == slug }, seenUntil: feedbackSeenUntil)
                 Section {
                     if app.shareable {
                         Button { compose(.anyone) } label: {
@@ -486,6 +488,11 @@ struct InviteComposer: View {
         error = nil
         let who = person?.name ?? trimmed
         guard !who.isEmpty, person != nil || namesake == nil, !working else { return }
+        // Not even Face ID while the phone's own connection is down: nothing could reach the computer.
+        guard NodeManager.shared.owner.state == .ready else {
+            error = ConnectionCopy.notConnected
+            return
+        }
         // From the first tap, so a second one during Face ID can't make a second invite.
         working = true
         defer { working = false }
@@ -584,6 +591,7 @@ struct InviteResultView: View {
                 }
                 .padding(24)
             }
+            .ovenlightGroupedBackground()
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
@@ -594,7 +602,7 @@ struct InviteResultView: View {
                 Button("Keep", role: .cancel) {}
                 Button("Close", role: .destructive) { dismiss() }
             } message: {
-                Text("You can cancel this invite in People & Sharing.")
+                Text("This link won’t show again. The invite stays open until it expires, and you can cancel it in People & Sharing.")
             }
         }
         .interactiveDismissDisabled(!sent)
@@ -618,8 +626,19 @@ struct FeedbackInbox: View {
     /// One app's feedback only: its machine and slug.
     var only: (machineID: String, slug: String)?
 
+    @EnvironmentObject private var registry: AppRegistry
     @ObservedObject private var sharing = OwnerSharing.shared
     @StateObject private var shots = ScreenshotCache()
+    @AppStorage(FeedbackInbox.seenKey) private var seenUntil: Double = 0
+
+    /// The newest feedback an inbox has shown, as seconds since 1970: the counts show only
+    /// what came after it. The connector has no read marks to keep.
+    static let seenKey = "feedbackSeenUntil"
+
+    /// How many of `items` came after what an inbox last showed.
+    nonisolated static func unseen(_ items: [AdminFeedback], seenUntil: Double) -> Int {
+        items.filter { $0.at.timeIntervalSince1970 > seenUntil }.count
+    }
 
     private var items: [(OwnerSharing.Machine, AdminFeedback)] {
         sharing.machines.flatMap { m in m.feedback.map { (m, $0) } }
@@ -657,6 +676,10 @@ struct FeedbackInbox: View {
         .ovenlightGroupedBackground()
         .navigationTitle("Feedback")
         .navigationBarTitleDisplayMode(.inline)
+        .refreshable { await sharing.refresh(apps: registry.apps) }
+        .onChange(of: items.first?.1.at, initial: true) { _, newest in
+            if let newest, newest.timeIntervalSince1970 > seenUntil { seenUntil = newest.timeIntervalSince1970 }
+        }
     }
 
     @ViewBuilder
@@ -705,17 +728,18 @@ private struct FeedbackDetail: View {
                 .font(.footnote)
                 .foregroundStyle(Color.secondaryText)
                 if item.hasScreenshot {
-                    if let image = shots.image(item.id, .screen) {
+                    if shots.failed(item.id, .screen) {
+                        Text("Couldn’t load the screenshot.")
+                            .font(.footnote)
+                            .foregroundStyle(Color.secondaryText)
+                    } else if let image = shots.image(item.id, .screen) ?? shots.image(item.id, .thumbnail) {
+                        // The list's thumbnail, the same shape, until the sharp one arrives.
                         Image(uiImage: image)
                             .resizable()
                             .scaledToFit()
                             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                             .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color.primary.opacity(0.08)))
                             .accessibilityLabel("Screenshot")
-                    } else if shots.failed(item.id, .screen) {
-                        Text("Couldn’t load the screenshot.")
-                            .font(.footnote)
-                            .foregroundStyle(Color.secondaryText)
                     } else {
                         ProgressView().frame(maxWidth: .infinity, minHeight: 200)
                     }

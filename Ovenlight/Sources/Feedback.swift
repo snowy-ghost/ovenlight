@@ -101,8 +101,9 @@ struct FeedbackSheet: View {
         result != .sent && !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    /// Not while Feedback Sent shows, which a second Send would hide by sending it again.
     private var canSend: Bool {
-        !sending && (!note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (includeScreenshot && screenshot != nil))
+        !sending && result != .sent && (!note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (includeScreenshot && screenshot != nil))
     }
 
     var body: some View {

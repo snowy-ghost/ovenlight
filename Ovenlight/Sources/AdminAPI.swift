@@ -670,20 +670,23 @@ final class OwnerSharing: ObservableObject {
             }
             round = candidates.filter { !covered.contains($0) && !asked.contains($0) }
         }
-        machines = Self.keepingFailed(found, failed: failedHosts, previous: machines)
+        // A computer asleep is listed offline, so it was asked nothing: it couldn't be reached.
+        machines = Self.keepingFailed(found, failed: failedHosts, previous: machines, asleep: owners.subtracting(nodes.ownersOnlineHosts))
         // A pass that only failed doesn't count as fresh: the next menu asks again.
         if !found.isEmpty || failedHosts.isEmpty { lastRefresh = .now }
         problem = found.isEmpty ? failedHosts.min { $0.key < $1.key }?.value.message : nil
     }
 
-    /// This pass's machines, then each machine from before whose host failed this time and
-    /// no answer covers, as it was, with why: a computer that didn't answer once keeps its apps
-    /// and people rather than showing none. Its apps show offline only when the computer
-    /// couldn't be reached.
-    nonisolated static func keepingFailed(_ found: [Machine], failed: [String: AdminError], previous: [Machine]) -> [Machine] {
+    /// This pass's machines, then each machine from before whose host failed this time, or is
+    /// `asleep` (the owner's, listed offline), and no answer covers, as it was, with why: a
+    /// computer that didn't answer once keeps its apps and people rather than showing none.
+    /// Its apps show offline only when the computer couldn't be reached.
+    nonisolated static func keepingFailed(_ found: [Machine], failed: [String: AdminError], previous: [Machine],
+                                          asleep: Set<String>) -> [Machine] {
         let covered = Set(found.flatMap { [$0.adminHost] + $0.apps.compactMap(\.host) })
         return found + previous.compactMap { machine in
-            guard let error = failed[machine.adminHost], !covered.contains(machine.adminHost) else { return nil }
+            guard let error = failed[machine.adminHost] ?? (asleep.contains(machine.adminHost) ? .unreachable : nil),
+                  !covered.contains(machine.adminHost) else { return nil }
             var kept = machine
             kept.problem = error.message
             if error == .unreachable { kept.apps = kept.apps.map { var app = $0; app.online = false; return app } }

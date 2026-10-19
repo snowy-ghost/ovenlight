@@ -499,6 +499,17 @@ final class FeedbackTests: XCTestCase {
         XCTAssertNil(Screenshot.image(from: Data("not an image".utf8), maxPixels: 240))
     }
 
+    /// The Feedback count is what came after the newest item an inbox last showed, so it
+    /// says something arrived rather than an all-time total.
+    func testTheFeedbackCountShowsOnlyNewOnes() {
+        let t0 = Date(timeIntervalSince1970: 1_790_000_000)
+        let items = [0, 60, 120].map { AdminFeedback(id: "f\($0)", at: t0.addingTimeInterval(Double($0)), app: "coach", from: "Sam",
+                                                     role: "guest", note: "hi") }
+        XCTAssertEqual(FeedbackInbox.unseen(items, seenUntil: 0), 3, "an inbox never opened")
+        XCTAssertEqual(FeedbackInbox.unseen(items, seenUntil: t0.addingTimeInterval(60).timeIntervalSince1970), 1)
+        XCTAssertEqual(FeedbackInbox.unseen(items, seenUntil: t0.addingTimeInterval(120).timeIntervalSince1970), 0, "no number")
+    }
+
     func testAnswers() {
         XCTAssertEqual(FeedbackResult.interpret(status: 200, body: Data(#"{"id":"a1"}"#.utf8)), .sent)
         XCTAssertEqual(FeedbackResult.interpret(status: 429, body: Data()), .failed(ConnectionCopy.feedbackTooMany))
@@ -697,7 +708,7 @@ final class AdminAPITests: XCTestCase {
         let web = OwnerSharing.Machine(adminHost: "web.t.ts.net", apps: [app("web")])
         let kept = OwnerSharing.keepingFailed([echo], failed: ["coach.t.ts.net": .unreachable, "notes.t.ts.net": .unreachable,
                                                                "web.t.ts.net": .failed("an answer this version can't read")],
-                                              previous: [coach, notes, gone, web])
+                                              previous: [coach, notes, gone, web], asleep: [])
         XCTAssertEqual(kept.map(\.adminHost), ["echo.t.ts.net", "coach.t.ts.net", "web.t.ts.net"])
         XCTAssertEqual(kept[1].guests, coach.guests)
         XCTAssertEqual(kept[1].problem, AdminError.unreachable.message)
@@ -705,6 +716,19 @@ final class AdminAPITests: XCTestCase {
         XCTAssertEqual(kept[2].problem, "An answer this version can't read")
         XCTAssertEqual(kept[2].apps.map(\.online), [true], "one that answered badly isn't")
         XCTAssertNil(kept[0].problem)
+    }
+
+    /// A computer that went to sleep is listed offline, so the refresh asks it nothing: it
+    /// stays, as it was, with its apps offline and why, rather than vanishing.
+    func testAnAsleepComputerKeepsItsListing() {
+        let coach = OwnerSharing.Machine(adminHost: "coach.t.ts.net", apps: [
+            AdminApp(slug: "coach", name: "Coach", url: "https://coach.t.ts.net/", online: true, shareable: true, guests: 1)])
+        let kept = OwnerSharing.keepingFailed([], failed: [:], previous: [coach], asleep: ["coach.t.ts.net"])
+        XCTAssertEqual(kept.map(\.adminHost), ["coach.t.ts.net"])
+        XCTAssertEqual(kept.first?.problem, "Couldn’t reach the computer. It may be asleep or offline.")
+        XCTAssertEqual(kept.first?.apps.map(\.online), [false])
+        XCTAssertEqual(OwnerSharing.keepingFailed([], failed: [:], previous: [coach], asleep: []).count, 0,
+                       "one the network no longer lists at all goes")
     }
 
     /// A connector marks commands with backticks, which the phone would show as they are:
