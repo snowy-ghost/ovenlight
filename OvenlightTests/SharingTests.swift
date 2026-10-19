@@ -68,7 +68,6 @@ final class InviteLinkTests: XCTestCase {
         XCTAssertEqual(error("ovenlight://open?app=Coach"), .notAnInvite)
         XCTAssertEqual(error("https://example.com/join?v=1"), .notAnInvite)
         XCTAssertEqual(error(connectorLink.replacingOccurrences(of: "&v=1", with: "&v=2")), .unsupportedVersion)
-        XCTAssertEqual(error(connectorLink.replacingOccurrences(of: "&v=1", with: "")), .unsupportedVersion)
         XCTAssertEqual(error(connectorLink.replacingOccurrences(of: "https%3A%2F%2F", with: "http%3A%2F%2F")), .insecureControl)
         for field in ["key", "app", "invite", "host", "control"] {
             let without = connectorLink.replacingOccurrences(of: #"(^|[?&])\#(field)=[^&]*"#, with: "$1", options: .regularExpression)
@@ -76,6 +75,14 @@ final class InviteLinkTests: XCTestCase {
         }
         XCTAssertEqual(error(connectorLink.replacingOccurrences(of: "key=tskey-auth-kX1abc-DEF%2Bghi", with: "key=")),
                        .missingField("key"))
+    }
+
+    /// The connector writes v last, so a link cut off at the end loses it first: that reads
+    /// as incomplete, not as needing a newer Ovenlight.
+    func testAnInviteMissingItsVersionIsIncomplete() {
+        XCTAssertEqual(error(String(connectorLink.dropLast("&v=1".count))), .missingField("v"))
+        XCTAssertEqual(error(String(universalLink.dropLast("=1".count))), .missingField("v"))
+        XCTAssertEqual(InviteLink.ParseError.missingField("v").message, "This link is incomplete. Ask for it again and copy the whole link.")
     }
 
     func testRefusesHostsThatArentNames() {

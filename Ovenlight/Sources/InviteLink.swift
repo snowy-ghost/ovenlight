@@ -117,7 +117,8 @@ struct InviteLink: Codable, Equatable, Hashable {
             }
             return text
         }
-        guard value("v") == version else { throw .unsupportedVersion }
+        // The connector writes v last, so a link cut short loses it first: incomplete, not newer.
+        guard try required("v") == version else { throw .unsupportedVersion }
 
         let controlText = try required("control")
         guard let control = URL(string: controlText), let controlHost = control.host, !controlHost.isEmpty,
