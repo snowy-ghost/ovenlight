@@ -17,8 +17,9 @@ struct AppHostView: View {
 
     var body: some View {
         // An app removed while its cover closes (Leave, access ended) gets no new web view:
-        // the pool would make its data store again, and load it.
-        if registry.apps.contains(where: { $0.id == app.id }) {
+        // the pool would make its data store again, and load it. One renamed while open (a
+        // shared app's new name, or a discovered one's) shows its new name.
+        if let app = registry.apps.first(where: { $0.id == app.id }) {
             // The same live web view on every call, unless the app's route changed since it
             // was made: then a new one through the right node, and a new page around it.
             let (webView, coordinator) = pool.webView(for: app)

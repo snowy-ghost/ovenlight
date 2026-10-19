@@ -99,6 +99,12 @@ struct HomeScreenGrid<Menu: View, Preview: View, Header: View>: View {
 
     private static var space: String { "home" }
 
+    private static var emptyFooter: AttributedString {
+        var text = try! AttributedString(markdown: "Apps you publish with the [Ovenlight connector](https://ovenlight.app/support#own-computer) on your computers show up here. If one doesn’t, run ovenlight doctor on its computer.")
+        for run in text.runs where run.link != nil { text[run.range].underlineStyle = .single }
+        return text
+    }
+
     /// An icon being dragged: where the finger is, where on the tile it grabbed it, and
     /// the slot it would drop into. Scrolling stops meanwhile, so grid coordinates hold.
     private struct IconDrag {
@@ -128,11 +134,13 @@ struct HomeScreenGrid<Menu: View, Preview: View, Header: View>: View {
                             }
                         }
                         // Under the Add App slot it describes, from the slot's edge. In the tile
-                        // labels' color, which stays legible where the light is brightest.
+                        // labels' color, which stays legible where the light is brightest, its
+                        // link too, underlined.
                         if apps.isEmpty && ownerEnabled {
-                            Text("Apps you publish with the [Ovenlight connector](https://ovenlight.app/support#own-computer) on your computers show up here. If one doesn’t, run ovenlight doctor on its computer.")
+                            Text(Self.emptyFooter)
                                 .font(.footnote)
                                 .foregroundStyle(.primary)
+                                .tint(.primary)
                                 .padding(.horizontal, (layout.columnWidth - layout.iconSize) / 2)
                         }
                     }

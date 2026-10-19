@@ -459,7 +459,8 @@ struct InviteComposer: View {
                 .onAppear { if case .anyone = target { focused = true } }
             }
             .presentationDetents(choices.isEmpty ? [.medium] : [.medium, .large])
-            .holdingLinks(working)
+            // From the first tap, and while a Create that failed says why.
+            .holdingLinks(working || error != nil)
         }
     }
 
@@ -641,9 +642,8 @@ struct FeedbackInbox: View {
     @StateObject private var shots = ScreenshotCache()
     @AppStorage(FeedbackInbox.seenKey) private var seenUntil: Double = 0
 
-    /// The newest feedback the full inbox has shown, as seconds since 1970: the counts show
-    /// only what came after it. The connector has no read marks to keep. One app's inbox
-    /// leaves it, since other apps may have older items no one has seen.
+    /// The newest feedback an inbox has shown, as seconds since 1970: the counts show only
+    /// what came after it. The connector has no read marks to keep.
     static let seenKey = "feedbackSeenUntil"
 
     /// How many of `items` came after what an inbox last showed.
@@ -651,10 +651,22 @@ struct FeedbackInbox: View {
         items.filter { $0.at.timeIntervalSince1970 > seenUntil }.count
     }
 
+    /// The mark once an inbox has shown `shown`: its newest item, unless feedback it leaves
+    /// out (other apps', in one app's inbox) came after the mark, which no one has seen yet.
+    nonisolated static func seenUntil(_ seenUntil: Double, showing shown: [AdminFeedback], leavingOut others: [AdminFeedback]) -> Double {
+        guard let newest = shown.map(\.at.timeIntervalSince1970).max(), newest > seenUntil,
+              unseen(others, seenUntil: seenUntil) == 0 else { return seenUntil }
+        return newest
+    }
+
+    private var all: [(OwnerSharing.Machine, AdminFeedback)] { sharing.machines.flatMap { m in m.feedback.map { (m, $0) } } }
+
+    private func isShown(_ entry: (OwnerSharing.Machine, AdminFeedback)) -> Bool {
+        only == nil || (entry.0.id == only?.machineID && entry.1.app == only?.slug)
+    }
+
     private var items: [(OwnerSharing.Machine, AdminFeedback)] {
-        sharing.machines.flatMap { m in m.feedback.map { (m, $0) } }
-            .filter { only == nil || ($0.0.id == only?.machineID && $0.1.app == only?.slug) }
-            .sorted { $0.1.at > $1.1.at }
+        all.filter(isShown).sorted { $0.1.at > $1.1.at }
     }
 
     var body: some View {
@@ -688,8 +700,9 @@ struct FeedbackInbox: View {
         .navigationTitle("Feedback")
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await sharing.refresh(apps: registry.apps) }
-        .onChange(of: items.first?.1.at, initial: true) { _, newest in
-            if only == nil, let newest, newest.timeIntervalSince1970 > seenUntil { seenUntil = newest.timeIntervalSince1970 }
+        .onChange(of: items.first?.1.at, initial: true) {
+            let mark = Self.seenUntil(seenUntil, showing: items.map(\.1), leavingOut: all.filter { !isShown($0) }.map(\.1))
+            if mark != seenUntil { seenUntil = mark }
         }
     }
 

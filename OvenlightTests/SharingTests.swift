@@ -595,6 +595,15 @@ final class FeedbackTests: XCTestCase {
         XCTAssertEqual(FeedbackInbox.unseen(items, seenUntil: 0), 3, "an inbox never opened")
         XCTAssertEqual(FeedbackInbox.unseen(items, seenUntil: t0.addingTimeInterval(60).timeIntervalSince1970), 1)
         XCTAssertEqual(FeedbackInbox.unseen(items, seenUntil: t0.addingTimeInterval(120).timeIntervalSince1970), 0, "no number")
+
+        // An inbox moves the mark to its newest item; one app's inbox only while no other
+        // app has feedback no one has seen.
+        let newest = t0.addingTimeInterval(120).timeIntervalSince1970
+        let notes = AdminFeedback(id: "n", at: t0.addingTimeInterval(30), app: "notes", from: "Kim", role: "guest", note: "hey")
+        XCTAssertEqual(FeedbackInbox.seenUntil(0, showing: items + [notes], leavingOut: []), newest, "the full inbox")
+        XCTAssertEqual(FeedbackInbox.seenUntil(0, showing: items, leavingOut: [notes]), 0, "Notes' is still new")
+        XCTAssertEqual(FeedbackInbox.seenUntil(notes.at.timeIntervalSince1970, showing: items, leavingOut: [notes]), newest)
+        XCTAssertEqual(FeedbackInbox.seenUntil(newest, showing: items, leavingOut: []), newest, "never back")
     }
 
     func testAnswers() {

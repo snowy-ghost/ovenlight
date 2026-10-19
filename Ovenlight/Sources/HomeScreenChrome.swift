@@ -102,24 +102,40 @@ struct TailnetStatusPill: View {
     var offline = false
     let retry: () -> Void
 
+    /// Busy for a beat: a quick reconnect, coming back after a minute away, shows nothing.
+    @State private var busyAWhile = false
+
     /// What the pill says while the node comes up.
     static func busyText(offline: Bool) -> String { offline ? ConnectionCopy.offline : ConnectionCopy.connecting }
 
     var body: some View {
+        // A container that's always there, for the task.
+        ZStack { pill }
+            .task(id: state.isBusy) {
+                busyAWhile = false
+                guard state.isBusy else { return }
+                try? await Task.sleep(for: .milliseconds(700))
+                if !Task.isCancelled { withAnimation(.smooth) { busyAWhile = true } }
+            }
+    }
+
+    @ViewBuilder private var pill: some View {
         switch state {
         case .starting, .connecting, .retrying:
-            HStack(spacing: 7) {
-                if !offline { ProgressView().controlSize(.small) }
-                Text(Self.busyText(offline: offline))
-                    .font(.footnote.weight(.medium))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+            if offline || busyAWhile {
+                HStack(spacing: 7) {
+                    if !offline { ProgressView().controlSize(.small) }
+                    Text(Self.busyText(offline: offline))
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 14)
+                .frame(minHeight: 34)
+                .ovenlightGlass(in: Capsule())
+                .accessibilityElement(children: .combine)
+                .transition(.opacity.combined(with: .scale(scale: 0.9)))
             }
-            .padding(.horizontal, 14)
-            .frame(minHeight: 34)
-            .ovenlightGlass(in: Capsule())
-            .accessibilityElement(children: .combine)
-            .transition(.opacity.combined(with: .scale(scale: 0.9)))
         case .failed(let message):
             Button(action: retry) {
                 HStack(spacing: 6) {

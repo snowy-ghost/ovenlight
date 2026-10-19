@@ -41,6 +41,8 @@ final class WebViewPool: ObservableObject {
             // screen or not.
             if Routing.mayLoad(built: coordinator.node, current: NodeManager.shared.node(for: app)) {
                 touch(app.id)
+                // Its name now, for the page's dialogs, after a rename while it was open.
+                coordinator.app = app
                 return (view, coordinator)
             }
             discard(app.id)
@@ -198,7 +200,7 @@ final class WebViewPool: ObservableObject {
 /// Navigation and UI delegate for one app's web view.
 @MainActor
 final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate {
-    let app: WebApp
+    fileprivate(set) var app: WebApp
     /// The node the app loads through, if any; the first navigation then waits for the gate.
     let node: MembershipNode?
     var usesNode: Bool { node != nil }
