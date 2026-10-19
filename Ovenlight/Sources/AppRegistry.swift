@@ -95,8 +95,11 @@ final class AppRegistry: ObservableObject {
         return Screenshot.image(from: data, maxPixels: 288)
     }
 
+    /// Adds an app by its address, or returns the owner's own app already listed for that host.
     @discardableResult
     func add(url: URL) -> WebApp {
+        let host = Discovery.normalizedHost(url.host ?? "")
+        if let listed = apps.first(where: { !$0.isShared && Discovery.normalizedHost($0.host) == host }) { return listed }
         let app = WebApp(name: url.host ?? url.absoluteString, startURL: url)
         dismissedHosts.remove(Discovery.normalizedHost(app.host))
         apps.append(app)

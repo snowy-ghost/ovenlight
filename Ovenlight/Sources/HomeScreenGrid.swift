@@ -87,7 +87,6 @@ struct HomeScreenGrid<Menu: View, Preview: View>: View {
     @ScaledMetric(relativeTo: .caption2) private var sharedByLine: CGFloat = 14
 
     @State private var drag: IconDrag?
-    @GestureState private var dragActive = false
     @State private var retarget: Task<Void, Never>?
     @State private var pendingSlot: Int?
     @State private var pickups = 0
@@ -123,11 +122,12 @@ struct HomeScreenGrid<Menu: View, Preview: View>: View {
                             tile(app, index: index, in: order, layout: layout)
                         }
                     }
-                    // Under the Add App slot it describes, from the slot's edge.
+                    // Under the Add App slot it describes, from the slot's edge. In the tile
+                    // labels' color, which stays legible where the light is brightest.
                     if apps.isEmpty && ownerEnabled {
                         Text("Apps you publish with the [Ovenlight connector](https://ovenlight.app/support#own-computer) on your computers show up here. If one doesn’t, run ovenlight doctor on its computer.")
                             .font(.footnote)
-                            .foregroundStyle(Color.secondaryText)
+                            .foregroundStyle(.primary)
                             .padding(.horizontal, (layout.columnWidth - layout.iconSize) / 2)
                     }
                 }
@@ -143,9 +143,6 @@ struct HomeScreenGrid<Menu: View, Preview: View>: View {
             .scrollDisabled(drag != nil)
             .scrollBounceBehavior(.basedOnSize)
             .onChange(of: layout, initial: true) { _, new in self.layout = new }
-        }
-        .onChange(of: dragActive) { _, active in
-            if !active, drag != nil { endDrag() }
         }
         .onChange(of: isEditing) { _, editing in
             if !editing { drag = nil }
@@ -196,7 +193,7 @@ struct HomeScreenGrid<Menu: View, Preview: View>: View {
                     .modifier(Jiggle(seed: app.id.hashValue, active: !reduceMotion && drag?.id != app.id))
                     .opacity(drag?.id == app.id ? 0.001 : 1)
                     .contentShape(Rectangle())
-                    .highPriorityGesture(dragGesture(app, index: index, layout: layout))
+                    .gesture(dragGesture(app, index: index, layout: layout))
                     .transition(.identity)
             } else {
                 Button { open(app) } label: { content }
@@ -228,23 +225,22 @@ struct HomeScreenGrid<Menu: View, Preview: View>: View {
 
     // MARK: Dragging
 
-    private func dragGesture(_ app: WebApp, index: Int, layout: HomeGridLayout) -> some Gesture {
-        DragGesture(minimumDistance: 2, coordinateSpace: .named(Self.space))
-            .updating($dragActive) { _, active, _ in active = true }
-            .onChanged { value in
-                if drag == nil {
-                    let center = layout.tileCenter(of: index)
-                    drag = IconDrag(id: app.id, location: value.location,
-                                    grab: CGSize(width: value.startLocation.x - center.x,
-                                                 height: value.startLocation.y - center.y),
-                                    target: index)
-                    pickups += 1
-                } else if drag?.dropping == false {
-                    drag?.location = value.location
-                }
-                retargetSoon(layout)
+    /// Picks an icon up after a short hold, as the Home Screen does, so a swipe that starts on
+    /// one scrolls the grid.
+    private func dragGesture(_ app: WebApp, index: Int, layout: HomeGridLayout) -> HoldToDrag {
+        HoldToDrag(space: Self.space) { location in
+            if drag == nil {
+                let center = layout.tileCenter(of: index)
+                drag = IconDrag(id: app.id, location: location,
+                                grab: CGSize(width: location.x - center.x, height: location.y - center.y), target: index)
+                pickups += 1
+            } else if drag?.dropping == false {
+                drag?.location = location
             }
-            .onEnded { _ in endDrag() }
+            retargetSoon(layout)
+        } ended: {
+            endDrag()
+        }
     }
 
     /// Icons make way once the dragged one rests over a slot for a moment, so passing over
@@ -312,5 +308,29 @@ struct HomeScreenGrid<Menu: View, Preview: View>: View {
     private func accessibleMove(_ app: WebApp, to index: Int) {
         move(app.id, index)
         AccessibilityNotification.Announcement("\(app.name) moved to position \(index + 1) of \(apps.count)").post()
+    }
+}
+
+/// A hold that then follows the finger, in a named coordinate space. UIKit's long press, since
+/// any SwiftUI drag on a tile keeps the grid from scrolling at all: this one fails when the
+/// finger moves before the hold ends, and the scroll view takes the swipe.
+struct HoldToDrag: UIGestureRecognizerRepresentable {
+    let space: String
+    let moved: (CGPoint) -> Void
+    /// Let go, or cancelled.
+    let ended: () -> Void
+
+    func makeUIGestureRecognizer(context: Context) -> UILongPressGestureRecognizer {
+        let recognizer = UILongPressGestureRecognizer()
+        recognizer.minimumPressDuration = 0.2
+        return recognizer
+    }
+
+    func handleUIGestureRecognizerAction(_ recognizer: UILongPressGestureRecognizer, context: Context) {
+        switch recognizer.state {
+        case .began, .changed: moved(context.converter.location(in: .named(space)))
+        case .ended, .cancelled: ended()
+        default: break
+        }
     }
 }

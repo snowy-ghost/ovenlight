@@ -16,6 +16,7 @@ struct LauncherView: View {
     @State private var mail: MailDraft?
     @State private var leaving: Membership?
     @ObservedObject private var sharing = OwnerSharing.shared
+    @ObservedObject private var network = NetworkPath.shared
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -24,14 +25,16 @@ struct LauncherView: View {
             HomeTopBar(isEditing: $isEditing, showsLock: !welcome, showsAddApp: node.ownerEnabled, showsEditApps: !registry.apps.isEmpty,
                        lock: { lock.lock() }, addApp: { router.present(.addApp) }, settings: { router.present(.settings) }) {
                 // The owner's own connection only once they set Ovenlight up for their machines.
-                TailnetStatusPill(state: node.ownerEnabled ? node.state : .idle) { Task { await node.owner.restart() } }
+                TailnetStatusPill(state: node.ownerEnabled ? node.state : .idle, offline: !network.isSatisfied) {
+                    Task { await node.owner.restart() }
+                }
             } menuItems: {
                 LauncherShareMenuItems()
             }
             // Stops growing where the system's bars do.
             .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
-            TailnetBanner(state: node.ownerEnabled ? node.state : .idle, connect: { router.present(.login($0)) },
-                          approve: { router.present(.approve) })
+            TailnetBanner(state: node.ownerEnabled ? node.state : .idle, signedInBefore: node.owner.magicDNSSuffixSeen != nil,
+                          connect: { router.present(.login($0)) }, approve: { router.present(.approve) })
             PendingInvitesBanner { router.present(.join(JoinRequest(invite: .success($0)))) }
                 .padding(.horizontal, 26)
             if welcome {
@@ -186,26 +189,35 @@ struct LauncherView: View {
 /// connecting and failures show in `TailnetStatusPill`.
 struct TailnetBanner: View {
     let state: NodeState
+    /// Connected before and not signed out since: the sign-in ended (it expired, or the phone
+    /// was removed from the account), which the card says rather than starting over.
+    let signedInBefore: Bool
     let connect: (URL) -> Void
     let approve: () -> Void
+
+    static func signIn(before: Bool) -> (title: String, message: String, button: String) {
+        before ? ("Sign In Again", "This phone’s Tailscale sign-in ended. Sign in again to reach your computers.", "Sign In")
+            : ("Connect Your Computers", "Ovenlight connects privately to your own computers with your Tailscale account, without a VPN.", "Connect")
+    }
 
     var body: some View {
         switch state {
         case .needsLogin(let url):
+            let copy = Self.signIn(before: signedInBefore)
             card {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack(spacing: 10) {
                         SettingsSymbol(systemName: "network", color: .ember)
-                        Text("Connect Your Computers")
+                        Text(copy.title)
                             .font(.headline)
                             .accessibilityAddTraits(.isHeader)
                     }
-                    Text("Ovenlight connects privately to your own computers with your Tailscale account, without a VPN.")
+                    Text(copy.message)
                         .font(.subheadline)
                         .foregroundStyle(Color.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
                     Button { connect(url) } label: {
-                        Text("Connect")
+                        Text(copy.button)
                             .font(.body.weight(.semibold))
                             .frame(maxWidth: .infinity)
                     }
@@ -418,7 +430,7 @@ struct AddAppView: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 if ownerSuffix != nil {
                     ToolbarItem(placement: .confirmationAction) {
-                        Button("Add", action: add).disabled(AppAddress.url(from: text) == nil)
+                        Button("Add", action: add).disabled(AppAddress.url(from: text, completingWith: ownerSuffix) == nil)
                     }
                 }
             }
@@ -430,12 +442,15 @@ struct AddAppView: View {
 
     private func add() {
         guard let url = AppAddress.url(from: text, ownerSuffix: ownerSuffix) else {
-            refused = AppAddress.url(from: text) != nil
+            refused = AppAddress.url(from: text, completingWith: ownerSuffix) != nil
             // The refusal shows under the field, away from VoiceOver's focus.
             if refused { AccessibilityNotification.Announcement(AppAddress.notYourComputer).post() }
             return
         }
-        registry.add(url: url)
+        let listed = Set(registry.apps.map(\.id))
+        let app = registry.add(url: url)
+        // One already here opens instead.
+        if listed.contains(app.id) { return router.open(app) }
         // An app discovery already found (one removed, then added back) joins it at once.
         Task { await registry.mergeDiscovered(node.discovered) }
         dismiss()

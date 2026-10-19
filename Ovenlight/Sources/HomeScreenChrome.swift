@@ -95,14 +95,19 @@ struct GlassIconLabel: View {
 /// Nothing when connected or off; signing in and approval have a card instead.
 struct TailnetStatusPill: View {
     let state: NodeState
+    /// The phone has no network, so a node coming up can't.
+    var offline = false
     let retry: () -> Void
+
+    /// What the pill says while the node comes up.
+    static func busyText(offline: Bool) -> String { offline ? ConnectionCopy.offline : ConnectionCopy.connecting }
 
     var body: some View {
         switch state {
         case .starting, .connecting, .retrying:
             HStack(spacing: 7) {
-                ProgressView().controlSize(.small)
-                Text(ConnectionCopy.connecting)
+                if !offline { ProgressView().controlSize(.small) }
+                Text(Self.busyText(offline: offline))
                     .font(.footnote.weight(.medium))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -225,9 +230,10 @@ struct EmptyHomeSlot: View {
                             .font(.system(size: size * 0.36, weight: .medium))
                             .foregroundStyle(.secondary)
                     }
+                // As a tile's label, legible over the light.
                 Text("Add App")
                     .font(.caption)
-                    .foregroundStyle(Color.secondaryText)
+                    .foregroundStyle(.primary)
                     .lineLimit(1)
             }
         }

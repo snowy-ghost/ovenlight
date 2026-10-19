@@ -238,22 +238,27 @@ enum NavigationPolicy {
     }
 }
 
-/// Turns what someone types into Add App into an app address. A bare host gets https;
-/// anything that isn't https is refused. Add App opens only the owner's own computers:
-/// apps anywhere else come by an invite, or by discovery once their owner publishes them.
+/// Turns what someone types into Add App into an app address. A bare host gets https, and
+/// a bare name (`notes`) the owner's tailnet once it's known; anything that isn't https is
+/// refused. Add App opens only the owner's own computers: apps anywhere else come by an
+/// invite, or by discovery once their owner publishes them.
 enum AppAddress {
-    static func url(from text: String) -> URL? {
+    static func url(from text: String, completingWith suffix: String? = nil) -> URL? {
         var text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if !text.contains("://") { text = "https://" + text }
-        guard let url = URL(string: text), url.scheme?.lowercased() == "https",
-              let host = url.host, host.contains(".") else { return nil }
-        return url
+        guard var url = URL(string: text), url.scheme?.lowercased() == "https", let host = url.host else { return nil }
+        if !host.contains("."), let suffix = suffix.map(Discovery.normalizedHost), !suffix.isEmpty,
+           var parts = URLComponents(url: url, resolvingAgainstBaseURL: false) {
+            parts.host = host + "." + suffix
+            url = parts.url ?? url
+        }
+        return url.host?.contains(".") == true ? url : nil
     }
 
     /// The address, only if it's on the owner's own tailnet. Nil `ownerSuffix` (owner mode
     /// off, or not signed in yet) takes nothing.
     static func url(from text: String, ownerSuffix: String?) -> URL? {
-        guard let url = url(from: text),
+        guard let url = url(from: text, completingWith: ownerSuffix),
               Routing.isOnOwnersTailnet(host: url.host ?? "", ownerSuffix: ownerSuffix) else { return nil }
         return url
     }

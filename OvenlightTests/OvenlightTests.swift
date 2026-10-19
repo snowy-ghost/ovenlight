@@ -343,6 +343,18 @@ final class AppAddressTests: XCTestCase {
         XCTAssertNil(AppAddress.url(from: "coach.tailabc123.ts.net", ownerSuffix: nil), "not signed in to their own computers yet")
         XCTAssertNil(AppAddress.url(from: "coach.tailabc123.ts.net", ownerSuffix: ""))
     }
+
+    /// Re-adding a removed app takes just its name: the owner's tailnet completes it, for
+    /// Add as for the button that enables it.
+    func testAddAppCompletesABareName() {
+        let own = "TailABC123.ts.net."
+        XCTAssertEqual(AppAddress.url(from: " notes ", ownerSuffix: own)?.absoluteString, "https://notes.tailabc123.ts.net")
+        XCTAssertEqual(AppAddress.url(from: "notes:8443/app", ownerSuffix: own)?.absoluteString, "https://notes.tailabc123.ts.net:8443/app")
+        XCTAssertEqual(AppAddress.url(from: "notes", completingWith: own)?.host, "notes.tailabc123.ts.net")
+        XCTAssertNil(AppAddress.url(from: "notes", ownerSuffix: nil), "no tailnet known yet")
+        XCTAssertNil(AppAddress.url(from: "notes"))
+        XCTAssertEqual(AppAddress.url(from: "notes.example.com", completingWith: own)?.host, "notes.example.com", "a full name stays")
+    }
 }
 
 @MainActor
@@ -363,6 +375,21 @@ final class AppRegistryTests: XCTestCase {
         let second = makeRegistry(dir)
         XCTAssertEqual(second.apps.map(\.name), ["Notes"])
         XCTAssertEqual(second.apps[0].dataStoreID, app.dataStoreID)
+    }
+
+    /// Add App with an address already listed gives back the owner's app there, which then
+    /// opens, rather than a second tile with its own empty storage. A shared app on that
+    /// host is someone else's and doesn't count.
+    func testAddingAnAppAlreadyListedOpensIt() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let registry = makeRegistry(dir)
+        registry.addShared(name: "Notes", host: "notes.tailabc123.ts.net", slug: "notes", membershipID: "m1", sharedBy: "Riley")
+        let first = registry.add(url: URL(string: "https://notes.tailabc123.ts.net/")!)
+        XCTAssertEqual(registry.apps.count, 2, "a shared app on the host isn't the owner's")
+        let again = registry.add(url: URL(string: "https://Notes.TailABC123.ts.net/today")!)
+        XCTAssertEqual(again.id, first.id)
+        XCTAssertEqual(registry.apps.count, 2)
     }
 
     func testDiscoveredAppsPersistAndRemovedOnesStayRemoved() async throws {
@@ -1237,6 +1264,22 @@ final class ConnectionStateTests: XCTestCase {
         XCTAssertTrue(offline(answers: [:]), "what a node records when nothing was left to probe")
         XCTAssertFalse(offline(answers: nil), "nothing before the first probe")
         XCTAssertFalse(offline(node: .connecting, answers: [coach: false]), "the launcher shows the connection itself")
+    }
+
+    /// With no network, a node coming up can't: the pill says so, without a spinner.
+    func testThePillSaysOfflineWhenThePhoneIs() {
+        XCTAssertEqual(TailnetStatusPill.busyText(offline: true), ConnectionCopy.offline)
+        XCTAssertEqual(TailnetStatusPill.busyText(offline: false), ConnectionCopy.connecting)
+    }
+
+    /// A sign-in that ended (it expired, or the phone left the account) says so, rather than
+    /// showing the first-run card again.
+    func testAnEndedSignInSaysSo() {
+        let ended = TailnetBanner.signIn(before: true)
+        XCTAssertEqual(ended.title, "Sign In Again")
+        XCTAssertEqual(ended.message, "This phone’s Tailscale sign-in ended. Sign in again to reach your computers.")
+        XCTAssertEqual(ended.button, "Sign In")
+        XCTAssertEqual(TailnetBanner.signIn(before: false).title, "Connect Your Computers")
     }
 }
 
