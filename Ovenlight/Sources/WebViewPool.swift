@@ -372,7 +372,7 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
                 // Sign-in and node failures have their own screens and wait for the owner.
                 guard let node else { return }
                 let deadline = AppLoadGate.nodeDeadline(busySince: &busySince, state: node.state, now: .now)
-                if let deadline, Date.now >= deadline { return giveUp(.nodeGaveUp) }
+                if let deadline, Date.now >= deadline { return giveUp(AppLoadGate.nodeGiveUp(node.state)) }
                 await Self.change(of: node, before: deadline)
             }
         }

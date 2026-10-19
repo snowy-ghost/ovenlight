@@ -1272,13 +1272,20 @@ final class AppLoadGateTests: XCTestCase {
     }
 
     /// When Ovenlight's own connection never came up, Can't Reach says to check the phone's
-    /// network, not the computer; an unanswered probe still points at the computer.
+    /// network, not the computer; an unanswered probe, or a node up and still retrying the
+    /// computers, still points at the computer.
     func testCantReachSaysWhenThePhoneNeverConnected() {
         let gaveUp = run([.nodeNotReady, .nodeGaveUp])
         XCTAssertEqual(gaveUp, .notConnected)
         XCTAssertEqual(run([.nodeReady, .reached], from: gaveUp), gaveUp, "only Retry leaves it")
         XCTAssertEqual(run([.retry], from: gaveUp), .waiting)
         XCTAssertEqual(run([.nodeReady, .gaveUp]), .unreachable)
+        // At the node's deadline. Share's check asks the same of the owner's node.
+        XCTAssertEqual(run([.nodeNotReady, AppLoadGate.nodeGiveUp(.connecting)]), .notConnected)
+        XCTAssertEqual(run([.nodeNotReady, AppLoadGate.nodeGiveUp(.starting)]), .notConnected)
+        XCTAssertEqual(run([.nodeNotReady, AppLoadGate.nodeGiveUp(.retrying(attempt: 3))]), .unreachable)
+        XCTAssertTrue(NodeState.retrying(attempt: 1).isRetrying)
+        XCTAssertFalse(NodeState.connecting.isRetrying)
         XCTAssertEqual(ConnectionCopy.notConnected, "Ovenlight couldn’t connect. Check that you’re online, then try again.")
         CopyRules.assertNeutral(ConnectionCopy.notConnected)
     }

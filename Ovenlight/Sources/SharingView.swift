@@ -497,8 +497,9 @@ struct InviteComposer: View {
         error = nil
         let who = person?.name ?? trimmed
         guard !who.isEmpty, person != nil || namesake == nil, !working else { return }
-        // Not even Face ID while the phone's own connection is down: nothing could reach the computer.
-        guard NodeManager.shared.owner.state == .ready else {
+        // Not even Face ID while the phone's own connection is down: nothing could reach the
+        // computer. One that is up, retrying the computers that didn't answer, may reach it.
+        guard NodeManager.shared.owner.state == .ready || NodeManager.shared.owner.state.isRetrying else {
             error = ConnectionCopy.notConnected
             return
         }

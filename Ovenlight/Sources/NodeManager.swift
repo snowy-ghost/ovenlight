@@ -26,6 +26,12 @@ enum NodeState: Equatable {
         }
     }
 
+    /// Up, with no computer answering yet: their side, not the phone's connection.
+    var isRetrying: Bool {
+        if case .retrying = self { return true }
+        return false
+    }
+
     /// Whether the sign-in sheet closes: the iPhone is approved, or the node failed. A tailnet
     /// that approves each new device keeps it open through the start between the sign-in and
     /// the approval, and the wait for approval, so the owner can carry on in Tailscale's pages.

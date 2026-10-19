@@ -58,6 +58,10 @@ enum AppLoadGate: Equatable {
         return since.addingTimeInterval(nodeTimeout)
     }
 
+    /// Giving up on a node that wasn't ready by its deadline. One still retrying is up and
+    /// only no computer answered, so the app is unreachable, not the phone unconnected.
+    static func nodeGiveUp(_ state: NodeState) -> Event { state.isRetrying ? .gaveUp : .nodeGaveUp }
+
     /// Between quiet retries of an app whose computer is listed offline.
     static let quietRetryInterval: TimeInterval = 3
 
