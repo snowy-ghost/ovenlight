@@ -106,6 +106,8 @@ abstract class Acknowledgements : DefaultTask() {
         val byLicense = sortedMapOf<String, MutableList<String>>()
         val unknown = mutableListOf<String>()
         for ((module, pomName) in modules.get().toSortedMap()) {
+            // A BOM, or a multiplatform module's root, ships no code of its own.
+            if (byPom[pomName]?.readText()?.contains("<packaging>pom</packaging>") == true) continue
             val license = byPom[pomName]?.let(::licenseOf) ?: inherited[module.substringBeforeLast(':')]
             if (license == null) unknown += module else byLicense.getOrPut(license) { mutableListOf() } += module
         }
@@ -118,7 +120,11 @@ abstract class Acknowledgements : DefaultTask() {
                 list.forEach { append("  $it\n") }
                 append("\n")
             }
-            append("Material Icons (lock_open, error), Apache License 2.0\n\n")
+            append(
+                "OkHttp's PublicSuffixDatabase.list is compiled from the Public Suffix List " +
+                    "(https://publicsuffix.org/list/public_suffix_list.dat), under the Mozilla Public License 2.0 " +
+                    "(https://mozilla.org/MPL/2.0/).\n\n",
+            )
             append("Apache License 2.0\n------------------\n\n")
             append(apacheLicense.get().asFile.readText())
         })

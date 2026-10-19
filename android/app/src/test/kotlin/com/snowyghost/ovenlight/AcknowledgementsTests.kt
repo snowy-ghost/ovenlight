@@ -5,6 +5,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.io.FileNotFoundException
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -23,6 +24,9 @@ class AcknowledgementsTests {
         assertTrue(notices.contains("androidx.compose.ui:ui"))
         assertTrue(notices.contains("Source Serif 4"))
         assertTrue(notices.contains("Material Symbols"))
+        assertTrue("CameraX's camera-core links it in", notices.contains("The LibYuv Project Authors"))
+        assertTrue(notices.contains("PublicSuffixDatabase.list"))
+        assertFalse("a BOM ships no code", notices.contains("compose-bom"))
     }
 
     @Test
