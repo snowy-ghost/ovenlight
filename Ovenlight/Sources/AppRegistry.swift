@@ -138,6 +138,19 @@ final class AppRegistry: ObservableObject {
         return app
     }
 
+    /// A shared app's tile takes the name its connector gives it now (by host), unless the
+    /// guest renamed it, as the owner's own apps do from discovery.
+    func takeSharedNames(_ names: [String: String], in membershipID: String) {
+        var changed = false
+        for index in apps.indices where apps[index].membershipID == membershipID {
+            guard let name = names[Discovery.normalizedHost(apps[index].host)], name != apps[index].manifestName else { continue }
+            if apps[index].hasDefaultName { apps[index].name = name }
+            apps[index].manifestName = name
+            changed = true
+        }
+        if changed { save() }
+    }
+
     /// The app was opened: its tile loses the new dot, for good.
     func markOpened(_ id: UUID) {
         guard let index = apps.firstIndex(where: { $0.id == id }), apps[index].isNew else { return }

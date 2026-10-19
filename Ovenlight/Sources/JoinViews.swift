@@ -1,3 +1,4 @@
+import AVFoundation
 import SwiftUI
 import VisionKit
 
@@ -34,11 +35,15 @@ struct JoinFlowView: View {
                     InviteEntryView { request.invite = $0 }
                 case .failure(let error):
                     ContentUnavailableView {
-                        Label("Can’t Use This Invite", systemImage: "link.badge.plus")
+                        Label {
+                            Text("Can’t Use This Invite").font(.display(.title2))
+                        } icon: {
+                            Image(systemName: "exclamationmark.circle")
+                        }
                     } description: {
                         Text(error.message)
                     } actions: {
-                        Button("Try Another Invite") { request.invite = nil }
+                        Button { request.invite = nil } label: { Text("Try Another Invite").font(.headline) }
                             .buttonStyle(.ovenlightProminent)
                             .buttonBorderShape(.capsule)
                             .controlSize(.large)
@@ -67,7 +72,8 @@ private struct InviteEntryView: View {
     @State private var error: String?
     @State private var scanning = false
 
-    private var canScan: Bool { DataScannerViewController.isSupported && DataScannerViewController.isAvailable }
+    /// Even with the camera refused: the scanner then says where to allow it.
+    private var canScan: Bool { DataScannerViewController.isSupported }
 
     var body: some View {
         Form {
@@ -171,6 +177,8 @@ private struct JoinInviteView: View {
             ScrollView { layout(for: phase) }
         }
         .animation(.easeInOut(duration: 0.25), value: phase)
+        .onAppear { guests.shownJoins.insert(invite.invite) }
+        .onDisappear { guests.shownJoins.remove(invite.invite) }
         .announcing(announcement(for: phase))
         .sensoryFeedback(trigger: phase) { _, new in
             switch new {
@@ -304,18 +312,40 @@ private struct JoinInviteView: View {
     }
 }
 
-/// Scans an invite's QR code with the camera.
+/// Scans an invite's QR code with the camera, or says where to allow it.
 struct InviteScannerView: View {
     let found: (URL) -> Void
     let cancel: () -> Void
 
+    @State private var refused = AVCaptureDevice.authorizationStatus(for: .video) == .denied
+
     var body: some View {
         ZStack(alignment: .top) {
-            ScannerRepresentable(found: found)
-                .ignoresSafeArea()
+            if refused {
+                VStack(spacing: 18) {
+                    Text("Ovenlight can’t use the camera. Allow it in Settings to scan the invite code.")
+                        .multilineTextAlignment(.center)
+                    Button {
+                        if let settings = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(settings) }
+                    } label: {
+                        Text("Open Settings").font(.headline)
+                    }
+                    .buttonStyle(.ovenlightProminent)
+                    .buttonBorderShape(.capsule)
+                    .controlSize(.large)
+                }
+                .padding(32)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color.groupedBackground)
+            } else {
+                ScannerRepresentable(found: found) { refused = true }
+                    .ignoresSafeArea()
+            }
             HStack {
-                Text("Point at the invite code")
-                    .font(.subheadline.weight(.semibold))
+                if !refused {
+                    Text("Point at the invite code")
+                        .font(.subheadline.weight(.semibold))
+                }
                 Spacer()
                 Button("Cancel", action: cancel)
                     .font(.subheadline.weight(.semibold))
@@ -330,13 +360,15 @@ struct InviteScannerView: View {
 
     private struct ScannerRepresentable: UIViewControllerRepresentable {
         let found: (URL) -> Void
+        /// The camera was refused, at its prompt or before.
+        let unavailable: () -> Void
 
         func makeUIViewController(context: Context) -> DataScannerViewController {
             let scanner = DataScannerViewController(recognizedDataTypes: [.barcode(symbologies: [.qr])],
                                                     qualityLevel: .balanced, recognizesMultipleItems: false,
                                                     isHighFrameRateTrackingEnabled: false, isHighlightingEnabled: true)
             scanner.delegate = context.coordinator
-            try? scanner.startScanning()
+            do { try scanner.startScanning() } catch { DispatchQueue.main.async(execute: unavailable) }
             return scanner
         }
 
@@ -346,13 +378,21 @@ struct InviteScannerView: View {
             controller.stopScanning()
         }
 
-        func makeCoordinator() -> Coordinator { Coordinator(found: found) }
+        func makeCoordinator() -> Coordinator { Coordinator(found: found, unavailable: unavailable) }
 
         final class Coordinator: NSObject, DataScannerViewControllerDelegate {
             let found: (URL) -> Void
+            let unavailable: () -> Void
             private var done = false
 
-            init(found: @escaping (URL) -> Void) { self.found = found }
+            init(found: @escaping (URL) -> Void, unavailable: @escaping () -> Void) {
+                self.found = found
+                self.unavailable = unavailable
+            }
+
+            func dataScanner(_ scanner: DataScannerViewController, becameUnavailableWithError error: DataScannerViewController.ScanningUnavailable) {
+                unavailable()
+            }
 
             func dataScanner(_ scanner: DataScannerViewController, didAdd items: [RecognizedItem], allItems: [RecognizedItem]) {
                 for case .barcode(let code) in items {

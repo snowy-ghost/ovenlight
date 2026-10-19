@@ -167,14 +167,22 @@ enum Claim {
     }
 }
 
-/// Someone's apps stopped being shared with this iPhone.
-struct AccessEndedNotice: Identifiable, Equatable {
+/// What happened to a guest's apps out of sight, said once: someone's apps stopped being
+/// shared with this iPhone, or a join failed for good with its screen closed.
+struct GuestNotice: Identifiable, Equatable {
     let id = UUID()
-    var owner: String
-    var apps: [String]
+    var title: String
+    var message: String
 
-    var title: String { ConnectionCopy.noLongerSharedTitle }
-    var message: String { ConnectionCopy.noLongerShared(apps: apps, owner: owner) }
+    static func accessEnded(owner: String, apps: [String]) -> GuestNotice {
+        GuestNotice(title: ConnectionCopy.noLongerSharedTitle, message: ConnectionCopy.noLongerShared(apps: apps, owner: owner))
+    }
+
+    /// Nil while the join's screen shows why, and for a failure Try Again can still fix.
+    static func joinFailed(_ error: JoinError, invite: InviteLink, screenShown: Bool) -> GuestNotice? {
+        guard !screenShown, !error.isRetryable else { return nil }
+        return GuestNotice(title: error.title(owner: invite.owner, app: invite.name), message: error.message(owner: invite.owner, app: invite.name))
+    }
 }
 
 /// Guest memberships from invites: joining, claiming, resuming an interrupted join, and
@@ -189,7 +197,9 @@ final class GuestManager: ObservableObject {
 
     /// Invites being accepted this session, by invite ID.
     @Published private(set) var phases: [String: JoinPhase] = [:]
-    @Published var notice: AccessEndedNotice?
+    @Published var notice: GuestNotice?
+    /// Invites whose join screen shows, which says itself why a join failed.
+    var shownJoins: Set<String> = []
 
     private var inFlight: Set<String> = []
     /// The last join queued for each membership; each waits for the one before.
@@ -216,6 +226,7 @@ final class GuestManager: ObservableObject {
                 Task { await self.verifyAccess(to: app) }
             }
         }
+        node.onAppNames = { [weak self] names in self?.registry?.takeSharedNames(names, in: id) }
         // The connector can't say "not invited" through a path that's gone: the owner
         // stopped sharing an app with a guest who keeps another (see `GuestProbe.absentHosts`).
         node.onPeersGone = { [weak self] hosts in
@@ -342,6 +353,9 @@ final class GuestManager: ObservableObject {
             phases[inviteID] = nil
             return
         }
+        // Nothing to wait for with no network: the invite is kept for Try Again, and the next
+        // return to Ovenlight joins.
+        guard NetworkPath.shared.isSatisfied else { return await fail(inviteID, in: membershipID, .network, node: node) }
         // Put this invite's key first, and restart a node started with another.
         if store[membershipID]?.joined == false, store[membershipID]?.pendingClaims.first?.invite.invite != inviteID {
             store.update(membershipID) { membership in
@@ -418,7 +432,8 @@ final class GuestManager: ObservableObject {
         log.notice("invite \(inviteID, privacy: .public) failed: \(String(describing: error), privacy: .public)")
         // An invite for an app already here that couldn't be claimed again (an old link)
         // still leaves the app; say so rather than fail.
-        let host = pendingInvite(inviteID, in: membershipID).map { Discovery.normalizedHost($0.host) }
+        let invite = pendingInvite(inviteID, in: membershipID)
+        let host = invite.map { Discovery.normalizedHost($0.host) }
         let existing = error == .wrongNetwork ? nil
             : registry?.apps.first { $0.membershipID == membershipID && Discovery.normalizedHost($0.host) == host }
         phases[inviteID] = existing.map { .joined($0.id) } ?? .failed(error)
@@ -427,6 +442,10 @@ final class GuestManager: ObservableObject {
         if store[membershipID]?.joined == false { await node.stop() }
         if error.isRetryable && existing == nil { return }
         store.update(membershipID) { $0.pendingClaims.removeAll { $0.invite.invite == inviteID } }
+        // Its row in the launcher goes with it, so with its screen closed, a notice says why.
+        if existing == nil, let invite, let notice = GuestNotice.joinFailed(error, invite: invite, screenShown: shownJoins.contains(inviteID)) {
+            router?.afterClear { self.notice = notice }
+        }
         await collectOrphans()
     }
 
@@ -491,7 +510,7 @@ final class GuestManager: ObservableObject {
         if let open = router?.openApp, apps.contains(where: { $0.id == open.id }) {
             router?.openApp = nil
         }
-        let notice = AccessEndedNotice(owner: first.sharedBy ?? "Its owner", apps: apps.map(\.name))
+        let notice = GuestNotice.accessEnded(owner: first.sharedBy ?? "Its owner", apps: apps.map(\.name))
         Task {
             for app in apps { await registry?.remove(app.id) }
             await collectOrphans()

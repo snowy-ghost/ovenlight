@@ -238,6 +238,8 @@ final class MembershipNode: ObservableObject {
     var guestHosts: () -> [String] = { [] }
     /// For a guest: hosts whose connector said "not invited" in a probe.
     var onNotInvited: (Set<String>) -> Void = { _ in }
+    /// For a guest: the names the app hosts that answered give their apps now.
+    var onAppNames: ([String: String]) -> Void = { _ in }
     /// For a guest: the backend has needed a login for a few polls in a row.
     var onLoginLost: () -> Void = {}
     /// For a guest: app hosts gone from the node's peers for a few minutes (see `PeerAbsence`).
@@ -559,6 +561,7 @@ final class MembershipNode: ObservableObject {
             probedHosts = hosts
             let guest = await GuestProbe.probe(hosts: hosts, session: session(), firstAnswer: firstAnswer)
             if !guest.notInvited.isEmpty { onNotInvited(guest.notInvited) }
+            if !guest.appNames.isEmpty { onAppNames(guest.appNames) }
             outcome = guest.base
         }
         // An owner's laptop or TV without a connector never answers: only app hosts count.
@@ -628,7 +631,7 @@ final class MembershipNode: ObservableObject {
             guard let url = URL(string: OvenlightManifest.path, relativeTo: app.startURL)?.absoluteURL else { return .unreachable }
             reach = (try? await session.data(from: url)) != nil ? .reached : .unreachable
         } else {
-            reach = await GuestProbe.whoami(host: host, session: session)
+            reach = await GuestProbe.whoami(host: host, session: session).reach
         }
         // A probe cut short says nothing about the host.
         guard !Task.isCancelled else { return .unreachable }
@@ -691,22 +694,28 @@ enum GuestProbe {
     struct Outcome {
         var base = Discovery.Outcome()
         var notInvited: Set<String> = []
+        /// The app's name as each host that admitted the guest gives it now.
+        var appNames: [String: String] = [:]
     }
 
     /// `firstAnswer` as in `Discovery.probe`.
     static func probe(hosts: [String], session: URLSession?, firstAnswer: @MainActor () -> Void = {}) async -> Outcome {
         guard let session, !hosts.isEmpty else { return Outcome() }
-        return await withTaskGroup(of: (String, Reach).self) { group in
+        return await withTaskGroup(of: (String, Reach, String?).self) { group in
             for host in hosts {
-                group.addTask { (host, await whoami(host: host, session: session)) }
+                group.addTask {
+                    let answer = await whoami(host: host, session: session)
+                    return (host, answer.reach, answer.appName)
+                }
             }
             var outcome = Outcome()
-            for await (host, reach) in group {
+            for await (host, reach, appName) in group {
                 let answered = reach != .unreachable
                 if answered, !outcome.base.reachable { await firstAnswer() }
                 outcome.base.reachable = outcome.base.reachable || answered
                 outcome.base.answered[host] = answered
                 if reach == .notInvited { outcome.notInvited.insert(host) }
+                if let appName { outcome.appNames[host] = appName }
             }
             return outcome
         }
@@ -729,11 +738,19 @@ enum GuestProbe {
         status.peers.contains(where: \.online)
     }
 
-    static func whoami(host: String, session: URLSession) async -> Reach {
+    /// The answer, and the app's name when the connector admitted the guest: it says it as
+    /// its claim does, so a tile can follow a rename.
+    static func whoami(host: String, session: URLSession) async -> (reach: Reach, appName: String?) {
         guard let url = URL(string: "https://\(host)/__ovenlight/whoami"),
               let (data, response) = try? await session.data(from: url),
-              let http = response as? HTTPURLResponse else { return .unreachable }
-        return classify(status: http.statusCode, header: http.value(forHTTPHeaderField: ConnectorError.header), body: data)
+              let http = response as? HTTPURLResponse else { return (.unreachable, nil) }
+        let name = http.statusCode == 200 ? appName(from: data) : nil
+        return (classify(status: http.statusCode, header: http.value(forHTTPHeaderField: ConnectorError.header), body: data), name)
+    }
+
+    /// whoami's `appName`, cleaned like a claim's.
+    static func appName(from body: Data) -> String? {
+        InviteLink.label((try? JSONDecoder().decode(ClaimResponse.self, from: body))?.appName)
     }
 
     /// 403 `not_invited` ends the share for an unclaimed or removed guest; any other answer,
@@ -1108,6 +1125,11 @@ final class NetworkPath: ObservableObject {
     func satisfied() async {
         for await satisfied in $isSatisfied.values where satisfied { return }
     }
+
+    #if DEBUG
+    /// For tests: as if the monitor said so.
+    func pretend(satisfied: Bool) { isSatisfied = satisfied }
+    #endif
 }
 
 /// The first of several racing results; later offers are ignored.

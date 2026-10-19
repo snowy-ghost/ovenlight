@@ -220,6 +220,27 @@ final class MembershipTests: XCTestCase {
                        "removing a shared app doesn't dismiss its host")
     }
 
+    /// A shared app takes the name its connector's whoami gives it now, unless the guest
+    /// renamed it; another owner's app on the same host doesn't.
+    func testASharedAppTakesItsNewName() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let registry = AppRegistry(directory: dir, session: { _ in nil })
+        let echo = registry.addShared(name: "Echo Board", host: "echo-board.taildef456.ts.net", slug: "echo-board", membershipID: "m1", sharedBy: "Riley")
+        let notes = registry.addShared(name: "Notes", host: "notes.taildef456.ts.net", slug: "notes", membershipID: "m1", sharedBy: "Riley")
+        let other = registry.addShared(name: "Echo Board", host: "echo-board.taildef456.ts.net", slug: "echo-board", membershipID: "m2", sharedBy: "Kim")
+        registry.rename(notes.id, to: "My Notes")
+        let whoami = try Data(contentsOf: URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("connector/testdata/wire/whoami-guest.json"))
+        XCTAssertEqual(GuestProbe.appName(from: whoami), "Interview Coach")
+        registry.takeSharedNames(["echo-board.taildef456.ts.net": "Echo Board 2", "notes.taildef456.ts.net": "Notes 2"], in: "m1")
+        func name(_ app: WebApp) -> String? { registry.apps.first { $0.id == app.id }?.name }
+        XCTAssertEqual(name(echo), "Echo Board 2")
+        XCTAssertEqual(name(notes), "My Notes", "the guest's own name stays")
+        XCTAssertEqual(name(other), "Echo Board")
+        XCTAssertEqual(AppRegistry(directory: dir, session: { _ in nil }).apps.map(\.name), ["Echo Board 2", "My Notes", "Echo Board"])
+    }
+
     func testEachClaimGivesTheOwnersAppsTheirCurrentName() {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -313,6 +334,38 @@ final class GuestCleanupTests: XCTestCase {
         XCTAssertEqual(request.url?.absoluteString, "https://\(echo)/__ovenlight/claim")
         XCTAssertEqual(request.httpMethod, "POST")
         XCTAssertEqual(try JSONDecoder().decode([String: String].self, from: request.httpBody!), ["key": "tskey-1"])
+    }
+
+    /// A join that fails for good with its screen closed loses its launcher row with the
+    /// invite, so a notice says why; its screen says it itself, and Try Again can still fix
+    /// a network failure.
+    func testAJoinThatFailsWithItsScreenClosedSaysWhy() {
+        let invite = InviteLink(control: URL(string: "https://c.example")!, key: "k", owner: "Riley", app: "echo-board",
+                                invite: "i", host: echo, name: "Echo Board", to: "Sam")
+        let notice = GuestNotice.joinFailed(.expired, invite: invite, screenShown: false)
+        XCTAssertEqual(notice?.title, "This Invite No Longer Works")
+        XCTAssertEqual(notice?.message, "Invites expire, and each works only once. Ask Riley for a new one.")
+        XCTAssertNil(GuestNotice.joinFailed(.expired, invite: invite, screenShown: true))
+        XCTAssertNil(GuestNotice.joinFailed(.network, invite: invite, screenShown: false))
+    }
+
+    /// With no network, a join fails at once rather than after its 45 s wait, and keeps the
+    /// invite for Try Again and the next return to Ovenlight.
+    @MainActor
+    func testJoiningOfflineFailsAtOnce() async {
+        let invite = InviteLink(control: URL(string: "http://127.0.0.1:9")!, key: "tskey-1", owner: "Riley", app: "echo-board",
+                                invite: UUID().uuidString, host: echo, name: "Echo Board", to: "Sam")
+        let guests = GuestManager.shared
+        NetworkPath.shared.pretend(satisfied: false)
+        defer { NetworkPath.shared.pretend(satisfied: true) }
+        let start = ContinuousClock.now
+        await guests.accept(invite)
+        XCTAssertLessThan(ContinuousClock.now - start, .seconds(5))
+        XCTAssertEqual(guests.phases[invite.invite], .failed(.network))
+        let membershipID = guests.membershipID(for: invite.invite)
+        XCTAssertNotNil(membershipID, "kept for Try Again")
+        await guests.cancel(invite.invite)
+        if let membershipID { await NodeManager.shared.removeGuest(membershipID) }
     }
 
     func testJoinErrorsFromTheControlServer() {
