@@ -96,9 +96,10 @@ enum AppLoadGate: Equatable {
     }
 }
 
-/// Words for connection states that anyone may see. None of them names Tailscale or the
-/// tailnet, so a guest, who never signs in, can be shown every one. Copy that asks the
-/// owner to act on their Tailscale account lives only in the sign-in card, Settings and the
+/// Words for connection states. None of them names Tailscale or the tailnet, so a guest, who
+/// never signs in, can be shown any of them; those for the owner's own apps (`sharedBy` nil,
+/// and `notOnThisAccount`) say what to do on their computers or account. Copy that asks the
+/// owner to act in their Tailscale account lives only in the sign-in card, Settings and the
 /// approval prompt over the owner's apps.
 enum ConnectionCopy {
     static let connecting = "Connecting…"
@@ -107,12 +108,20 @@ enum ConnectionCopy {
 
     static func connecting(to app: String) -> String { "Connecting to \(app)…" }
     static func cantReach(_ app: String) -> String { "Can’t Reach \(app)" }
-    /// For an app someone shared, names them, since only they can wake its computer.
+    /// The owner's own app says what to do on their computer; one someone shared names them,
+    /// since only they can wake its computer.
     static func cantReachDetail(sharedBy owner: String?) -> String {
-        guard let owner else { return "Its computer may be asleep or offline. Try again in a moment." }
+        guard let owner else { return "Your computer may be asleep or offline. Wake it, or run ovenlight doctor on it, then try again." }
         return "\(owner)’s computer may be asleep or offline. Try again in a moment, or let \(owner) know."
     }
-    static func notResponding(_ app: String) -> String { "\(app) isn’t responding on its computer right now. Try again in a moment." }
+    static func notResponding(_ app: String, sharedBy owner: String?) -> String {
+        owner == nil ? "\(app) isn’t running on your computer. Run ovenlight doctor there, then try again."
+            : "\(app) isn’t responding on its computer right now. Try again in a moment."
+    }
+    /// An app of the owner's on a tailnet the phone doesn't know (`Routing.Route.refused`).
+    static func notOnThisAccount(_ app: String) -> String {
+        "\(app) isn’t on the account you’re signed in to. Sign in with the account it’s on, or remove it."
+    }
     static func signIn(toOpen app: String) -> String { "Sign In to Open \(app)" }
     static func cantOpen(_ app: String) -> String { "Can’t Open \(app)" }
     static let offline = "You’re Offline"

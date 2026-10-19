@@ -617,17 +617,24 @@ final class AdminAPITests: XCTestCase {
         XCTAssertEqual(AdminAPI.errorMessage(Data(#"{"error":"the admin API is for the owner only"}"#.utf8)), "the admin API is for the owner only")
     }
 
-    /// Only the nodes a connector made for its apps count as missed: a laptop or TV of the
-    /// owner's without a connector never answers.
-    func testAppHostsAreTheTaggedOnes() throws {
+    /// An owner's host that doesn't answer brings another look when it's a shareable app's
+    /// node, a private app's untagged node already found, or new this look; a laptop or TV
+    /// without a connector misses once, and then no more.
+    func testWatchesAppHostsAndNewOnes() throws {
         let json = """
         {"BackendState":"Running","CurrentTailnet":{"Name":"owen@","MagicDNSSuffix":"tailabc123.ts.net"},
          "Self":{"DNSName":"phone.tailabc123.ts.net.","OS":"iOS","UserID":1},
          "Peer":{"a":{"DNSName":"Coach.tailabc123.ts.net.","OS":"linux","Online":true,"Tags":["tag:ovenlight-app-coach"]},
-                 "b":{"DNSName":"tv.tailabc123.ts.net.","OS":"tvOS","Online":true,"UserID":1}}}
+                 "b":{"DNSName":"notes.tailabc123.ts.net.","OS":"linux","Online":true,"UserID":1},
+                 "c":{"DNSName":"tv.tailabc123.ts.net.","OS":"tvOS","Online":true,"UserID":1}}}
         """
         let status = try XCTUnwrap(TailnetStatus.decode(Data(json.utf8)))
-        XCTAssertEqual(Discovery.appHosts(in: status), ["coach.tailabc123.ts.net"])
+        let (coach, notes, tv) = ("coach.tailabc123.ts.net", "notes.tailabc123.ts.net", "tv.tailabc123.ts.net")
+        let hosts = [coach, notes, tv]
+        XCTAssertEqual(Discovery.watchedHosts(hosts, in: status, found: [], seenBefore: []), [coach, notes, tv], "all new")
+        XCTAssertEqual(Discovery.watchedHosts(hosts, in: status, found: [notes], seenBefore: Set(hosts)), [coach, notes],
+                       "the private app found on the untagged node, not the TV")
+        XCTAssertEqual(Discovery.watchedHosts(hosts, in: status, found: [], seenBefore: Set(hosts)), [coach])
     }
 
     func testAsksOnlyOnlineMachines() throws {
@@ -666,11 +673,17 @@ final class AdminAPITests: XCTestCase {
         let notes = OwnerSharing.Machine(adminHost: "notes.t.ts.net", apps: [app("notes")])
         let gone = OwnerSharing.Machine(adminHost: "gone.t.ts.net", apps: [app("gone")])
         let echo = OwnerSharing.Machine(adminHost: "echo.t.ts.net", apps: [app("echo"), app("notes")])
-        let kept = OwnerSharing.keepingFailed([echo], failed: ["coach.t.ts.net": "Couldn’t reach the computer.", "notes.t.ts.net": "x"],
-                                              previous: [coach, notes, gone])
-        XCTAssertEqual(kept.map(\.adminHost), ["echo.t.ts.net", "coach.t.ts.net"])
+        let web = OwnerSharing.Machine(adminHost: "web.t.ts.net", apps: [app("web")])
+        let kept = OwnerSharing.keepingFailed([echo], failed: ["coach.t.ts.net": .unreachable, "notes.t.ts.net": .unreachable,
+                                                               "web.t.ts.net": .failed("an answer this version can't read")],
+                                              previous: [coach, notes, gone, web])
+        XCTAssertEqual(kept.map(\.adminHost), ["echo.t.ts.net", "coach.t.ts.net", "web.t.ts.net"])
         XCTAssertEqual(kept[1].guests, coach.guests)
-        XCTAssertEqual(kept[1].problem, "Couldn’t reach the computer.")
+        XCTAssertEqual(kept[1].problem, AdminError.unreachable.message)
+        XCTAssertEqual(kept[1].apps.map(\.online), [false], "a computer that couldn't be reached is offline")
+        XCTAssertEqual(kept[2].problem, "An answer this version can't read")
+        XCTAssertEqual(kept[2].apps.map(\.online), [true], "one that answered badly isn't")
+        XCTAssertEqual(AdminError.failed("run `ovenlight doctor` there").message, "Run ovenlight doctor there", "no backticks")
         XCTAssertNil(kept[0].problem)
     }
 
@@ -723,6 +736,34 @@ final class GuestCopyTests: XCTestCase {
 }
 
 final class SupportMailTests: XCTestCase {
+    func testContactUsGivesThePhonesLines() {
+        XCTAssertEqual(MailDraft.contactUs(version: "1.0.2 (27)", iOS: "26.5", computers: "Connected (ready)").body, """
+
+
+
+            Ovenlight: 1.0.2 (27)
+            iOS: 26.5
+            Your Computers: Connected (ready)
+            """)
+        XCTAssertFalse(MailDraft.contactUs(version: "1.0.2 (27)", iOS: "26.5", computers: nil).body.contains("Your Computers"),
+                       "not for someone who doesn't use their own computers")
+        XCTAssertEqual(MailDraft.connection(.ready, listedOffline: false), "\(NodeState.ready.summary) (ready)")
+    }
+
+    /// Opening says what failed after the gate opened: an error's domain and code, never its
+    /// address or words.
+    @MainActor
+    func testTheOpeningLineSaysWhatFailed() {
+        let error = NSError(domain: NSURLErrorDomain, code: -1202,
+                            userInfo: [NSURLErrorFailingURLStringErrorKey: "https://coach.example.com/?token=1",
+                                       NSLocalizedDescriptionKey: "The certificate for this server is invalid."])
+        XCTAssertEqual(WebCoordinator.opening(gate: .ready, failure: WebCoordinator.failure(error)),
+                       "ready, page failed (NSURLErrorDomain -1202)")
+        XCTAssertEqual(WebCoordinator.opening(gate: .ready, failure: "app not responding (502 unavailable)"),
+                       "ready, app not responding (502 unavailable)")
+        XCTAssertEqual(WebCoordinator.opening(gate: .unreachable, failure: nil), "unreachable")
+    }
+
     func testProblemReportForASharedApp() {
         let draft = MailDraft.problemReport(appName: "Echo Board", host: "echo-board.taildef456.ts.net", sharedBy: "Riley",
                                             connection: "Connected", version: "0.2.0 (7)", iOS: "26.5")
@@ -1038,7 +1079,8 @@ final class AppMenuPlanTests: XCTestCase {
         let app = WebApp(name: "Coach", startURL: URL(string: "https://coach.tail1.ts.net/")!)
         let plan = AppMenuPlan.plan(for: app, admin: (admin(shareable: false), AdminGuestList(guests: [guest("Sam")])))
         XCTAssertEqual(plan, AppMenuPlan(share: .notShareable))
-        CopyRules.assertNeutral(AppMenuPlan.notShareableDetail)
+        XCTAssertEqual(AppMenuPlan.notShareableDetail(slug: "coach"),
+                       "Make it shareable first: on your computer, run ovenlight publish --slug coach --shareable")
     }
 
     func testAppWithoutConnectorOffersNothing() {

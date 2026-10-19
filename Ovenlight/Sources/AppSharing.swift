@@ -18,7 +18,9 @@ struct AppMenuPlan: Equatable {
     /// App does the same for one.
     var leaveOwner: String?
 
-    static let notShareableDetail = "Make it shareable on your computer first"
+    static func notShareableDetail(slug: String) -> String {
+        "Make it shareable first: on your computer, run ovenlight publish --slug \(slug) --shareable"
+    }
 
     /// `ownersApps`: how many apps on this phone the app's owner shared.
     static func plan(for app: WebApp, admin: (app: AdminApp, guests: AdminGuestList)?, ownersApps: Int = 1) -> AppMenuPlan {

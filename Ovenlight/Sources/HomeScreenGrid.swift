@@ -125,7 +125,7 @@ struct HomeScreenGrid<Menu: View, Preview: View>: View {
                     }
                     // Under the Add App slot it describes, from the slot's edge.
                     if apps.isEmpty && ownerEnabled {
-                        Text("Apps you publish with the [Ovenlight connector](https://ovenlight.app/support#own-computer) on your computers show up here.")
+                        Text("Apps you publish with the [Ovenlight connector](https://ovenlight.app/support#own-computer) on your computers show up here. If one doesn’t, run ovenlight doctor on its computer.")
                             .font(.footnote)
                             .foregroundStyle(Color.secondaryText)
                             .padding(.horizontal, (layout.columnWidth - layout.iconSize) / 2)

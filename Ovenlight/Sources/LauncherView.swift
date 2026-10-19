@@ -63,6 +63,11 @@ struct LauncherView: View {
         .onChange(of: node.ownerIsConnected ? node.ownersOnlineHosts : nil) { _, hosts in
             if hosts != nil { Task { await refreshSharing(force: true) } }
         }
+        // And as discovery adds or drops the owner's apps: at the first connection the node is
+        // ready before they're found, and the ask then had nothing to ask about.
+        .onChange(of: Set(registry.apps.filter { !$0.isShared && $0.discovered }.map(\.host))) {
+            Task { await refreshSharing(force: true) }
+        }
         .task {
             await registry.refreshAllMissingIcons()
             await refreshSharing()
@@ -124,7 +129,7 @@ struct LauncherView: View {
                 case .notShareable:
                     Button {} label: {
                         Label("Share…", systemImage: "square.and.arrow.up")
-                        Text(AppMenuPlan.notShareableDetail)
+                        if let info { Text(AppMenuPlan.notShareableDetail(slug: info.app.slug)) }
                     }
                     .disabled(true)
                 case .hidden:
@@ -512,7 +517,7 @@ struct SettingsView: View {
                     .ovenlightRows()
                 }
                 Section("Support") {
-                    Button { mail = .contactUs(version: Bundle.main.versionString) } label: {
+                    Button { mail = .contactUs() } label: {
                         Label { Text("Contact Us") } icon: {
                             SettingsSymbol(systemName: "envelope.fill", color: .blue)
                         }

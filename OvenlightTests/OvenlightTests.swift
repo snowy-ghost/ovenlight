@@ -920,6 +920,8 @@ final class DiscoveryTests: XCTestCase {
         XCTAssertEqual(Routing.route(host: "interview-coach.tailabc123.ts.net", ownerSuffix: own), .tailnetNode)
         XCTAssertEqual(Routing.route(host: "Interview-Coach.TAILABC123.ts.net.", ownerSuffix: "TailABC123.ts.net."), .tailnetNode)
         XCTAssertEqual(Routing.route(host: "recorder.tail0000.ts.net", ownerSuffix: own), .refused, "another tailnet's Funnel name")
+        XCTAssertFalse(Routing.isOnOwnersTailnet(host: "interview-coach.tailabc123.ts.net", ownerSuffix: nil),
+                       "no tailnet known: the owner's node carries nothing yet")
         XCTAssertEqual(Routing.route(host: "eviltailabc123.ts.net", ownerSuffix: own), .refused)
         XCTAssertEqual(Routing.route(host: "example.com", ownerSuffix: own), .refused)
         XCTAssertEqual(Routing.route(host: "tailabc123.ts.net.example.com", ownerSuffix: own), .refused)
@@ -1174,7 +1176,7 @@ final class AppLoadGateTests: XCTestCase {
         XCTAssertFalse(AppLoadGate.appIsDown(status: 503, header: "unavailable"))
         XCTAssertFalse(AppLoadGate.appIsDown(status: 403, header: "not_invited"))
         XCTAssertFalse(AppLoadGate.appIsDown(status: nil, header: nil))
-        CopyRules.assertNeutral(ConnectionCopy.notResponding("Coach"))
+        CopyRules.assertNeutral(ConnectionCopy.notResponding("Coach", sharedBy: "Riley"))
     }
 
     func testAPhoneWithNoNetworkGivesUpAtOnceAndOpensOnceItHasOne() {

@@ -63,9 +63,14 @@ enum Discovery {
         }
     }
 
-    /// The hosts of the nodes a connector made for its apps, by their tag.
-    static func appHosts(in status: TailnetStatus?) -> Set<String> {
-        Set((status?.peers ?? []).filter { $0.tags.contains(where: OvenlightTag.isApp) }.map { normalizedHost($0.dnsName) })
+    /// Among an owner's probed hosts, those whose silence brings another look in a minute:
+    /// shareable app nodes (by their tag), hosts of apps already found (a private app's node
+    /// is untagged), and hosts this look sees for the first time. A laptop or TV without a
+    /// connector misses once, and then no more.
+    static func watchedHosts(_ hosts: [String], in status: TailnetStatus?, found: Set<String>,
+                             seenBefore: Set<String>) -> Set<String> {
+        let tagged = Set((status?.peers ?? []).filter { $0.tags.contains(where: OvenlightTag.isApp) }.map { normalizedHost($0.dnsName) })
+        return Set(hosts).filter { tagged.contains($0) || found.contains($0) || !seenBefore.contains($0) }
     }
 
     /// The owner's online machines that could run a connector. Phones and tablets can't,

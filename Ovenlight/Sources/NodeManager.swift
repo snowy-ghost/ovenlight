@@ -259,6 +259,8 @@ final class MembershipNode: ObservableObject {
     private var lastProbe: Date?
     /// The last look had a host that didn't answer.
     private var lastProbeMissed = false
+    /// Every host this node has looked at.
+    private var seenHosts: Set<String> = []
     private var loginLostPolls = 0
     private var absence = PeerAbsence()
     private var silence = GuestSilence()
@@ -456,6 +458,7 @@ final class MembershipNode: ObservableObject {
         UserDefaults.standard.removeObject(forKey: onlineReportedKey)
         answers = nil
         discovered = []
+        seenHosts = []
     }
 
     // MARK: Status and reachability
@@ -555,9 +558,13 @@ final class MembershipNode: ObservableObject {
             if !guest.notInvited.isEmpty { onNotInvited(guest.notInvited) }
             outcome = guest.base
         }
-        // Only app nodes count: an owner's laptop or TV without a connector never answers.
-        let apps = isOwner ? Discovery.appHosts(in: status) : Set(hosts)
-        lastProbeMissed = hosts.contains { apps.contains($0) && outcome.answered[$0] != true }
+        // An owner's laptop or TV without a connector never answers: only app hosts count.
+        let watched = isOwner
+            ? Discovery.watchedHosts(hosts, in: status, found: Set(discovered.map(\.host)), seenBefore: seenHosts)
+            : Set(hosts)
+        // Seen only by a look whose path worked: one that failed outright says nothing of them.
+        if isOwner, outcome.reachable { seenHosts.formUnion(hosts) }
+        lastProbeMissed = watched.contains { outcome.answered[$0] != true }
         return outcome
     }
 

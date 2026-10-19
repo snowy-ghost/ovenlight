@@ -200,7 +200,10 @@ private struct AppPage: View {
     /// Can't Reach or You're Offline, from the gate, before the page has loaded.
     private var gateFailure: (title: String, message: String)? {
         switch coordinator.gate {
-        case .unreachable: (ConnectionCopy.cantReach(app.name), ConnectionCopy.cantReachDetail(sharedBy: app.sharedBy))
+        case .unreachable:
+            (ConnectionCopy.cantReach(app.name),
+             !app.isShared && node.route(for: app.startURL) == .refused ? ConnectionCopy.notOnThisAccount(app.name)
+                : ConnectionCopy.cantReachDetail(sharedBy: app.sharedBy))
         case .offline: (ConnectionCopy.offline, ConnectionCopy.offlineDetail)
         default: nil
         }

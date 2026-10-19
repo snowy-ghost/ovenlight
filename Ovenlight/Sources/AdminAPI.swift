@@ -429,9 +429,12 @@ enum AdminError: Error, Equatable {
 
     var message: String {
         switch self {
-        case .notOwner: "The Ovenlight connector on this computer is set up for another owner. To make it yours, run ovenlight setup-sharing --owner with your login there."
-        case .unreachable: "Couldn’t reach the computer. It may be asleep or offline."
-        case .failed(let message): message.prefix(1).uppercased() + message.dropFirst()
+        case .notOwner: return "The Ovenlight connector on this computer is set up for another owner. To make it yours, run ovenlight setup-sharing --owner with your login there."
+        case .unreachable: return "Couldn’t reach the computer. It may be asleep or offline."
+        case .failed(let message):
+            // A connector marks commands with backticks, which the phone would show as is.
+            let text = message.replacingOccurrences(of: "`", with: "")
+            return text.prefix(1).uppercased() + text.dropFirst()
         }
     }
 }
@@ -625,10 +628,10 @@ final class OwnerSharing: ObservableObject {
         var found: [Machine] = []
         var covered = Set<String>()
         var asked = Set<String>()
-        var failedHosts: [String: String] = [:]
+        var failedHosts: [String: AdminError] = [:]
         func failed(_ host: String, _ error: AdminError) {
             log.info("admin \(host, privacy: .public): \(String(describing: error), privacy: .public)")
-            failedHosts[host] = error.message
+            failedHosts[host] = error
         }
         var round = Self.firstRound(candidates, known: machines)
         while !round.isEmpty {
@@ -667,18 +670,20 @@ final class OwnerSharing: ObservableObject {
         machines = Self.keepingFailed(found, failed: failedHosts, previous: machines)
         // A pass that only failed doesn't count as fresh: the next menu asks again.
         if !found.isEmpty || failedHosts.isEmpty { lastRefresh = .now }
-        problem = found.isEmpty ? failedHosts.min { $0.key < $1.key }?.value : nil
+        problem = found.isEmpty ? failedHosts.min { $0.key < $1.key }?.value.message : nil
     }
 
     /// This pass's machines, then each machine from before whose host failed this time and
     /// no answer covers, as it was, with why: a computer that didn't answer once keeps its apps
-    /// and people rather than showing none.
-    nonisolated static func keepingFailed(_ found: [Machine], failed: [String: String], previous: [Machine]) -> [Machine] {
+    /// and people rather than showing none. Its apps show offline only when the computer
+    /// couldn't be reached.
+    nonisolated static func keepingFailed(_ found: [Machine], failed: [String: AdminError], previous: [Machine]) -> [Machine] {
         let covered = Set(found.flatMap { [$0.adminHost] + $0.apps.compactMap(\.host) })
         return found + previous.compactMap { machine in
-            guard let problem = failed[machine.adminHost], !covered.contains(machine.adminHost) else { return nil }
+            guard let error = failed[machine.adminHost], !covered.contains(machine.adminHost) else { return nil }
             var kept = machine
-            kept.problem = problem
+            kept.problem = error.message
+            if error == .unreachable { kept.apps = kept.apps.map { var app = $0; app.online = false; return app } }
             return kept
         }
     }

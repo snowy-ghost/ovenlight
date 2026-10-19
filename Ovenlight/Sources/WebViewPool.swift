@@ -93,8 +93,8 @@ final class WebViewPool: ObservableObject {
     }
 
     /// Where opening the app is, while it has a view, for Report a Problem.
-    func gate(of id: UUID) -> AppLoadGate? {
-        coordinators[id]?.gate
+    func opening(of id: UUID) -> String? {
+        coordinators[id].map { WebCoordinator.opening(gate: $0.gate, failure: $0.loadFailure) }
     }
 
     /// What every app view gets, whichever app it shows.
@@ -214,7 +214,10 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
         }
     }
 
-    @Published var loadError: String?
+    @Published var loadError: String? { didSet { if loadError == nil { loadFailure = nil } } }
+    /// What put `loadError` up, for Report a Problem: what failed and its code, never a URL or
+    /// an error's own words.
+    private(set) var loadFailure: String?
     @Published var hasLoadedOnce = false
     /// The page lays itself out to the bottom and side edges (`viewport-fit=cover`), read as
     /// each page finishes loading and before the first one shows, so it never moves. One that
@@ -531,7 +534,7 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
     private func appIsDown() {
         guard appDownLoads < AppLoadGate.appDownRetries.count else {
             appDownLoads = 0
-            loadError = ConnectionCopy.notResponding(app.name)
+            fail(ConnectionCopy.notResponding(app.name, sharedBy: app.sharedBy), "app not responding (502 unavailable)")
             return
         }
         let delay = AppLoadGate.appDownRetries[appDownLoads]
@@ -604,18 +607,31 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
                 return
             }
             failedLoads = 0
-            loadError = ConnectionCopy.cantReachDetail(sharedBy: app.sharedBy)
+            fail(ConnectionCopy.cantReachDetail(sharedBy: app.sharedBy), Self.failure(ns))
             return
         }
         if ns.domain == NSURLErrorDomain && Self.unreachable.contains(ns.code) {
-            loadError = ConnectionCopy.cantReachDetail(sharedBy: app.sharedBy)
+            fail(ConnectionCopy.cantReachDetail(sharedBy: app.sharedBy), Self.failure(ns))
         } else {
             // WebKit's own words ("The URL was blocked by a content blocker") mean nothing here.
             #if DEBUG
             Self.log.debug("\(self.app.host, privacy: .public): load failed: \(ns.domain, privacy: .public) \(ns.code): \(ns.localizedDescription, privacy: .public)")
             #endif
-            loadError = ConnectionCopy.pageFailed
+            fail(ConnectionCopy.pageFailed, Self.failure(ns))
         }
+    }
+
+    private func fail(_ message: String, _ failure: String) {
+        loadError = message
+        loadFailure = failure
+    }
+
+    /// A failed load as Report a Problem gives it: the error's domain and code alone.
+    static func failure(_ error: NSError) -> String { "page failed (\(error.domain) \(error.code))" }
+
+    /// Report a Problem's Opening line: where the gate is, and what failed after it opened.
+    static func opening(gate: AppLoadGate, failure: String?) -> String {
+        [String(describing: gate), failure].compactMap { $0 }.joined(separator: ", ")
     }
 
     static let unreachable: Set<Int> = [NSURLErrorCannotFindHost, NSURLErrorCannotConnectToHost,

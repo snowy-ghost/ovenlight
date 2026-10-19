@@ -28,8 +28,19 @@ struct MailDraft: Identifiable, Equatable {
         return parts.url
     }
 
-    static func contactUs(version: String) -> MailDraft {
-        MailDraft(subject: "Ovenlight", body: "\n\nOvenlight \(version)")
+    /// Contact Us: room to write, then the lines Report a Problem gives about this phone,
+    /// with the owner's computers when they use them.
+    static func contactUs(version: String, iOS: String, computers: String?) -> MailDraft {
+        var lines = ["", "", "", "Ovenlight: \(version)", "iOS: \(iOS)"]
+        if let computers { lines.append("Your Computers: \(computers)") }
+        return MailDraft(subject: "Ovenlight", body: lines.joined(separator: "\n"))
+    }
+
+    @MainActor
+    static func contactUs() -> MailDraft {
+        let node = NodeManager.shared
+        return contactUs(version: Bundle.main.versionString, iOS: UIDevice.current.systemVersion,
+                         computers: node.ownerEnabled ? connection(node.state, listedOffline: false) : nil)
     }
 
     /// Report a Problem for one app: what it is and where it comes from, how its connection
@@ -51,7 +62,7 @@ struct MailDraft: Identifiable, Equatable {
         return problemReport(appName: app.name, host: app.host, sharedBy: app.sharedBy,
                              connection: refused ? "Refused (on no known tailnet)"
                                  : NodeManager.shared.node(for: app).map { connection($0.state, listedOffline: $0.isListedOffline(app.host)) },
-                             opening: WebViewPool.shared.gate(of: app.id).map { String(describing: $0) },
+                             opening: WebViewPool.shared.opening(of: app.id),
                              version: Bundle.main.versionString, iOS: UIDevice.current.systemVersion)
     }
 
