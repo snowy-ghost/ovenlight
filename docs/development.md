@@ -260,16 +260,18 @@ Sign Ovenlight in to the first with `-authKey`, and open the second owner's invi
 - **The open app** starts below a band at the top, the status bar's height plus the
   handle's 20 points (`AppChrome.handleHeight`), painted in the page's header color: its
   `theme-color`, else its background, and before the first load the one remembered from
-  the last (`StatusBarTint`). The status bar's text takes the tone that reads on it
-  (`StatusBarTone`). A page with `viewport-fit=cover` runs to the bottom and side edges;
-  any other stays inside the side safe areas. The one piece of native chrome is a small
-  capsule at the top with the way home and the app's menu. It starts tucked up under the
-  status bar, leaving its handle in the band (the first time, it shows with a one-time tip
-  about the handle until the tip is closed). Before the app has loaded, its sign-in,
-  approval and error screens each have Back to Apps. Tapping the band or pulling down at
-  the top of the page brings it back. Tapping the status bar scrolls the page to the top,
-  as iOS does, and leaves the chrome alone. Ovenlight removes WebRTC from every frame of
-  every page (`WebViewPool.noWebRTC`).
+  the last (`StatusBarTint`). The status bar's text takes the tone that reads on what is
+  under it: iOS 26 and later choose it, and before that `StatusBarTone` sets it from the
+  band. A page with `viewport-fit=cover` runs to the bottom and side edges; any other
+  stays inside the side safe areas. The one piece of native chrome is a small capsule at
+  the top with the way home and the app's menu. It starts tucked up under the status bar,
+  leaving its handle in the band (the first time, it shows with a one-time tip about the
+  handle until the tip is closed). Before the app has loaded, its sign-in, approval and
+  error screens each have Back to Apps. Tapping the band or pulling down at the top of the
+  page brings it back; with no status bar above the band (a phone on its side, the iPhone
+  Duo's cover), the handle's tap reaches 44 points down at its middle. Tapping the status
+  bar scrolls the page to the top, as iOS does, and leaves the chrome alone. Ovenlight
+  removes WebRTC from every frame of every page (`WebViewPool.noWebRTC`).
 - **Lock.** What locking holds back is in [security.md](security.md#on-the-iphone);
   `WebViewPool.stopCapture` ends the microphone and camera streams already running.
 - **Permissions.** Besides the camera (scanning invite codes, and pages when allowed) and

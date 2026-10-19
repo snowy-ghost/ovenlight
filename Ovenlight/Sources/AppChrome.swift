@@ -49,6 +49,8 @@ struct AppChrome: View {
     /// pill out for the rest of the session.
     @State private var tipPresented = false
     @State private var revealCount = 0
+    /// No status bar above the band: a phone on its side, or the iPhone Duo's cover.
+    @State private var noTopInset = false
     private let tip = ChromeTip()
 
     var body: some View {
@@ -65,10 +67,11 @@ struct AppChrome: View {
         .frame(maxWidth: .infinity)
         .overlay(alignment: .top) {
             if !isShown && !voiceOver {
-                ChromeHandle(header: header) { reveal() }
+                ChromeHandle(header: header, reachesBelow: noTopInset) { reveal() }
                     .transition(.opacity)
             }
         }
+        .onGeometryChange(for: Bool.self) { $0.safeAreaInsets.top == 0 } action: { noTopInset = $0 }
         .background(
             WebViewObserver(webView: webView,
                             onPull: { reveal(haptic: false) },
@@ -206,21 +209,33 @@ struct ChromeTip: Tip {
 /// the handle's alone.
 private struct ChromeHandle: View {
     let header: Color
+    /// With no top safe area the band is the screen's top edge, where taps may not reach
+    /// Ovenlight (on the iPhone Duo's cover they don't), so the handle also takes them a little
+    /// way into the page: 44 points from the top, 120 wide, leaving the rest of the page's top
+    /// row its own.
+    let reachesBelow: Bool
     let reveal: () -> Void
 
     @Environment(\.self) private var environment
 
     var body: some View {
         Button(action: reveal) {
-            // 3:1 or more against any band, at its worst a mid grey: the threshold where
-            // dark and light marks contrast equally.
-            Capsule()
-                .fill((header.isLight(in: environment) ? Color.black : .white).opacity(0.7))
-                .frame(width: 36, height: 5)
-                // The band's whole width takes the tap.
-                .frame(maxWidth: .infinity)
-                .frame(height: AppChrome.handleHeight)
-                .contentShape(Rectangle())
+            VStack(spacing: 0) {
+                // 3:1 or more against any band, at its worst a mid grey: the threshold where
+                // dark and light marks contrast equally.
+                Capsule()
+                    .fill((header.isLight(in: environment) ? Color.black : .white).opacity(0.7))
+                    .frame(width: 36, height: 5)
+                    // The band's whole width takes the tap.
+                    .frame(maxWidth: .infinity)
+                    .frame(height: AppChrome.handleHeight)
+                    .contentShape(Rectangle())
+                if reachesBelow {
+                    Color.clear
+                        .frame(width: 120, height: 44 - AppChrome.handleHeight)
+                        .contentShape(Rectangle())
+                }
+            }
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Show App Menu")

@@ -247,15 +247,18 @@ private struct AppPage: View {
     }
 }
 
-/// The status bar's tone over the band. iOS 26 reads what is under the bar, but earlier
-/// versions follow light or dark mode, which would hide it on a dark band in light mode. The
-/// app's hosting controller asks this child controller for its style.
+/// The status bar's tone over the band, before iOS 26. iOS 26 reads what is under the bar
+/// itself, wherever the bar is (on the iPhone Duo, down a column beside the band, not over
+/// it), so there the style stays the default. Earlier versions follow light or dark mode,
+/// which would hide it on a dark band in light mode. The app's hosting controller asks this
+/// child controller for its style.
 private struct StatusBarTone: UIViewControllerRepresentable {
     let over: Color
 
     func makeUIViewController(context: Context) -> Controller { Controller() }
 
     func updateUIViewController(_ controller: Controller, context: Context) {
+        guard #unavailable(iOS 26.0) else { return }
         controller.style = over.isLight(in: context.environment) ? .darkContent : .lightContent
     }
 
