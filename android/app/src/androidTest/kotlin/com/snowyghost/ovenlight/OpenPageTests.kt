@@ -420,6 +420,14 @@ class OpenPageTests {
         assertTrue("the lock screen shows: $locked", locked.any { it.contains("Ovenlight is locked") || it.contains("Unlock") })
     }
 
+    /** Android only: a keyboard scrolls the page as soon as it opens, with no tap on it first. */
+    @Test
+    fun testAKeyboardReachesThePageAsItOpens() {
+        evaluate("document.body.insertAdjacentHTML('beforeend', \"<div style='height:5000px'></div>\")")
+        press(KeyEvent.KEYCODE_PAGE_DOWN)
+        waitFor("the page scrolled") { number("window.scrollY") > 0 }
+    }
+
     @Test
     fun testTheKeyboardReachesNothingInThePageUnderTheLock() {
         evaluate("document.getElementById('field').focus()")

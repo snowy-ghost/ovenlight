@@ -1,6 +1,7 @@
 package com.snowyghost.ovenlight
 
 import android.graphics.Bitmap
+import android.view.View
 import android.view.ViewGroup
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
@@ -69,6 +70,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
+import androidx.core.view.doOnAttach
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -173,8 +175,9 @@ private fun AppPageView(model: AppModel, page: AppPage, origin: TransformOrigin,
             AndroidView(
                 // The activity's context before the view joins its window, where WebView registers its
                 // component callbacks through it: they come off through the same context as it leaves,
-                // or the application would hold every page ever shown.
-                factory = { page.attach(activity); page.view.also { (it.parent as? ViewGroup)?.removeView(it) } },
+                // or the application would hold every page ever shown. Focused as it joins, so a
+                // keyboard reaches the page without a tap first.
+                factory = { page.attach(activity); page.view.also { (it.parent as? ViewGroup)?.removeView(it); it.doOnAttach(View::requestFocus) } },
                 modifier = if (look.cover) Modifier.fillMaxSize() else Modifier.fillMaxSize().windowInsetsPadding(insideBars),
             )
             // The page takes no touches until it has loaded; the placeholder or overlay over it does.

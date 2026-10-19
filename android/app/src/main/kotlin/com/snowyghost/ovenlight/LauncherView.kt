@@ -68,6 +68,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -232,11 +233,13 @@ fun LauncherView(state: LauncherState) {
     // open app's band, drawn over the top bar, would otherwise leave reachable.
     val focus = if (state.covered) Modifier.clearAndSetSemantics {}.focusProperties { onEnter = { cancelFocusChange() } }.focusGroup() else Modifier
     // And focus already inside, on More just tapped from a keyboard, say, lets go as it's covered,
-    // as does a dialog of its own, which would stay over an app a link opens.
+    // as does a dialog of its own, which would stay over an app a link opens. Only focus on
+    // Ovenlight's own controls: an app's page takes focus as it opens, and keeps it.
     val focusManager = LocalFocusManager.current
+    val view = LocalView.current
     LaunchedEffect(state.covered) {
         if (!state.covered) return@LaunchedEffect
-        focusManager.clearFocus(force = true)
+        if (view.isFocused) focusManager.clearFocus(force = true)
         renamingID = null
         clearing = null
         removing = null
