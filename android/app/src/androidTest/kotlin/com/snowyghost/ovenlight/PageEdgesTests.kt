@@ -122,7 +122,7 @@ class PageEdgesTests {
         composeRule.setContent {
             Box(Modifier.fillMaxSize()) {
                 AndroidView({ view }, Modifier.fillMaxSize())
-                if (layered) PageEdgesLayer(edges)
+                if (layered) PageEdgesLayer(edges, app.name)
             }
         }
     }

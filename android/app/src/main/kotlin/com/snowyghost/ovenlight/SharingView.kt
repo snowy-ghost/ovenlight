@@ -889,10 +889,13 @@ private fun FeedbackInbox(state: SharingState, page: SharingPage.Feedback, list:
     val clients = remember(machines) { machines.associate { it.id to state.client(it) } }
     val direction = LocalLayoutDirection.current
     // Opened, it's seen up to its newest, and the list's count starts over from there. One app's
-    // inbox leaves the mark while another app has feedback not seen yet, whose count it would lose.
+    // inbox leaves the mark where it is while another app has feedback from before that newest
+    // not seen yet, whose count moving it would lose.
     val newest = items.firstOrNull()?.second?.at
-    val others = machines.flatMap { machine -> machine.feedback.filter { page.machineID != null && (machine.id != page.machineID || it.app != page.slug) } }
-    LaunchedEffect(newest) { if (newest != null && SharingList.newFeedback(others, state.feedbackSeen) == 0) state.seeFeedback(newest) }
+    val others = if (page.machineID == null) emptyList() else machines.flatMap { machine -> machine.feedback.filter { machine.id != page.machineID || it.app != page.slug } }
+    LaunchedEffect(newest) {
+        if (newest != null && SharingList.newFeedback(others.filter { it.at <= newest }, state.feedbackSeen) == 0) state.seeFeedback(newest)
+    }
     GroupedScreen(stringResource(R.string.sharing_feedback), onBack = back, refresh = state.refresh) { padding ->
         if (items.isEmpty()) {
             // Scrolls, so it pulls to refresh too.

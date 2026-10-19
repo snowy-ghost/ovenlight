@@ -406,19 +406,20 @@ class SharingViewTests {
         composeRule.onNode(row and (hasText("1") or hasText("2"))).assertDoesNotExist()
 
         // One app's inbox, from its People page, sees up to its newest too, unless another app
-        // has feedback not seen yet, whose count that would lose.
-        val garden = AdminFeedback("f2", now.minusSeconds(600), "garden", "Kim", "guest", note = "Add the bean rows.")
+        // has unseen feedback from before that newest, whose count moving the mark would lose.
+        val earlier = AdminFeedback("f2", now.minusSeconds(3_600), "garden", "Kim", "guest", note = "Add the bean rows.")
+        val later = AdminFeedback("f3", now.minusSeconds(600), "garden", "Kim", "guest", note = "And the peas.")
         val machines = base.machines as MutableStateFlow
-        machines.value = listOf(two.copy(feedback = two.feedback + garden))
+        machines.value = listOf(two.copy(feedback = two.feedback + earlier))
         seen = older.at
         composeRule.runOnIdle { place.pages += SharingPage.Feedback(two.id, "book-club") }
         text("The cover is blurry.").assertIsDisplayed()
-        assertEquals("Garden's is still new", older.at, seen)
+        assertEquals("Garden's earlier one is still new", older.at, seen)
         composeRule.onNodeWithContentDescription("Back").performClick()
-        machines.value = listOf(two)
+        machines.value = listOf(two.copy(feedback = two.feedback + later))
         composeRule.runOnIdle { place.pages += SharingPage.Feedback(two.id, "book-club") }
         text("The cover is blurry.").assertIsDisplayed()
-        assertEquals("one app's inbox sees up to its newest", machine.feedback[0].at, seen)
+        assertEquals("Garden's later one stays new as the mark moves", machine.feedback[0].at, seen)
     }
 
     /**
@@ -449,7 +450,8 @@ class SharingViewTests {
         owner = NodeState.Retrying(3)
         inDialog("Create").performClick()
         composeRule.waitForIdle()
-        assertEquals("the screen lock, then the computer is asked", 1, confirmed.size)
+        assertEquals("the screen lock", 1, confirmed.size)
+        assertTrue("then the computer is asked", requests.isNotEmpty())
         inDialog(detail).assertDoesNotExist()
     }
 

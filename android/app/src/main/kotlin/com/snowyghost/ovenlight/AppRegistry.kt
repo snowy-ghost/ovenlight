@@ -257,8 +257,9 @@ class AppRegistry(
 
     /**
      * Fetches the app's page and manifest to fill in its name, theme color and icon. A
-     * connector's ovenlight.json comes first when the app has one, and with [manifestOnly] it's
-     * all: the connector looked in the page and its manifest for the icon as it last read them.
+     * connector's ovenlight.json comes first when the app has one; with [manifestOnly], an app
+     * whose ovenlight.json answers stops there, as the connector looked in the page and its
+     * manifest for the icon when it last read them.
      */
     suspend fun refreshMetadata(id: UUID, manifestOnly: Boolean = false) {
         val app = apps.firstOrNull { it.id == id } ?: return

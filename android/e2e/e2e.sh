@@ -915,6 +915,7 @@ EOF
   # Share and Open run in tasks of their own, so Recents never shows the file under Ovenlight's card.
   top_task() { a shell dumpsys activity activities | grep -m1 topResumedActivity | grep -o ' t[0-9]*}' || true; }
   own=$(top_task)
+  [[ -n $own ]] || fail "no resumed task"
   tap_text Share; sleep 3
   [[ $(top_task) != "$own" ]] || fail "the Sharesheet runs in Ovenlight's task"
   note "the Sharesheet runs in a task of its own"

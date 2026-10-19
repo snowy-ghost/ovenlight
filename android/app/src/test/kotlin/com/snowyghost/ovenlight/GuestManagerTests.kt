@@ -259,8 +259,9 @@ class GuestManagerTests {
     }
 
     /**
-     * Leave forgets how the membership's joins went, so the same invite opened again asks to
-     * join, never says an app that's gone is ready: one that joined, and one still waiting.
+     * After Leave the same invite asks to join again: one still waiting forgets how its join
+     * went, and one that joined points at an app that's gone, which the join screen asks again
+     * for (testJoiningThenOpeningTheApp). Then it joins again.
      */
     @Test
     fun testJoiningAgainAfterLeavingAsksAgain() = runTest {
@@ -271,7 +272,8 @@ class GuestManagerTests {
         s.guests.accept(echoInvite)
         assertEquals(JoinPhase.Joined(s.registry.apps.single().id), s.guests.phases.value[echoInvite.invite])
         s.guests.leave(s.nodes.memberships.memberships.single().id)
-        assertNull(s.guests.phases.value[echoInvite.invite])
+        val joined = s.guests.phases.value[echoInvite.invite] as JoinPhase.Joined
+        assertTrue("its app is gone", s.registry.apps.none { it.id == joined.app })
 
         online = false
         s.guests.accept(echoInvite)

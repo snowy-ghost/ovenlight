@@ -121,8 +121,6 @@ class PageEdges(
     /** Loads the app's start page again, through the same checks as its first load. */
     private val home: () -> Unit,
 ) {
-    val appName: String get() = app.name
-
     /** A dialog the page or Ovenlight shows over the page, one at a time. */
     sealed class Dialog {
         /** Taken away unanswered: answers with its fallback, unless it was answered. */
@@ -745,7 +743,7 @@ class CaptureFileProvider : FileProvider() {
  * closing, the lock) answers any dialog and ends full screen.
  */
 @Composable
-fun PageEdgesLayer(edges: PageEdges) {
+fun PageEdgesLayer(edges: PageEdges, appName: String) {
     val dialog by edges.dialog.collectAsState()
     val fullscreen by edges.fullscreen.collectAsState()
     DisposableEffect(edges) { onDispose(edges::takenAway) }
@@ -753,8 +751,8 @@ fun PageEdgesLayer(edges: PageEdges) {
         edges.inFront()
         onPauseOrDispose {}
     }
-    fullscreen?.let { key(it) { FullscreenView(it, edges.appName, edges::exitFullscreen) } }
-    dialog?.let { key(it) { PageDialog(edges, it) } }
+    fullscreen?.let { key(it) { FullscreenView(it, appName, edges::exitFullscreen) } }
+    dialog?.let { key(it) { PageDialog(edges, it, appName) } }
 }
 
 /**
@@ -831,7 +829,7 @@ private const val BARS_CHECK_MILLIS = 250L
 private const val FULLSCREEN_NOTICE_MILLIS = 4_000L
 
 @Composable
-private fun PageDialog(edges: PageEdges, dialog: PageEdges.Dialog) {
+private fun PageDialog(edges: PageEdges, dialog: PageEdges.Dialog, appName: String) {
     // Whatever takes it away answers it with its fallback, once.
     DisposableEffect(dialog) { onDispose(dialog::dropped) }
     // Closed any way the person closes it, a page's dialog stops the rest if they chose so.
@@ -840,7 +838,7 @@ private fun PageDialog(edges: PageEdges, dialog: PageEdges.Dialog) {
         if (stopMore) edges.quietDialogs()
         edges.dismiss(dialog)
     }
-    val title: @Composable () -> Unit = { Text(edges.appName) }
+    val title: @Composable () -> Unit = { Text(appName) }
     val quiet: @Composable () -> Unit = { if ((dialog as? PageEdges.Dialog.FromPage)?.offersQuiet == true) QuietChoice(stopMore) { stopMore = it } }
     when (dialog) {
         is PageEdges.Dialog.Alert -> AlertDialog(
@@ -876,7 +874,7 @@ private fun PageDialog(edges: PageEdges, dialog: PageEdges.Dialog) {
             title = { Text(stringResource(R.string.page_open_elsewhere_title)) },
             text = {
                 GuardedFromOverlays()
-                Text(stringResource(R.string.page_open_elsewhere_body, edges.appName, dialog.target))
+                Text(stringResource(R.string.page_open_elsewhere_body, appName, dialog.target))
             },
             confirmButton = { GoAheadButton(dialog, stringResource(R.string.open)) { edges.open(dialog) } },
             dismissButton = { TextButton(onClick = dismiss) { Text(stringResource(R.string.cancel)) } },

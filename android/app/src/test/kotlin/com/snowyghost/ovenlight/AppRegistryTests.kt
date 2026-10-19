@@ -219,7 +219,8 @@ class AppRegistryTests {
 
     /**
      * Coming to the front looks again for each missing icon. A connector's app with none stops
-     * after its manifest there, and a manifest that changes nothing writes nothing.
+     * after its manifest when coming to the front, and a manifest that changes nothing writes
+     * nothing.
      */
     @Test
     fun testARefreshThatChangesNothingSavesNothing() = runTest {
