@@ -455,7 +455,11 @@ website open in this computer's browser, can choose.
 - Pages have no WebRTC. Its traffic wouldn't go through the node's proxy: through a TURN
   relay a page could reach any address it names, the phone's own network included. A
   script at the start of every document, in every frame, removes it, and WebKit runs it in
-  a frame's first `about:blank` document too, as the frame is made.
+  a frame's first `about:blank` document too, as the frame is made. From iOS 27.1, pages
+  can use WebTransport, which the rules blocking loads to the phone's own loopback and
+  network addresses don't cover, but the data store's SOCKS5 proxy does, and every release
+  route sets that proxy (its node's, or one that refuses every connection), so a route
+  without one would need WebTransport removed as WebRTC is.
 - While Ovenlight is locked, no page gets the microphone or camera, and an app that an
   `ovenlight://open` link asks for waits for the unlock. Locking also stops any
   microphone or camera stream already running in an open app, on screen or kept in the
