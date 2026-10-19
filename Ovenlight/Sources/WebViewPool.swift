@@ -1,3 +1,4 @@
+import AVFoundation
 import Combine
 import os
 import SafariServices
@@ -371,7 +372,7 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
                 // Sign-in and node failures have their own screens and wait for the owner.
                 guard let node else { return }
                 let deadline = AppLoadGate.nodeDeadline(busySince: &busySince, state: node.state, now: .now)
-                if let deadline, Date.now >= deadline { return giveUp() }
+                if let deadline, Date.now >= deadline { return giveUp(.nodeGaveUp) }
                 await Self.change(of: node, before: deadline)
             }
         }
@@ -431,15 +432,15 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
         return (try? await directProbe.data(from: url)) != nil
     }
 
-    private func giveUp() {
+    private func giveUp(_ event: AppLoadGate.Event = .gaveUp) {
         guard !Task.isCancelled else { return }
-        Self.log.notice("\(self.app.host, privacy: .public): unreachable")
-        advance(.gaveUp)
+        Self.log.notice("\(self.app.host, privacy: .public): \(event == .gaveUp ? "unreachable" : "not connected", privacy: .public)")
+        advance(event)
         // A page already on screen keeps it. Once a page has loaded, only the person's Reload
         // checks the path again, so an alert tells them it couldn't reach the computer.
         if hasLoadedOnce {
             gate = .ready
-            alertCantReach()
+            alertCantReach(event == .nodeGaveUp ? ConnectionCopy.notConnected : nil)
         }
     }
 
@@ -666,9 +667,27 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
     func webView(_ webView: WKWebView, requestMediaCapturePermissionFor origin: WKSecurityOrigin,
                  initiatedByFrame frame: WKFrameInfo, type: WKMediaCaptureType,
                  decisionHandler: @escaping @MainActor (WKPermissionDecision) -> Void) {
-        decisionHandler(MediaCapturePolicy.decide(type: type, scheme: origin.protocol, host: origin.host, app: app,
-                                                  ownersHosts: NodeManager.shared.ownersHosts,
-                                                  locked: OverlayPresenter.pageWindow == nil, onScreen: webView.window != nil))
+        let decision = MediaCapturePolicy.decide(type: type, scheme: origin.protocol, host: origin.host, app: app,
+                                                 ownersHosts: NodeManager.shared.ownersHosts,
+                                                 locked: OverlayPresenter.pageWindow == nil, onScreen: webView.window != nil)
+        // Refused in Settings, the request would fail without a word: say where to allow it.
+        if decision != .deny, let device = MediaCapturePolicy.refusedDevice(for: type) {
+            alertRefused(device)
+            return decisionHandler(.deny)
+        }
+        decisionHandler(decision)
+    }
+
+    /// One dialog for a camera or microphone the person refused Ovenlight in Settings.
+    private func alertRefused(_ device: String) {
+        guard !(topController is UIAlertController) else { return }
+        let alert = UIAlertController(title: "Ovenlight Can’t Use the \(device)",
+                                      message: "Allow it in Settings, then try again in \(app.name).", preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "Not Now", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Open Settings", style: .default) { _ in
+            if let settings = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(settings) }
+        })
+        present(alert, orElse: {})
     }
 
     func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,
@@ -863,7 +882,7 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
         if ["http", "https"].contains(url.scheme?.lowercased() ?? "") {
             present(SFSafariViewController(url: url), orElse: {})
         } else if NavigationPolicy.asksBeforeOpening(url) {
-            let alert = UIAlertController(title: "Open in another app?",
+            let alert = UIAlertController(title: "Open in Another App?",
                                           message: "\(app.name) wants to open \(NavigationPolicy.target(of: url)).", preferredStyle: .alert)
             alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
             alert.addAction(UIAlertAction(title: "Open", style: .default) { _ in UIApplication.shared.open(url) })
@@ -876,9 +895,9 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
     /// Tells the person that their Reload, or a link they tapped, couldn't reach the app's
     /// computer; the page already on screen stays. Never over another alert, so they can't
     /// stack.
-    private func alertCantReach() {
+    private func alertCantReach(_ message: String? = nil) {
         guard !(topController is UIAlertController) else { return }
-        let alert = UIAlertController(title: ConnectionCopy.cantReach(app.name), message: ConnectionCopy.cantReachDetail(sharedBy: app.sharedBy),
+        let alert = UIAlertController(title: ConnectionCopy.cantReach(app.name), message: message ?? ConnectionCopy.cantReachDetail(sharedBy: app.sharedBy),
                                       preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "OK", style: .default))
         present(alert, orElse: {})
@@ -1047,6 +1066,15 @@ struct PageDialogs {
 /// them) and every other origin get WebKit's prompt. Nothing gets either while Ovenlight
 /// is locked, or while the page is kept off screen.
 enum MediaCapturePolicy {
+    /// The device the person refused Ovenlight in Settings that this request needs, camera
+    /// first; nil when iOS would still ask, or already allows it.
+    static func refusedDevice(for type: WKMediaCaptureType,
+                              status: (AVMediaType) -> AVAuthorizationStatus = AVCaptureDevice.authorizationStatus(for:)) -> String? {
+        if type != .microphone, status(.video) == .denied { return "Camera" }
+        if type != .camera, status(.audio) == .denied { return "Microphone" }
+        return nil
+    }
+
     static func decide(type: WKMediaCaptureType, scheme: String, host: String, app: WebApp,
                        ownersHosts: Set<String>, locked: Bool, onScreen: Bool) -> WKPermissionDecision {
         if locked || !onScreen { return .deny }

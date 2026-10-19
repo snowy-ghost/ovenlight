@@ -13,6 +13,9 @@ enum AppLoadGate: Equatable {
     case ready
     /// The host didn't answer in time.
     case unreachable
+    /// Ovenlight's own connection never became ready in time: the phone's side, not the
+    /// computer's.
+    case notConnected
     /// The phone has no network at all: nothing was tried, and it opens once there is one.
     case offline
 
@@ -21,6 +24,8 @@ enum AppLoadGate: Equatable {
         case nodeNotReady
         case reached
         case gaveUp
+        /// The node never became ready in time.
+        case nodeGaveUp
         /// Try Again, or Reload from the app menu.
         case retry
         /// The first navigation failed at the connection level; check the path again.
@@ -79,7 +84,7 @@ enum AppLoadGate: Equatable {
             return .waiting
         case (.waiting, .offline), (.probing, .offline):
             return .offline
-        case (.ready, _), (.unreachable, _), (.offline, _):
+        case (.ready, _), (.unreachable, _), (.notConnected, _), (.offline, _):
             // A loaded page stays put through node restarts; a gate that gave up waits for Retry.
             return self
         case (.waiting, .nodeReady):
@@ -90,6 +95,8 @@ enum AppLoadGate: Equatable {
             return .ready
         case (.waiting, .gaveUp), (.probing, .gaveUp):
             return .unreachable
+        case (.waiting, .nodeGaveUp):
+            return .notConnected
         default:
             return self
         }
@@ -105,6 +112,8 @@ enum ConnectionCopy {
     static let connecting = "Connecting…"
     static let stopped = "Ovenlight lost its connection."
     static let couldNotStart = "Ovenlight couldn’t connect."
+    /// Ovenlight's own connection never came up: the phone's network, not the computer.
+    static let notConnected = "Ovenlight couldn’t connect. Check that you’re online, then try again."
 
     static func connecting(to app: String) -> String { "Connecting to \(app)…" }
     static func cantReach(_ app: String) -> String { "Can’t Reach \(app)" }
@@ -115,8 +124,8 @@ enum ConnectionCopy {
         return "\(owner)’s computer may be asleep or offline. Try again in a moment, or let \(owner) know."
     }
     static func notResponding(_ app: String, sharedBy owner: String?) -> String {
-        owner == nil ? "\(app) isn’t running on your computer. Run ovenlight doctor there, then try again."
-            : "\(app) isn’t responding on its computer right now. Try again in a moment."
+        guard let owner else { return "\(app) isn’t running on your computer. Run ovenlight doctor there, then try again." }
+        return "\(app) isn’t responding on \(owner)’s computer right now. Try again in a moment, or let \(owner) know."
     }
     /// An app of the owner's on a tailnet the phone doesn't know (`Routing.Route.refused`).
     static func notOnThisAccount(_ app: String) -> String {

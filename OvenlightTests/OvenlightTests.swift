@@ -1,3 +1,4 @@
+import AVFoundation
 import SwiftUI
 import WebKit
 import XCTest
@@ -131,6 +132,20 @@ final class MediaCapturePolicyTests: XCTestCase {
                        "nor is someone's public Funnel address")
         let found = WebApp(name: "Found", startURL: URL(string: "https://notes.tailabc123.ts.net/")!, discovered: true)
         XCTAssertEqual(decide(.microphone, in: found, from: "https://notes.tailabc123.ts.net"), .grant, "discovered on the owner's machines")
+    }
+
+    /// A camera or microphone refused in Settings would fail the page's request without a
+    /// word: Ovenlight names the one to allow, the camera first.
+    func testARefusedCameraOrMicrophoneSaysWhereToAllowIt() {
+        func refused(_ type: WKMediaCaptureType, _ denied: Set<AVMediaType>) -> String? {
+            MediaCapturePolicy.refusedDevice(for: type) { denied.contains($0) ? .denied : .notDetermined }
+        }
+        XCTAssertEqual(refused(.microphone, [.audio]), "Microphone")
+        XCTAssertEqual(refused(.camera, [.video, .audio]), "Camera")
+        XCTAssertEqual(refused(.cameraAndMicrophone, [.audio]), "Microphone")
+        XCTAssertEqual(refused(.cameraAndMicrophone, [.video, .audio]), "Camera")
+        XCTAssertNil(refused(.microphone, [.video]), "the camera isn't asked for")
+        XCTAssertNil(refused(.cameraAndMicrophone, []), "iOS still asks")
     }
 }
 
@@ -1187,6 +1202,18 @@ final class AppLoadGateTests: XCTestCase {
         XCTAssertEqual(run([.retry], from: .offline), .waiting)
         XCTAssertEqual(run([.offline], from: .ready), .ready, "a loaded page stays")
         XCTAssertEqual(run([.offline], from: .unreachable), .unreachable)
+    }
+
+    /// When Ovenlight's own connection never came up, Can't Reach says to check the phone's
+    /// network, not the computer; an unanswered probe still points at the computer.
+    func testCantReachSaysWhenThePhoneNeverConnected() {
+        let gaveUp = run([.nodeNotReady, .nodeGaveUp])
+        XCTAssertEqual(gaveUp, .notConnected)
+        XCTAssertEqual(run([.nodeReady, .reached], from: gaveUp), gaveUp, "only Retry leaves it")
+        XCTAssertEqual(run([.retry], from: gaveUp), .waiting)
+        XCTAssertEqual(run([.nodeReady, .gaveUp]), .unreachable)
+        XCTAssertEqual(ConnectionCopy.notConnected, "Ovenlight couldn’t connect. Check that you’re online, then try again.")
+        CopyRules.assertNeutral(ConnectionCopy.notConnected)
     }
 
     func testAComputerListedOfflineOpensTheAppWhenItAnswers() {

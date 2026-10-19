@@ -94,9 +94,11 @@ final class Router: ObservableObject {
         self.isLocked = isLocked
     }
 
-    /// Opens an app, closing any sheet first.
+    /// Opens an app, closing any sheet first. Its page starts loading meanwhile: the app's
+    /// screen picks up the same one from the pool.
     func open(_ app: WebApp) {
         guard sheet != nil || sheetOnScreen else { openApp = app; return }
+        _ = WebViewPool.shared.webView(for: app)
         sheet = nil
         afterClear { self.openApp = app }
     }

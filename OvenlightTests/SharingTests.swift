@@ -893,11 +893,13 @@ final class RouterTests: XCTestCase {
     func testOpeningAnAppFromASheetWaitsForItToClose() {
         let router = Router()
         let app = WebApp(name: "Coach", startURL: URL(string: "https://coach.example.com/")!)
+        defer { WebViewPool.shared.discard(app.id) }
         router.present(.settings)
         router.sheetAppeared()
         router.open(app)
         XCTAssertNil(router.sheet)
         XCTAssertNil(router.openApp)
+        XCTAssertNotNil(WebViewPool.shared.opening(of: app.id), "its page starts while the sheet closes")
         router.sheetDismissed()
         XCTAssertEqual(router.openApp?.id, app.id)
     }

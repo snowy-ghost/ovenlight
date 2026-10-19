@@ -99,7 +99,8 @@ private struct AppPage: View {
                             .zIndex(1)
                         } else if let failure = gateFailure {
                             LoadErrorView(title: failure.title, message: failure.message,
-                                          retry: { coordinator.reload() }, close: onClose)
+                                          retry: coordinator.gate == .unreachable && isRefused ? nil : { coordinator.reload() },
+                                          close: onClose)
                                 .transition(.opacity)
                                 .zIndex(1)
                         } else {
@@ -185,7 +186,9 @@ private struct AppPage: View {
         .leaveConfirmation($leaving, before: onClose)
         .onAppear {
             // Reopening an app that couldn't reach its computer, or couldn't load, tries again.
-            if !coordinator.hasLoadedOnce, coordinator.gate == .unreachable || coordinator.loadError != nil { coordinator.reload() }
+            if !coordinator.hasLoadedOnce, [.unreachable, .notConnected].contains(coordinator.gate) || coordinator.loadError != nil {
+                coordinator.reload()
+            }
         }
         // Closed to the launcher, the page keeps running in the pool, but records nothing.
         .onDisappear { WebViewPool.stopCapture(in: webView) }
@@ -202,12 +205,15 @@ private struct AppPage: View {
         switch coordinator.gate {
         case .unreachable:
             (ConnectionCopy.cantReach(app.name),
-             !app.isShared && node.route(for: app.startURL) == .refused ? ConnectionCopy.notOnThisAccount(app.name)
-                : ConnectionCopy.cantReachDetail(sharedBy: app.sharedBy))
+             isRefused ? ConnectionCopy.notOnThisAccount(app.name) : ConnectionCopy.cantReachDetail(sharedBy: app.sharedBy))
+        case .notConnected: (ConnectionCopy.cantReach(app.name), ConnectionCopy.notConnected)
         case .offline: (ConnectionCopy.offline, ConnectionCopy.offlineDetail)
         default: nil
         }
     }
+
+    /// One of the owner's apps on a tailnet the phone doesn't know: Try Again can't help.
+    private var isRefused: Bool { !app.isShared && node.route(for: app.startURL) == .refused }
 
     /// What the cover over the page says, for VoiceOver as it appears.
     private var coverStatus: String? {
@@ -334,7 +340,7 @@ struct NodeActionOverlay: View {
                 Text(ConnectionCopy.signIn(toOpen: appName))
                     .font(.headline)
                     .multilineTextAlignment(.center)
-                Button("Sign In", action: connect).buttonStyle(.ovenlightProminent)
+                primary("Sign In", action: connect)
             case .ownerApproval:
                 OwnerApprovalPrompt(approve: connect)
             case .failed(let message):
@@ -342,13 +348,21 @@ struct NodeActionOverlay: View {
                 Text(message)
                     .font(.subheadline)
                     .multilineTextAlignment(.center)
-                Button("Try Again", action: retry).buttonStyle(.ovenlightProminent)
+                primary("Try Again", action: retry)
             }
             Button(action: close) { Text("Back to Apps").minimumHitArea() }
         }
         .padding(28)
         .ovenlightGlass(in: RoundedRectangle(cornerRadius: 24, style: .continuous))
         .padding(24)
+    }
+
+    /// As the approval card's button and every other large one.
+    private func primary(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) { Text(title).font(.headline).frame(maxWidth: .infinity) }
+            .buttonStyle(.ovenlightProminent)
+            .buttonBorderShape(.capsule)
+            .controlSize(.large)
     }
 
     private func symbol(_ name: String) -> some View {
@@ -361,11 +375,11 @@ struct NodeActionOverlay: View {
 }
 
 /// Why an app couldn't open, in the join sheet's voice: a glyph, a display title, the detail,
-/// and Try Again.
+/// and Try Again when it can help.
 struct LoadErrorView: View {
     let title: String
     let message: String
-    let retry: () -> Void
+    let retry: (() -> Void)?
     let close: () -> Void
 
     var body: some View {
@@ -391,12 +405,14 @@ struct LoadErrorView: View {
             Text(message)
                 .foregroundStyle(Color.secondaryText)
             VStack(spacing: 12) {
-                Button(action: retry) {
-                    Text("Try Again").font(.headline).frame(maxWidth: .infinity)
+                if let retry {
+                    Button(action: retry) {
+                        Text("Try Again").font(.headline).frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.ovenlightProminent)
+                    .buttonBorderShape(.capsule)
+                    .controlSize(.large)
                 }
-                .buttonStyle(.ovenlightProminent)
-                .buttonBorderShape(.capsule)
-                .controlSize(.large)
                 Button(action: close) { Text("Back to Apps").minimumHitArea() }
             }
             .padding(.top, 22)
