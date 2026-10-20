@@ -319,6 +319,8 @@ stays out while its one-time tip shows, and always while VoiceOver or TalkBack i
 - Don't build pull-to-refresh, and don't turn off the page's bounce
   (`overscroll-behavior: none` on the page): pulling down is how people reach the menu,
   and Reload is in it.
+- Put no controls in the top center of the page (120 by 28 points): taps there can go to
+  the handle.
 
 **Navigation.** Back goes back: a swipe from the left edge on iPhone, as in Safari, and
 the back gesture (from either edge) or button on Android. Give each screen a real history

@@ -176,8 +176,9 @@ client that also has `feature_settings:read`, which Ovenlight no longer uses, wo
 same. An OAuth client can only apply the tags it was given, and every shareable app adds
 two, so a token is simpler.
 
-The credential is checked against the API, then stored in `credentials.json` beside the
-app list, readable only by you ([On the computer](#on-the-computer)); the connector
+The credential is checked against the API, and refused if its tailnet has none of the
+running connector's apps, then stored in `credentials.json` beside the app list,
+readable only by you ([On the computer](#on-the-computer)); the connector
 refuses to use one anyone else can read. `auth status` shows its type (with the
 client ID for an OAuth client), a fingerprint, the tailnet and the API URL, never the
 secret; `auth status --check` also tries it against the API. `auth remove` deletes it.

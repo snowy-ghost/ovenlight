@@ -611,8 +611,10 @@ func (r syncResult) changed() bool { return len(r.Removed)+len(r.Expired) > 0 }
 // and the guest devices this connector knows get exactly the tags of the apps they
 // hold, or are listed for deletion when they hold none. Guest devices it doesn't know
 // (joined with a key, never claimed) are only listed: the owner decides.
-// Only devices with a guest tag of apps, this connector's, are listed, so a second
-// connector's guests never show up here.
+// apps are this connector's apps whose node the list holds, and the list speaks only for
+// them: a list without an app's node may be another tailnet's, so that app's guests stay.
+// Only devices with a guest tag of apps are listed, so a second connector's guests never
+// show up here.
 // now is when the device list was fetched: a guest who claimed after that is missing
 // from it, not gone.
 func (st *sharingState) reconcile(devices []tsapi.Device, apps []string, now time.Time) syncResult {
@@ -630,7 +632,7 @@ func (st *sharingState) reconcile(devices []tsapi.Device, apps []string, now tim
 		known[g.DeviceID] = true
 		_, inTailnet := present[g.DeviceID]
 		switch {
-		case g.Active() && !inTailnet && !g.ClaimedAt.After(now):
+		case g.Active() && !inTailnet && !g.ClaimedAt.After(now) && slices.Contains(apps, g.App):
 			at := now
 			g.RemovedAt, g.RemovedWhy, g.DeviceGone = &at, "device deleted from the tailnet", true
 			r.Removed = append(r.Removed, fmt.Sprintf("%s (%s, %s)", g.Name, g.App, g.DeviceName))
