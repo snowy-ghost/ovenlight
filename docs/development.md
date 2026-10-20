@@ -369,8 +369,16 @@ reviewer is still a guest or has an open invite, another review invite needs
 Revoke it after the review: `ovenlight revoke "App Review"`. `share --cancel <id>` only
 stops more devices from claiming it: those that have keep the app until revoked.
 
-Google Play's review needs a way in too: paste an invite's link and notes into Play
-Console, under App content, App access.
+Google Play's review needs a review invite of its own, for another person such as
+`--to "Play Review"`, so revoking one store's reviewers leaves the other's. Paste its link
+and notes into Play Console, under App content, Sign-in details. Play expects them to keep
+working and reviews any change to them, so make the next one with `--review --existing`
+well before the invite expires or its 10 places are used up (a device that leaves or is
+removed keeps its place). Once the new details are live and no review still uses the old
+link, run `ovenlight revoke` with the old invite's ID (`share` printed it, and
+`ovenlight guests --json` shows it as `inviteId` on each device that claimed it). That
+removes the devices that claimed it and cancels it if it's still open. Revoking by the
+person's name would end the new invite too.
 
 ## Shipping
 

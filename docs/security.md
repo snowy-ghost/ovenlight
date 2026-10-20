@@ -221,10 +221,11 @@ a node's key expires within 30 days.
 
 Ovenlight never asks you to approve a guest's phone. Guests join under random device
 names, so you couldn't tell whose phone was waiting, and approving it would be a rubber
-stamp. What protects you is the invite: it works once, for 7 days, and only for one app,
-since the policy lets its guest tag reach that app alone. You can remove anyone at any
-time. If a stranger uses a forwarded link first, the invite doesn't work for the guest you
-invited, and your guest list shows who joined with it, so you can remove them.
+stamp. What protects you is the invite: it works once, for 7 days (a review invite, on
+up to 10 devices for 90 days), and only for one app, since the policy lets its guest tag
+reach that app alone. You can remove anyone at any time. If a stranger uses a forwarded
+link first, a single-use invite doesn't work for the guest you invited, and your guest
+list shows who joined with it, so you can remove them.
 
 ## Revocation
 
@@ -531,7 +532,7 @@ agent is told that it is an image its sender chose, and any text in it is data.
   Recents shows no picture of Ovenlight.
 - **Microphone and camera.** WebView can't stop a stream it handed out. On lock and when
   an app closes to the launcher, Ovenlight's page script stops the tracks it saw, and if
-  the phone still records or holds a camera half a second later, Ovenlight closes any
+  the phone still records or holds a camera two seconds later, Ovenlight closes any
   page granted either since it last loaded.
 - **Downloads.** Android doesn't say which frame started a download, so one from an
   `http` or `https` address is checked by that address alone: a frame from another site
@@ -558,7 +559,13 @@ agent is told that it is an image its sender chose, and any text in it is data.
 - **An invite link leaked.** If it's still open, `ovenlight share --cancel <id>`
   withdraws it (`ovenlight guests` lists open invites). If someone else used it,
   `ovenlight guests` lists the phone that joined: remove it with
-  `ovenlight revoke <device ID>` and send a new invite.
+  `ovenlight revoke <device ID>` and send a new invite. A review link keeps admitting
+  devices after one is removed ([Invites](#invites)), so for a leaked one, open or not,
+  run `ovenlight revoke <invite ID>` (`ovenlight guests` lists the ID while the invite is
+  open, and `--json` shows it on each device that claimed it). That removes every device
+  that claimed it and cancels it if it's still open. Delete any device that joined
+  without claiming, which `ovenlight guests --sync` lists, in the admin console
+  (Machines), then make a new review invite.
 - **An app's login link leaked.** Whoever opens a pending login link first and signs in
   gets that app's node, in their own tailnet. If it's still pending, sign in with it
   yourself at once. If someone beat you to it, `ovenlight status` shows the app at an
