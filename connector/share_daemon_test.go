@@ -234,7 +234,7 @@ func TestReviewInvite(t *testing.T) {
 	}
 
 	notes := reviewNotes(reply.Share)
-	if !strings.Contains(notes, reply.Share.Link) || !strings.Contains(notes, "Report a Problem") || strings.ContainsAny(notes, "\u2013\u2014") {
+	if !strings.Contains(notes, reply.Share.Link) || !strings.Contains(notes, "leave Alex's apps") || strings.ContainsAny(notes, "\u2013\u2014") {
 		t.Errorf("review notes:\n%s", notes)
 	}
 }

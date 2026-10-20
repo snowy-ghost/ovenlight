@@ -161,14 +161,14 @@ func reviewNotes(res *shareResult) string {
 	return fmt.Sprintf(`Ovenlight opens web apps that their owner runs on their own computer and shares by private invite. There is no account or sign-in.
 
 To open a shared app:
-1. Open Ovenlight and tap Join with Invite.
+1. Open Ovenlight and choose to join with an invite.
 2. Copy the invite link below, then tap Paste (or type it into the field and tap Continue):
 %s
-3. Tap Join. When it says "%s Is Ready", tap Open %s.
+3. Tap Join. Once %s is ready, tap Open %s.
 
 The invite works on up to %d devices until %s. If it has run out, let us know and we'll send a new one.
 
-To report a problem with a shared app or stop seeing it: open the app, tap its name at the top of the screen (tap the small handle there if the bar is hidden), then Report a Problem, or Leave %s's Apps.`,
+To report a problem with a shared app or stop seeing it: open the app, tap its name at the top of the screen (tap the small handle there if the bar is hidden), and from that menu report a problem or leave %s's apps.`,
 		res.Link, app, app, reviewInviteDevices, res.Invite.Expires.UTC().Format("Mon 2 Jan 2006 15:04 MST"), cmp.Or(res.Owner, "the owner"))
 }
 
