@@ -250,6 +250,9 @@ internal fun URI.resolving(reference: String): URI? = try {
     when {
         // iOS reads an empty reference as no link at all.
         reference.isEmpty() -> null
+        // java.net.URI drops `..` segments in time that grows with the square of their number,
+        // and an icon's or manifest's address is never this long.
+        reference.length > 2 * 1024 -> null
         // RFC 3986 keeps the base's path for a query alone, where java.net.URI drops its last segment.
         reference.startsWith("?") -> URI(base.toString().substringBefore('#').substringBefore('?') + reference)
         else -> base.resolve(reference)

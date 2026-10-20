@@ -294,7 +294,7 @@ class AppRegistry(
         val manifestURL = links.manifest
         val manifestData = manifestURL?.let { fetchOrNull(fetch, it) }?.body
         if (manifestURL != null && manifestData != null) {
-            val fromManifest = ManifestParser.metadata(manifestData, manifestURL)
+            val fromManifest = withContext(Dispatchers.Default) { ManifestParser.metadata(manifestData, manifestURL) }
             meta = ManifestParser.Metadata(fromManifest.name ?: meta.name, fromManifest.themeColorHex, fromManifest.iconURL)
         }
         if (apps.none { it.id == id }) return

@@ -72,4 +72,15 @@ class ManifestParserTests {
             assertTrue("$tag took $took", took < 2.seconds)
         }
     }
+
+    /** An icon whose address is thousands of `..` segments is skipped: java.net.URI took seconds to drop them. */
+    @Test
+    fun testAnIconAddressOfEndlessDotSegmentsIsSkipped() {
+        val src = "a/".repeat(120_000) + "../".repeat(120_000) + "icon.png"
+        val manifest = """{"icons":[{"src":"$src","sizes":"512x512"},{"src":"ok.png","sizes":"192x192"}]}"""
+        val took = measureTime {
+            assertEquals("https://alex-mac.example.ts.net:8443/ok.png", ManifestParser.metadata(manifest.toByteArray(), base).iconURL?.toString())
+        }
+        assertTrue("took $took", took < 2.seconds)
+    }
 }
