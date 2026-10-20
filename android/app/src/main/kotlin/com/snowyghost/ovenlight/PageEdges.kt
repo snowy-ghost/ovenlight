@@ -4,7 +4,6 @@ import android.Manifest
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.SystemClock
@@ -76,7 +75,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import androidx.core.view.ViewCompat
@@ -86,6 +84,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LifecycleResumeEffect
+import com.snowyghost.ovenlight.MediaCapturePolicy.MediaCaptureType
 import java.io.File
 import java.io.IOException
 import java.net.URI
@@ -457,7 +456,8 @@ class PageEdges(
     /**
      * Ovenlight declares the camera permission (for pages and the invite scanner), so the
      * camera app takes a picture for it only once that is granted. The permission's own
-     * prompt is drawn over Ovenlight and isn't an excursion.
+     * prompt is drawn over Ovenlight and isn't an excursion. Turned off for good, the page gets
+     * nothing and Ovenlight says where to allow it, as for a page's own camera.
      */
     private fun capture(activity: ComponentActivity, video: Boolean, answer: DialogAnswer<Array<Uri>?>) {
         val take = {
@@ -466,8 +466,7 @@ class PageEdges(
             val contract = if (video) ActivityResultContracts.CaptureVideo() else ActivityResultContracts.TakePicture()
             pick(activity, contract, uri, answer) { taken -> if (taken && file.length() > 0) arrayOf(uri) else null.also { file.delete() } }
         }
-        if (ContextCompat.checkSelfPermission(activity, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) return take()
-        activity.launchOnce(ActivityResultContracts.RequestPermission(), Manifest.permission.CAMERA, failed = answer::dropped) { granted ->
+        RuntimePermissions.request(activity, listOf(Manifest.permission.CAMERA), refusedForGood = { capture.refused.value = MediaCaptureType.Camera }) { granted ->
             // The person just answered Ovenlight's own question; the result can come before the resume.
             if (granted && !isLocked.value) take() else answer.dropped()
         }
