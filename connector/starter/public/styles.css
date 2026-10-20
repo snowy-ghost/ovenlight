@@ -46,7 +46,7 @@ body {
   min-height: 100dvh;
   color: var(--ink);
   -webkit-tap-highlight-color: transparent;
-  /* Ovenlight shows the page edge to edge, under the status bar and the home indicator,
+  /* Ovenlight keeps the top of the screen and runs the page to the bottom and side edges,
      so the page pads itself by the safe-area insets. Ovenlight's menu handle sits at the
      top center just below the top inset, so keep anything tappable out of there. And
      don't set overscroll-behavior: pulling down at the top of the page is how people
