@@ -100,8 +100,8 @@ final class NavigationPolicyTests: XCTestCase {
         XCTAssertEqual(decide("https://alex-mac.example.ts.net:8443/cards"), .allow)
     }
 
-    /// An address past 2 MB is neither loaded nor handed on, as a page's endless `window.open`
-    /// held gigabytes in Ovenlight. A data URL is the page's own content, left to WebKit.
+    /// An address past 2 MB is neither loaded nor handed on. A data URL is the page's own
+    /// content, left to WebKit.
     func testAnEndlessAddressGoesNowhere() {
         let pad = String(repeating: "a", count: NavigationPolicy.maxAddressBytes)
         XCTAssertEqual(decide("https://alex-mac.example.ts.net/big?pad=" + pad), .refuse)
@@ -390,7 +390,7 @@ final class NoWebRTCTests: XCTestCase {
 
 final class CoverTests: XCTestCase {
     /// The viewport is read where the page can't answer for it: one that replaces what the
-    /// script calls changes nothing, as its answer once held gigabytes in Ovenlight.
+    /// script calls changes nothing.
     @MainActor
     func testAPageCantAnswerForItsViewport() async throws {
         let replaced = "<script>RegExp.prototype.test = () => 'x'.repeat(1e6); Array.prototype.pop = () => ({ content: 'viewport-fit=cover' });</script>"
