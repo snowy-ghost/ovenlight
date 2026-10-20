@@ -162,11 +162,15 @@ output is gitignored and cached; `--force` rebuilds. It needs Go, and fetches th
 `go1.27.2` toolchain itself. On top of upstream it:
 
 - builds with the `ts_omit_debug` tag, which drops the node's debug LocalAPI, pprof and
-  debug HTTP handlers, `ts_omit_peerapiserver` and `ts_omit_cachenetmap` (the script says
-  why), and `ts_omit_webclient`, which leaves out Tailscale's web client and the font and
-  JavaScript bundle it embeds;
-- turns off log upload to `log.tailscale.com` from a Go `init`, for every node the app
-  runs, guests' included;
+  debug HTTP handlers, with `ts_omit_peerapiserver` and `ts_omit_cachenetmap` (the script
+  says why), and with `ts_omit_webclient`, which leaves out Tailscale's web client and the
+  font and JavaScript bundle it embeds;
+- turns off log upload to `log.tailscale.com`, and the log files tsnet would keep in each
+  node's folder, from a Go `init`, for every node the app runs, guests' included;
+- serves each node's loopback SOCKS5 port with a proxy of its own from
+  `scripts/libtailscale`, which dials only the node's peers and the internet by the
+  Android core's rules ([security.md](security.md#on-the-phone)), and runs its tests
+  before each build;
 - raises `golang.org/x` modules past libtailscale's own when they have security fixes;
 - adds a privacy manifest to the framework, which Apple requires of a framework that
   calls a required-reason API.
@@ -266,7 +270,7 @@ Sign Ovenlight in to the first with `-authKey`, and open the second owner's invi
   `theme-color`, else its background, and before the first load the one remembered from
   the last (`StatusBarTint`). The status bar's text takes the tone that reads on what is
   under it: iOS 26 and later choose it, and before that `StatusBarTone` sets it from the
-  band. A page with `viewport-fit=cover` runs to the bottom and side edges; any other
+  band. A page with `viewport-fit=cover` runs to the bottom and side edges. Any other
   stays inside the side safe areas. The one piece of native chrome is a small capsule at
   the top with the way home and the app's menu. It starts tucked up under the status bar,
   leaving its handle in the band (the first time, it shows with a one-time tip about the
