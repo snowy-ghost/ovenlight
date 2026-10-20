@@ -843,6 +843,18 @@ func (d *daemon) syncOnce() string {
 	if len(devices) == 0 {
 		return setErr(errors.New("the tailnet's device list came back empty; not trusting it"))
 	}
+	// A credential for another tailnet lists none of this computer's app nodes, and trusting
+	// its list would remove every guest.
+	known, listed := false, false
+	for _, n := range d.snapshot() {
+		if id := n.deviceID(); id != "" {
+			known = true
+			listed = listed || slices.ContainsFunc(devices, func(dev tsapi.Device) bool { return dev.NodeID == id })
+		}
+	}
+	if known && !listed {
+		return setErr(errors.New("the tailnet's device list has none of this computer's apps; is the Tailscale API credential for another tailnet?"))
+	}
 	var apps []string
 	for _, app := range d.config().Apps {
 		apps = append(apps, app.Slug)

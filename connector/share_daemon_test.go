@@ -490,6 +490,30 @@ func TestSyncRemovesDeletedGuests(t *testing.T) {
 	}
 }
 
+func TestSyncDistrustsAnotherTailnet(t *testing.T) {
+	d, f := testDaemon(t)
+	res, _ := d.createInvite(guestRef{To: "Sam"}, "coach", "terminal", false)
+	link, _ := parseInviteLink(res.Link)
+	claim(t, d, samDev, link.Key)
+	n := d.node("coach")
+	n.mu.Lock()
+	n.selfID = "nCoach"
+	n.mu.Unlock()
+	// A credential for another tailnet lists none of this computer's apps.
+	f.Devices = []tsapi.Device{{ID: "1", NodeID: "nWork", User: "alex@work.example", Authorized: true}}
+	if msg := d.syncOnce(); !strings.Contains(msg, "another tailnet") || d.sh.guestFor("nSam", "coach") == nil {
+		t.Errorf("another tailnet's list: %s", msg)
+	}
+	f.Mu.Lock()
+	f.Devices = []tsapi.Device{{ID: "2", NodeID: "nCoach", Tags: []string{policy.AppTag("coach")}},
+		{ID: "3", NodeID: "nSam", Name: "sam-iphone", Tags: []string{guestTag}}}
+	f.Mu.Unlock()
+	if msg := d.syncOnce(); !strings.Contains(msg, "0 guests removed") || d.sh.guestFor("nSam", "coach") == nil ||
+		f.RequestCount("DELETE /api/v2/device/") != 0 {
+		t.Errorf("the right list: %s", msg)
+	}
+}
+
 // whoIsAs makes the node's WhoIs report who for every caller.
 func whoIsAs(n *appNode, who Identity) {
 	n.whoIs = func(context.Context, string) (*apitype.WhoIsResponse, error) {
