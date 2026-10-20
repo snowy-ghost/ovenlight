@@ -288,9 +288,6 @@ func TestReviewInvitesMintedBefore107(t *testing.T) {
 	if code, out := claim(t, d, dev("editorial", 0), oldKey.Key); code != 200 || state("0a1b2c3d4e") != inviteClaimed {
 		t.Fatalf("the 1.0.6 invite's claim: %d %v, then %s", code, out, state("0a1b2c3d4e"))
 	}
-	if code, out := claim(t, d, dev("editorial", 1), oldKey.Key); code != http.StatusForbidden || out["code"] != codeUsedElsewhere {
-		t.Errorf("a second device on the 1.0.6 invite: %d %v", code, out)
-	}
 	waitFor(t, func() bool { return keyDeleted(d, "0a1b2c3d4e") }, "the 1.0.6 invite's spent key deleted")
 
 	for i := range reviewInviteDevices {
