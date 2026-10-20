@@ -1209,7 +1209,8 @@ final class AppHostViewTests: XCTestCase {
 
 final class AppLoadGateTests: XCTestCase {
     /// Only busy time counts toward giving up: a slow sign-in or approval, which waits for the
-    /// owner, doesn't end on Can't Reach once the node starts again.
+    /// owner, or a late Try Again on a failed node, doesn't end on Can't Reach once the node
+    /// starts again.
     func testTheNodeDeadlineCountsOnlyBusyTime() {
         let t0 = Date(timeIntervalSince1970: 1_790_000_000)
         var since: Date?
@@ -1224,6 +1225,10 @@ final class AppLoadGateTests: XCTestCase {
         XCTAssertNil(AppLoadGate.nodeDeadline(busySince: &since, state: .awaitingApproval, now: t0.addingTimeInterval(90)))
         XCTAssertEqual(AppLoadGate.nodeDeadline(busySince: &since, state: .connecting, now: t0.addingTimeInterval(120)),
                        t0.addingTimeInterval(150), "a new busy stretch after the sign-in")
+        XCTAssertNil(AppLoadGate.nodeDeadline(busySince: &since, state: .failed(ConnectionCopy.couldNotStart),
+                                              now: t0.addingTimeInterval(130)))
+        XCTAssertEqual(AppLoadGate.nodeDeadline(busySince: &since, state: .starting, now: t0.addingTimeInterval(160)),
+                       t0.addingTimeInterval(190), "a new busy stretch after Try Again")
     }
 
     private func run(_ events: [AppLoadGate.Event], from gate: AppLoadGate = .waiting) -> AppLoadGate {
@@ -1375,11 +1380,12 @@ final class NodeManagerTests: XCTestCase {
 final class LocalAddressRulesTests: XCTestCase {
     /// What WebKit does with the rules: blocked if a block rule matches and no later
     /// ignore-previous-rules rule does. url-filters are case-insensitive by default.
-    private func blocks(_ url: String) -> Bool {
+    private func blocks(_ url: String, blockingLocalhost: Bool = false) -> Bool {
         func matches(_ host: String) -> Bool {
             url.range(of: LocalAddressRules.urlFilter(host: host), options: [.regularExpression, .caseInsensitive]) != nil
         }
-        return LocalAddressRules.blockedHosts.contains(where: matches) && !LocalAddressRules.allowedHosts.contains(where: matches)
+        let blocked = LocalAddressRules.blockedHosts + (blockingLocalhost ? LocalAddressRules.localhostHosts : [])
+        return blocked.contains(where: matches) && !LocalAddressRules.allowedHosts.contains(where: matches)
     }
 
     func testBlocksLoopbackAndLocalAddressesOnly() {
@@ -1404,6 +1410,14 @@ final class LocalAddressRulesTests: XCTestCase {
         ] {
             XCTAssertFalse(blocks(url), url)
         }
+        // localhost's names in release builds only: a debug build loads its local demo there.
+        for url in ["http://localhost:8080/", "https://localhost./", "https://app.localhost/", "wss://user@LOCALHOST/"] {
+            XCTAssertTrue(blocks(url, blockingLocalhost: true), url)
+            XCTAssertFalse(blocks(url), url)
+        }
+        for url in ["https://localhost.example.com/", "https://example.com/app.localhost/"] {
+            XCTAssertFalse(blocks(url, blockingLocalhost: true), url)
+        }
     }
 
     func testTheRulesCompile() async throws {
@@ -1411,7 +1425,10 @@ final class LocalAddressRulesTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: dir) }
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let store = try XCTUnwrap(WKContentRuleListStore(url: dir))
-        _ = try await store.compileContentRuleList(forIdentifier: "test", encodedContentRuleList: LocalAddressRules.json)
+        for localhost in [false, true] {
+            _ = try await store.compileContentRuleList(forIdentifier: "test",
+                                                       encodedContentRuleList: LocalAddressRules.json(blockingLocalhost: localhost))
+        }
     }
 }
 

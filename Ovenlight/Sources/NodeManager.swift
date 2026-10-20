@@ -505,8 +505,10 @@ final class MembershipNode: ObservableObject {
                 }
             }
             // Quick while the node comes up, so an app opened at launch waits no longer than it
-            // must, but not while the phone has no network to come up on.
-            let quick = (state == .starting || state == .connecting) && NetworkPath.shared.isSatisfied
+            // must, but not while the phone has no network to come up on. A wait for a login keeps
+            // its once a second, which the login watches count in.
+            let quick = (state == .starting || state == .connecting) && status?.backendState != "NeedsLogin"
+                && NetworkPath.shared.isSatisfied
             let interval: Duration = state == .ready ? .seconds(10) : quick ? .milliseconds(250) : .seconds(1)
             try? await Task.sleep(for: interval)
         }
@@ -560,13 +562,13 @@ final class MembershipNode: ObservableObject {
 
     private func probe(_ hosts: [String], firstAnswer: @MainActor () -> Void = {}) async -> Discovery.Outcome {
         lastProbe = .now
+        // The hosts count as looked at even when none answers: they come back with a change
+        // to the list, or in a minute, not every poll.
+        probedHosts = hosts
         let outcome: Discovery.Outcome
         if isOwner {
             outcome = await Discovery.probe(hosts: hosts, session: session(), firstAnswer: firstAnswer)
         } else {
-            // A guest's hosts count as looked at even when none answers: they come back with
-            // a change to the list, or in a minute, not every poll.
-            probedHosts = hosts
             let guest = await GuestProbe.probe(hosts: hosts, session: session(), firstAnswer: firstAnswer)
             if !guest.notInvited.isEmpty { onNotInvited(guest.notInvited) }
             if !guest.appNames.isEmpty { onAppNames(guest.appNames) }
@@ -623,7 +625,6 @@ final class MembershipNode: ObservableObject {
     private func record(_ outcome: Discovery.Outcome, probed hosts: [String]) {
         // Only a working path, or no machine online at all, says anything about them.
         guard outcome.reachable || hosts.isEmpty else { return }
-        probedHosts = hosts
         let answers = Dictionary(uniqueKeysWithValues: hosts.map { ($0, outcome.answered[$0] ?? false) })
         if answers != self.answers { self.answers = answers }
     }

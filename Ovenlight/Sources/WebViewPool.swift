@@ -1171,7 +1171,8 @@ enum DownloadPolicy {
 /// loopback, private or link-local IP literal, in an app's frames and from its scripts alike,
 /// so a page can't reach the phone itself or map what listens there. Tailnet addresses
 /// (100.64.0.0/10 and Tailscale's fd7a:115c:a1e0::/48) are left to the proxy, which allows
-/// only the node's peers, and names go through it as well.
+/// only the node's peers, and names go through it as well. Release builds also block the name
+/// localhost, in case WebKit sends it out as it does the loopback literals.
 @MainActor
 enum LocalAddressRules {
     /// Hosts as WebKit writes them in a URL: IPv4 in dotted decimal, IPv6 bracketed in
@@ -1187,6 +1188,14 @@ enum LocalAddressRules {
         "\\[::ffff:[0-9a-f]?[0-9a-f]?:[0-9a-f]+\\]",
         "\\[fe[89ab][0-9a-f]:", "\\[f[cd][0-9a-f][0-9a-f]:",
     ]
+    /// localhost and its subdomains, blocked in release builds only: a debug build loads a
+    /// local demo at localhost (`Routing.Route.direct`).
+    static let localhostHosts = ["localhost\\.?[:/]", "[^/@]*\\.localhost\\.?[:/]"]
+    #if DEBUG
+    static let blocksLocalhost = false
+    #else
+    static let blocksLocalhost = true
+    #endif
     /// Checked after the blocks, so Tailscale's range inside fc00::/7 stays open.
     static let allowedHosts = ["\\[fd7a:115c:a1e0:"]
 
@@ -1194,8 +1203,9 @@ enum LocalAddressRules {
     /// or query doesn't match.
     static func urlFilter(host: String) -> String { "^[a-z]+://([^/@]*@)?" + host }
 
-    static var json: String {
-        let rules = blockedHosts.map { ["trigger": ["url-filter": urlFilter(host: $0)], "action": ["type": "block"]] }
+    static func json(blockingLocalhost: Bool = blocksLocalhost) -> String {
+        let blocked = blockedHosts + (blockingLocalhost ? localhostHosts : [])
+        let rules = blocked.map { ["trigger": ["url-filter": urlFilter(host: $0)], "action": ["type": "block"]] }
             + allowedHosts.map { ["trigger": ["url-filter": urlFilter(host: $0)], "action": ["type": "ignore-previous-rules"]] }
         return String(decoding: try! JSONSerialization.data(withJSONObject: rules), as: UTF8.self)
     }
@@ -1203,7 +1213,7 @@ enum LocalAddressRules {
     private static let compiled = Task { () -> WKContentRuleList? in
         do {
             return try await WKContentRuleListStore.default().compileContentRuleList(forIdentifier: "local-addresses",
-                                                                                     encodedContentRuleList: json)
+                                                                                     encodedContentRuleList: json())
         } catch {
             Logger(subsystem: "com.snowyghost.ovenlight", category: "node")
                 .error("local address rules didn't compile: \(String(describing: error), privacy: .public)")

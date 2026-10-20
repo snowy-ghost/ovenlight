@@ -43,11 +43,12 @@ enum AppLoadGate: Equatable {
     static let nodeTimeout: TimeInterval = 30
     /// When an app waiting on a node that isn't ready gives up: `nodeTimeout` after the node
     /// turned busy (starting, connecting, retrying), counted again after each wait for the
-    /// owner at sign-in or approval, so a slow sign-in doesn't end on Can't Reach. A moment of
-    /// ready between retries doesn't start it over.
+    /// owner at sign-in or approval and after the node was off or failed, so a slow sign-in
+    /// or a late Try Again doesn't end on Can't Reach. A moment of ready between retries
+    /// doesn't start it over.
     static func nodeDeadline(busySince: inout Date?, state: NodeState, now: Date) -> Date? {
         switch state {
-        case .needsLogin, .awaitingApproval:
+        case .needsLogin, .awaitingApproval, .idle, .failed:
             busySince = nil
             return nil
         default:
