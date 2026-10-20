@@ -52,9 +52,12 @@ type Invite struct {
 	Expires     time.Time `json:"expires"`
 	KeyID       string    `json:"keyId,omitempty"` // cleared once the key is deleted in the tailnet (or found gone)
 	KeyHash     string    `json:"keyHash,omitempty"`
-	// Review marks an invite for an app store's review: its key is reusable, lasts
-	// reviewInviteTTL, and admits up to reviewInviteDevices devices of its person.
+	// Review marks an invite for an app store's review: its key lasts reviewInviteTTL.
 	Review bool `json:"review,omitempty"`
+	// Reusable is whether the key is, as review invites' keys are since 1.0.7: the invite
+	// then admits up to reviewInviteDevices devices of its person. 1.0.6 minted review
+	// invites with single-use keys, so those still close at their first claim.
+	Reusable bool `json:"reusable,omitempty"`
 	// ClaimedBy and ClaimedAt are the device and time of the claim that used the invite
 	// up: its only one, or a review invite's last. Each device's claim is in its Guest.
 	ClaimedBy string     `json:"claimedBy,omitempty"` // device ID
@@ -248,7 +251,7 @@ var (
 
 // claimInvite binds a guest device to the invite whose key it presents. Only the device
 // that joined with the single-use key can have that key, so the key's hash is the
-// proof. A review invite's key is reusable, so it takes up to reviewInviteDevices devices
+// proof. A reusable key (a review invite's) takes up to reviewInviteDevices devices
 // before it is used up. Claiming again from the same device is harmless; fresh reports
 // a new claim.
 func (st *sharingState) claimInvite(keyHash, app string, caller Identity, now time.Time) (inv *Invite, g *Guest, fresh bool, err error) {
@@ -301,7 +304,7 @@ func (st *sharingState) claimInvite(keyHash, app string, caller Identity, now ti
 	}
 	st.Guests = append(st.Guests, Guest{DeviceID: caller.DeviceID, Person: cmp.Or(person, inv.Person), Name: inv.To, App: app,
 		DeviceName: caller.DeviceName, InviteID: inv.ID, ClaimedAt: now})
-	if !inv.Review || len(st.claimants(inv.ID)) >= reviewInviteDevices {
+	if !inv.Reusable || len(st.claimants(inv.ID)) >= reviewInviteDevices {
 		at := now
 		inv.State, inv.ClaimedBy, inv.ClaimedAt = inviteClaimed, caller.DeviceID, &at
 	}

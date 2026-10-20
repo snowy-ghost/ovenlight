@@ -182,7 +182,7 @@ func TestClaimInvite(t *testing.T) {
 // device taken off the app keeps its place: removing it frees none for another.
 func TestClaimReviewInvite(t *testing.T) {
 	review := sentInvite("r1", "App Review", "coach", "key-review")
-	review.Review = true
+	review.Review, review.Reusable = true, true
 	st := sharingState{Invites: []Invite{review}}
 	dev := func(i int) Identity {
 		return Identity{Tagged: true, Tags: []string{guestTag}, DeviceID: fmt.Sprint("n", i), DeviceName: fmt.Sprint("review-", i)}
@@ -221,7 +221,7 @@ func TestClaimReviewInvite(t *testing.T) {
 func TestClaimAgainAfterTheInviteEnded(t *testing.T) {
 	for _, state := range []string{inviteCanceled, inviteExpired} {
 		review := sentInvite("r1", "App Review", "coach", "key-review")
-		review.Review = true
+		review.Review, review.Reusable = true, true
 		st := sharingState{Invites: []Invite{review}}
 		if _, _, fresh, err := st.claimInvite(hashKey("key-review"), "coach", samDev, t0); err != nil || !fresh {
 			t.Fatalf("claim: %v %v", fresh, err)

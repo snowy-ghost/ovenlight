@@ -313,7 +313,7 @@ func (d *daemon) mintInvite(inv Invite) (shareResult, error) {
 	if err != nil {
 		return shareResult{}, fmt.Errorf("couldn't create the invite key: %w", withAuthHint(err))
 	}
-	inv.State, inv.KeyID, inv.KeyHash = inviteSent, key.ID, hashKey(key.Key)
+	inv.State, inv.KeyID, inv.KeyHash, inv.Reusable = inviteSent, key.ID, hashKey(key.Key), key.Reusable
 	inv.Expires = key.Expires
 	if inv.Expires.IsZero() {
 		inv.Expires = time.Now().Add(ttl)

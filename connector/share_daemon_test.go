@@ -239,6 +239,72 @@ func TestReviewInvite(t *testing.T) {
 	}
 }
 
+// 1.0.6 minted review invites with single-use keys and saved them with no reusable
+// field. After the upgrade such an invite still closes at its first claim, while one
+// minted now admits reviewInviteDevices devices, after a restart too.
+func TestReviewInvitesMintedBefore107(t *testing.T) {
+	d, _ := testDaemon(t)
+	api, err := d.api()
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldKey, err := api.CreateAuthKey(t.Context(), tsapi.KeyRequest{Tags: []string{guestTag}, Preauthorized: true, Expiry: reviewInviteTTL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created := time.Now().UTC()
+	saved := fmt.Sprintf(`{"invites": [{"id": "0a1b2c3d4e", "to": "Apple Editorial", "person": "5e6f7a8b9c", "app": "coach", "state": "sent",
+		"requestedBy": "terminal", "created": %q, "expires": %q, "keyId": %q, "keyHash": %q, "review": true}], "guests": [], "feedback": []}`,
+		created.Format(time.RFC3339), created.Add(reviewInviteTTL).Format(time.RFC3339), oldKey.ID, hashKey(oldKey.Key))
+	if err := os.MkdirAll(d.stateDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(sharingPath(d.stateDir), []byte(saved), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if d.sh, err = openSharing(d.stateDir); err != nil {
+		t.Fatal(err)
+	}
+	res, err := d.createInvite(guestRef{To: "App Review"}, "coach", "terminal", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	link, err := parseInviteLink(res.Link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.sh, err = openSharing(d.stateDir); err != nil { // a restart
+		t.Fatal(err)
+	}
+	dev := func(name string, i int) Identity {
+		return Identity{Tagged: true, Tags: []string{guestTag}, DeviceID: fmt.Sprint("n", name, i), DeviceName: fmt.Sprint(name, "-", i)}
+	}
+	state := func(id string) string {
+		d.sh.mu.Lock()
+		defer d.sh.mu.Unlock()
+		return d.sh.st.invite(id).State
+	}
+
+	if code, out := claim(t, d, dev("editorial", 0), oldKey.Key); code != 200 || state("0a1b2c3d4e") != inviteClaimed {
+		t.Fatalf("the 1.0.6 invite's claim: %d %v, then %s", code, out, state("0a1b2c3d4e"))
+	}
+	if code, out := claim(t, d, dev("editorial", 1), oldKey.Key); code != http.StatusForbidden || out["code"] != codeUsedElsewhere {
+		t.Errorf("a second device on the 1.0.6 invite: %d %v", code, out)
+	}
+	waitFor(t, func() bool { return keyDeleted(d, "0a1b2c3d4e") }, "the 1.0.6 invite's spent key deleted")
+
+	for i := range reviewInviteDevices {
+		want := inviteSent
+		if i == reviewInviteDevices-1 {
+			want = inviteClaimed
+		}
+		if code, out := claim(t, d, dev("review", i), link.Key); code != 200 || state(res.Invite.ID) != want {
+			t.Fatalf("claim %d on the new invite: %d %v, then %s", i, code, out, state(res.Invite.ID))
+		}
+	}
+	waitFor(t, func() bool { return keyDeleted(d, res.Invite.ID) }, "the new invite's used-up key deleted")
+}
+
 // Revoking a review invite by its ID removes its devices and cancels it, so a removed
 // phone that joins again can't take a place that is left.
 func TestRevokeReviewInviteByID(t *testing.T) {
