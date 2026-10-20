@@ -202,7 +202,7 @@ struct TailnetBanner: View {
     let approve: () -> Void
 
     static func signIn(before: Bool) -> (title: String, message: String, button: String) {
-        before ? ("Sign In Again", "This phone’s Tailscale sign-in ended. Sign in again to reach your computers.", "Sign In")
+        before ? ("Sign In Again", "This \(ConnectionCopy.device)’s Tailscale sign-in ended. Sign in again to reach your computers.", "Sign In")
             : ("Connect Your Computers", "Ovenlight connects privately to your own computers with your Tailscale account, without a VPN.", "Connect")
     }
 

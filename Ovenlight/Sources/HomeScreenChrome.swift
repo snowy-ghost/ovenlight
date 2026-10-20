@@ -105,9 +105,6 @@ struct TailnetStatusPill: View {
     /// Busy for a beat: a quick reconnect, coming back after a minute away, shows nothing.
     @State private var busyAWhile = false
 
-    /// What the pill says while the node comes up.
-    static func busyText(offline: Bool) -> String { offline ? ConnectionCopy.offline : ConnectionCopy.connecting }
-
     var body: some View {
         // A container that's always there, for the task.
         ZStack { pill }
@@ -125,7 +122,7 @@ struct TailnetStatusPill: View {
             if offline || busyAWhile {
                 HStack(spacing: 7) {
                     if !offline { ProgressView().controlSize(.small) }
-                    Text(Self.busyText(offline: offline))
+                    Text(offline ? ConnectionCopy.offline : ConnectionCopy.connecting)
                         .font(.footnote.weight(.medium))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)

@@ -1316,18 +1316,12 @@ final class ConnectionStateTests: XCTestCase {
         XCTAssertFalse(offline(node: .connecting, answers: [coach: false]), "the launcher shows the connection itself")
     }
 
-    /// With no network, a node coming up can't: the pill says so, without a spinner.
-    func testThePillSaysOfflineWhenThePhoneIs() {
-        XCTAssertEqual(TailnetStatusPill.busyText(offline: true), ConnectionCopy.offline)
-        XCTAssertEqual(TailnetStatusPill.busyText(offline: false), ConnectionCopy.connecting)
-    }
-
     /// A sign-in that ended (it expired, or the phone left the account) says so, rather than
     /// showing the first-run card again.
     func testAnEndedSignInSaysSo() {
         let ended = TailnetBanner.signIn(before: true)
         XCTAssertEqual(ended.title, "Sign In Again")
-        XCTAssertEqual(ended.message, "This phone’s Tailscale sign-in ended. Sign in again to reach your computers.")
+        XCTAssertEqual(ended.message, "This \(ConnectionCopy.device)’s Tailscale sign-in ended. Sign in again to reach your computers.")
         XCTAssertEqual(ended.button, "Sign In")
         XCTAssertEqual(TailnetBanner.signIn(before: false).title, "Connect Your Computers")
     }

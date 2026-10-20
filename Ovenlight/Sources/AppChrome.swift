@@ -167,10 +167,13 @@ struct AppChrome: View {
         // reader's size.
         .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
         .popover(isPresented: $tipPresented, arrowEdge: .top) {
-            TipView(tip)
-                .tipBackground(.clear)
-                .frame(idealWidth: 360)
-                .presentationCompactAdaptation(.popover)
+            // A popover doesn't scroll: at the largest sizes the tip would lose its last lines.
+            ViewThatFits(in: .vertical) {
+                TipView(tip).tipBackground(.clear)
+                ScrollView { TipView(tip).tipBackground(.clear) }
+            }
+            .frame(idealWidth: 360)
+            .presentationCompactAdaptation(.popover)
         }
         .frame(maxWidth: 320)
     }
