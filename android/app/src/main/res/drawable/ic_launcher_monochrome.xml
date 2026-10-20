@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Written by design/icon/generate.py. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillType="evenOdd" android:fillColor="#FFFFFFFF"
+        android:pathData="M37.31,33.04H70.69A9.70,9.70 0,0 1 80.39,42.74V65.26A9.70,9.70 0,0 1 70.69,74.96H37.31A9.70,9.70 0,0 1 27.61,65.26V42.74A9.70,9.70 0,0 1 37.31,33.04ZM39.86,55.81H44.33A2.42,2.42 0,0 1 46.75,58.23V62.70A2.42,2.42 0,0 1 44.33,65.13H39.86A2.42,2.42 0,0 1 37.44,62.70V58.23A2.42,2.42 0,0 1 39.86,55.81ZM51.76,55.81H56.24A2.42,2.42 0,0 1 58.66,58.23V62.70A2.42,2.42 0,0 1 56.24,65.13H51.76A2.42,2.42 0,0 1 49.34,62.70V58.23A2.42,2.42 0,0 1 51.76,55.81ZM63.67,55.81H68.14A2.42,2.42 0,0 1 70.56,58.23V62.70A2.42,2.42 0,0 1 68.14,65.13H63.67A2.42,2.42 0,0 1 61.25,62.70V58.23A2.42,2.42 0,0 1 63.67,55.81ZM32.14,64.87H75.86A1.16,1.16 0,0 1 77.03,66.03V66.03A1.16,1.16 0,0 1 75.86,67.20H32.14A1.16,1.16 0,0 1 30.97,66.03V66.03A1.16,1.16 0,0 1 32.14,64.87Z" />
+</vector>

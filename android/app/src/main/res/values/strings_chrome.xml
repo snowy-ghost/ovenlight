@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- An open app's chrome (the pill, its handle, tip and menu) and Send feedback. Copy other screens share stays in ConnectionCopy. -->
+<resources>
+    <string name="chrome_all_apps">All apps</string>
+    <string name="chrome_show_menu">Show app menu</string>
+    <string name="chrome_reload">Reload</string>
+    <string name="chrome_send_feedback_to">Send feedback to %1$s</string>
+
+    <string name="chrome_tip_title">Your apps are up here</string>
+    <string name="chrome_tip_body">This bar tucks away while you use an app. Tap the handle at the top of the screen, or pull down at the top of the page, to bring it back.</string>
+    <string name="chrome_tip_action">Got it</string>
+
+    <string name="feedback_send">Send</string>
+    <string name="feedback_sending">Sending</string>
+    <string name="feedback_discard_title">Discard feedback?</string>
+    <string name="feedback_discard">Discard</string>
+    <string name="feedback_keep_editing">Keep editing</string>
+    <string name="feedback_note">What’s working, or what isn’t?</string>
+    <string name="feedback_goes_to">Goes to %1$s, who runs %2$s.</string>
+    <string name="feedback_goes_to_you">Goes to your feedback in People &amp; sharing.</string>
+    <string name="feedback_include_screenshot">Include screenshot</string>
+    <string name="feedback_screenshot">Screenshot of %1$s</string>
+    <!-- FeedbackPayload.maxNote, counted in code points as the connector counts. -->
+    <string name="feedback_note_too_long">Keep the note under 4,000 characters.</string>
+</resources>

@@ -300,16 +300,16 @@ the page runs to the bottom and side edges, under the home indicator, and Ovenli
 no insets there: pad with `env(safe-area-inset-bottom)`, `-left` and `-right`. Pad a fixed
 bottom tab bar with `env(safe-area-inset-bottom)`, and the page's bottom by the bar's
 height so it scrolls clear. A page without `viewport-fit=cover` stays inside the safe
-areas at the sides. Its bottom still runs under the home indicator, on the page's
-background. It gets no inset to pad by, so a page with a fixed bottom bar needs
-`viewport-fit=cover`.
+areas at the sides. Its bottom still runs under the home indicator, and on Android stops
+above three-button navigation, on the page's background. It gets no inset to pad by, so a
+page with a fixed bottom bar needs `viewport-fit=cover`.
 
 **Ovenlight's chrome.** The only thing Ovenlight draws over the app is a small pill at the
 top center, just below the status bar, with the way home and the app's menu (Reload and
 Send Feedback among them). It tucks up under the status bar the moment your page appears,
 leaving a small handle above your page. Pulling down at the top of the page or tapping the
 handle brings it back, and scrolling down or tapping the page tucks it away again. It
-stays out while its one-time tip shows, and always while VoiceOver is on. So:
+stays out while its one-time tip shows, and always while VoiceOver or TalkBack is on. So:
 
 - Let the page itself scroll, not a full-height inner container
   (`height: 100vh; overflow: auto`): Ovenlight watches the page's scrolling, so inside

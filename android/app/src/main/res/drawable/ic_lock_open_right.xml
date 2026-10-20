@@ -1,0 +1,10 @@
+<!-- Material Symbols Rounded "lock_open_right" (Apache License 2.0). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="960"
+    android:viewportHeight="960">
+  <path
+      android:fillColor="#FF000000"
+      android:pathData="M240,800h480v-400H240v400Zm296.5,-143.5Q560,633 560,600t-23.5,-56.5Q513,520 480,520t-56.5,23.5Q400,567 400,600t23.5,56.5Q447,680 480,680t56.5,-23.5ZM240,800v-400 400Zm0,80q-33,0 -56.5,-23.5T160,800v-400q0,-33 23.5,-56.5T240,320h280v-80q0,-83 58.5,-141.5T720,40q71,0 124,43t70,108q5,17 -6.5,33T880,240q-17,0 -28,-7t-16,-23q-11,-38 -42.5,-64T720,120q-50,0 -85,35t-35,85v80h120q33,0 56.5,23.5T800,400v400q0,33 -23.5,56.5T720,880H240Z"/>
+</vector>

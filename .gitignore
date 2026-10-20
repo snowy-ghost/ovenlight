@@ -11,3 +11,18 @@ Frameworks/
 /site/docs/
 /site/docs.html
 /site/sitemap.xml
+
+# Android: Gradle, Kotlin and IDE state, signing material, and the Go core's library,
+# which scripts/build-android-core.sh builds
+.gradle/
+.kotlin/
+local.properties
+.idea/
+captures/
+*.jks
+*.keystore
+keystore.properties
+/android/app/libs/
+
+# The Android e2e harness output
+/android/e2e/out/

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Finished downloads, which only DownloadProvider hands out, one read grant at a time. -->
+<paths>
+    <cache-path name="downloads" path="Downloads/" />
+</paths>

@@ -2,3 +2,6 @@
 # with Git for Windows' core.autocrlf: cmd reads mcp.cmd with CRLF and sh reads mcp with LF.
 *.cmd text eol=crlf
 plugins/ovenlight/scripts/mcp text eol=lf
+# Gradle's wrapper scripts, for the same reason: sh reads gradlew with LF, cmd reads gradlew.bat with CRLF.
+android/gradlew text eol=lf
+*.bat text eol=crlf

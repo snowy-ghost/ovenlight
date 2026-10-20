@@ -4,8 +4,10 @@
 # because actool drops any SVG shape carrying a filter from the flattened renders (TestFlight,
 # App Store, pre-iOS 26), though ictool shows it. Layers carry no painted highlights or
 # shadows; the system supplies them, and Xcode renders every appearance and the pre-iOS 26
-# images from this document. It also writes the website's icon.svg and icon-180.png.
-#   uv run --with pillow --with numpy python3 generate.py   # rewrites ../../Ovenlight/Resources/AppIcon.icon and the site's icons
+# images from this document. It also writes the website's icon.svg and icon-180.png, and
+# Android's adaptive icon (a gradient background, the flat light, rack and apps in front, and
+# a monochrome layer for themed icons) with the Play Store's 512 px icon.
+#   uv run --with pillow --with numpy python3 generate.py   # rewrites ../../Ovenlight/Resources/AppIcon.icon, the site's and Android's icons
 # Preview any rendition with ictool (Icon Composer.app/Contents/Executables):
 #   ictool AppIcon.icon --export-image --output-file icon.png --platform iOS \
 #     --rendition Default --width 1024 --height 1024 --scale 1   (Dark, TintedDark, ClearLight...)
@@ -22,6 +24,7 @@ from PIL import Image, ImageCms, ImageDraw, ImageFilter
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, "../../Ovenlight/Resources/AppIcon.icon")
 SITE = os.path.join(HERE, "../../site")
+ANDROID = os.path.join(HERE, "../../android/app/src/main/res")
 N = 1024
 FILL = ("#4a2213", "#170907")
 
@@ -156,3 +159,93 @@ with open(os.path.join(OUT, "icon.json"), "w") as f:
 with open(os.path.join(SITE, "icon.svg"), "w") as f:
     f.write(site_svg())
 touch_icon().save(os.path.join(SITE, "icon-180.png"), optimize=True)
+
+# Android: the same door, flat. The whole canvas sits at 92 percent of the 72 dp viewport,
+# centered on the 108 dp layer, which keeps the window inside the 66 dp safe zone no
+# launcher's mask clips.
+LAYER, ART = 108, 0.92 * 72
+DENSITIES = {"mdpi": 108, "hdpi": 162, "xhdpi": 216, "xxhdpi": 324, "xxxhdpi": 432}
+
+def tile(box, radius, top, bottom):
+    """A rounded box filled with a vertical gradient over its own height, on the canvas."""
+    height = box[3] - box[1]
+    ramp = np.array(rgb(top)) + (np.array(rgb(bottom)) - np.array(rgb(top))) * np.clip((np.arange(N) - box[1]) / height, 0, 1)[:, None]
+    image = Image.fromarray(np.repeat(ramp[:, None, :], N, 1).astype(np.uint8)).convert("RGBA")
+    image.putalpha(rounded(box, radius))
+    return image
+
+def app_boxes():
+    return [(x0 + i * (APP + APP_GAP), RACK_Y + 4 - APP, x0 + i * (APP + APP_GAP) + APP, RACK_Y + 4) for i in range(3)]
+
+def rack_box():
+    return (WINDOW[0] + 52, RACK_Y, WINDOW[2] - 52, RACK_Y + RACK_H)
+
+def flat_front():
+    """The glow, the light, the rack and the apps, as one image on a clear canvas."""
+    front = Image.new("RGBA", (N, N))
+    for part in (spill(), light(), tile(rack_box(), RACK_H / 2, "#ffd27a", "#f4822c"),
+                 *(tile(box, APP * 0.26, "#7a3210", "#4a1a06") for box in app_boxes())):
+        front.alpha_composite(part)
+    return front
+
+def door(size):
+    top, bottom = np.array(rgb(FILL[0])), np.array(rgb(FILL[1]))
+    return Image.fromarray((top + (bottom - top) * np.linspace(0, 1, size)[:, None, None]).repeat(size, 1).astype(np.uint8)).convert("RGBA")
+
+def dp(v):
+    """A canvas coordinate on the 108 dp layer."""
+    return (LAYER - ART) / 2 + v * ART / N
+
+def rounded_path(box, radius):
+    x1, y1, x2, y2 = (dp(v) for v in box)
+    rr = radius * ART / N
+    return (f"M{x1 + rr:.2f},{y1:.2f}H{x2 - rr:.2f}A{rr:.2f},{rr:.2f} 0,0 1 {x2:.2f},{y1 + rr:.2f}"
+            f"V{y2 - rr:.2f}A{rr:.2f},{rr:.2f} 0,0 1 {x2 - rr:.2f},{y2:.2f}H{x1 + rr:.2f}"
+            f"A{rr:.2f},{rr:.2f} 0,0 1 {x1:.2f},{y2 - rr:.2f}V{y1 + rr:.2f}A{rr:.2f},{rr:.2f} 0,0 1 {x1 + rr:.2f},{y1:.2f}Z")
+
+def vector(paths):
+    return ('<?xml version="1.0" encoding="utf-8"?>\n'
+            '<!-- Written by design/icon/generate.py. -->\n'
+            '<vector xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt"\n'
+            f'    android:width="{LAYER}dp" android:height="{LAYER}dp" android:viewportWidth="{LAYER}" android:viewportHeight="{LAYER}">\n'
+            f'{paths}</vector>\n')
+
+def android_icons():
+    for name in ("drawable", "mipmap-anydpi"):
+        os.makedirs(os.path.join(ANDROID, name), exist_ok=True)
+    # The door's gradient, over the whole layer.
+    with open(os.path.join(ANDROID, "drawable", "ic_launcher_background.xml"), "w") as f:
+        f.write(vector(
+            f'    <path android:pathData="M0,0h{LAYER}v{LAYER}h-{LAYER}z">\n'
+            '        <aapt:attr name="android:fillColor">\n'
+            f'            <gradient android:type="linear" android:startX="0" android:startY="0" android:endX="0" android:endY="{LAYER}"\n'
+            f'                android:startColor="{FILL[0]}" android:endColor="{FILL[1]}" />\n'
+            '        </aapt:attr>\n'
+            '    </path>\n'))
+    # Themed icons: the window solid, with the rack and the apps cut out of it.
+    holes = "".join(rounded_path(box, APP * 0.26) for box in app_boxes()) + rounded_path(rack_box(), RACK_H / 2)
+    with open(os.path.join(ANDROID, "drawable", "ic_launcher_monochrome.xml"), "w") as f:
+        f.write(vector(f'    <path android:fillType="evenOdd" android:fillColor="#FFFFFFFF"\n'
+                       f'        android:pathData="{rounded_path(WINDOW, WINDOW_RADIUS)}{holes}" />\n'))
+    front = flat_front()
+    for density, size in DENSITIES.items():
+        folder = os.path.join(ANDROID, f"mipmap-{density}")
+        os.makedirs(folder, exist_ok=True)
+        art = round(size * ART / LAYER)
+        layer = Image.new("RGBA", (size, size))
+        layer.alpha_composite(front.resize((art, art), Image.LANCZOS), ((size - art) // 2, (size - art) // 2))
+        layer.save(os.path.join(folder, "ic_launcher_foreground.png"), optimize=True)
+    with open(os.path.join(ANDROID, "mipmap-anydpi", "ic_launcher.xml"), "w") as f:
+        f.write('<?xml version="1.0" encoding="utf-8"?>\n'
+                '<!-- Written by design/icon/generate.py. -->\n'
+                '<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">\n'
+                '    <background android:drawable="@drawable/ic_launcher_background" />\n'
+                '    <foreground android:drawable="@mipmap/ic_launcher_foreground" />\n'
+                '    <monochrome android:drawable="@drawable/ic_launcher_monochrome" />\n'
+                '</adaptive-icon>\n')
+    # Google Play's icon: full bleed and square, since Play rounds and shadows it itself.
+    play = door(N)
+    play.alpha_composite(front)
+    play.resize((512, 512), Image.LANCZOS).convert("RGBA").save(os.path.join(HERE, "play-icon-512.png"), optimize=True)
+
+android_icons()

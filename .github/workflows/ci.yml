@@ -6,6 +6,7 @@ on:
   # Weekly as well, so govulncheck sees new advisories without a push.
   schedule:
     - cron: '17 6 * * 1'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -135,6 +136,195 @@ jobs:
           cache-dependency-path: connector/go.sum
       - run: go install github.com/juanfont/headscale/cmd/headscale@v0.29.4
       - run: OVENLIGHT_E2E_HEADSCALE="$(go env GOPATH)/bin/headscale" go test -tags e2e ./e2e -v -count=1 -timeout 15m
+
+  # The Android app: its Go core's checks, lint, unit tests, the debug build, and the
+  # release bundle with the checks Play and the plan ask of it (scripts/verify-bundle.sh).
+  android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: android
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: android/core/go.mod
+          cache-dependency-path: android/core/go.sum
+      # The iPhone tests are the spec: each needs an Android twin of the same name.
+      - name: Test parity with the iPhone app
+        run: |
+          git fetch --no-tags --depth=1 origin app-1.0.2:refs/remotes/origin/app-1.0.2
+          scripts/test-parity.sh
+      - name: Gradle wrapper
+        run: echo "7a9ce74cff467ca1bf60a4fcd9f05185acceda4d0f382434d393e17864262c5d  gradle/wrapper/gradle-wrapper.jar" | sha256sum -c
+      # One NDK pin, read from gradle.properties as Gradle and the core's build read it.
+      - name: SDK packages (no-ops when the image has them)
+        run: |
+          (yes || true) | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$(sed -n 's/^ovenlight.ndkVersion=//p' gradle.properties)" "platforms;android-37.0" "build-tools;36.0.0" > /dev/null
+      - name: Go core
+        working-directory: android/core
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "gofmt needed:"
+            echo "$unformatted"
+            exit 1
+          fi
+          go vet ./...
+          GOOS=android GOARCH=arm64 CGO_ENABLED=0 go vet ./...
+          go test -race -count=1 ./...
+          go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
+          "$(go env GOPATH)/bin/govulncheck" ./...
+          GOOS=android GOARCH=arm64 CGO_ENABLED=0 "$(go env GOPATH)/bin/govulncheck" ./...
+      - name: Lint, unit tests, and the debug build and release bundle
+        run: ./gradlew --no-daemon :app:lintDebug :app:lintRelease :app:testDebugUnitTest :app:assembleDebug :app:bundleRelease
+      - name: Release bundle
+        run: scripts/verify-bundle.sh app/build/outputs/bundle/release/app-release.aab
+      - name: Third-party notices
+        run: grep -q "^tailscale.com $(cd core && go list -m -f '{{.Version}}' tailscale.com)\$" app/libs/THIRD_PARTY_NOTICES.txt
+
+  # The app's instrumented tests on an emulator: WebView, the proxy, profiles, the lock and every
+  # screen's accessibility checks. On pushes to android until it merges, since GitHub runs
+  # schedules only on the default branch, then weekly. API 36: on 37 Espresso 3.7.0 can't start
+  # (Android 17 removed the InputManager method it reflects on). 36's image has WebView M133,
+  # below Ovenlight's M144 floor, so it gets Google's own WebView from 37's image, as avds.sh
+  # gives the mini's AVDs.
+  android-emulator:
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/android') || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: android
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: android/core/go.mod
+          cache-dependency-path: android/core/go.sum
+      - name: Gradle wrapper
+        run: echo "7a9ce74cff467ca1bf60a4fcd9f05185acceda4d0f382434d393e17864262c5d  gradle/wrapper/gradle-wrapper.jar" | sha256sum -c
+      - name: SDK packages and the emulators (no-ops when the image has them)
+        run: |
+          (yes || true) | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$(sed -n 's/^ovenlight.ndkVersion=//p' gradle.properties)" "platforms;android-37.0" "build-tools;36.0.0" \
+            emulator "system-images;android-36;google_apis;x86_64" "system-images;android-37.0;google_apis;x86_64" > /dev/null
+      # Google's WebView from the API 37 image, kept until that image changes, so the webview
+      # emulator boots only when it does.
+      - id: image
+        run: echo "revision=$(sed -n 's/^Pkg.Revision=//p' "$ANDROID_HOME/system-images/android-37.0/google_apis/x86_64/source.properties")" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v6
+        with:
+          path: ~/webview
+          key: webview-${{ steps.image.outputs.revision }}
+      # The release set of ABIs, which debug builds take too: the runner's emulator is x86_64.
+      - name: Core library
+        run: ../scripts/build-android-core.sh
+      - name: The app and its tests
+        run: ./gradlew --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest
+      # Made fresh on the runner (the fixed AVD set is the mini's), one at a time and only once the
+      # build is done: an emulator booting beside the build or another emulator is starved, its
+      # System UI stops responding, and the tests' keys land on the ANR dialog and close System UI.
+      # webview on 5556 boots only to hand over its WebView, then ci on 5554 for the tests, set up
+      # as the mini's AVDs are (avds.sh): WebView M144 or later, no animations, the PIN 1111, awake
+      # and unlocked, since a phone on its lock screen keeps every app from resuming.
+      - name: Emulators
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          # avdmanager and the emulator look for AVDs in different places by default.
+          export ANDROID_AVD_HOME="$HOME/.android/avd"
+          mkdir -p "$ANDROID_AVD_HOME"
+          adb="$ANDROID_HOME/platform-tools/adb"
+          # One adb server for the run, rather than one the emulator starts.
+          "$adb" start-server
+          # The runner's avdmanager has no pixel_9; pixel_7 has the same 412 by 915 dp screen.
+          boot() { # name api port flags...
+            name=$1 api=$2 port=$3
+            shift 3
+            echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd -n "$name" -k "system-images;$api;google_apis;x86_64" -d pixel_7 -p "$ANDROID_AVD_HOME/$name.avd"
+            # SwiftShader through ANGLE: the runner's GLES translator over SwiftShader
+            # (swiftshader_indirect, as on the mini) crashes the emulator drawing WebView's
+            # color picker. The subshell logs how the emulator ended.
+            (nohup "$ANDROID_HOME/emulator/emulator" -avd "$name" -port "$port" "$@" -no-window -no-audio -no-boot-anim -no-metrics -gpu swangle_indirect -no-snapshot; echo "emulator exited with $?") > "$RUNNER_TEMP/$name.log" 2>&1 &
+            timeout 600 sh -c "until [ \"\$('$adb' -s emulator-$port shell getprop sys.boot_completed 2> /dev/null | tr -d '\r')\" = 1 ]; do sleep 2; done" ||
+              { tail -50 "$RUNNER_TEMP/$name.log"; exit 1; }
+          }
+          webview() { "$adb" -s emulator-5554 shell dumpsys webviewupdate | sed -n 's/.*Current WebView package (name, version): ([^,]*, \([0-9]*\)\..*/\1/p' | head -1; }
+          if [ ! -f ~/webview/webview.apk ]; then
+            boot webview android-37.0 5556
+            # The package manager may still be starting when the boot is reported complete.
+            apk=
+            for _ in $(seq 30); do
+              apk="$("$adb" -s emulator-5556 shell pm path com.google.android.webview 2> /dev/null | tr -d '\r' | sed -n 's/^package://p' | head -1)"
+              [ -n "$apk" ] && break
+              sleep 2
+            done
+            [ -n "$apk" ] || { echo "the webview emulator has no WebView package"; exit 1; }
+            mkdir -p ~/webview
+            "$adb" -s emulator-5556 pull "$apk" ~/webview/webview.apk
+            "$adb" -s emulator-5556 emu kill
+          fi
+          # ci gets 4 GB, as the mini's AVDs: the web view pool keeps as many pages as it does there.
+          boot ci android-36 5554 -memory 4096
+          # The package manager may still be settling just after boot.
+          for _ in 1 2 3 4 5 6; do "$adb" -s emulator-5554 install -r ~/webview/webview.apk && break; sleep 3; done
+          for _ in $(seq 30); do [ "$(webview)" -ge 144 ] 2> /dev/null && break; sleep 2; done
+          [ "$(webview)" -ge 144 ] 2> /dev/null || { echo "WebView M$(webview)"; exit 1; }
+          for k in window_animation_scale transition_animation_scale animator_duration_scale; do "$adb" -s emulator-5554 shell settings put global $k 0; done
+          "$adb" -s emulator-5554 shell locksettings set-pin 1111
+          "$adb" -s emulator-5554 shell svc power stayon true
+          "$adb" -s emulator-5554 shell settings put system screen_off_timeout 2147483647
+          # grep -c reads to the end: an early exit would fail the pipe under pipefail.
+          locked() { [ "$("$adb" -s emulator-5554 shell dumpsys window policy | grep -A1 KeyguardStateMonitor | grep -c 'mIsShowing=true')" != 0 ]; }
+          "$adb" -s emulator-5554 shell input keyevent KEYCODE_WAKEUP
+          for _ in 1 2 3 4 5; do
+            locked || break
+            "$adb" -s emulator-5554 shell wm dismiss-keyguard || true
+            sleep 1
+            "$adb" -s emulator-5554 shell input text 1111
+            "$adb" -s emulator-5554 shell input keyevent 66
+            sleep 2
+          done
+          ! locked || { echo "the emulator stayed on its lock screen"; exit 1; }
+          # Room for the whole run's logcat, which a failed run keeps.
+          "$adb" -s emulator-5554 logcat -G 16M
+      - name: Instrumented tests
+        run: ANDROID_SERIAL=emulator-5554 ./gradlew --no-daemon :app:connectedDebugAndroidTest
+      # Whether the runner ran out of memory or the emulator stopped on its own, and the
+      # emulator's whole log and the ANRs and crashes it kept.
+      - if: failure()
+        run: |
+          free -m
+          ps -eo pid,rss,etime,args --sort=-rss | head -8 | cut -c1-200
+          sudo dmesg | grep -i -E "oom|killed process|out of memory|segfault" | tail -10 || true
+          adb="$ANDROID_HOME/platform-tools/adb"
+          "$adb" devices
+          # timeout: adb waits for a device that's gone.
+          timeout 60 "$adb" -s emulator-5554 logcat -b all -d > "$RUNNER_TEMP/logcat.log" || true
+          timeout 60 "$adb" -s emulator-5554 shell dumpsys dropbox --print > "$RUNNER_TEMP/dropbox.log" || true
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-emulator-reports
+          # The report, each test's logcat and failure, and the emulators' own logs.
+          path: |
+            android/app/build/reports/androidTests/connected/
+            android/app/build/outputs/androidTest-results/connected/
+            ${{ runner.temp }}/*.log
 
   # The docs as the site renders them: a link or #anchor in docs/ that goes nowhere fails.
   docs:

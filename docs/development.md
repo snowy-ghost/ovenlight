@@ -6,11 +6,13 @@
   `internal/tsapi` talks to the Tailscale API, and `e2e/` holds the end-to-end sharing
   test.
 - `project.yml`, `Ovenlight/`, `OvenlightTests/`: the iPhone app.
+- `android/`: the Android app. `scripts/build-android-core.sh` builds its Go core,
+  `android/core/`, into the library the app links.
 - `scripts/build-tailscalekit.sh`: builds the embedded Tailscale library.
 - `scripts/release-connector.sh`: builds a connector release, and
   `scripts/publish-connector.sh` publishes it.
-- `design/icon/generate.py`: writes the app icon, and the site's `icon.svg` and
-  `icon-180.png`.
+- `design/icon/generate.py`: writes the iPhone and Android app icons, the Google Play
+  icon, and the site's `icon.svg` and `icon-180.png`.
 - `.claude-plugin/marketplace.json`, `plugins/ovenlight/`: the Claude Code plugin (the MCP
   server and a skill that points to `ovenlight guide`). Check it with
   `claude plugin validate .`.
