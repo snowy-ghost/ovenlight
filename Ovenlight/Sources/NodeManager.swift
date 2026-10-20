@@ -349,7 +349,10 @@ final class MembershipNode: ObservableObject {
         await inOrder { [self] in
             pollTask?.cancel()
             pollTask = nil
-            cachedSession?.invalidateAndCancel()
+            // Cancelled, never invalidated: a fetch or probe holding it across an await can
+            // still start a request, which fails with the node gone, where a request on an
+            // invalidated session takes Ovenlight down.
+            cachedSession?.getAllTasks { $0.forEach { $0.cancel() } }
             cachedSession = nil
             proxy = nil
             loopback = nil

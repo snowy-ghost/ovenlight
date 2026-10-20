@@ -1543,6 +1543,19 @@ final class NodeManagerTests: XCTestCase {
         XCTAssertNil(nodes.memberships[membership.id])
         XCTAssertFalse(FileManager.default.fileExists(atPath: directory.path))
     }
+
+    /// An icon or a probe can hold the node's session across its awaits while the node stops
+    /// (a guest leaving, a restart): its next request fails, and doesn't take Ovenlight down.
+    func testASessionHeldAcrossAStopStillTakesRequests() async throws {
+        let id = UUID().uuidString
+        let node = MembershipNode(id: id) { .init(controlURL: "http://127.0.0.1:9", authKey: nil, hostName: "session-test") }
+        defer { try? FileManager.default.removeItem(at: NodeManager.stateDirectory(for: id)) }
+        await node.start()
+        let session = try XCTUnwrap(node.session(), "up, with its proxy")
+        await node.stop()
+        let answer = try? await session.data(from: URL(string: "https://app.tail0000.ts.net/")!)
+        XCTAssertNil(answer, "the node is gone")
+    }
 }
 
 /// iOS dials loopback, link-local and the phone's own addresses past the node's proxy, so a node
