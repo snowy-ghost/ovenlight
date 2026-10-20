@@ -1,5 +1,0 @@
-/* The stores that don't list Ovenlight yet. While a store's line is here, the home and join
-   pages show "Coming soon" in place of its badge. Once Ovenlight's page in that store is
-   live, delete the line and deploy. To hold a store back again, add its line:
-   .app-store { --listed: none; --soon: flex; } */
-.google-play { --listed: none; --soon: flex; }

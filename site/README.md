@@ -15,15 +15,10 @@ writes `sitemap.xml`, all of which git ignores. Wrangler runs it before each dep
 goes nowhere, and CI runs it on every push. `docs.js` adds the Copy buttons on code.
 
 The home, support, privacy and docs pages share `style.css`; the join page keeps its styles
-inline, and its Content-Security-Policy loads nothing but `join.js`, `stores.css` and
-same-origin images. Screenshots in `images/` come in WebP with a JPEG fallback, at 480 and 960 px wide. The link
+inline, since its Content-Security-Policy loads nothing but `join.js` and same-origin
+images. Screenshots in `images/` come in WebP with a JPEG fallback, at 480 and 960 px wide. The link
 preview image, `og-invite.jpg`, is written by `design/og/generate.py`, and the icons,
 `icon.svg` and `icon-180.png`, by `design/icon/generate.py`.
-
-`stores.css` holds a line for each store that doesn't list Ovenlight yet. While a store's
-line is there, the home and join pages show "Coming soon" in place of its badge. When a
-store's page goes live, delete its line and deploy. Once both are live, `stores.css` and
-everything that refers to it can go.
 
 `.well-known/apple-app-site-association` makes invite links open the app. iOS
 accepts it only when it is served directly, with no redirect, as

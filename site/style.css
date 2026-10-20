@@ -1,6 +1,6 @@
 /* Ovenlight, "Pilot Light": warm cream, one ember accent, an oven light's glow.
    Shared by the home, support, privacy and docs pages. The join page carries its own
-   inline copy of these tokens. */
+   inline copy of these tokens because its CSP allows no external stylesheet. */
 
 :root {
   color-scheme: light dark;
@@ -277,25 +277,18 @@ a:hover { text-decoration-thickness: 2px; }
   text-wrap: balance;
   color: var(--ink);
   font-size: clamp(1.1875rem, 1rem + 0.9vw, 1.5rem);
-  line-height: 1.45;
+  font-weight: 600;
+  line-height: 1.35;
 }
+.lead-more { max-width: 40ch; margin: 1rem auto 0; text-wrap: balance; color: var(--ink-body); }
 
 /* Apple's and Google's official badges, unmodified. Apple asks for its black badge wherever
    another store's badge appears. Google's image carries its clear space, a quarter of the
    badge's height on each side, and is sized so the badge stands as tall as Apple's. */
-.stores { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; margin-top: 2rem; }
-/* --listed and --soon come from stores.css. A "Coming soon" line stands as tall as a badge. */
-.store { display: var(--listed, block); border-radius: 0.6rem; line-height: 0; }
+.stores { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 0.5rem 0.375rem; margin-top: 2rem; }
+.store { display: inline-block; border-radius: 0.6rem; line-height: 0; }
 .store img { width: 9.375rem; height: auto; }
-.google-play img { width: 12.125rem; }
-.store-soon {
-  display: var(--soon, none);
-  align-items: center;
-  min-height: 3.125rem;
-  padding-inline: 0.8rem;
-  color: var(--ink-soft);
-  font-size: var(--step--1);
-}
+.store img.play { width: 12.125rem; }
 .store-note { margin-top: 0.85rem; color: var(--ink-soft); font-size: var(--step--1); }
 
 .hero-shot {

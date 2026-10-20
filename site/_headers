@@ -15,7 +15,7 @@
 # also allow scripts Cloudflare injects from /cdn-cgi/), and nothing may be
 # fetched, beaconed or posted. frame-ancestors only works as a header.
 /join*
-  Content-Security-Policy: default-src 'none'; script-src https://ovenlight.app/join.js; style-src 'unsafe-inline' https://ovenlight.app/stores.css; img-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'; frame-src 'none'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'none'; script-src https://ovenlight.app/join.js; style-src 'unsafe-inline'; img-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'; frame-src 'none'; frame-ancestors 'none'
   Referrer-Policy: no-referrer
 
 # The home, support and privacy pages run no script and fetch nothing from elsewhere,
