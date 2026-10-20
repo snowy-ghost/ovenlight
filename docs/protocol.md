@@ -258,9 +258,10 @@ interrupted join.
 Ovenlight takes a shared app away when:
 
 - the guest node loses its login (the owner deleted the device);
-- `whoami` answers 403 `not_invited` (checked when the app opens, every minute while
-  connected, and on a 403 page). Any other answer from `whoami`, even an error page that
-  says "not invited" without the code, counts as reaching the app;
+- `whoami` answers 403 `not_invited` (checked when the app opens, each time Ovenlight
+  comes to the front, when the owner's computers come or go, a minute after a check an app
+  didn't answer, and on a 403 page). Any other answer from `whoami`, even an error page
+  that says "not invited" without the code, counts as reaching the app;
 - the app's node has been missing from the guest node's peers for about 3 minutes while
   others are listed. When the owner stops sharing one app with a guest who keeps
   another, the device loses that app's tag and can no longer reach the node to hear

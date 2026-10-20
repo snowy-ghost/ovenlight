@@ -100,7 +100,10 @@ class JoinViewsTests {
 
     @Test
     fun testTypedTextThatIsntAnInviteSaysSo() {
+        ApplicationProvider.getApplicationContext<Context>().getSystemService(ClipboardManager::class.java).clearPrimaryClip()
         show(JoinRequest())
+        tap("Paste")
+        inEveryLook("Nothing to paste. Copy the invite link, then tap Paste.")
         composeRule.onNodeWithText("Scan invite code").assertDoesNotExist()
         composeRule.onNode(hasSetTextAction()).performTextInput("https://ovenlight.app/support")
         tap("Continue")
@@ -110,7 +113,7 @@ class JoinViewsTests {
     @Test
     fun testALinkThatIsntUsableOffersAnother() {
         show(JoinRequest(URI("ovenlight://join?v=2&control=https%3A%2F%2Fcontrolplane.tailscale.com")))
-        inEveryLook("Can't use this invite", InviteLink.ParseError.UnsupportedVersion.message, "Try another invite")
+        inEveryLook("Can’t use this invite", InviteLink.ParseError.UnsupportedVersion.message, "Try another invite")
         tap("Try another invite")
         inEveryLook(ConnectionCopy.invitePrompt)
     }
@@ -149,7 +152,7 @@ class JoinViewsTests {
         }
     }
 
-    /** And another connection server's warning shows with Join, without scrolling. */
+    /** And another connection server's warning shows with Join, at the largest font too, where the question scrolls to it. */
     @Test
     @Config(qualifiers = "w915dp-h412dp")
     fun testOnItsSideTheConnectionServerWarningShowsWithoutScrolling() {
@@ -168,9 +171,12 @@ class JoinViewsTests {
         inEveryLook(ConnectionCopy.joining("Riley", "Echo Board"), ConnectionCopy.joiningDetail)
         composeRule.onNodeWithText("Join").assertDoesNotExist()
         state = state.copy(phases = mapOf("i1" to JoinPhase.Joined(echo.id)), apps = listOf(echo))
-        inEveryLook(ConnectionCopy.joined("Echo Board"), "It's with your apps now, shared by Riley.", "Open Echo Board")
+        inEveryLook(ConnectionCopy.joined("Echo Board"), "It’s with your apps now, shared by Riley.", "Open Echo Board")
         tap("Open Echo Board")
         assertEquals(listOf(echo), opened)
+        // Gone since, however it went (Remove app, or its access ended), the same invite asks again.
+        state = state.copy(apps = emptyList())
+        inEveryLook(ConnectionCopy.joinTitle("Riley", "Echo Board"), "Join")
     }
 
     @Test

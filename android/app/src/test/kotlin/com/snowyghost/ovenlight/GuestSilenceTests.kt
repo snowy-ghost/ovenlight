@@ -33,4 +33,14 @@ class GuestSilenceTests {
         repeat(10) { assertFalse("asleep computers aren't silence", silence.record(probed = emptyList(), reachable = false)) }
         assertTrue(silence.record(probed = hosts, reachable = false))
     }
+
+    /** A phone with no network, or (on Android) out on an excursion, couldn't have heard an answer. */
+    @Test
+    fun testALookThePhoneCouldntHearIsNotSilence() {
+        val silence = GuestSilence()
+        val hosts = listOf("two-nights.example.ts.net")
+        repeat(GuestSilence.firstRestart - 1) { assertFalse(silence.record(probed = hosts, reachable = false)) }
+        repeat(10) { assertFalse("offline in a subway", silence.record(probed = hosts, reachable = false, heard = false)) }
+        assertTrue(silence.record(probed = hosts, reachable = false))
+    }
 }

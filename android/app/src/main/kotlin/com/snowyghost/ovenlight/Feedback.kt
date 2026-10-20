@@ -93,11 +93,12 @@ sealed class FeedbackResult {
 object FeedbackSender {
     /** Posts the feedback through the app's own node, as the app's pages reach it. */
     suspend fun send(payload: FeedbackPayload, app: WebApp, nodes: NodeManager, guests: GuestManager): FeedbackResult {
-        val network = FeedbackResult.Failed(ConnectionCopy.feedbackNetwork)
-        val session = nodes.uploadSession(app, timeoutMillis = 30_000) ?: return network
+        // Read as it fails: the phone may have gone offline while it tried.
+        val network = { FeedbackResult.Failed(if (TailnetCore.online.value) ConnectionCopy.feedbackNetwork else ConnectionCopy.feedbackOffline) }
+        val session = nodes.node(app)?.makeSession(timeoutMillis = 30_000) ?: return network()
         val body = ovenlightJSON.encodeToString(FeedbackPayload.serializer(), payload).toRequestBody("application/json".toMediaType())
-        val request = runCatching { Request.Builder().url("https://${app.host}/__ovenlight/feedback").post(body).build() }.getOrNull() ?: return network
-        val response = session(request) ?: return network
+        val request = runCatching { Request.Builder().url("https://${app.host}/__ovenlight/feedback").post(body).build() }.getOrNull() ?: return network()
+        val response = session(request) ?: return network()
         // A shared app answering 403 may have been unshared: ask its connector.
         if (response.status == 403 && app.isShared) guests.verifyAccess(app)
         return FeedbackResult.interpret(response.status, response.body)

@@ -100,6 +100,28 @@ object Discovery {
         }
     }
 
+    /**
+     * Among an owner's probed hosts, those whose silence brings another look in a minute:
+     * shareable app nodes (by their tag), hosts of apps already found (a private app's node is
+     * untagged) or whose tile discovery left on the launcher ([apps]: a miss drops it from
+     * [found]), and hosts this look sees for the first time. A laptop or TV without a connector
+     * misses once, and then no more.
+     */
+    fun watchedHosts(hosts: List<String>, status: TailnetStatus?, found: Set<String>, apps: List<WebApp>, seenBefore: Set<String>): Set<String> {
+        val tagged = (status?.peers ?: emptyList()).filter { peer -> peer.tags.any(OvenlightTag::isApp) }.map { normalizedHost(it.dnsName) }.toSet()
+        val tiles = apps.filter { it.discovered && !it.isShared }.map { normalizedHost(it.host) }.toSet()
+        return hosts.filter { it in tagged || it in found || it in tiles || it !in seenBefore }.toSet()
+    }
+
+    /**
+     * Whether a ready node looks at its hosts again: when a computer comes online or goes away
+     * (the owner's new apps, and tiles), and a minute after a look that missed a host, as a newly
+     * published app's first answer can. Not otherwise: each look wakes every app node's
+     * connection, and keeps it out of idle.
+     */
+    fun lookAgain(hostsChanged: Boolean, lastLookMillis: Long?, missed: Boolean, nowMillis: Long): Boolean =
+        hostsChanged || missed && lastLookMillis?.let { nowMillis - it > 60_000 } == true
+
     /** The owner's online computers that could run a connector. Phones and tablets can't, so they aren't probed. */
     fun candidateHosts(status: TailnetStatus?): List<String> =
         ownersPeers(status)
@@ -163,11 +185,11 @@ object Discovery {
 /**
  * Which node an app's traffic takes. Android has no direct route (plan decision 9): every app
  * goes through a node, and a host on no known tailnet is refused, never looked up in public DNS
- * or loaded directly, where iOS loads it directly.
+ * or loaded directly, as on iPhone. Only the iPhone's debug builds load `localhost` directly.
  */
 object Routing {
     enum class Route {
-        /** On no tailnet Ovenlight knows: nothing loads. iOS's `direct`. */
+        /** On no tailnet Ovenlight knows: nothing loads, not even a probe. */
         Refused,
 
         /** Through Ovenlight's embedded node (its local proxy). */

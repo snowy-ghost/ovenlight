@@ -31,7 +31,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -49,9 +48,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -72,7 +68,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
@@ -126,8 +121,6 @@ class PageEdges(
     /** Loads the app's start page again, through the same checks as its first load. */
     private val home: () -> Unit,
 ) {
-    val appName: String get() = app.name
-
     /** A dialog the page or Ovenlight shows over the page, one at a time. */
     sealed class Dialog {
         /** Taken away unanswered: answers with its fallback, unless it was answered. */
@@ -491,10 +484,8 @@ class PageEdges(
         }) { result ->
             lifecycle.excursionEnded()
             val picked = files(result) ?: return@launchOnce answer.dropped()
-            // After the unlock: a return from a picker may lock first.
             scope.launch {
-                val state = activity.lifecycle.currentStateFlow.first { it.isAtLeast(Lifecycle.State.STARTED) || it == Lifecycle.State.DESTROYED }
-                if (state != Lifecycle.State.DESTROYED) isLocked.first { !it }
+                afterReturnAndUnlock(activity, isLocked)
                 withContext(Dispatchers.IO) { picked.forEach { ready(activity, it) } }
                 answer(picked)
             }
@@ -643,6 +634,16 @@ class PageEdges(
 }
 
 /**
+ * Waits for Ovenlight's return from a picker, which may lock first as it starts again, then for
+ * the unlock, even when the activity that opened the picker went meanwhile: a picked or saved
+ * file never moves while Ovenlight is locked.
+ */
+internal suspend fun afterReturnAndUnlock(activity: ComponentActivity, isLocked: StateFlow<Boolean>) {
+    activity.lifecycle.currentStateFlow.first { it.isAtLeast(Lifecycle.State.STARTED) || it == Lifecycle.State.DESTROYED }
+    isLocked.first { !it }
+}
+
+/**
  * Launches [contract] once, on the activity's own registry without a lifecycle, so the result
  * arrives even while the lock is up or the asking screen has gone, and unregisters once it has.
  * An activity made again meanwhile never gets the result, so its end calls [failed], as does a
@@ -742,7 +743,7 @@ class CaptureFileProvider : FileProvider() {
  * closing, the lock) answers any dialog and ends full screen.
  */
 @Composable
-fun PageEdgesLayer(edges: PageEdges) {
+fun PageEdgesLayer(edges: PageEdges, appName: String) {
     val dialog by edges.dialog.collectAsState()
     val fullscreen by edges.fullscreen.collectAsState()
     DisposableEffect(edges) { onDispose(edges::takenAway) }
@@ -750,8 +751,8 @@ fun PageEdgesLayer(edges: PageEdges) {
         edges.inFront()
         onPauseOrDispose {}
     }
-    fullscreen?.let { key(it) { FullscreenView(it, edges.appName, edges::exitFullscreen) } }
-    dialog?.let { key(it) { PageDialog(edges, it) } }
+    fullscreen?.let { key(it) { FullscreenView(it, appName, edges::exitFullscreen) } }
+    dialog?.let { key(it) { PageDialog(edges, it, appName) } }
 }
 
 /**
@@ -828,7 +829,7 @@ private const val BARS_CHECK_MILLIS = 250L
 private const val FULLSCREEN_NOTICE_MILLIS = 4_000L
 
 @Composable
-private fun PageDialog(edges: PageEdges, dialog: PageEdges.Dialog) {
+private fun PageDialog(edges: PageEdges, dialog: PageEdges.Dialog, appName: String) {
     // Whatever takes it away answers it with its fallback, once.
     DisposableEffect(dialog) { onDispose(dialog::dropped) }
     // Closed any way the person closes it, a page's dialog stops the rest if they chose so.
@@ -837,24 +838,24 @@ private fun PageDialog(edges: PageEdges, dialog: PageEdges.Dialog) {
         if (stopMore) edges.quietDialogs()
         edges.dismiss(dialog)
     }
-    val title: @Composable () -> Unit = { Text(edges.appName) }
+    val title: @Composable () -> Unit = { Text(appName) }
     val quiet: @Composable () -> Unit = { if ((dialog as? PageEdges.Dialog.FromPage)?.offersQuiet == true) QuietChoice(stopMore) { stopMore = it } }
     when (dialog) {
         is PageEdges.Dialog.Alert -> AlertDialog(
-            onDismissRequest = dismiss, title = title, text = { PageMessage(dialog.message, quiet) },
-            confirmButton = { TextButton(onClick = { dialog.answer(Unit); dismiss() }) { Text(stringResource(R.string.page_ok)) } },
+            onDismissRequest = dismiss, title = title, text = { PageDialogText(dialog.message, quiet) },
+            confirmButton = { TextButton(onClick = { dialog.answer(Unit); dismiss() }) { Text(stringResource(R.string.ok)) } },
         )
         is PageEdges.Dialog.Confirm -> AlertDialog(
-            onDismissRequest = dismiss, title = title, text = { PageMessage(dialog.message, quiet) },
-            confirmButton = { TextButton(onClick = { dialog.answer(true); dismiss() }) { Text(stringResource(R.string.page_ok)) } },
-            dismissButton = { TextButton(onClick = { dialog.answer(false); dismiss() }) { Text(stringResource(R.string.page_cancel)) } },
+            onDismissRequest = dismiss, title = title, text = { PageDialogText(dialog.message, quiet) },
+            confirmButton = { TextButton(onClick = { dialog.answer(true); dismiss() }) { Text(stringResource(R.string.ok)) } },
+            dismissButton = { TextButton(onClick = { dialog.answer(false); dismiss() }) { Text(stringResource(R.string.cancel)) } },
         )
         is PageEdges.Dialog.Prompt -> {
             var text by rememberSaveable(dialog) { mutableStateOf(dialog.defaultText) }
             AlertDialog(
                 onDismissRequest = dismiss, title = title,
                 text = {
-                    PageMessage(dialog.message) {
+                    PageDialogText(dialog.message) {
                         OutlinedTextField(
                             value = text, onValueChange = { text = it }, singleLine = true,
                             label = { Text(stringResource(R.string.page_prompt_field)) },
@@ -863,8 +864,8 @@ private fun PageDialog(edges: PageEdges, dialog: PageEdges.Dialog) {
                         quiet()
                     }
                 },
-                confirmButton = { TextButton(onClick = { dialog.answer(text); dismiss() }) { Text(stringResource(R.string.page_ok)) } },
-                dismissButton = { TextButton(onClick = { dialog.answer(null); dismiss() }) { Text(stringResource(R.string.page_cancel)) } },
+                confirmButton = { TextButton(onClick = { dialog.answer(text); dismiss() }) { Text(stringResource(R.string.ok)) } },
+                dismissButton = { TextButton(onClick = { dialog.answer(null); dismiss() }) { Text(stringResource(R.string.cancel)) } },
             )
         }
         is PageEdges.Dialog.ChooseSource -> SourceSheet(dialog, dismiss)
@@ -873,16 +874,10 @@ private fun PageDialog(edges: PageEdges, dialog: PageEdges.Dialog) {
             title = { Text(stringResource(R.string.page_open_elsewhere_title)) },
             text = {
                 GuardedFromOverlays()
-                Text(stringResource(R.string.page_open_elsewhere_body, edges.appName, dialog.target))
+                Text(stringResource(R.string.page_open_elsewhere_body, appName, dialog.target))
             },
-            // Not at once: the page's own "tap twice here" can't land its second tap on Open.
-            confirmButton = {
-                val shownAt = remember(dialog) { SystemClock.uptimeMillis() }
-                TextButton(onClick = { if (SystemClock.uptimeMillis() - shownAt >= PROMPT_DELAY_MILLIS) edges.open(dialog) }) {
-                    Text(stringResource(R.string.page_open))
-                }
-            },
-            dismissButton = { TextButton(onClick = dismiss) { Text(stringResource(R.string.page_cancel)) } },
+            confirmButton = { GoAheadButton(dialog, stringResource(R.string.open)) { edges.open(dialog) } },
+            dismissButton = { TextButton(onClick = dismiss) { Text(stringResource(R.string.cancel)) } },
         )
     }
 }
@@ -896,29 +891,29 @@ private fun SourceSheet(dialog: PageEdges.Dialog.ChooseSource, dismiss: () -> Un
             dialog.answer(source)
             dismiss()
         }
-        SourceRow(R.drawable.ic_photo_camera, R.string.page_take_photo) { choose(PageEdges.Source.Camera) }
-        SourceRow(R.drawable.ic_photo_library, R.string.page_choose_photo) { choose(PageEdges.Source.Photos) }
-        if (dialog.files) SourceRow(R.drawable.ic_description, R.string.page_choose_file) { choose(PageEdges.Source.Files) }
+        SheetRow(R.drawable.ic_photo_camera, stringResource(R.string.page_take_photo)) { choose(PageEdges.Source.Camera) }
+        SheetRow(R.drawable.ic_photo_library, stringResource(R.string.page_choose_photo)) { choose(PageEdges.Source.Photos) }
+        if (dialog.files) SheetRow(R.drawable.ic_description, stringResource(R.string.page_choose_file)) { choose(PageEdges.Source.Files) }
         Spacer(Modifier.navigationBarsPadding().padding(bottom = 16.dp))
     }
-}
-
-@Composable
-private fun SourceRow(icon: Int, label: Int, onClick: () -> Unit) {
-    ListItem(
-        headlineContent = { Text(stringResource(label)) },
-        leadingContent = { Icon(painterResource(icon), contentDescription = null) },
-        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-        modifier = Modifier.clickable(onClick = onClick),
-    )
 }
 
 /** How long Ovenlight's own prompts ("Open in another app?", the capture prompt) ignore their go-ahead after they show. */
 internal const val PROMPT_DELAY_MILLIS = 500L
 
+/**
+ * The go-ahead of one of Ovenlight's own prompts, shown for [prompt]. Not at once: the page's
+ * own "tap twice here" can't land its second tap on it.
+ */
+@Composable
+internal fun GoAheadButton(prompt: Any, label: String, onClick: () -> Unit) {
+    val shownAt = remember(prompt) { SystemClock.uptimeMillis() }
+    TextButton(onClick = { if (SystemClock.uptimeMillis() - shownAt >= PROMPT_DELAY_MILLIS) onClick() }) { Text(label) }
+}
+
 /** A page's message, which can run long. */
 @Composable
-private fun PageMessage(message: String, below: @Composable () -> Unit = {}) {
+private fun PageDialogText(message: String, below: @Composable () -> Unit = {}) {
     Column {
         // Scrolls in what's left once what goes below it has its room.
         if (message.isNotEmpty()) Text(message, Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()))

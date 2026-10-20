@@ -43,9 +43,9 @@ data class InviteLink(
 ) {
     /** Why a link can't be used, with what Ovenlight says about it. Neutral: anyone can see it. */
     sealed class ParseError(override val message: String) : Exception(message) {
-        data object NotAnInvite : ParseError("This isn't an Ovenlight invite. Ask for the link again and copy the whole link.")
+        data object NotAnInvite : ParseError("This isn’t an Ovenlight invite. Ask for the link again and copy the whole link.")
         data object UnsupportedVersion : ParseError("This invite needs a newer Ovenlight. Update Ovenlight, then open the invite again.")
-        data object InsecureControl : ParseError("This invite isn't secure, so Ovenlight won't use it. Ask for a new one.")
+        data object InsecureControl : ParseError("This invite isn’t secure, so Ovenlight won’t use it. Ask for a new one.")
         data class MissingField(val field: String) : ParseError(INCOMPLETE)
         data class InvalidField(val field: String) : ParseError(INCOMPLETE)
 
@@ -74,19 +74,6 @@ data class InviteLink(
         if (suffix.isNullOrEmpty()) return false
         return suffix == networkDomain
     }
-
-    /** The fields in the connector's order, form-encoded: the query of `ovenlight://join` and the fragment of the App Link. */
-    private val encodedFields: String
-        get() = listOf(
-            "v" to version, "control" to control.toString(), "key" to key, "owner" to owner,
-            "app" to app, "invite" to invite, "host" to host, "name" to name, "to" to to,
-        ).joinToString("&") { (name, value) -> "$name=${formEncode(value)}" }
-
-    /** The link to send: the App Link, which opens Ovenlight when it's installed. */
-    val universalURL: URI get() = URI(joinPage.toString() + "#" + encodedFields)
-
-    /** The same invite as `ovenlight://join?...`, for when the App Link opens the page. */
-    val url: URI get() = URI("$scheme://join?$encodedFields")
 
     companion object {
         const val version = "1"
@@ -167,7 +154,8 @@ data class InviteLink(
             fun required(name: String): String =
                 value(name)?.trimmingWhitespaceAndNewlines()?.takeIf { it.isNotEmpty() } ?: throw ParseError.MissingField(name)
 
-            if (value("v") != version) throw ParseError.UnsupportedVersion
+            // The connector sorts the fields, so v comes last and a link cut short loses it first.
+            if (required("v") != version) throw ParseError.UnsupportedVersion
 
             val control = uri(required("control"))
             val controlHost = control?.bareHost
@@ -228,19 +216,6 @@ data class InviteLink(
                     label.all { it.isAsciiLetterOrDigit() || it == '-' }
             }
         }
-
-        private fun formEncode(text: String): String {
-            val out = StringBuilder()
-            for (byte in text.toByteArray(Charsets.UTF_8)) {
-                val c = (byte.toInt() and 0xFF).toChar()
-                when {
-                    c.isAsciiLetterOrDigit() || c in "-._~" -> out.append(c)
-                    c == ' ' -> out.append('+')
-                    else -> out.append('%').append(String.format(Locale.ROOT, "%02X", byte.toInt() and 0xFF))
-                }
-            }
-            return out.toString()
-        }
     }
 }
 
@@ -281,6 +256,17 @@ internal fun URI.resolving(reference: String): URI? = try {
 internal val URI.bareHost: String?
     get() = host?.removeSurrounding("[", "]")
 
+/** [text] as UTF-8, percent-encoded but for ASCII letters, digits and the characters in [keep]. */
+internal fun percentEncoded(text: String, keep: String): String = buildString {
+    for (byte in text.toByteArray(Charsets.UTF_8)) {
+        val value = byte.toInt() and 0xFF
+        val c = value.toChar()
+        if (c.isAsciiLetterOrDigit() || c in keep) append(c) else append('%').append(HEX[value shr 4]).append(HEX[value and 0xF])
+    }
+}
+
+private const val HEX = "0123456789ABCDEF"
+
 /** Percent-decoded as UTF-8, or null when an escape is malformed or the bytes aren't UTF-8. */
 internal fun removingPercentEncoding(text: String): String? {
     val bytes = ByteArrayOutputStream()
@@ -295,8 +281,10 @@ internal fun removingPercentEncoding(text: String): String? {
             bytes.write(high * 16 + low)
             i += 3
         } else {
-            bytes.write(c.toString().toByteArray(Charsets.UTF_8))
-            i++
+            // The run up to the next escape whole, so a character outside the BMP keeps both halves.
+            val end = text.indexOf('%', i).let { if (it < 0) text.length else it }
+            bytes.write(text.substring(i, end).toByteArray(Charsets.UTF_8))
+            i = end
         }
     }
     return try {

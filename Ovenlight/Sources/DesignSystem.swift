@@ -215,20 +215,6 @@ private struct LightCone: View, Animatable {
     }
 }
 
-/// The oven rack: a thin ember line the light falls on, under the wordmark and the welcome.
-struct OvenRack: View {
-    var width: CGFloat
-
-    @Environment(\.colorScheme) private var colorScheme
-
-    var body: some View {
-        Capsule()
-            .fill(Color.ember.opacity(colorScheme == .dark ? 0.6 : 0.45))
-            .frame(width: width, height: 3)
-            .accessibilityHidden(true)
-    }
-}
-
 extension View {
     /// Fades the lamp's light in once per launch, like an oven light coming on over the
     /// plain launch screen. Every glow shares that one fade, so the privacy cover, lock

@@ -3,7 +3,5 @@
     <!-- An open app: its placeholder, the overlays before it loads, and its errors. -->
     <string name="app_sign_in">Sign in</string>
     <string name="app_back_to_apps">Back to apps</string>
-    <string name="app_try_again">Try again</string>
-    <string name="app_cant_open">Can\'t open %1$s</string>
-    <string name="app_ok">OK</string>
+    <string name="app_cant_open">Can’t open %1$s</string>
 </resources>

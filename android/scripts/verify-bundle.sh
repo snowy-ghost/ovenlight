@@ -42,8 +42,11 @@ for so in "$work"/libs/base/lib/*/*.so; do
   done
 done
 # The Go core's build tags (scripts/build-android-core.sh): no peerAPI server, whose DNS
-# endpoint would answer an inviter from the phone's own networks.
-for so in "$work"/libs/base/lib/*/libgojni.so; do
+# endpoint would answer an inviter from the phone's own networks. Each ABI by name: AndroidX's
+# own libraries fill all three folders even when the core is in one only.
+for abi in arm64-v8a armeabi-v7a x86_64; do
+  so="$work/libs/base/lib/$abi/libgojni.so"
+  [ -f "$so" ] || fail "no Go core for $abi"
   tags="$(go version -m "$so" | awk '$1 == "build" && $2 ~ /^-tags=/ { print $2 }')"
   case ",${tags#-tags=}," in
     *,ts_omit_peerapiserver,*) ;;
@@ -57,7 +60,10 @@ for apk in "$work"/apks/*/*.apk; do
   "$sdk/build-tools/$(prop ovenlight.buildTools)/zipalign" -c -P 16 4 "$apk" || fail "${apk#"$work"/apks/} isn't aligned for 16 KB pages"
 done
 
-for notice in android-libraries.txt go-core.txt; do
+# Every notice Acknowledgements lists (Support.kt).
+notices="$(grep 'val files = listOf(' "$android/app/src/main/kotlin/com/snowyghost/ovenlight/Support.kt" | grep -o '"[^"]*"' | tr -d '"')"
+[ -n "$notices" ] || fail "no notices listed in Support.kt"
+for notice in $notices; do
   [ -n "$(unzip -p "$aab" "base/assets/licenses/$notice")" ] || fail "no $notice in the bundle's notices"
 done
 

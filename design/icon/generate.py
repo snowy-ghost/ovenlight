@@ -246,6 +246,6 @@ def android_icons():
     # Google Play's icon: full bleed and square, since Play rounds and shadows it itself.
     play = door(N)
     play.alpha_composite(front)
-    play.resize((512, 512), Image.LANCZOS).convert("RGB").save(os.path.join(HERE, "play-icon-512.png"), optimize=True)
+    play.resize((512, 512), Image.LANCZOS).convert("RGBA").save(os.path.join(HERE, "play-icon-512.png"), optimize=True)
 
 android_icons()

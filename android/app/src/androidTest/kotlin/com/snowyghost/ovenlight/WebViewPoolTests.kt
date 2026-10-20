@@ -11,6 +11,7 @@ import java.net.URI
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -49,7 +50,7 @@ class WebViewPoolTests {
                 FakeClients(), MemoryStore(), MembershipStore(File(temp.root, "Ovenlight")), File(temp.root, "tailscale"),
                 scope, Dispatchers.IO, System::currentTimeMillis, {},
             )
-            pool = WebViewPool(context, nodes, scope, isLocked = { false })
+            pool = WebViewPool(context, nodes, scope, isLocked = MutableStateFlow(false))
         }
     }
 
@@ -73,7 +74,6 @@ class WebViewPoolTests {
         assertNull("nothing loaded through the owner's node", stale.view.url)
         val current = pool.page(funnel)
         assertNotSame(stale, current)
-        // iOS loads it directly; Android has no direct route, so it's refused.
         assertNull("made again, refused", current.node)
         pool.discard(funnel.id)
     }
@@ -99,10 +99,12 @@ class WebViewPoolTests {
     }
 
     @Test
-    fun testANewOwnerTailnetDropsViewsOfTheOldOne() = onMain {
+    fun testANewOwnerTailnetRefusesTheOldOnesApps() = onMain {
         nodes.rememberOwnerSuffix("taila.ts.net")
         val page = pool.page(own)
         nodes.rememberOwnerSuffix("tailb.ts.net")
+        assertNull("nothing carries it", nodes.node(own))
+        assertTrue(MailDraft.problemReport(context, nodes, pool, own).body.contains("Connection: Refused (on no known tailnet)"))
         assertFalse("dropped at once, not at the next probe or open", pool.hasPage(own.id))
         val fresh = pool.page(own)
         assertNotSame(page, fresh)

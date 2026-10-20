@@ -2,29 +2,22 @@
 <!-- Joining someone's app. Guests see all of it, so none of it names the network underneath;
      copy other screens share stays in ConnectionCopy. -->
 <resources>
-    <string name="join_close">Close</string>
     <string name="join_paste">Paste</string>
+    <string name="join_nothing_to_paste">Nothing to paste. Copy the invite link, then tap Paste.</string>
     <string name="join_type_it">Or type it</string>
-    <string name="join_link">Invite link</string>
     <string name="join_continue">Continue</string>
     <string name="join_scan">Scan invite code</string>
 
-    <string name="join_cant_use">Can\'t use this invite</string>
+    <string name="join_cant_use">Can’t use this invite</string>
     <string name="join_try_another">Try another invite</string>
 
     <string name="join_join">Join</string>
-    <string name="join_not_now">Not now</string>
     <string name="join_open">Open %1$s</string>
     <string name="join_again">Join again</string>
-    <string name="join_try_again">Try again</string>
     <string name="join_stop">Stop joining</string>
     <string name="join_done">Done</string>
-    <string name="join_added">It\'s with your apps now, shared by %1$s.</string>
+    <string name="join_added">It’s with your apps now, shared by %1$s.</string>
 
     <string name="join_point_at_code">Point at the invite code</string>
-    <string name="join_cancel">Cancel</string>
-    <string name="join_camera_denied">Ovenlight can\'t use the camera. Allow it in Settings to scan the invite code.</string>
-    <string name="join_open_settings">Open settings</string>
-
-    <string name="join_ok">OK</string>
+    <string name="join_camera_denied">Ovenlight can’t use the camera. Allow it in Settings to scan the invite code.</string>
 </resources>

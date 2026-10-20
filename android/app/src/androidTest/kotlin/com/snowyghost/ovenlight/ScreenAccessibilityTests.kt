@@ -94,7 +94,7 @@ class ScreenAccessibilityTests {
         LauncherView(
             LauncherState(
                 apps = listOf(recipes, guide, garden), ownerEnabled = true, ownerState = NodeState.Ready,
-                reachability = mapOf(garden.id to AppReachability.Offline),
+                offline = setOf(garden.id),
             ),
         )
     }
@@ -147,7 +147,7 @@ class ScreenAccessibilityTests {
     }) { LauncherView(grid) }
 
     @Test
-    fun testTheNoEmailAppDialog() = check { NoEmailAppDialog {} }
+    fun testTheNoEmailAppDialog() = check { NoEmailAppDialog(MailDraft(subject = "Ovenlight", body = "")) {} }
 
     @Test
     fun testTheLockDelayDialog() = check(open = { composeRule.onNodeWithText("Require screen lock").performClick() }) {
@@ -187,9 +187,9 @@ class ScreenAccessibilityTests {
         apps = listOf(book, AdminApp("budget", "Budget", "https://budget.tail1.ts.net/", online = false)),
         guests = AdminGuestList(
             guests = listOf(
-                AdminGuest("n1", "p1", "Sam", "book-club", "ovenlight-4k2x9q", claimedAt = Instant.ofEpochSecond(1_780_000_000), lastOpened = Instant.ofEpochSecond(1_784_000_000)),
-                AdminGuest("n4", "p1", "Sam", "book-club", "ovenlight-m7c1pw", claimedAt = Instant.ofEpochSecond(1_784_000_000), lastOpened = Instant.now()),
-                AdminGuest("n2", "p2", "Kim", "book-club", "ovenlight-r5j8de", claimedAt = Instant.ofEpochSecond(1_786_000_000)),
+                AdminGuest("n1", "p1", "Sam", "book-club", claimedAt = Instant.ofEpochSecond(1_780_000_000), lastOpened = Instant.ofEpochSecond(1_784_000_000)),
+                AdminGuest("n4", "p1", "Sam", "book-club", claimedAt = Instant.ofEpochSecond(1_784_000_000), lastOpened = Instant.now()),
+                AdminGuest("n2", "p2", "Kim", "book-club", claimedAt = Instant.ofEpochSecond(1_786_000_000)),
             ),
             invites = listOf(AdminInvite("i3", "Lee", "p3", "book-club", AdminInvite.sent, expires = Instant.now().plusSeconds(86_400))),
             openedSince = Instant.ofEpochSecond(1_770_000_000),
@@ -200,13 +200,13 @@ class ScreenAccessibilityTests {
     private val sharing = SharingState(MutableStateFlow(listOf(machine)))
 
     @Composable
-    private fun Sharing(root: SharingPage) = SharingScreen(sharing, root, onClose = {}, scope = rememberCoroutineScope())
+    private fun Sharing(root: SharingPage) = SharingScreen(sharing, SharingPlace(root), onClose = {}, scope = rememberCoroutineScope())
 
     @Test
     fun testPeopleAndSharing() = check { Sharing(SharingPage.List) }
 
     @Test
-    fun testPeopleAndSharingNotConnected() = check { SharingScreen(sharing.copy(isAvailable = false), SharingPage.List, onClose = {}, scope = rememberCoroutineScope()) }
+    fun testPeopleAndSharingNotConnected() = check { SharingScreen(sharing.copy(isAvailable = false), SharingPlace(SharingPage.List), onClose = {}, scope = rememberCoroutineScope()) }
 
     @Test
     fun testAnAppsPeopleWithARowMenu() = check(open = { composeRule.onNodeWithContentDescription("Sam options").performClick() }) {
@@ -305,7 +305,7 @@ class ScreenAccessibilityTests {
     fun testTheCapturePrompt() = check { CapturePromptDialog("Allow Recipe Box to use the camera?") {} }
 
     @Test
-    fun testTheWebViewUpdateScreen() = check { WebViewUpdateScreen("com.google.android.webview") }
+    fun testTheWebViewUpdateScreen() = check { WebViewUpdateScreen(WebViewSetup.State.NeedsUpdate("com.google.android.webview", "133.0.6943.137")) { MailDraft(subject = "Ovenlight", body = "") } }
 
     @Test
     fun testAcknowledgements() = check(open = { composeRule.onNodeWithText("Acknowledgements").performScrollTo().performClick() }) {

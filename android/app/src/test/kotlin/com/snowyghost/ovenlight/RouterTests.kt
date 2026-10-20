@@ -49,13 +49,15 @@ class RouterTests {
 
     @Test
     fun testOpeningAnAppFromASheetWaitsForItToClose() {
-        val router = Router()
+        val prepared = mutableListOf<WebApp>()
+        val router = Router(prepare = { prepared += it })
         val app = WebApp(name = "Coach", startURL = URI("https://coach.example.com/"))
-        router.present(RootSheet.Settings)
+        router.present(RootSheet.Settings())
         router.sheetAppeared()
         router.open(app)
         assertNull(router.sheet.value)
         assertNull(router.openApp.value)
+        assertEquals("its page starts loading meanwhile", listOf(app), prepared)
         router.sheetDismissed()
         assertEquals(app.id, router.openApp.value?.id)
     }

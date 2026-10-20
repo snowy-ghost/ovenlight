@@ -56,6 +56,40 @@ class LockTimingTests {
         assertFalse("back in front", lock.lockIsDue)
     }
 
+    /** Android only: Android ends a background Ovenlight within minutes, and the next launch locks by the same rule. */
+    @Test
+    fun testALaunchLocksUnlessQuitInTheBackgroundWithinTheDelay() {
+        val store = MemoryStore()
+        var now = 1_000_000L
+        var boot = 7
+        var saved = false
+        fun launch() = LockManager(store, hasSavedData = { saved }, now = { now }, bootCount = { boot })
+        val first = launch()
+        saved = true
+        assertTrue("nothing kept about the last process", launch().isLocked.value)
+
+        store.putInt(LockManager.LOCK_AFTER_KEY, 900)
+        first.didEnterBackground()
+        now += 14 * 60_000
+        assertFalse("within the 15 minutes", launch().isLocked.value)
+        now += 2 * 60_000
+        assertTrue("past them", launch().isLocked.value)
+
+        now = 1_000_000L
+        boot = 8
+        assertTrue("a reboot always locks, whatever the clock says", launch().isLocked.value)
+
+        boot = 7
+        store.putInt(LockManager.LOCK_AFTER_KEY, 0)
+        assertTrue("Immediately always locks", launch().isLocked.value)
+
+        store.putInt(LockManager.LOCK_AFTER_KEY, 900)
+        val back = launch()
+        assertFalse(back.isLocked.value)
+        back.willBecomeActive()
+        assertTrue("a launch while in front, after a crash, say, locks", launch().isLocked.value)
+    }
+
     @Test
     fun testAnEmptyNodeFolderOrListIsNothingToLock() {
         val ovenlight = File(temp.root, "Ovenlight").apply { mkdirs() }

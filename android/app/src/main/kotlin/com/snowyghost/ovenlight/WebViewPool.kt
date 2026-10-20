@@ -10,6 +10,7 @@ import java.util.Locale
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 
 /**
  * Keeps a live web view per recently used app, so switching apps doesn't reload them. Each
@@ -20,8 +21,8 @@ class WebViewPool(
     private val context: Context,
     private val nodes: NodeManager,
     private val scope: CoroutineScope,
-    /** Ovenlight is locked: nothing downloads or captures. */
-    val isLocked: () -> Boolean,
+    /** Ovenlight is locked: nothing downloads, captures or opens a page's dialogs. */
+    val isLocked: StateFlow<Boolean>,
 ) {
     private val pages = mutableMapOf<UUID, AppPage>()
     private val recent = mutableListOf<UUID>()
@@ -44,8 +45,6 @@ class WebViewPool(
     private val maxLive = maxLive(context)
 
     init {
-        DownloadShelf.emptyAtLaunch(context)
-        CaptureFileProvider.emptyAtLaunch(context)
         nodes.onLoggingOut = { node -> discard { it.node === node } }
         nodes.onOwnerSuffixChanged = ::discardStaleRoutes
     }
@@ -100,8 +99,11 @@ class WebViewPool(
     /** The phone's font size changed: every live page's text follows it. */
     fun fontScaleChanged(fontScale: Float) = pages.values.forEach { WebViewSetup.followTextSize(it.view, fontScale) }
 
-    /** Where opening the app got, while it has a page, for Report a Problem. */
-    fun gate(id: UUID): AppLoadGate? = pages[id]?.gate?.value
+    /** Where opening the app got, while it has a page, for Report a Problem (see [MailDraft.opening]). */
+    fun opening(id: UUID): String? = pages[id]?.let { MailDraft.opening(it.gate.value, it.loadFailure) }
+
+    /** [id]'s Send feedback, while its page is live. */
+    fun feedback(id: UUID): StateFlow<FeedbackDraft?>? = pages[id]?.feedback
 
     /** Every app but [open] is closed, so its Send feedback goes. */
     fun appClosed(open: UUID?) {
@@ -247,23 +249,16 @@ object DownloadPolicy {
         }
     }
 
-    enum class ResponseAction { Show, Download }
-
     /**
-     * A response sent as an attachment, or a successful one WebView can't show, is a file to
-     * keep (an empty one gets no sheet). [status] is null for a blob or data URL. An http(s)
-     * download passes the status of Ovenlight's own fetch of it, since Android's
-     * DownloadListener gives none, so an error body is no file there either. 204, 205 and 304
-     * have no body, and the page stays as it is. An error the view can't show (one with no
-     * Content-Type is `application/octet-stream`) isn't a file.
+     * Whether an http(s) download is a file to keep, by the [status] of Ovenlight's own fetch of
+     * it, since Android's DownloadListener gives none: a successful one, or one sent as an
+     * attachment. 204, 205 and 304 have no body, and the page stays as it is.
      */
-    fun action(status: Int?, disposition: String?, canShow: Boolean): ResponseAction {
-        if (status == 204 || status == 205 || status == 304) return ResponseAction.Show
-        val isSuccess = status?.let { it in 200..<300 } ?: true
+    fun isFile(status: Int, disposition: String?): Boolean {
+        if (status == 204 || status == 205 || status == 304) return false
         // The type is the part before any `;`, in any case, with spaces allowed around it.
         val type = disposition?.split(';', limit = 2)?.first()?.trimmingWhitespace() ?: ""
-        val isFile = type.equals("attachment", ignoreCase = true) || !canShow && isSuccess
-        return if (isFile) ResponseAction.Download else ResponseAction.Show
+        return status in 200..<300 || type.equals("attachment", ignoreCase = true)
     }
 
     /**
@@ -285,6 +280,16 @@ object DownloadPolicy {
             name = stem.droppingLastCharacter() + (if (keepsExtension) ".$ext" else "")
         }
         return name.ifEmpty { "Download" }
+    }
+
+    /**
+     * A file's name from its address, for the notice when it fails: the last part of an http or
+     * https path. A blob or data URL, or one with no path, has none.
+     */
+    fun name(url: String): String? {
+        val uri = NavigationPolicy.pageURI(url)?.takeIf { it.scheme?.lowercase() in setOf("http", "https") } ?: return null
+        val last = uri.path.orEmpty().substringAfterLast('/').ifEmpty { return null }
+        return fileName(last)
     }
 
     /** Well under the 255 bytes ext4 and f2fs allow, as on iOS. */

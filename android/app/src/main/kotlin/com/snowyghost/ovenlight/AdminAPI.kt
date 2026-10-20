@@ -119,7 +119,6 @@ data class AdminGuest(
     val person: String,
     val name: String,
     val app: String,
-    val deviceName: String,
     val claimedAt: Instant,
     val removedAt: Instant? = null,
     /**
@@ -139,7 +138,6 @@ data class AdminGuest(
                 app = fields.requiredString("app"),
                 claimedAt = fields.requiredDate("claimedAt"),
                 name = fields.string("name") ?: "",
-                deviceName = fields.string("deviceName") ?: "",
                 removedAt = fields.date("removedAt"),
                 lastOpened = fields.string("lastOpened")?.let { AdminAPI.parseDay(it) },
             )
@@ -187,9 +185,9 @@ data class GuestPerson(val id: String, val name: String, val guests: List<AdminG
         }
 
         /**
-         * Those to offer for another invite: everyone but App Review while its review invite
-         * (made in the terminal) is unused. Once used, App Review is a guest like any other,
-         * until the review is over and it's revoked.
+         * Those to offer for another invite: everyone but App Review while a review invite (made
+         * in the terminal) is open. Once none is, App Review is a guest like any other, until the
+         * review is over and it's revoked.
          */
         fun invitable(list: AdminGuestList): List<GuestPerson> {
             val review = list.invites.filter { it.review == true }.map { it.person }.toSet()
@@ -399,8 +397,6 @@ data class AdminGuestList(
 data class AdminShareResult(
     val invite: AdminInvite,
     val link: String? = null,
-    val appName: String? = null,
-    val owner: String? = null,
     /** The connector's wording of the message to send (its `message`), as `ovenlight share` words it. */
     val sentMessage: String? = null,
 ) {
@@ -413,8 +409,6 @@ data class AdminShareResult(
             AdminShareResult(
                 invite = ovenlightJSON.decodeFromJsonElement(AdminInvite.decoder, fields["invite"] ?: throw SerializationException("invite")),
                 link = fields.optionalString("link"),
-                appName = fields.optionalString("appName"),
-                owner = fields.optionalString("owner"),
                 sentMessage = fields.optionalString("message"),
             )
         }
@@ -428,7 +422,7 @@ data class AdminRevokeResult(val removed: List<AdminGuest>, val errors: List<Str
                 removed = fields.each("removed", AdminGuest.decoder),
                 errors = fields["errors"]?.let {
                     try {
-                        ovenlightJSON.decodeFromJsonElement(ListSerializer(String.serializer()), it)
+                        ovenlightJSON.decodeFromJsonElement(ListSerializer(String.serializer()), it).map(AdminAPI::connectorText)
                     } catch (_: Exception) {
                         null
                     }
@@ -467,11 +461,6 @@ data class AdminFeedback(
             )
         }
     }
-}
-
-/** A request to the admin API, for the OkHttp layer to send through the owner's node. */
-class AdminRequest(val url: URI, val method: String, val headers: Map<String, String>, val body: ByteArray?) {
-    fun header(name: String): String? = headers.entries.firstOrNull { it.key.equals(name, ignoreCase = true) }?.value
 }
 
 object AdminAPI {
@@ -513,34 +502,28 @@ object AdminAPI {
      * Builds a request. Anything that changes something carries the header the connector
      * requires, which a web page can't add without a CORS preflight.
      */
-    fun request(host: String, method: String, path: String, body: Map<String, String>? = null): AdminRequest? {
+    fun request(host: String, method: String, path: String, body: Map<String, String>? = null): Request? {
         val url = url(host, path) ?: return null
-        val headers = mutableMapOf<String, String>()
-        if (method != "GET") headers[header] = "1"
-        if (body != null) headers["Content-Type"] = "application/json"
         val bytes = body?.let { ovenlightJSON.encodeToString(MapSerializer(String.serializer(), String.serializer()), it).toByteArray() }
-        return AdminRequest(url, method, headers, bytes)
+        return runCatching {
+            val request = Request.Builder().url(url.toString()).method(method, bytes?.toRequestBody())
+            if (method != "GET") request.header(header, "1")
+            if (body != null) request.header("Content-Type", "application/json")
+            request.build()
+        }.getOrNull()
     }
 
     /** [base] plus [component] percent-encoded as one path segment, its `/` escaped too. */
-    fun path(base: String, component: String): String = base + buildString {
-        for (byte in component.toByteArray()) {
-            val value = byte.toInt() and 0xFF
-            val c = value.toChar()
-            if (c in 'a'..'z' || c in 'A'..'Z' || c in '0'..'9' || c in PATH_ALLOWED) {
-                append(c)
-            } else {
-                append('%').append(HEX[value shr 4]).append(HEX[value and 0xF])
-            }
-        }
-    }
+    fun path(base: String, component: String): String = base + percentEncoded(component, PATH_ALLOWED)
 
     /** What iOS's `urlPathAllowed` keeps besides ASCII letters and digits, less `/`. */
     private const val PATH_ALLOWED = "!$&'()*+,-.:;=@_~"
-    private const val HEX = "0123456789ABCDEF"
 
     /** The `{"error": "...", "code": "..."}` the connector answers with. */
-    fun errorMessage(data: ByteArray): String? = errorBody(data)?.error
+    fun errorMessage(data: ByteArray): String? = errorBody(data)?.error?.let(::connectorText)
+
+    /** A message the connector wrote, which marks commands with backticks as a terminal reads them: the phone leaves them out. */
+    fun connectorText(text: String): String = text.replace("`", "")
 
     internal fun errorBody(data: ByteArray): ErrorBody? = try {
         ovenlightJSON.decodeFromString(ErrorBody.serializer(), strictUTF8(data))
@@ -592,7 +575,7 @@ sealed class AdminError : Exception() {
     override val message: String
         get() = when (this) {
             NotOwner -> "The Ovenlight connector on this computer is set up for another owner. To make it yours, run ovenlight setup-sharing --owner with your login there."
-            Unreachable -> "Couldn't reach the computer. It may be asleep or offline."
+            Unreachable -> "Couldn’t reach the computer. It may be asleep or offline."
             is Failed -> reason.replaceFirstChar { it.uppercase() }
         }
 }
@@ -605,7 +588,7 @@ class AdminClient(val host: String, private val session: Send) {
         return try {
             decode(data)
         } catch (_: Exception) {
-            throw AdminError.Failed("The Ovenlight connector on this computer sent a reply this version of the app doesn't understand. Update both to the latest version.")
+            throw AdminError.Failed("The Ovenlight connector on this computer sent a reply this version of the app doesn’t understand. Update both to the latest version.")
         }
     }
 
@@ -616,7 +599,7 @@ class AdminClient(val host: String, private val session: Send) {
      * never sent twice.
      */
     suspend fun raw(method: String, path: String, body: Map<String, String>? = null): ByteArray {
-        val request = AdminAPI.request(host, method, path, body)?.let(::okhttp) ?: throw AdminError.Unreachable
+        val request = AdminAPI.request(host, method, path, body) ?: throw AdminError.Unreachable
         var attempt = 0
         while (true) {
             attempt += 1
@@ -639,13 +622,6 @@ class AdminClient(val host: String, private val session: Send) {
             }
         }
     }
-
-    private fun okhttp(request: AdminRequest): Request? = runCatching {
-        Request.Builder().url(request.url.toString()).apply {
-            request.headers.forEach { (name, value) -> header(name, value) }
-            method(request.method, request.body?.toRequestBody())
-        }.build()
-    }.getOrNull()
 
     suspend fun apps(): List<AdminApp> = send("GET", "/v1/apps") { AdminAPI.decodeEach(AdminApp.decoder, it).elements }
     suspend fun guests(): AdminGuestList = send("GET", "/v1/guests") { AdminAPI.decode(AdminGuestList.decoder, it) }
@@ -691,8 +667,11 @@ class OwnerSharing(
         val apps: List<AdminApp>,
         val guests: AdminGuestList = AdminGuestList(),
         val feedback: List<AdminFeedback> = emptyList(),
+        /** Why the last pass couldn't list it, when it kept what the pass before listed. */
+        val problem: String? = null,
     ) {
         val id: String get() = adminHost
+        val hosts: List<String> get() = listOf(adminHost) + apps.mapNotNull { it.host }
     }
 
     /** One computer's listing, as [vouched] keeps it. */
@@ -772,9 +751,11 @@ class OwnerSharing(
         val covered = mutableSetOf<String>()
         val asked = mutableSetOf<String>()
         val failures = mutableListOf<String>()
+        val failedHosts = mutableMapOf<String, AdminError>()
         fun failed(host: String, error: AdminError) {
             log("admin $host: $error")
             failures += error.message
+            failedHosts[host] = error
         }
         var round = firstRound(candidates, mutableMachines.value)
         while (round.isNotEmpty()) {
@@ -809,7 +790,22 @@ class OwnerSharing(
             }
             round = candidates.filter { it !in covered && it !in asked }
         }
-        mutableMachines.value = found
+        // A computer whose admin host failed this pass, with any error, keeps what it said last
+        // and shows why, so its pages and menus don't empty out meanwhile; its apps show offline
+        // only when it couldn't be reached. So does one asleep, the owner's but listed offline,
+        // which was asked nothing, while no answer covers any of its apps: one app node can stay
+        // offline after its app is unpublished while the computer answers on another. One that
+        // answered on another host doesn't, nor one no longer among the owner's computers.
+        val asleep = owners - nodes.ownersOnlineHosts
+        val answered = found.flatMap { it.hosts }.toSet()
+        val kept = mutableMachines.value.mapNotNull { machine ->
+            val isAsleep = machine.adminHost in asleep && machine.apps.none { it.host in answered }
+            val error = (failedHosts[machine.adminHost] ?: AdminError.Unreachable.takeIf { isAsleep })
+                ?.takeIf { machine.adminHost !in answered } ?: return@mapNotNull null
+            val apps = if (error == AdminError.Unreachable) machine.apps.map { it.copy(online = false) } else machine.apps
+            machine.copy(apps = apps, problem = error.message)
+        }
+        mutableMachines.value = found + kept
         // A pass that only failed doesn't count as fresh: the next menu asks again.
         if (found.isNotEmpty() || failures.isEmpty()) lastRefresh = now()
         mutableProblem.value = if (found.isEmpty()) failures.firstOrNull() else null
@@ -872,7 +868,7 @@ class OwnerSharing(
         fun firstRound(candidates: List<String>, known: List<Machine>): List<String> {
             val hosts = candidates.toSet()
             val kept = known.filter { it.adminHost in hosts }
-            val listed = kept.flatMap { machine -> listOf(machine.adminHost) + machine.apps.mapNotNull { it.host } }.toSet()
+            val listed = kept.flatMap { it.hosts }.toSet()
             return kept.map { it.adminHost }.sorted() + candidates.filter { it !in listed }
         }
     }

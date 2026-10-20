@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -49,6 +50,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -87,6 +89,9 @@ class FeedbackDraft(val screenshot: Bitmap?, val pageURL: URI?) {
     var includeScreenshot by mutableStateOf(true)
     var sending by mutableStateOf(false)
     var result by mutableStateOf<FeedbackResult?>(null)
+
+    /** A send under way, or a note closing would ask about: a link waits for the sheet to close (see [AppModel.handleLink]). */
+    val holdsLinks: Boolean get() = sending || (note.text.isNotBlank() && result != FeedbackResult.Sent)
 }
 
 /**
@@ -145,22 +150,26 @@ fun FeedbackSheet(
         }
     }
 
+    // A note would be lost: closing asks first.
+    var askingToDiscard by remember { mutableStateOf(false) }
+    val close = { if (note.text.isNotBlank() && result != FeedbackResult.Sent) askingToDiscard = true else onDismiss() }
     Dialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = close,
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false, dismissOnBackPress = !sending),
     ) {
         FullScreenDialogBars()
-        val title = stringResource(R.string.feedback_title)
+        val title = stringResource(R.string.send_feedback)
         val background = LocalOvenColors.current.groupedBackground
+        val bar = TopAppBarDefaults.pinnedScrollBehavior()
         Scaffold(
-            modifier = Modifier.semantics { paneTitle = title },
+            modifier = Modifier.nestedScroll(bar.nestedScrollConnection).semantics { paneTitle = title },
             containerColor = background,
             topBar = {
                 TopAppBar(
                     title = { Text(title) },
                     navigationIcon = {
-                        IconButton(onClick = onDismiss) {
-                            Icon(painterResource(R.drawable.ic_close), contentDescription = stringResource(R.string.feedback_close))
+                        IconButton(onClick = close) {
+                            Icon(painterResource(R.drawable.ic_close), contentDescription = stringResource(R.string.close))
                         }
                     },
                     actions = {
@@ -173,14 +182,21 @@ fun FeedbackSheet(
                             TextButton(onClick = { submit() }, enabled = canSend) { Text(stringResource(R.string.feedback_send)) }
                         }
                     },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = background, scrolledContainerColor = background),
+                    colors = scrollingBarColors(background),
+                    scrollBehavior = bar,
                 )
             },
         ) { bars ->
-            Box(Modifier.fillMaxSize().padding(bars)) {
+            Box(Modifier.fillMaxSize().padding(bars).consumeWindowInsets(bars)) {
                 FeedbackForm(app, screenshot, note, includeScreenshot, { draft.includeScreenshot = it }, result)
                 AnimatedVisibility(result == FeedbackResult.Sent, enter = fadeIn(), exit = fadeOut()) { FeedbackSent(app) }
             }
+        }
+        if (askingToDiscard) {
+            Confirmation(
+                stringResource(R.string.feedback_discard_title), message = null, confirm = stringResource(R.string.feedback_discard),
+                onDismiss = { askingToDiscard = false }, cancel = stringResource(R.string.feedback_keep_editing), action = onDismiss,
+            )
         }
     }
 }
@@ -223,7 +239,7 @@ private fun FeedbackForm(
             modifier = Modifier.widthIn(max = 640.dp).fillMaxWidth().focusRequester(focus),
         )
         if (screenshot != null) {
-            Surface(color = LocalOvenColors.current.groupedRow, shape = RoundedCornerShape(28.dp), modifier = Modifier.widthIn(max = 640.dp).fillMaxWidth()) {
+            Surface(color = LocalOvenColors.current.groupedRow, shape = MaterialTheme.shapes.large, modifier = Modifier.widthIn(max = 640.dp).fillMaxWidth()) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     ListItem(
                         headlineContent = { Text(stringResource(R.string.feedback_include_screenshot)) },

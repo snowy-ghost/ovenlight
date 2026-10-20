@@ -3,12 +3,15 @@ package com.snowyghost.ovenlight
 import android.app.Application
 import android.content.ClipboardManager
 import android.content.Context
+import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusManager
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.platform.LocalDensity
@@ -22,6 +25,7 @@ import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isFocused
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -43,6 +47,7 @@ import java.net.URI
 import java.time.Instant
 import java.util.UUID
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -101,9 +106,9 @@ class LauncherViewTests {
     @Test
     fun testGuestsSeeNoNetworkName() {
         val context = ApplicationProvider.getApplicationContext<Context>()
-        val ownerOnly = setOf("launcher_connect_body", "launcher_approve_body")
+        val ownerOnly = setOf("launcher_connect_body", "launcher_approve_body", "launcher_sign_in_again_body")
         val labels = R.string::class.java.fields.filter { it.name.startsWith("launcher_") && it.name !in ownerOnly }
-        assertTrue(labels.size > 30)
+        assertTrue(labels.size > 20)
         for (field in labels) CopyRules.assertNeutral(context.getString(field.getInt(null), "Riley"))
     }
 
@@ -114,17 +119,20 @@ class LauncherViewTests {
         show(LauncherState(present = { presented += it }, enableOwner = { enabled = true }))
         composeRule.onNodeWithText(LauncherWelcome.title).assertIsDisplayed()
         composeRule.onNodeWithText(LauncherWelcome.message).assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Lock Ovenlight").assertDoesNotExist()
         composeRule.onNodeWithText(ConnectionCopy.joinWithInvite).performClick()
         assertTrue(presented.single() is RootSheet.Join)
         composeRule.onNodeWithText("Use my own computers").performClick()
         assertTrue(enabled)
+        composeRule.onNodeWithContentDescription("More").performClick()
+        composeRule.onNodeWithText("Add app").assertDoesNotExist()
     }
 
     @Test
     fun testTopRow() {
         val presented = mutableListOf<RootSheet>()
         var locked = false
-        show(LauncherState(apps = listOf(recipes), lock = { locked = true }, present = { presented += it }))
+        show(LauncherState(apps = listOf(recipes), ownerEnabled = true, lock = { locked = true }, present = { presented += it }))
         composeRule.onNodeWithContentDescription("Lock Ovenlight").performClick()
         assertTrue(locked)
         composeRule.onNodeWithContentDescription("More").performClick()
@@ -136,23 +144,27 @@ class LauncherViewTests {
         composeRule.onNodeWithText("Settings").performClick()
         assertEquals(RootSheet.AddApp, presented[0])
         assertNull("Join with invite opens the join sheet without an invite", (presented[1] as RootSheet.Join).request.invite)
-        assertEquals(RootSheet.Settings, presented[2])
+        assertTrue(presented[2] is RootSheet.Settings)
     }
 
     @Test
     fun testACoveredLauncherTakesNoKeyboardFocus() {
         var covered by mutableStateOf(false)
         lateinit var focus: FocusManager
+        // Read from focus itself: covered, the launcher has no semantics for isFocused to find.
+        var inside = false
         composeRule.setContent {
             focus = LocalFocusManager.current
-            OvenlightTheme { LauncherView(LauncherState(apps = apps, covered = covered)) }
+            OvenlightTheme { Box(Modifier.onFocusChanged { inside = it.hasFocus }) { LauncherView(LauncherState(apps = apps, covered = covered)) } }
         }
         composeRule.runOnIdle { repeat(3) { focus.moveFocus(FocusDirection.Next) } }
-        assertTrue("uncovered, a keyboard reaches it", composeRule.onAllNodes(isFocused()).fetchSemanticsNodes().isNotEmpty())
+        composeRule.runOnIdle { assertTrue("uncovered, a keyboard reaches it", inside) }
         // Covered while something in it has focus, as after More, then Settings, from a keyboard.
         composeRule.runOnIdle { covered = true }
         composeRule.runOnIdle { repeat(10) { focus.moveFocus(FocusDirection.Next) } }
-        assertTrue("under a screen, nothing in it takes focus", composeRule.onAllNodes(isFocused()).fetchSemanticsNodes().isEmpty())
+        composeRule.runOnIdle { assertFalse("under a screen, nothing in it takes focus", inside) }
+        // Nor does TalkBack reach it.
+        composeRule.onNodeWithContentDescription("More").assertDoesNotExist()
     }
 
     @Test
@@ -161,7 +173,7 @@ class LauncherViewTests {
         show(LauncherState(apps = listOf(recipes), ownerEnabled = true, ownerState = NodeState.Ready, present = { presented += it }))
         composeRule.onNodeWithContentDescription("More").performClick()
         composeRule.onNodeWithText("People & sharing").performClick()
-        assertEquals(listOf<RootSheet>(RootSheet.Sharing), presented)
+        assertTrue(presented.single() is RootSheet.Sharing)
     }
 
     @Test
@@ -172,18 +184,18 @@ class LauncherViewTests {
         composeRule.onNodeWithText(LauncherWelcome.title).assertDoesNotExist()
         composeRule.onNodeWithText("Add app").performClick()
         assertEquals(listOf<RootSheet>(RootSheet.AddApp), presented)
-        composeRule.onNodeWithText("Apps you publish with the Ovenlight connector on your computers show up here.").assertIsDisplayed().performFirstLinkClick()
+        composeRule.onNodeWithText("Apps you publish with the Ovenlight connector on your computers show up here. If one doesn’t, run ovenlight doctor on its computer.").assertIsDisplayed().performFirstLinkClick()
         assertEquals(listOf(AppLinks.ownComputersHelp), links)
     }
 
     @Test
     fun testGridOfOwnAndSharedApps() {
         val opened = mutableListOf<WebApp>()
-        show(LauncherState(apps = apps, ownerEnabled = true, ownerState = NodeState.Ready, reachability = mapOf(garden.id to AppReachability.Offline), open = { opened += it }))
+        show(LauncherState(apps = apps, ownerEnabled = true, ownerState = NodeState.Ready, offline = setOf(garden.id), open = { opened += it }))
         assertEquals(4, columns())
         assertEquals(null, stateOf("Recipe Box"))
         assertEquals("New", stateOf(sharedTile))
-        assertEquals(AppReachability.Offline.label, stateOf("Garden Log"))
+        assertEquals("Offline", stateOf("Garden Log"))
         composeRule.onNodeWithText(ConnectionCopy.sharedBy("Riley"), useUnmergedTree = true).assertExists()
         tile(sharedTile).assert(SemanticsMatcher("click label Open") { it.config.getOrNull(SemanticsActions.OnClick)?.label == "Open" })
         tile("Recipe Box").performClick()
@@ -211,6 +223,19 @@ class LauncherViewTests {
         show(LauncherState(apps = listOf(recipes), ownerEnabled = true, ownerState = NodeState.NeedsLogin(login), present = { presented += it }))
         composeRule.onNodeWithText("Connect your computers").assertIsDisplayed()
         composeRule.onNodeWithText("Connect").performClick()
+        assertEquals(listOf<RootSheet>(RootSheet.Login(login)), presented)
+    }
+
+    /** A phone that was connected, and didn't sign out, says its sign-in ended rather than greeting the owner again. */
+    @Test
+    fun testAnEndedSignInSaysSo() {
+        val presented = mutableListOf<RootSheet>()
+        val login = URI("https://login.tailscale.com/a/abc123")
+        show(LauncherState(apps = listOf(recipes), ownerEnabled = true, ownerState = NodeState.NeedsLogin(login), signedInBefore = true, present = { presented += it }))
+        composeRule.onNodeWithText("Sign in again").assertIsDisplayed()
+        composeRule.onNodeWithText("This phone’s Tailscale sign-in ended. Sign in again to reach your computers.").assertIsDisplayed()
+        composeRule.onNodeWithText("Connect your computers").assertDoesNotExist()
+        composeRule.onNodeWithText("Sign in").performClick()
         assertEquals(listOf<RootSheet>(RootSheet.Login(login)), presented)
     }
 
@@ -249,12 +274,21 @@ class LauncherViewTests {
         composeRule.onNodeWithText(ConnectionCopy.connecting).assertIsDisplayed()
     }
 
+    /** With no network, the owner's node can't come up: the pill says the phone is offline, without a spinner. */
+    @Test
+    fun testThePillSaysOfflineWhenThePhoneIs() {
+        show(LauncherState(apps = listOf(recipes), ownerEnabled = true, ownerState = NodeState.Connecting, phoneOffline = true))
+        composeRule.onNodeWithText(ConnectionCopy.offline).assertIsDisplayed()
+        composeRule.onNodeWithText(ConnectionCopy.connecting).assertDoesNotExist()
+    }
+
     @Test
     fun testStatusPillFailure() {
         var retried = false
         show(LauncherState(apps = listOf(recipes), ownerEnabled = true, ownerState = NodeState.Failed(ConnectionCopy.couldNotStart), retry = { retried = true }))
         composeRule.onNodeWithText(ConnectionCopy.connecting).assertDoesNotExist()
-        composeRule.onNodeWithText(ConnectionCopy.couldNotStart).assertIsDisplayed().performClick()
+        // TalkBack reads the "Try again" it shows.
+        composeRule.onNodeWithText(ConnectionCopy.couldNotStart).assertIsDisplayed().assert(hasText("Try again")).performClick()
         assertTrue(retried)
     }
 
@@ -270,7 +304,7 @@ class LauncherViewTests {
         show(LauncherState(apps = apps))
         tile("Recipe Box").performTouchInput { longClick() }
         composeRule.onNodeWithText(recipes.host).assertIsDisplayed()
-        for (item in listOf("Rename", "Refresh icon", "Sign out and clear data", "Remove app")) composeRule.onNodeWithText(item).assertIsDisplayed()
+        for (item in listOf("Rename", "Refresh icon", "Clear app data", "Remove app")) composeRule.onNodeWithText(item).assertIsDisplayed()
         composeRule.onNodeWithText("Add to Home screen").assertDoesNotExist()
         composeRule.onNodeWithText(ConnectionCopy.reportProblem).assertDoesNotExist()
         composeRule.onNodeWithText(ConnectionCopy.leaveApps("Riley")).assertDoesNotExist()
@@ -279,7 +313,7 @@ class LauncherViewTests {
     @Test
     fun testMenuSharesAShareableApp() {
         val shareable = AdminApp("recipe-box", "Recipe Box", recipes.startURL.toString(), online = true, shareable = true, guests = 1)
-        val sam = AdminGuest("n1", "p1", "Sam", "recipe-box", "ovenlight-4k2x9q", claimedAt = Instant.ofEpochSecond(1_000))
+        val sam = AdminGuest("n1", "p1", "Sam", "recipe-box", claimedAt = Instant.ofEpochSecond(1_000))
         val machine = OwnerSharing.Machine(recipes.host, listOf(shareable), AdminGuestList(guests = listOf(sam)))
         var refreshed = 0
         var shared: AdminApp? = null
@@ -308,7 +342,7 @@ class LauncherViewTests {
         val machine = OwnerSharing.Machine(recipes.host, listOf(unshared))
         show(LauncherState(apps = apps, sharing = { if (it.id == recipes.id) machine to unshared else null }))
         tile("Recipe Box").performTouchInput { longClick() }
-        composeRule.onNodeWithText(AppMenuPlan.notShareableDetail, useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNodeWithText("Make it shareable first: on your computer, run ovenlight publish --slug recipe-box --shareable", useUnmergedTree = true).assertIsDisplayed()
         composeRule.onNode(hasText("Share…", substring = true) and hasClickAction()).assertIsNotEnabled()
         composeRule.onNodeWithText("People", substring = true).assertDoesNotExist()
     }
@@ -317,9 +351,11 @@ class LauncherViewTests {
     fun testMenuForASharedApp() {
         var reported: WebApp? = null
         var left: String? = null
+        // Riley's second app here, so Leave does more than Remove app (see AppMenuPlanTests).
+        val notes = WebApp(name = "Notes", startURL = URI("https://notes.tail2.ts.net/"), membershipID = "m1", sharedBy = "Riley")
         show(
             LauncherState(
-                apps = apps, memberships = listOf(membership()), leave = { left = it },
+                apps = apps + notes, memberships = listOf(membership()), leave = { left = it },
                 problemReport = { reported = it; null },
             ),
         )
@@ -347,19 +383,21 @@ class LauncherViewTests {
         assertTrue(removed.isEmpty())
         tile("Recipe Box").performTouchInput { longClick() }
         composeRule.onNodeWithText("Remove app").performClick()
-        composeRule.onNodeWithText("This removes the app from Ovenlight and deletes everything it stored on this phone.").assertIsDisplayed()
+        composeRule.onNodeWithText(
+            "This removes the app from Ovenlight and deletes everything it stored on this phone. It won’t come back on its own. Add it again with Add app.",
+        ).assertIsDisplayed()
         composeRule.onNodeWithText("Remove app").performClick()
         assertEquals(listOf(recipes.id), removed)
     }
 
     @Test
-    fun testSignOutAndClearDataAsks() {
+    fun testClearAppDataAsks() {
         val cleared = mutableListOf<UUID>()
         show(LauncherState(apps = apps, clearData = { cleared += it }))
         tile("Garden Log").performTouchInput { longClick() }
-        composeRule.onNodeWithText("Sign out and clear data").performClick()
-        composeRule.onNodeWithText("Sign out of Garden Log?").assertIsDisplayed()
-        composeRule.onNodeWithText("Sign out and clear data").performClick()
+        composeRule.onNodeWithText("Clear app data").performClick()
+        composeRule.onNodeWithText("Clear Garden Log’s data?").assertIsDisplayed()
+        composeRule.onNodeWithText("Clear app data").performClick()
         assertEquals(listOf(garden.id), cleared)
     }
 
@@ -370,9 +408,35 @@ class LauncherViewTests {
         tile("Recipe Box").performTouchInput { longClick() }
         composeRule.onNodeWithText("Rename").performClick()
         composeRule.onNodeWithText("Rename app").assertIsDisplayed()
-        composeRule.onNodeWithText("Recipe Box").performTextReplacement("Kitchen")
+        val field = composeRule.onNode(hasSetTextAction())
+        field.performTextReplacement("   ")
+        composeRule.onNodeWithText("Save").assertIsNotEnabled()
+        field.performTextReplacement(" Kitchen ")
         composeRule.onNodeWithText("Save").performClick()
         assertEquals(listOf(recipes.id to "Kitchen"), renamed)
+    }
+
+    /** Android only: an app a link opens over the launcher takes its open dialog or menu away, which would stay on top of it. */
+    @Test
+    fun testCoveringTheLauncherClosesItsDialogs() {
+        var covered by mutableStateOf(false)
+        composeRule.setContent { OvenlightTheme { LauncherView(LauncherState(apps = apps, covered = covered)) } }
+        tile("Recipe Box").performTouchInput { longClick() }
+        composeRule.onNodeWithText("Remove app").performClick()
+        composeRule.onNodeWithText("Remove Recipe Box?").assertIsDisplayed()
+        composeRule.runOnIdle { covered = true }
+        composeRule.onNodeWithText("Remove Recipe Box?").assertDoesNotExist()
+        // And a tile's menu, and More's.
+        composeRule.runOnIdle { covered = false }
+        tile("Recipe Box").performTouchInput { longClick() }
+        composeRule.onNodeWithText("Rename").assertIsDisplayed()
+        composeRule.runOnIdle { covered = true }
+        composeRule.onNodeWithText("Rename").assertDoesNotExist()
+        composeRule.runOnIdle { covered = false }
+        composeRule.onNodeWithContentDescription("More").performClick()
+        composeRule.onNodeWithText("Settings").assertIsDisplayed()
+        composeRule.runOnIdle { covered = true }
+        composeRule.onNodeWithText("Settings").assertDoesNotExist()
     }
 
     @Test

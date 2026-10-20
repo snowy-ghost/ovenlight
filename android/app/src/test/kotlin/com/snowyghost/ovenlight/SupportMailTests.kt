@@ -1,7 +1,6 @@
 package com.snowyghost.ovenlight
 
 import java.net.URI
-import kotlin.test.assertNotNull
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -38,7 +37,7 @@ class SupportMailTests {
     }
 
     @Test
-    fun testProblemReportForOwnAppLoadedDirectly() {
+    fun testProblemReportWithoutAConnection() {
         val draft = report(appName = "Coach", host = "coach.example.com", sharedBy = null, connection = null, version = "1.0 (1)")
         assertFalse(draft.body.contains("Shared by"))
         assertFalse("no node, no connection to report", draft.body.contains("Connection"))
@@ -61,7 +60,7 @@ class SupportMailTests {
     @Test
     fun testMailtoFallbackCarriesSubjectAndBody() {
         val draft = report(appName = "Echo & Notes+", host = "echo.example.com", sharedBy = "Riley", connection = null, version = "1.0 (1)")
-        val url = assertNotNull(draft.mailtoURL)
+        val url = checkNotNull(draft.mailtoURL)
         assertEquals("mailto", url.scheme)
         val (path, query) = url.rawSchemeSpecificPart.split('?', limit = 2)
         assertEquals("team@snowyghost.com", path)
@@ -70,8 +69,25 @@ class SupportMailTests {
         assertEquals(draft.body, items["body"])
     }
 
+    /** Opening says what failed after the gate opened: WebView's name for the error or its code, never an address or words. */
     @Test
-    fun testPrivacyPolicyIsHTTPS() {
-        assertEquals("https", AppLinks.privacyPolicy.scheme)
+    fun testTheOpeningLineSaysWhatFailed() {
+        assertEquals("ready, page failed (net::ERR_TOO_MANY_REDIRECTS)", MailDraft.opening(AppLoadGate.Ready, AppLoadGate.loadFailure(-9, "net::ERR_TOO_MANY_REDIRECTS")))
+        assertEquals("ready, app not responding (502 unavailable)", MailDraft.opening(AppLoadGate.Ready, AppLoadGate.appDownFailure))
+        assertEquals("page failed (error -2)", AppLoadGate.loadFailure(-2, "Couldn't load https://notes.tailabc123.ts.net/?token=1"))
+        assertEquals("unreachable", MailDraft.opening(AppLoadGate.Unreachable, null))
+    }
+
+    /** Android's lines where the iPhone's has `iOS:`. */
+    @Test
+    fun testContactUsGivesThePhonesLines() {
+        val draft = MailDraft.contactUs("1.0.2 (15)", android = "16", webView = "145.0.7632.218", model = "Google Pixel 9", computers = "Connected (ready)")
+        assertEquals("Ovenlight", draft.subject)
+        assertEquals("\n\n\nOvenlight: 1.0.2 (15)\nAndroid: 16\nWebView: 145.0.7632.218\nModel: Google Pixel 9\nYour computers: Connected (ready)", draft.body)
+        assertFalse(
+            "not for someone who doesn't use their own computers",
+            MailDraft.contactUs("1.0.2 (15)", "16", "145.0.7632.218", "Google Pixel 9", computers = null).body.contains("Your computers"),
+        )
+        assertEquals("${NodeState.Ready.summary} (ready)", MailDraft.connection(NodeState.Ready, listedOffline = false))
     }
 }

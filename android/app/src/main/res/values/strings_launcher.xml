@@ -1,33 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- The launcher's own labels. Copy other screens share stays in ConnectionCopy. -->
 <resources>
-    <string name="launcher_lock">Lock Ovenlight</string>
     <string name="launcher_more">More</string>
     <string name="launcher_add_app">Add app</string>
     <string name="launcher_people_sharing">People &amp; sharing</string>
-    <string name="launcher_settings">Settings</string>
-    <string name="launcher_try_again">Try again</string>
 
     <string name="launcher_connect_title">Connect your computers</string>
-    <string name="launcher_connect_body">Ovenlight connects privately to your own computers with your Tailscale account, without a VPN. If Tailscale says this phone needs approval, open the admin console and tap Approve.</string>
+    <string name="launcher_connect_body">Ovenlight connects privately to your own computers with your Tailscale account, without a VPN.</string>
     <string name="launcher_connect">Connect</string>
-    <string name="launcher_approve_title">Approve this phone</string>
+    <!-- The card instead, once the phone was connected and its sign-in ended. -->
+    <string name="launcher_sign_in_again_title">Sign in again</string>
+    <string name="launcher_sign_in_again_body">This phone’s Tailscale sign-in ended. Sign in again to reach your computers.</string>
     <string name="launcher_approve_body">Your Tailscale network asks you to approve each new device once. On the Machines page, find %1$s, open its ••• menu and choose Approve. Ovenlight connects as soon as you do.</string>
     <string name="launcher_open_machines">Open Machines page</string>
 
-    <string name="launcher_use_own_computers">Use my own computers</string>
     <string name="launcher_connector">Ovenlight connector</string>
-    <string name="launcher_empty_footer">Apps you publish with the %1$s on your computers show up here.</string>
+    <string name="launcher_empty_footer">Apps you publish with the %1$s on your computers show up here. If one doesn’t, run ovenlight doctor on its computer.</string>
 
     <string name="add_app_address">Address</string>
     <string name="add_app_add">Add</string>
-    <string name="add_app_footer">Ovenlight fetches the app\'s name and icon from its web manifest. Each app gets its own private storage.</string>
+    <string name="add_app_footer">Ovenlight fetches the app’s name and icon from its web manifest. Each app gets its own private storage.</string>
     <string name="add_app_insecure">Ovenlight only opens secure addresses that start with https.</string>
-    <string name="add_app_sign_in">Sign in to your computers</string>
-    <string name="add_app_approve">Approve this phone</string>
 
     <string name="launcher_new">New</string>
-    <string name="launcher_open">Open</string>
+    <string name="launcher_offline">Offline</string>
     <string name="launcher_show_menu">Show menu</string>
     <string name="launcher_move_before">Move before %1$s</string>
     <string name="launcher_move_after">Move after %1$s</string>
@@ -35,21 +31,17 @@
     <string name="launcher_add_to_home_screen">Add to Home screen</string>
     <string name="launcher_rename">Rename</string>
     <string name="launcher_refresh_icon">Refresh icon</string>
-    <string name="launcher_sign_out_clear">Sign out and clear data</string>
+    <string name="launcher_clear_data">Clear app data</string>
     <string name="launcher_remove_app">Remove app</string>
 
     <string name="launcher_rename_title">Rename app</string>
     <string name="launcher_name">Name</string>
-    <string name="launcher_cancel">Cancel</string>
-    <string name="launcher_save">Save</string>
-    <string name="launcher_sign_out_title">Sign out of %1$s?</string>
-    <string name="launcher_sign_out_message">This deletes the app\'s cookies and storage on this phone.</string>
-    <string name="launcher_remove_title">Remove %1$s?</string>
+    <string name="launcher_clear_data_title">Clear %1$s’s data?</string>
+    <string name="launcher_clear_data_message">This deletes the app’s cookies and storage on this phone.</string>
     <string name="launcher_remove_message">This removes the app from Ovenlight and deletes everything it stored on this phone.</string>
-    <string name="launcher_leave">Leave</string>
+    <string name="launcher_remove_discovered_message">This removes the app from Ovenlight and deletes everything it stored on this phone. It won’t come back on its own. Add it again with Add app.</string>
     <!-- A removed app's home screen shortcut, when tapped. -->
     <string name="shortcut_removed">No longer in Ovenlight</string>
     <!-- Add to Home screen, for an app already there. -->
     <string name="shortcut_already_pinned">Already on your Home screen</string>
-
 </resources>

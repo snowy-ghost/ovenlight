@@ -4,11 +4,42 @@
 
     <string name="webview_update_title">Update Android System WebView</string>
     <string name="webview_update_body">Ovenlight opens apps with Android System WebView, and the version on this phone is too old. Update it in Google Play, then come back.</string>
+    <string name="webview_update_version">This phone has version %1$s. Ovenlight needs %2$d or later.</string>
     <string name="webview_update_button">Open Google Play</string>
 
     <string name="lock_locked">Locked</string>
     <string name="lock_locked_description">Ovenlight is locked</string>
     <string name="lock_unlock">Unlock</string>
     <string name="unlock_prompt_title">Unlock Ovenlight</string>
+    <string name="unlock_prompt_subtitle">Ovenlight keeps your apps behind your phone’s lock.</string>
     <string name="unlock_use_screen_lock">Use screen lock</string>
+
+    <!-- Words more than one screen uses. -->
+    <string name="ok">OK</string>
+    <string name="cancel">Cancel</string>
+    <string name="try_again">Try again</string>
+    <string name="open">Open</string>
+    <string name="close">Close</string>
+    <string name="back">Back</string>
+    <string name="save">Save</string>
+    <string name="leave">Leave</string>
+    <string name="share_ellipsis">Share…</string>
+    <string name="settings">Settings</string>
+    <string name="send_feedback">Send feedback</string>
+    <string name="lock_ovenlight">Lock Ovenlight</string>
+    <string name="options">%1$s options</string>
+    <string name="remove_title">Remove %1$s?</string>
+    <string name="invite_link">Invite link</string>
+    <string name="use_my_own_computers">Use my own computers</string>
+    <string name="sign_in_to_your_computers">Sign in to your computers</string>
+    <string name="approve_this_phone">Approve this phone</string>
+    <string name="contact_us">Contact us</string>
+    <string name="open_settings">Open settings</string>
+    <string name="not_now">Not now</string>
+
+    <!-- Contact us and Report a problem, on a phone with no email app. -->
+    <string name="mail_no_app_title">No email app</string>
+    <string name="mail_no_app_body">Write to %1$s.</string>
+    <string name="mail_copy_address">Copy address</string>
+    <string name="mail_copy_report">Copy report</string>
 </resources>

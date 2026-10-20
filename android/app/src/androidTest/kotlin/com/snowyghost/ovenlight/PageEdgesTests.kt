@@ -106,7 +106,7 @@ class PageEdgesTests {
             // No camera or microphone for these pages: Android's permission is never held.
             val capture = PageCapture(
                 app, ownersHosts = { emptySet() }, isLocked = { locked.value }, isOnScreen = { shown }, scope = scope,
-                permissions = { _, done -> done(false) }, stillCapturing = { false }, destroy = {},
+                permissions = { _, _, done -> done(false) }, stillCapturing = { false }, destroy = {},
             )
             edges = PageEdges(app, view, activity, scope, locked, lifecycle, capture, isShown = { shown }, home = { homes += 1; view.loadDataWithBaseURL(base, home, "text/html", "utf-8", base) })
             view.webViewClient = object : WebViewClient() {
@@ -122,7 +122,7 @@ class PageEdgesTests {
         composeRule.setContent {
             Box(Modifier.fillMaxSize()) {
                 AndroidView({ view }, Modifier.fillMaxSize())
-                if (layered) PageEdgesLayer(edges)
+                if (layered) PageEdgesLayer(edges, app.name)
             }
         }
     }
@@ -235,7 +235,7 @@ class PageEdgesTests {
         composeRule.onNodeWithText("Open").performClick()
         composeRule.waitForIdle()
         assertTrue("an early tap does nothing", started.intents.isEmpty())
-        Thread.sleep(600)
+        Thread.sleep(PROMPT_DELAY_MILLIS + 100)
         composeRule.onNodeWithText("Open").performClick()
         waitFor("the reader") { started.intents.isNotEmpty() }
         val opened = started.intents.single()
@@ -253,7 +253,7 @@ class PageEdgesTests {
         tapped("intent:")
         val asked = edges.dialog.value as PageEdges.Dialog.OpenElsewhere
         assertNull(asked.intent.getStringExtra("browser_fallback_url"))
-        Thread.sleep(600)
+        Thread.sleep(PROMPT_DELAY_MILLIS + 100)
         composeRule.onNodeWithText("Open").performClick()
         waitFor("the start") { started.intents.isNotEmpty() }
         Thread.sleep(1_000)
@@ -641,14 +641,14 @@ class PageEdgesTests {
         val result = evaluate("loop()")
         for (i in 0 until 3) {
             waitFor("dialog $i") { (edges.dialog.value as? PageEdges.Dialog.Alert)?.message == "again $i" }
-            composeRule.onNodeWithText("Don't let this app show more dialogs").assertDoesNotExist()
+            composeRule.onNodeWithText("Don’t let this app show more dialogs").assertDoesNotExist()
             // A slow reader still gets the choice.
             Thread.sleep(2_000)
             composeRule.onNodeWithText("OK").performClick()
         }
         waitFor("dialog 3") { (edges.dialog.value as? PageEdges.Dialog.Alert)?.message == "again 3" }
         checkAccessibility()
-        composeRule.onNodeWithText("Don't let this app show more dialogs").performClick()
+        composeRule.onNodeWithText("Don’t let this app show more dialogs").performClick()
         composeRule.onNodeWithText("OK").performClick()
         result.answer(10_000)
         waitFor("the loop's end") { title() == "done" }

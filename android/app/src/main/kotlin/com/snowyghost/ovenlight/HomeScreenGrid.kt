@@ -2,6 +2,7 @@ package com.snowyghost.ovenlight
 
 import android.graphics.Bitmap
 import android.util.LruCache
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector2D
 import androidx.compose.animation.core.Spring
@@ -15,6 +16,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -36,7 +38,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -75,6 +76,8 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -104,6 +107,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.Hyphens
 import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
@@ -226,13 +230,16 @@ fun HomeScreenGrid(
     ownerEnabled: Boolean,
     icon: (WebApp) -> Bitmap?,
     iconRevisions: Map<UUID, Int>,
-    reachability: Map<UUID, AppReachability>,
+    /** Apps whose computer is offline. */
+    offline: Set<UUID>,
     open: (WebApp) -> Unit,
     /** Moves an app to an index in the list, and saves the order. */
     move: (UUID, Int) -> Unit,
     addApp: () -> Unit,
     openLink: (String) -> Unit,
     modifier: Modifier = Modifier,
+    /** A screen or an open app covers the grid: an open menu goes, or it would stay on top. */
+    covered: Boolean = false,
     header: @Composable ColumnScope.() -> Unit = {},
     menu: @Composable ColumnScope.(app: WebApp, close: () -> Unit) -> Unit,
 ) {
@@ -250,6 +257,7 @@ fun HomeScreenGrid(
     }
     var drag by remember { mutableStateOf<IconDrag?>(null) }
     var menuFor by remember { mutableStateOf<UUID?>(null) }
+    LaunchedEffect(covered) { if (covered) menuFor = null }
     var pressed by remember { mutableStateOf<UUID?>(null) }
     // While dragging, the moved app sits in its target slot.
     val order = drag?.let { d -> HomeReorder.moving(apps, d.id, d.target) { it.id } } ?: apps
@@ -260,7 +268,8 @@ fun HomeScreenGrid(
         drag = null
     }
     Column(modifier.verticalScroll(rememberScrollState(), enabled = drag == null)) {
-        header()
+        // A card or invite coming or going moves the grid smoothly.
+        Column(Modifier.fillMaxWidth().animateContentSize()) { header() }
         BoxWithConstraints(Modifier.fillMaxWidth()) {
             val labelHeight = labelLines + (if (apps.any { it.isShared }) sharedByLine else 0f)
             val layout = remember(maxWidth, labelHeight, largeText) { HomeGridLayout(maxWidth.value.toDouble(), labelHeight.toDouble(), largeText) }
@@ -402,9 +411,10 @@ fun HomeScreenGrid(
                             Modifier.offset { (center(0) - half).round() }.size(tileSize.width.dp, tileSize.height.dp),
                         )
                     }
-                    val openLabel = stringResource(R.string.launcher_open)
+                    val openLabel = stringResource(R.string.open)
                     val menuLabel = stringResource(R.string.launcher_show_menu)
                     val newLabel = stringResource(R.string.launcher_new)
+                    val offlineLabel = stringResource(R.string.launcher_offline)
                     order.forEachIndexed { index, app ->
                         key(app.id) {
                             val slot = center(index) - half
@@ -414,12 +424,13 @@ fun HomeScreenGrid(
                                 positions[app.id] = position
                                 onDispose { positions.remove(app.id) }
                             }
+                            DisposableEffect(app.id) { onDispose { launcherIcons.remove(app.id) } }
                             val moving = drag?.let { it.id == app.id && !it.dropped } == true
                             LaunchedEffect(slot, moving) {
                                 if (!moving) position.animateTo(slot, spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessMediumLow))
                             }
                             val image = rememberIcon(app, iconRevisions[app.id] ?: 0, icon)
-                            val status = reachability[app.id]
+                            val isOffline = app.id in offline
                             val before = order.getOrNull(index - 1)
                             val after = order.getOrNull(index + 1)
                             val moveBefore = before?.let { stringResource(R.string.launcher_move_before, it.name) }
@@ -430,6 +441,8 @@ fun HomeScreenGrid(
                                     .offset { position.value.round() }
                                     .zIndex(if (moving || menuFor == app.id) 1f else 0f)
                                     .size(tileSize.width.dp, tileSize.height.dp)
+                                    // Where the app grows from as it opens, and shrinks back into.
+                                    .onGloballyPositioned { launcherIcons[app.id] = it.positionInRoot() + Offset(it.size.width / 2f, (layout.iconSize * density.density / 2).toFloat()) }
                                     // A keyboard reaches each app: Enter opens it, the menu key or Shift+F10 shows its menu.
                                     .onFocusChanged { focused = it.isFocused }
                                     .onKeyEvent { event ->
@@ -444,7 +457,7 @@ fun HomeScreenGrid(
                                     .focusable()
                                     .clearAndSetSemantics {
                                         contentDescription = app.sharedBy?.let { "${app.name}, ${ConnectionCopy.sharedBy(it)}" } ?: app.name
-                                        val states = listOfNotNull(if (app.isNew) newLabel else null, status?.label)
+                                        val states = listOfNotNull(if (app.isNew) newLabel else null, if (isOffline) offlineLabel else null)
                                         if (states.isNotEmpty()) stateDescription = states.joinToString(", ")
                                         onClick(label = openLabel) { open(app); true }
                                         onLongClick(label = menuLabel) { menuFor = app.id; true }
@@ -458,18 +471,21 @@ fun HomeScreenGrid(
                                     },
                             ) {
                                 AppTile(
-                                    app, image, status, layout.iconSize.dp, largeText,
+                                    app, image, isOffline, layout.iconSize.dp, largeText,
                                     pressed = pressed == app.id, lifted = moving || menuFor == app.id, labelShown = !moving, focused = focused,
                                 )
-                                DropdownMenu(expanded = menuFor == app.id, onDismissRequest = { menuFor = null }) {
+                                RoundedMenu(expanded = menuFor == app.id, onDismissRequest = { menuFor = null }) {
                                     menu(this, app) { menuFor = null }
                                 }
                             }
                         }
                     }
                 }
-                if (emptySlot) {
-                    EmptyGridFooter(openLink, Modifier.padding(horizontal = (2 * layout.sideMargin).dp).padding(bottom = HomeGridLayout.rowGap.dp))
+                // Until the owner has an app of their own, beside apps someone shared too.
+                // Its text starts where the slot's icon does.
+                if (ownerEnabled && apps.none { !it.isShared }) {
+                    val inset = layout.sideMargin + (layout.columnWidth - layout.iconSize) / 2
+                    EmptyGridFooter(openLink, Modifier.padding(horizontal = inset.dp).padding(bottom = HomeGridLayout.rowGap.dp))
                 }
             }
         }
@@ -516,23 +532,23 @@ private class FingerPosition {
  * lifts. The grid gives the tile its semantics.
  */
 @Composable
-fun AppTile(
+private fun AppTile(
     app: WebApp,
     image: Bitmap?,
-    reachability: AppReachability?,
+    offline: Boolean,
     iconSize: Dp,
     largeText: Boolean,
-    modifier: Modifier = Modifier,
-    pressed: Boolean = false,
-    lifted: Boolean = false,
-    labelShown: Boolean = true,
+    pressed: Boolean,
+    lifted: Boolean,
+    labelShown: Boolean,
     /** Reached from a keyboard: the icon gets a ring. */
-    focused: Boolean = false,
+    focused: Boolean,
 ) {
     val colors = MaterialTheme.colorScheme
+    val label = labelColor
     val scale by animateFloatAsState(if (pressed) 0.92f else if (lifted) 1.12f else 1f, label = "tile scale")
     val elevation by animateDpAsState(if (lifted) 12.dp else 2.dp, label = "tile shadow")
-    Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
         val ring = if (focused) Modifier.border(2.dp, colors.primary, AppIconShape) else Modifier
         Box(Modifier.size(iconSize).graphicsLayer { scaleX = scale; scaleY = scale }.then(ring)) {
             AppIconView(
@@ -540,10 +556,10 @@ fun AppTile(
                 Modifier.graphicsLayer {
                     shadowElevation = elevation.toPx()
                     shape = AppIconShape
-                    alpha = if (reachability == AppReachability.Offline) 0.5f else 1f
+                    alpha = if (offline) 0.5f else 1f
                 },
             )
-            if (reachability != null) ReachabilityBadge(Modifier.align(Alignment.TopEnd).offset(4.dp, (-4).dp))
+            if (offline) OfflineBadge(Modifier.align(Alignment.TopEnd).offset(4.dp, (-4).dp))
         }
         Spacer(Modifier.height(HomeGridLayout.labelGap.dp))
         Column(Modifier.alpha(if (labelShown) 1f else 0f), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -556,24 +572,33 @@ fun AppTile(
                 Text(
                     // A word too long for the column breaks with a hyphen, not mid-word.
                     app.name, style = MaterialTheme.typography.bodySmall.copy(hyphens = Hyphens.Auto, lineBreak = LineBreak.Paragraph),
-                    color = colors.onSurface, textAlign = TextAlign.Center,
+                    color = label, textAlign = TextAlign.Center,
                     maxLines = if (largeText) 2 else 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false),
                 )
             }
             app.sharedBy?.let { owner ->
-                // Over the light, secondary text stays faint, so higher contrast takes the main color.
-                val color = if (prefersHighContrast(LocalContext.current)) colors.onSurface else colors.onSurfaceVariant
+                // Over the light, secondary text stays faint, so higher contrast, and the dark, take the label's color.
+                val color = if (prefersHighContrast(LocalContext.current) || isSystemInDarkTheme()) label else colors.onSurfaceVariant
                 Text(ConnectionCopy.sharedBy(owner), style = MaterialTheme.typography.labelSmall, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }
 }
 
+/**
+ * Text over the light: the tiles' names, the empty slot's and its footer. In the dark, the light
+ * behind the top rows is bright enough that only white reads on it: 4.8:1 at its brightest,
+ * measured, where the usual text is 3.7 and secondary text 2.8.
+ */
+private val labelColor: Color
+    @Composable get() = if (isSystemInDarkTheme()) Color.White else MaterialTheme.colorScheme.onSurface
+
 /** An app's icon: its cached image, or a monogram on its theme color (the ember without one). */
 @Composable
 fun AppIconView(app: WebApp, image: Bitmap?, size: Dp, modifier: Modifier = Modifier) {
     val outline = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
-    Box(modifier.size(size).clip(AppIconShape).border(0.5.dp, outline, AppIconShape), contentAlignment = Alignment.Center) {
+    // An image: whoever shows it names the app, so the monogram's letter is never read.
+    Box(modifier.size(size).clip(AppIconShape).border(0.5.dp, outline, AppIconShape).clearAndSetSemantics {}, contentAlignment = Alignment.Center) {
         if (image != null) {
             val bitmap = remember(image) { image.asImageBitmap() }
             Image(bitmap, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
@@ -603,7 +628,7 @@ fun themeColor(hex: String?): Color? {
 
 /** The dot an offline app's icon gets on its top end corner, ringed so it reads on any icon. */
 @Composable
-private fun ReachabilityBadge(modifier: Modifier = Modifier) {
+private fun OfflineBadge(modifier: Modifier = Modifier) {
     Box(
         modifier
             .size(18.dp)
@@ -637,30 +662,27 @@ private fun EmptyHomeSlot(size: Dp, onClick: () -> Unit, modifier: Modifier = Mo
             Icon(painterResource(R.drawable.ic_add), contentDescription = null, tint = colors.onSurfaceVariant, modifier = Modifier.size(size * 0.36f))
         }
         Spacer(Modifier.height(HomeGridLayout.labelGap.dp))
-        Text(stringResource(R.string.launcher_add_app), style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant, maxLines = 1)
+        Text(stringResource(R.string.launcher_add_app), style = MaterialTheme.typography.bodySmall, color = labelColor, maxLines = 1)
     }
 }
 
-/** Under the empty slot: where the owner's apps come from, with the connector linked. */
+/** Under the empty slot, or apps someone shared: where the owner's apps come from, with the connector linked. */
 @Composable
 private fun EmptyGridFooter(openLink: (String) -> Unit, modifier: Modifier = Modifier) {
     val link = stringResource(R.string.launcher_connector)
     val text = stringResource(R.string.launcher_empty_footer, link)
-    val primary = MaterialTheme.colorScheme.primary
-    val annotated = remember(text, link, primary) {
+    // Underlined, in the text's own color: on the light the ember measures 4.3:1 at worst, and 1.5:1 in the dark.
+    val annotated = remember(text, link) {
         buildAnnotatedString {
             append(text)
             val start = text.indexOf(link)
             if (start >= 0) {
                 addLink(
-                    LinkAnnotation.Url(AppLinks.ownComputersHelp, TextLinkStyles(SpanStyle(color = primary))) { openLink(AppLinks.ownComputersHelp) },
+                    LinkAnnotation.Url(AppLinks.ownComputersHelp, TextLinkStyles(SpanStyle(textDecoration = TextDecoration.Underline))) { openLink(AppLinks.ownComputersHelp) },
                     start, start + link.length,
                 )
             }
         }
     }
-    Text(
-        annotated, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-        textAlign = TextAlign.Center, modifier = modifier.fillMaxWidth(),
-    )
+    Text(annotated, style = MaterialTheme.typography.bodySmall, color = labelColor, modifier = modifier.fillMaxWidth())
 }

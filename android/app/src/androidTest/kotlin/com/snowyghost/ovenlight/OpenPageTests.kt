@@ -279,6 +279,16 @@ class OpenPageTests {
         waitFor("the text back to its size") { height() == normal }
     }
 
+    /** A page's `100vh` is as tall as the view it shows in, not 0. */
+    @Test
+    fun testAPagesViewportHeightIsTheViews() {
+        evaluate("document.body.insertAdjacentHTML('beforeend', \"<div id=full style='height:100vh'></div>\")")
+        val full = number("document.getElementById('full').getBoundingClientRect().height")
+        val view = onMain { page.view.height / page.view.resources.displayMetrics.density.toDouble() }
+        assertTrue("100vh is $full", full > 0)
+        assertEquals("100vh against the view's height", view, full, 1.0)
+    }
+
     /**
      * Every page starts below the band Ovenlight keeps at the top, the status bar's height and the
      * handle's, and sees no top inset, whether it asks for `viewport-fit=cover` or not, however it
@@ -371,16 +381,60 @@ class OpenPageTests {
             for (night in listOf(true, false)) {
                 shell("cmd uimode night ${if (night) "yes" else "no"}")
                 waitFor("night mode $night") { onMain { window.context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES } == night }
-                instrumentation.waitForIdleSync()
-                Thread.sleep(1_000)
-                assertEquals("dark icons with night mode $night", !night, darkIcons())
+                waitFor("dark icons with night mode $night") { darkIcons() == !night }
             }
         } finally {
             shell("cmd uimode night no")
         }
     }
 
+    /**
+     * Android only: three-button navigation's icons read on the page behind them, as the status
+     * bar's do on the band: light ones on a dark page in light mode, dark ones on a white page in
+     * dark mode.
+     */
+    @Test
+    @SdkSuppress(minSdkVersion = 30)
+    fun testTheNavigationButtonsFollowThePage() {
+        lateinit var window: Window
+        scenario.onActivity { window = it.window }
+        val darkButtons = { onMain { WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightNavigationBars } }
+        val load = { color: String ->
+            onMain { page.view.loadDataWithBaseURL(app.startURL.toString(), html.replace("<title>", "<style>html{background:$color}</style><title>"), "text/html", "utf-8", null) }
+        }
+        load("#1e3fa8")
+        waitFor("light buttons on a dark page in light mode") { !darkButtons() }
+        try {
+            shell("cmd uimode night yes")
+            waitFor("night mode") { onMain { window.context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES } }
+            load("#ffffff")
+            waitFor("dark buttons on a white page in dark mode") { darkButtons() }
+        } finally {
+            shell("cmd uimode night no")
+        }
+    }
+
     // The lock
+
+    /** The launcher under an open app takes none of its touches, and TalkBack doesn't reach it. */
+    @Test
+    fun testTheLauncherUnderAnOpenAppIsOutOfReach() {
+        // The launcher's Lock sits at the top start, partly under the app's band below the status bar.
+        val (width, density, statusBar) = onMain {
+            Triple(page.view.rootView.width, page.view.resources.displayMetrics.density, ViewCompat.getRootWindowInsets(page.view)?.getInsets(WindowInsetsCompat.Type.statusBars())?.top ?: 0)
+        }
+        val band = statusBar + 12 * density
+        // The handle, which takes the whole band while the pill is tucked, brings the pill back, leaving the band's sides bare.
+        tap(width / 2f to band)
+        instrumentation.waitForIdleSync()
+        Thread.sleep(500)
+        tap(28 * density to band)
+        instrumentation.waitForIdleSync()
+        Thread.sleep(500)
+        assertFalse("a tap at the app's top corner locked Ovenlight", model.lock.isLocked.value)
+        val seen = screen()
+        for (mark in listOf("Lock Ovenlight", "More")) assertFalse("the launcher's $mark under the app: $seen", seen.contains(mark))
+    }
 
     @Test
     fun testNothingOfThePageIsInTheAccessibilityTreeUnderTheLock() {
@@ -390,6 +444,23 @@ class OpenPageTests {
         val locked = screen()
         for (mark in pageMarks) assertFalse("$mark under the lock: $locked", locked.contains(mark))
         assertTrue("the lock screen shows: $locked", locked.any { it.contains("Ovenlight is locked") || it.contains("Unlock") })
+    }
+
+    /** Android only: an open app's pill takes a new name as soon as it's renamed. */
+    @Test
+    fun testAnOpenAppTakesItsNewName() {
+        onMain { model.registry.rename(app.id, "Renamed Check") }
+        waitFor("the handle") { find("Show app menu") != null }
+        tap(find("Show app menu")!!)
+        waitFor("the pill, renamed") { find("Renamed Check options") != null }
+    }
+
+    /** Android only: a keyboard scrolls the page as soon as it opens, with no tap on it first. */
+    @Test
+    fun testAKeyboardReachesThePageAsItOpens() {
+        evaluate("document.body.insertAdjacentHTML('beforeend', \"<div style='height:5000px'></div>\")")
+        press(KeyEvent.KEYCODE_PAGE_DOWN)
+        waitFor("the page scrolled") { number("window.scrollY") > 0 }
     }
 
     @Test

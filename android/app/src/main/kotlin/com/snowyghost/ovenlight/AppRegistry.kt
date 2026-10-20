@@ -5,6 +5,7 @@ import java.net.URI
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -106,7 +107,9 @@ class AppRegistry(
     /** The app's cached icon on disk, if one was fetched. Decoding it for the launcher is Android's. */
     fun iconFile(app: WebApp): File? = app.iconFile?.let { File(iconsDirectory, it) }
 
+    /** Adds an app by its address. One of the owner's already listed at that host is returned as it is, and nothing is added. */
     fun add(url: URI): WebApp {
+        apps.firstOrNull { !it.isShared && Discovery.normalizedHost(it.host) == Discovery.normalizedHost(url.host ?: "") }?.let { return it }
         val app = WebApp(name = url.host ?: url.toString(), startURL = url)
         dismissedHosts = dismissedHosts - Discovery.normalizedHost(app.host)
         apps = apps + app
@@ -141,6 +144,20 @@ class AppRegistry(
         save()
         scope.launch { refreshMetadata(app.id) }
         return app
+    }
+
+    /**
+     * The connectors of a membership's apps name them anew, by host (whoami's `appName`): each
+     * tile takes its new name unless the guest renamed it, as the owner's discovered apps do.
+     */
+    fun renameShared(membershipID: String, names: Map<String, String>) {
+        val renamed = apps.map { app ->
+            val name = names[Discovery.normalizedHost(app.host)]?.takeIf { app.membershipID == membershipID && it != app.manifestName } ?: return@map app
+            app.copy(name = if (app.hasDefaultName) name else app.name, manifestName = name)
+        }
+        if (renamed == apps) return
+        apps = renamed
+        save()
     }
 
     /** The app was opened: its tile loses the new dot, for good. */
@@ -240,9 +257,11 @@ class AppRegistry(
 
     /**
      * Fetches the app's page and manifest to fill in its name, theme color and icon. A
-     * connector's ovenlight.json comes first when the app has one.
+     * connector's ovenlight.json comes first when the app has one; with [manifestOnly], an app
+     * whose ovenlight.json answers stops there, as the connector looked in the page and its
+     * manifest for the icon when it last read them.
      */
-    suspend fun refreshMetadata(id: UUID) {
+    suspend fun refreshMetadata(id: UUID, manifestOnly: Boolean = false) {
         val app = apps.firstOrNull { it.id == id } ?: return
         val fetch = session(app) ?: return
         if (app.hasConnector) {
@@ -258,12 +277,9 @@ class AppRegistry(
                         slug = it.slug ?: manifest.slug,
                     )
                 }
-                save()
                 val iconURL = DiscoveredApp(Discovery.normalizedHost(app.host), manifest).iconURL
-                if (iconURL != null) {
-                    saveIcon(iconURL, id)
-                    return
-                }
+                if (iconURL != null) return saveIcon(iconURL, id)
+                if (manifestOnly) return
             }
         }
         // As iOS decodes a page: bytes that aren't UTF-8 become replacement characters.
@@ -285,7 +301,6 @@ class AppRegistry(
                 themeColorHex = meta.themeColorHex ?: it.themeColorHex,
             )
         }
-        save()
         val iconURL = meta.iconURL ?: links.touchIcon
         if (iconURL != null) saveIcon(iconURL, id)
     }
@@ -301,19 +316,25 @@ class AppRegistry(
             SavedJSON.write(png, File(iconsDirectory, name))
         } catch (e: Exception) {
             SavedJSON.problem("icons: couldn't save: $e")
+            // Without its file the app has no icon, and the next look fetches it again.
+            return
         }
         update(id) { it.copy(iconFile = name) }
-        save()
         icons.value += id to ((icons.value[id] ?: 0) + 1)
     }
 
-    suspend fun refreshAllMissingIcons() {
-        for (app in apps) {
-            if (app.iconFile == null) refreshMetadata(app.id)
+    /** Each app's missing icon, once [reachable] says its node can carry the fetch. Runs on every return to the front. */
+    suspend fun refreshAllMissingIcons(reachable: suspend (WebApp) -> Boolean) = coroutineScope {
+        for (app in apps.filter { it.iconFile == null }) {
+            launch { if (reachable(app) && apps.firstOrNull { it.id == app.id }?.iconFile == null) refreshMetadata(app.id, manifestOnly = true) }
         }
     }
 
+    /** Saves only a change: refreshes repeat on every return to the front. */
     private fun update(id: UUID, change: (WebApp) -> WebApp) {
-        apps = apps.map { if (it.id == id) change(it) else it }
+        val updated = apps.map { if (it.id == id) change(it) else it }
+        if (updated == apps) return
+        apps = updated
+        save()
     }
 }

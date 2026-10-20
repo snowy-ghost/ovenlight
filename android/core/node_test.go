@@ -1,14 +1,23 @@
 package core
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
+	"tailscale.com/client/local"
+	"tailscale.com/ipn/ipnstate"
 	"tailscale.com/logpolicy"
+	"tailscale.com/types/key"
 )
 
 func TestNodesGiveLogpolicyADirectory(t *testing.T) {
@@ -70,5 +79,37 @@ func TestErrorsReachKotlinAsTheirText(t *testing.T) {
 	var none error
 	if bindable(&none); none != nil {
 		t.Errorf("no error became %v", none)
+	}
+}
+
+type roundTrip func(*http.Request) (*http.Response, error)
+
+func (f roundTrip) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+// A miss asks the node again only for an address a peer could have: a page's
+// requests to the internet never wait on the LocalAPI.
+func TestOnlyATailnetAddressAsksForAFreshStatus(t *testing.T) {
+	peer := netip.MustParseAddr("100.101.102.103")
+	asked := 0
+	n := &Node{}
+	n.lc.Store(&local.Client{OmitAuth: true, Transport: roundTrip(func(r *http.Request) (*http.Response, error) {
+		asked++
+		body, _ := json.Marshal(&ipnstate.Status{BackendState: "Running"})
+		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(bytes.NewReader(body)), Request: r}, nil
+	})})
+	// Older than a recheck may use, young enough for a first look.
+	n.peers = &ipnstate.Status{Peer: map[key.NodePublic]*ipnstate.PeerStatus{{}: {TailscaleIPs: []netip.Addr{peer}}}}
+	n.peersAt = time.Now().Add(-time.Second)
+	ctx := context.Background()
+	if !n.isPeer(ctx, peer) || asked != 0 {
+		t.Errorf("a peer in the snapshot: asked %d times", asked)
+	}
+	for _, s := range []string{"8.8.8.8", "2606:4700::1111", "100.128.0.1"} {
+		if n.isPeer(ctx, netip.MustParseAddr(s)) || asked != 0 {
+			t.Errorf("%s, outside Tailscale's ranges, asked for a fresh status (%d)", s, asked)
+		}
+	}
+	if n.isPeer(ctx, netip.MustParseAddr("fd7a:115c:a1e0::9")) || asked != 1 {
+		t.Errorf("a missing tailnet address asked %d times, want 1", asked)
 	}
 }

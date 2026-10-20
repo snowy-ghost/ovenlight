@@ -31,10 +31,12 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -45,6 +47,7 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.captionBarIgnoringVisibility
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.only
@@ -57,7 +60,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -101,7 +103,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.isTraversalGroup
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.traversalIndex
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
@@ -358,8 +362,21 @@ data class PageLook(val cover: Boolean = true, val header: String? = null, val b
   const background = [document.documentElement, document.body].map(e => e && getComputedStyle(e).backgroundColor)
     .find(c => c && c !== "transparent" && !/^rgba\(.*,\s*0\)$/.test(c)) ?? null;
   const viewport = [...document.querySelectorAll('meta[name="viewport" i]')].pop();
-  return { cover: /viewport-fit\s*=\s*cover/i.test(viewport?.content ?? ""), header: header ?? background, background };
+  const navigation = performance.getEntriesByType("navigation")[0];
+  const down = navigation?.responseStatus === 502 && document.contentType === "text/plain";
+  return { cover: /viewport-fit\s*=\s*cover/i.test(viewport?.content ?? ""), header: header ?? background, background, down };
 })()"""
+
+        /**
+         * Whether the page the script read is a plain-text 502, the connector's answer for an app
+         * that isn't running (see [AppLoadGate.appIsDown]): WebView shows that page, and may finish
+         * it before it reports the error. A script can't read the connector's code, so an app's
+         * own plain-text 502 first page counts too.
+         */
+        fun appIsDown(result: String?): Boolean {
+            val fields = result?.let { runCatching { ovenlightJSON.parseToJsonElement(it) as? JsonObject }.getOrNull() }
+            return (fields?.get("down") as? JsonPrimitive)?.booleanOrNull == true
+        }
 
         /** The script's answer, a JSON object; anything else is a page that didn't ask to cover the screen. */
         fun decoded(result: String?): PageLook {
@@ -408,9 +425,10 @@ fun rememberAppBack(canGoBack: () -> Boolean, goBack: () -> Unit, close: () -> U
     return { progress.value }
 }
 
-/** The open app as a back gesture shrinks it: toward 0.9, its corners rounding to 28 dp. */
-fun Modifier.backShrink(progress: () -> Float): Modifier = graphicsLayer {
+/** The open app as a back gesture shrinks it toward [origin], its icon: to 0.9, its corners rounding to 28 dp. */
+fun Modifier.backShrink(progress: () -> Float, origin: TransformOrigin): Modifier = graphicsLayer {
     val p = progress()
+    transformOrigin = origin
     scaleX = 1 - 0.1f * p
     scaleY = 1 - 0.1f * p
     shape = RoundedCornerShape(28.dp * p)
@@ -497,7 +515,11 @@ fun AppChrome(
     // Gone at once for the frame a snapshot takes, mid-animation or not. Back, it shows as it
     // was without animating in: AnimatedVisibility doesn't animate what is visible from the start.
     if (controller.hiddenForSnapshot) return
-    Box(Modifier.fillMaxSize().windowInsetsPadding(chromeTop.union(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)))) {
+    Box(
+        Modifier.fillMaxSize().windowInsetsPadding(chromeTop.union(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)))
+            // TalkBack reaches the way home and the menu before the page under them.
+            .semantics { isTraversalGroup = true; traversalIndex = -1f },
+    ) {
         AnimatedVisibility(
             visible = controller.isShown || touchExploration,
             modifier = Modifier.align(Alignment.TopCenter).padding(top = 4.dp, start = 16.dp, end = 16.dp),
@@ -505,7 +527,7 @@ fun AppChrome(
                 scaleIn(initialScale = 0.6f, transformOrigin = TransformOrigin(0.5f, 0f)),
             exit = slideOutVertically { -it } + fadeOut() + scaleOut(targetScale = 0.6f, transformOrigin = TransformOrigin(0.5f, 0f)),
         ) {
-            ChromePill(app, icon, actions, controller)
+            ChromePill(app, icon, actions, controller, touchExploration)
         }
         AnimatedVisibility(
             visible = !controller.isShown && !touchExploration,
@@ -518,13 +540,17 @@ fun AppChrome(
     }
 }
 
-/** The pill, with the tip pointing at it while the tip is due. The tip and the menu keep the reader's text size; the pill caps it. */
+/**
+ * The pill, with the tip pointing at it while the tip is due. The tip teaches the handle, which
+ * TalkBack never needs, so with TalkBack on it waits. The tip and the menu keep the reader's text
+ * size; the pill caps it.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ChromePill(app: WebApp, icon: Bitmap?, actions: AppChromeActions, controller: ChromeController) {
+private fun ChromePill(app: WebApp, icon: Bitmap?, actions: AppChromeActions, controller: ChromeController, touchExploration: Boolean) {
     val tip = rememberTooltipState(isPersistent = true)
     val reader = LocalDensity.current
-    LaunchedEffect(controller.tipShowing) { if (controller.tipShowing) tip.show() else tip.dismiss() }
+    LaunchedEffect(controller.tipShowing, touchExploration) { if (controller.tipShowing && !touchExploration) tip.show() else tip.dismiss() }
     TooltipBox(
         positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Below),
         tooltip = {
@@ -535,7 +561,7 @@ private fun ChromePill(app: WebApp, icon: Bitmap?, actions: AppChromeActions, co
         },
         state = tip,
         onDismissRequest = controller::closeTip,
-        // Holds focus, as iOS's popover does: TalkBack and a keyboard reach the tip, and Back closes it.
+        // Holds focus, as iOS's popover does: a keyboard reaches the tip, and Back closes it.
         focusable = true,
         enableUserInput = false,
         hasAction = true,
@@ -552,6 +578,8 @@ private fun Pill(app: WebApp, icon: Bitmap?, actions: AppChromeActions, controll
         shape = CircleShape,
         color = colors.surfaceContainer,
         shadowElevation = 3.dp,
+        // A shadow barely shows on a dark page; an edge does.
+        border = if (isSystemInDarkTheme()) BorderStroke(1.dp, colors.outlineVariant) else null,
         modifier = Modifier
             .widthIn(max = 320.dp)
             .height(48.dp)
@@ -564,7 +592,7 @@ private fun Pill(app: WebApp, icon: Bitmap?, actions: AppChromeActions, controll
             }
             VerticalDivider(Modifier.height(18.dp), color = colors.outlineVariant)
             Box(Modifier.weight(1f, fill = false)) {
-                val options = stringResource(R.string.chrome_options, app.name)
+                val options = stringResource(R.string.options, app.name)
                 Row(
                     Modifier
                         .clip(CircleShape)
@@ -583,7 +611,7 @@ private fun Pill(app: WebApp, icon: Bitmap?, actions: AppChromeActions, controll
                     Icon(painterResource(R.drawable.ic_expand_more), contentDescription = null, tint = colors.onSurfaceVariant)
                 }
                 CompositionLocalProvider(LocalDensity provides reader) {
-                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    RoundedMenu(expanded = menu, onDismissRequest = { menu = false }) {
                         AppMenuItems(app, actions, close = { menu = false })
                     }
                 }
@@ -592,23 +620,21 @@ private fun Pill(app: WebApp, icon: Bitmap?, actions: AppChromeActions, controll
     }
 }
 
-/** The app menu, in iOS's sections: getting around, then this app, then the lock. */
+/** The app menu, in iOS's sections: the page, then this app, then the lock. All apps is the pill's own button. */
 @Composable
 private fun AppMenuItems(app: WebApp, actions: AppChromeActions, close: () -> Unit) {
-    AppMenuItem(close, stringResource(R.string.chrome_all_apps), R.drawable.ic_apps, action = actions.home)
     AppMenuItem(close, stringResource(R.string.chrome_reload), R.drawable.ic_refresh, action = actions.reload)
-    // Open in browser never applies: every Android app goes through Ovenlight's own connection.
     HorizontalDivider()
-    actions.share?.let { AppMenuItem(close, stringResource(R.string.chrome_share), R.drawable.ic_share, action = it) }
+    actions.share?.let { AppMenuItem(close, stringResource(R.string.share_ellipsis), R.drawable.ic_share, action = it) }
     actions.sendFeedback?.let {
         // A guest's feedback goes to the owner; Report a problem goes to Ovenlight.
-        val label = app.sharedBy?.let { owner -> stringResource(R.string.chrome_send_feedback_to, owner) } ?: stringResource(R.string.chrome_send_feedback)
+        val label = app.sharedBy?.let { owner -> stringResource(R.string.chrome_send_feedback_to, owner) } ?: stringResource(R.string.send_feedback)
         AppMenuItem(close, label, R.drawable.ic_feedback, action = it)
     }
     AppMenuItem(close, ConnectionCopy.reportProblem, R.drawable.ic_flag, action = actions.reportProblem)
     actions.leave?.let { AppMenuItem(close, ConnectionCopy.leaveApps(it.owner), R.drawable.ic_logout, destructive = true, action = it.action) }
     HorizontalDivider()
-    AppMenuItem(close, stringResource(R.string.chrome_lock), R.drawable.ic_lock, action = actions.lock)
+    AppMenuItem(close, stringResource(R.string.lock_ovenlight), R.drawable.ic_lock, action = actions.lock)
 }
 
 /** The handle's height, which the band at the top of an open app holds below [chromeTop] (AppHostView). */
@@ -626,21 +652,29 @@ val chromeTop: WindowInsets
 
 /**
  * What stays of the chrome while it's tucked away: a small handle at the top center, in the band
- * just below the status bar, which takes its own touches (they pull down the shade). It works on
- * any page, however the page scrolls.
+ * just below the status bar, which takes its own touches (they pull down the shade). The whole
+ * band takes a tap for it, and so does a 48 dp target around the mark, reaching below the band:
+ * with no status bar above, in the bottom half of split screen, the divider's grip takes taps on
+ * the mark itself. Narrow, so the page's top row keeps its own taps. It works on any page,
+ * however the page scrolls.
  */
 @Composable
 private fun ChromeHandle(header: Color, reveal: () -> Unit) {
     val label = stringResource(R.string.chrome_show_menu)
-    Box(
-        Modifier
-            .size(width = 120.dp, height = ChromeHandleHeight)
-            .clickable(role = Role.Button, onClick = reveal)
-            .semantics { contentDescription = label },
-        contentAlignment = Alignment.Center,
-    ) {
-        val mark = if (header.isLight()) Color.Black else Color.White
-        Box(Modifier.size(width = 32.dp, height = 4.dp).background(mark.copy(alpha = 0.3f), CircleShape))
+    Box(Modifier.fillMaxWidth()) {
+        Box(Modifier.align(Alignment.TopCenter).size(width = 120.dp, height = 48.dp).pointerInput(reveal) { detectTapGestures { reveal() } })
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(ChromeHandleHeight)
+                .clickable(role = Role.Button, onClick = reveal)
+                .semantics { contentDescription = label },
+            contentAlignment = Alignment.Center,
+        ) {
+            // At 80 percent the mark keeps 3:1 against any band (3.2 at worst, a saturated red).
+            val mark = if (header.isLight()) Color.Black else Color.White
+            Box(Modifier.size(width = 32.dp, height = 4.dp).background(mark.copy(alpha = 0.8f), CircleShape))
+        }
     }
 }
 
@@ -705,11 +739,10 @@ private suspend fun WebView.evaluate(script: String): String? = suspendCancellab
 /**
  * The chrome over one open app, from the model: the pill and its menu, the page watched for the
  * pill to follow, the header color remembered as each load reads it, Send feedback, Report a
- * problem and Leave.
+ * problem and Leave. [app] is as the registry lists it now, so a rename shows.
  */
 @Composable
-fun AppChromeHost(model: AppModel, page: AppPage, icon: Bitmap?, header: Color, onClose: () -> Unit) {
-    val app = page.app
+fun AppChromeHost(model: AppModel, page: AppPage, app: WebApp, icon: Bitmap?, header: Color, onClose: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val loaded by page.hasLoadedOnce.collectAsState()
@@ -720,7 +753,7 @@ fun AppChromeHost(model: AppModel, page: AppPage, icon: Bitmap?, header: Color, 
     val machines by model.sharing.machines.collectAsState()
     val shareable = remember(machines, app) { model.sharing.info(app)?.takeIf { it.second.shareable } }
     LaunchedEffect(app.id) { if (!app.isShared && app.discovered) model.sharing.refreshIfStale(model.registry.apps) }
-    var noMailApp by remember { mutableStateOf(false) }
+    var noMailApp by remember { mutableStateOf<MailDraft?>(null) }
     var leaving by remember { mutableStateOf<Membership?>(null) }
     val density = LocalDensity.current.density
     val dark = isSystemInDarkTheme()
@@ -765,7 +798,7 @@ fun AppChromeHost(model: AppModel, page: AppPage, icon: Bitmap?, header: Color, 
             } else {
                 null
             },
-            reportProblem = { if (!MailDraft.problemReport(context, model.nodes, model.pool, app).send(context)) noMailApp = true },
+            reportProblem = { noMailApp = MailDraft.problemReport(context, model.nodes, model.pool, app).takeUnless { it.send(context) } },
             leave = membership?.let { owner -> AppChromeActions.Leave(owner.ownerName) { leaving = owner } },
             lock = model.lock::lock,
         ),
@@ -781,7 +814,7 @@ fun AppChromeHost(model: AppModel, page: AppPage, icon: Bitmap?, header: Color, 
             scope = model.scope,
         )
     }
-    if (noMailApp) NoEmailAppDialog(onDismiss = { noMailApp = false })
+    noMailApp?.let { NoEmailAppDialog(it, onDismiss = { noMailApp = null }) }
     leaving?.let { membership ->
         LeaveConfirmation(membership.ownerName, onDismiss = { leaving = null }) {
             // As iOS: the app closes first, then its owner's apps go, this one among them.

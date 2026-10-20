@@ -5,6 +5,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.io.FileNotFoundException
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -23,6 +24,9 @@ class AcknowledgementsTests {
         assertTrue(notices.contains("androidx.compose.ui:ui"))
         assertTrue(notices.contains("Source Serif 4"))
         assertTrue(notices.contains("Material Symbols"))
+        assertTrue("CameraX's camera-core links it in", notices.contains("The LibYuv Project Authors"))
+        assertTrue(notices.contains("PublicSuffixDatabase.list"))
+        assertFalse("a BOM ships no code", notices.contains("compose-bom"))
     }
 
     @Test
@@ -34,16 +38,28 @@ class AcknowledgementsTests {
         assertNull("text that isn't UTF-8 counts as missing", Acknowledgements.notices { java.io.ByteArrayInputStream(byteArrayOf(0xC3.toByte(), 0x28)) })
     }
 
-    /** A section's title shows as a heading, and each line wraps under its own indent. */
+    /** A module's title underlined with `=` shows as a heading. */
     @Test
-    fun testEachLineHangsUnderItsOwnIndent() {
+    fun testASectionTitleIsAHeading() {
         assertEquals("Go standard library", Acknowledgements.heading("Go standard library\n==================="))
         assertNull(Acknowledgements.heading("Copyright 2009 The Go Authors."))
         assertNull("only = underlines a heading", Acknowledgements.heading("Source Serif\n------------"))
+    }
+
+    /** Android only: each line wraps under its own indent. */
+    @Test
+    fun testEachLineHangsUnderItsOwnIndent() {
         assertEquals(listOf("Apache:\n  androidx.core:core:1.19.1"), Acknowledgements.paragraphs("Apache:\n  androidx.core:core:1.19.1"))
         assertEquals(
             listOf(0 to "Apache:", 2 to "androidx.core:core:1.19.1", 6 to "\"License\" shall mean"),
             Acknowledgements.lines("Apache:\n  androidx.core:core:1.19.1\n      \"License\" shall mean"),
         )
+    }
+
+    /** A library's coordinates break only where they don't fit, and then only between their parts. */
+    @Test
+    fun testCoordinatesStayWhole() {
+        assertEquals("androidx.core:\u200Bcore-\u2060ktx:\u200B1.9", Acknowledgements.unbroken("androidx.core:core-ktx:1.9"))
+        assertEquals("prose breaks as prose", "Version 2.0 (the", Acknowledgements.unbroken("Version 2.0 (the"))
     }
 }

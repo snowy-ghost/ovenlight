@@ -7,7 +7,11 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
@@ -15,6 +19,8 @@ import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -27,6 +33,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeDown
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.zxing.BinaryBitmap
@@ -46,6 +53,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.Request
 import okio.Buffer
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -78,9 +86,9 @@ class SharingViewTests {
         apps = listOf(club, budget),
         guests = AdminGuestList(
             guests = listOf(
-                AdminGuest("n1", "p1", "Sam", "book-club", "ovenlight-4k2x9q", claimedAt = ago(120), lastOpened = ago(64)),
-                AdminGuest("n4", "p1", "Sam", "book-club", "ovenlight-m7c1pw", claimedAt = ago(63), lastOpened = now),
-                AdminGuest("n2", "p2", "Kim", "book-club", "ovenlight-r5j8de", claimedAt = ago(30), lastOpened = ago(1)),
+                AdminGuest("n1", "p1", "Sam", "book-club", claimedAt = ago(120), lastOpened = ago(64)),
+                AdminGuest("n4", "p1", "Sam", "book-club", claimedAt = ago(63), lastOpened = now),
+                AdminGuest("n2", "p2", "Kim", "book-club", claimedAt = ago(30), lastOpened = ago(1)),
             ),
             invites = listOf(
                 AdminInvite("i3", "Lee", "p3", "book-club", AdminInvite.sent, expires = now.plusSeconds(86_400)),
@@ -105,8 +113,10 @@ class SharingViewTests {
         refresh = { refreshes += 1 },
     )
 
-    private fun show(state: SharingState, root: SharingPage = SharingPage.List) {
-        composeRule.setContent { OvenlightTheme { SharingScreen(state, root, onClose = {}, scope = rememberCoroutineScope()) } }
+    private fun show(state: SharingState, root: SharingPage = SharingPage.List) = show(state, SharingPlace(root))
+
+    private fun show(state: SharingState, place: SharingPlace) {
+        composeRule.setContent { OvenlightTheme { SharingScreen(state, place, onClose = {}, scope = rememberCoroutineScope()) } }
         composeRule.checkAccessibility()
     }
 
@@ -143,6 +153,15 @@ class SharingViewTests {
         text(AdminError.NotOwner.message).assertIsDisplayed()
     }
 
+    /** Android only: an app or person page with nothing to show, after a refresh that failed, says why. */
+    @Test
+    fun testAPageWhoseComputerDidntAnswerSaysWhy() {
+        show(state(emptyList()).copy(problem = AdminError.Unreachable.message), SharingPage.App(machine.id, "book-club"))
+        text("No computers answered").assertIsDisplayed()
+        text(AdminError.Unreachable.message).assertIsDisplayed()
+        composeRule.onNodeWithText("App not found").assertDoesNotExist()
+    }
+
     @Test
     fun testAnAppsPeopleAndTheirRemoval() {
         show(state(), SharingPage.App(machine.id, "book-club"))
@@ -150,12 +169,12 @@ class SharingViewTests {
         text("2 devices · opened today").assertIsDisplayed()
         text("1 device · opened yesterday").assertIsDisplayed()
         text("Unused, expires tomorrow").assertIsDisplayed()
-        text("Review invite, unused, expires ${machine.guests.invites[1].expiresIn}").assertIsDisplayed()
+        text("Review invite, expires ${machine.guests.invites[1].expiresIn}").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Sam options").performClick()
         composeRule.onNodeWithText("Add a device for Sam").assertIsDisplayed()
         composeRule.onNodeWithText("Remove Sam").performClick()
         inDialog("Remove Sam?").assertIsDisplayed()
-        inDialog("Sam can't open Book Club anymore, on any device. Each of their devices is also removed from your Tailscale network unless it has another of your apps.")
+        inDialog("Sam can’t open Book Club anymore, on any device. Each of their devices is also removed from your Tailscale network unless it has another of your apps.")
             .assertIsDisplayed()
         inDialog("Remove").performClick()
         composeRule.waitForIdle()
@@ -193,13 +212,15 @@ class SharingViewTests {
         show(state(), SharingPage.App(machine.id, "budget"))
         text("Budget is only for you.").assertIsDisplayed()
         text("To share it, run this on its computer: ovenlight publish --slug budget --shareable").assertIsDisplayed()
+        // Which the footer finds in it, to set in code type.
+        assertTrue(ApplicationProvider.getApplicationContext<Context>().getString(R.string.sharing_not_shareable_footer, "budget").contains(SharingList.shareableCommand("budget")))
         composeRule.onNodeWithText("People").assertDoesNotExist()
     }
 
     @Test
     fun testSelectingPeopleRemovesSeveralButNeverAppReview() {
         val reviewed = machine.copy(
-            guests = machine.guests.copy(guests = machine.guests.guests + AdminGuest("n9", "p4", "App Review", "book-club", "ovenlight-x", claimedAt = ago(2))),
+            guests = machine.guests.copy(guests = machine.guests.guests + AdminGuest("n9", "p4", "App Review", "book-club", claimedAt = ago(2))),
         )
         show(state(listOf(reviewed)), SharingPage.People)
         // App Review joined last and opened nothing since, so it's last; its open review invite keeps it out of a selection.
@@ -213,11 +234,12 @@ class SharingViewTests {
         composeRule.onNodeWithText("2 selected").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Remove").performClick()
         inDialog("Remove 2 people?").assertIsDisplayed()
-        inDialog("They can't open your apps anymore, on any device, and their devices are removed from your Tailscale network.").assertIsDisplayed()
+        inDialog("They can’t open your apps anymore, on any device, and their devices are removed from your Tailscale network.").assertIsDisplayed()
         inDialog("Remove").performClick()
         composeRule.waitForIdle()
         assertEquals(listOf("Remove 2 people"), confirmed)
         assertEquals(setOf("DELETE /v1/guests/p1?by=person", "DELETE /v1/guests/p2?by=person"), requests.map { it.line() }.toSet())
+        assertEquals("listed again once, after both", 1, refreshes)
         composeRule.onNodeWithText("People").assertIsDisplayed()
     }
 
@@ -232,11 +254,39 @@ class SharingViewTests {
         composeRule.onNodeWithContentDescription("Joined $first options").performScrollTo().performClick()
         composeRule.onNodeWithText("Remove").performClick()
         inDialog("Remove this device?").assertIsDisplayed()
-        inDialog("Sam can't open your apps on this device anymore, and it's removed from your Tailscale network.").assertIsDisplayed()
+        inDialog("Sam can’t open your apps on this device anymore, and it’s removed from your Tailscale network.").assertIsDisplayed()
         inDialog("Remove").performClick()
         composeRule.waitForIdle()
-        assertEquals(listOf("Remove Sam's device"), confirmed)
+        assertEquals(listOf("Remove Sam’s device"), confirmed)
         assertEquals("the device that joined first", listOf("DELETE /v1/guests/n1"), requests.map { it.line() })
+    }
+
+    /**
+     * Android's composer stays over the link's screen while it holds links (MainActivity.receive),
+     * and Send feedback with a send under way or a note keeps the link until it closes (AppModel.handleLink).
+     */
+    @Test
+    fun testALinkWaitsForUnsentWork() {
+        val composer = InviteComposer(machine, club)
+        assertFalse("an invite not yet made gives way", composer.holdsLinks)
+        composer.working = true
+        assertTrue("one being made stays", composer.holdsLinks)
+        composer.working = false
+        composer.result = AdminShareResult(AdminInvite("i9", "Jo", "p9", "book-club", AdminInvite.sent, expires = now.plusSeconds(86_400)))
+        assertTrue("its link shows only once", composer.holdsLinks)
+        composer.linkUsed = true
+        assertFalse("then the link goes on", composer.holdsLinks)
+
+        val draft = FeedbackDraft(screenshot = null, pageURL = null)
+        assertFalse("Send feedback with no note gives way", draft.holdsLinks)
+        draft.note.setTextAndPlaceCursorAtEnd("The chapter list stops scrolling.")
+        assertTrue("a note stays", draft.holdsLinks)
+        draft.result = FeedbackResult.Sent
+        assertFalse("sent, it gives way", draft.holdsLinks)
+        draft.note.setTextAndPlaceCursorAtEnd(" ")
+        draft.result = null
+        draft.sending = true
+        assertTrue("a send under way stays", draft.holdsLinks)
     }
 
     @Test
@@ -281,7 +331,7 @@ class SharingViewTests {
         inDialog("Invite for Jo").assertIsDisplayed()
         composeRule.onNode(SemanticsMatcher.expectValue(SemanticsProperties.PaneTitle, "Invite for Jo")).assertExists()
         composeRule.onNodeWithContentDescription("Invite code").assertIsDisplayed()
-        inDialog("Jo can join without your approval and reaches only Book Club. Until it's used, the link works like a key, so send it privately.").assertIsDisplayed()
+        inDialog("Jo can join without your approval and reaches only Book Club. Until it’s used, the link works like a key, so send it privately.").assertIsDisplayed()
         inDialog("Send invite").performClick()
         val chooser = shadowOf(ApplicationProvider.getApplicationContext<android.app.Application>()).nextStartedActivity
         assertEquals(Intent.ACTION_CHOOSER, chooser.action)
@@ -299,11 +349,149 @@ class SharingViewTests {
         assertEquals("one invite", 1, requests.size)
     }
 
+    /** The screen opens where its place says, as after the lock took it apart. */
+    @Test
+    fun testTheScreenComesBackToItsPage() {
+        val place = SharingPlace(SharingPage.List)
+        place.pages += SharingPage.App(machine.id, "book-club")
+        show(state(), place)
+        composeRule.onNodeWithText("Share Book Club…").assertIsDisplayed()
+        composeRule.runOnIdle { place.pages.removeAt(place.pages.lastIndex) }
+        composeRule.onNodeWithText("Apps").assertIsDisplayed()
+    }
+
+    /** Android only: the lock takes the screen apart, and its page comes back scrolled as it was. */
+    @Test
+    @Config(qualifiers = "w411dp-h480dp")
+    fun testAPageComesBackScrolledAfterTheLock() {
+        val place = SharingPlace(SharingPage.App(machine.id, "book-club"))
+        var locked by mutableStateOf(false)
+        composeRule.setContent { OvenlightTheme { if (!locked) SharingScreen(state(), place, onClose = {}, scope = rememberCoroutineScope()) } }
+        val offset = { composeRule.onNode(hasScrollAction()).fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange].value() }
+        text("Review invite, expires ${machine.guests.invites[1].expiresIn}")
+        val scrolled = offset()
+        assertTrue(scrolled > 0f)
+        composeRule.runOnIdle { locked = true }
+        composeRule.runOnIdle { locked = false }
+        assertEquals(scrolled, offset())
+    }
+
+    /** The link shows only once, so closing a new invite before it's sent or copied asks first. */
+    @Test
+    fun testClosingAnUnsentInviteAsksFirst() {
+        val link = "https://ovenlight.app/join#v=1&invite=i9"
+        answer = {
+            FetchResponse(
+                200,
+                """{"invite":{"id":"i9","to":"Jo","person":"p9","app":"book-club","state":"sent","expires":"${now.plusSeconds(86_400)}"},"link":"$link","message":"$link"}""".toByteArray(),
+            )
+        }
+        var dismissed = 0
+        composeRule.setContent { OvenlightTheme { InviteComposerDialog(InviteComposer(machine, club), state(), rememberCoroutineScope(), onDismiss = { dismissed += 1 }) } }
+        composeRule.onNodeWithText("Their name, like Sam").performTextInput("Jo")
+        inDialog("Create").performClick()
+        inDialog("Invite for Jo").assertIsDisplayed()
+        val close = composeRule.onNodeWithContentDescription("Close")
+        close.performClick()
+        inDialog("Close without sending?").assertIsDisplayed()
+        inDialog("This link won’t show again. The invite stays open until it expires, and you can cancel it in People & sharing.").assertIsDisplayed()
+        inDialog("Keep").performClick()
+        inDialog("Close without sending?").assertDoesNotExist()
+        assertEquals(0, dismissed)
+        close.performClick()
+        inDialog("Close").performClick()
+        assertEquals(1, dismissed)
+        // Copied, the link is safe: closing goes at once.
+        inDialog("Copy link").performClick()
+        close.performClick()
+        inDialog("Close without sending?").assertDoesNotExist()
+        assertEquals(2, dismissed)
+    }
+
+    /**
+     * The count is of feedback newer than the newest the inbox showed when last opened, with no
+     * number once there's none new; the inbox pulls to refresh.
+     */
+    @Test
+    fun testTheFeedbackCountShowsOnlyNewOnes() {
+        val older = AdminFeedback("f0", now.minusSeconds(7_200), "book-club", "Kim", "guest", note = "The cover is blurry.")
+        val two = machine.copy(feedback = machine.feedback + older)
+        assertEquals("before the inbox was ever opened, all of it", 2, SharingList.newFeedback(two.feedback, seen = null))
+        assertEquals(1, SharingList.newFeedback(two.feedback, seen = older.at))
+        assertEquals(0, SharingList.newFeedback(two.feedback, seen = machine.feedback[0].at))
+        var seen by mutableStateOf<Instant?>(older.at)
+        val base = state(listOf(two))
+        val place = SharingPlace(SharingPage.List)
+        composeRule.setContent {
+            OvenlightTheme { SharingScreen(base.copy(feedbackSeen = seen, seeFeedback = { seen = it }), place, onClose = {}, scope = rememberCoroutineScope()) }
+        }
+        val row = hasText("Feedback") and hasClickAction()
+        composeRule.onNode(row and hasText("1")).performScrollTo().performClick()
+        text("The cover is blurry.").assertIsDisplayed()
+        assertEquals("opening it sees up to the newest", machine.feedback[0].at, seen)
+        val before = refreshes
+        composeRule.onNode(hasScrollAction()).performTouchInput { swipeDown() }
+        composeRule.waitForIdle()
+        assertTrue("it pulls to refresh", refreshes > before)
+        composeRule.onNodeWithContentDescription("Back").performClick()
+        composeRule.onNode(row).performScrollTo().assertIsDisplayed()
+        composeRule.onNode(row and (hasText("1") or hasText("2"))).assertDoesNotExist()
+
+        // One app's inbox, from its People page, sees up to its newest too, unless another app
+        // has unseen feedback from before that newest, whose count moving the mark would lose.
+        val earlier = AdminFeedback("f2", now.minusSeconds(3_600), "garden", "Kim", "guest", note = "Add the bean rows.")
+        val later = AdminFeedback("f3", now.minusSeconds(600), "garden", "Kim", "guest", note = "And the peas.")
+        val machines = base.machines as MutableStateFlow
+        machines.value = listOf(two.copy(feedback = two.feedback + earlier))
+        seen = older.at
+        composeRule.runOnIdle { place.pages += SharingPage.Feedback(two.id, "book-club") }
+        text("The cover is blurry.").assertIsDisplayed()
+        assertEquals("Garden's earlier one is still new", older.at, seen)
+        composeRule.onNodeWithContentDescription("Back").performClick()
+        machines.value = listOf(two.copy(feedback = two.feedback + later))
+        composeRule.runOnIdle { place.pages += SharingPage.Feedback(two.id, "book-club") }
+        text("The cover is blurry.").assertIsDisplayed()
+        assertEquals("Garden's later one stays new as the mark moves", machine.feedback[0].at, seen)
+    }
+
+    /**
+     * Share says the phone's own connection is down before it asks for the screen lock, as Can't
+     * reach does. A node that's retrying is up, and only its computers didn't answer: that's
+     * the computer's side, so neither says so then.
+     */
+    @Test
+    fun testCantReachSaysWhenThePhoneNeverConnected() {
+        val detail = "Ovenlight couldn’t connect. Check that you’re online, then try again."
+        val own = WebApp(name = "Book Club", startURL = URI("https://book-club.tail1.ts.net/"), discovered = true)
+        assertEquals(detail, ConnectionCopy.cantReachDetail(own, neverConnected = true))
+        assertEquals("a guest hears it too", detail, ConnectionCopy.cantReachDetail(own.copy(membershipID = "m1", sharedBy = "Riley"), neverConnected = true))
+        CopyRules.assertNeutral(detail)
+        assertTrue(AppLoadGate.neverConnected(NodeState.Starting))
+        assertTrue(AppLoadGate.neverConnected(NodeState.Connecting))
+        assertFalse("its computers didn't answer", AppLoadGate.neverConnected(NodeState.Retrying(3)))
+        var owner by mutableStateOf<NodeState>(NodeState.Connecting)
+        val composer = InviteComposer(machine, club)
+        composeRule.setContent {
+            OvenlightTheme { InviteComposerDialog(composer, state().copy(isAvailable = false, ownerState = owner), rememberCoroutineScope(), onDismiss = {}) }
+        }
+        composeRule.onNodeWithText("Their name, like Sam").performTextInput("Jo")
+        inDialog("Create").performClick()
+        inDialog(detail).assertIsDisplayed()
+        assertEquals("no screen lock, and nothing sent", emptyList<String>(), confirmed)
+        assertTrue(requests.isEmpty())
+        owner = NodeState.Retrying(3)
+        inDialog("Create").performClick()
+        composeRule.waitForIdle()
+        assertEquals("the screen lock", 1, confirmed.size)
+        assertTrue("then the computer is asked", requests.isNotEmpty())
+        inDialog(detail).assertDoesNotExist()
+    }
+
     @Test
     fun testAScreenshotThatWontLoadSaysSo() {
         answer = { FetchResponse(404, """{"error":"no screenshot","code":"not_found"}""".toByteArray()) }
         show(state(), SharingPage.FeedbackItem(machine.id, "f1"))
-        text("Couldn't load the screenshot.").assertIsDisplayed()
+        text("Couldn’t load the screenshot.").assertIsDisplayed()
         assertEquals(listOf("GET /v1/feedback/f1/screenshot"), requests.map { it.line() })
     }
 

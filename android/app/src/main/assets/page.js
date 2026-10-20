@@ -1,9 +1,9 @@
 // Ovenlight's page script, added at document start to every frame of an app's pages
 // (PageBridge.kt). It hides service workers and speech recognition, which iOS doesn't run
-// either (WebView's would hand the microphone to Google's recognizer); keeps the tracks
-// getUserMedia hands out, so Ovenlight can stop them on lock and on close; and reports clicks
-// on <a download>, with the name they give, and a blob's bytes, read at the click since pages
-// often revoke a blob URL right after it.
+// either (WebView's would hand the microphone to Google's recognizer); removes WebRTC; keeps
+// the tracks getUserMedia hands out, so Ovenlight can stop them on lock and on close; and
+// reports clicks on <a download>, with the name they give, and a blob's bytes, read at the
+// click since pages often revoke a blob URL right after it.
 //
 // Ovenlight hands the main frame alone a MessagePort, posted to the window, which this script
 // takes before any page script can listen. No frame has anything else to reach Ovenlight with,
@@ -39,6 +39,27 @@
   const eventOrigin = getter(MessageEvent, "origin"), eventPorts = getter(MessageEvent, "ports");
   const portPost = MessagePort.prototype.postMessage, portStart = MessagePort.prototype.start, portClose = MessagePort.prototype.close;
   const windowPost = window.postMessage;
+  const ownNames = Object.getOwnPropertyNames, eventTarget = getter(Event, "target");
+  const frameWindow = getter(HTMLIFrameElement, "contentWindow");
+
+  // WebRTC opens connections of its own, its UDP around Ovenlight's proxy, and nothing in
+  // Ovenlight needs it, so every RTC interface goes. This script doesn't run in a frame's first,
+  // empty document, so a fresh about:blank frame loses them as it loads, during the insertion
+  // that makes it (listenFirst). A page that reaches a frame's empty document any other way
+  // (before its src loads, say) still finds them there.
+  const withoutWebRTC = frame => {
+    const names = ownNames(frame);
+    for (let i = 0; i < names.length; i++) {
+      const name = names[i];
+      if (apply(startsWith, name, ["RTC"]) || apply(startsWith, name, ["webkitRTC"])) delete frame[name];
+    }
+  };
+  withoutWebRTC(window);
+  const frameLoaded = event => {
+    try {
+      withoutWebRTC(apply(frameWindow, apply(eventTarget, event, []), []));
+    } catch (e) {}
+  };
   const top = window.top, isMain = window === top, ownOrigin = location.origin;
   // Ovenlight's offer of a port, and the page script's answer once it holds one (PageBridge.kt).
   const OFFER = "__OFFER__", ANSWER = "__ANSWER__", STOP = "__STOP__", RELAY = "ovenlight-relay";
@@ -48,7 +69,7 @@
   // measured; an ArrayBuffer by its own byte length. Anything over the caps never leaves, and big
   // messages share a budget of one blob's worth a second, so a page can't queue gigabytes in
   // Ovenlight one capped message at a time. Small ones (capture reports) don't count.
-  const STRING_LIMIT = HREF_LIMIT + HEADER_LIMIT, BUFFER_LIMIT = LIMIT + HEADER_LIMIT + 4, SMALL = 64;
+  const STRING_LIMIT = HREF_LIMIT + HEADER_LIMIT, BUFFER_LIMIT = LIMIT + HEADER_LIMIT + 4, SMALL = __SMALL__;
   let budget = BUFFER_LIMIT, budgetAt = apply(now, clock, []);
   const send = message => {
     let size;
@@ -157,10 +178,15 @@
       }
     }
   };
-  const listenFirst = () => apply(listen, window, ["message", heard, true]);
+  // A load event never reaches the window, so the frames' go to the document.
+  const listenFirst = () => {
+    apply(listen, window, ["message", heard, true]);
+    apply(listen, document, ["load", frameLoaded, true]);
+  };
   listenFirst();
-  // document.open() takes every listener off the window, this script's too, so it goes back on as
-  // open() or write() returns, which keeps the channel working for a page that opens its document.
+  // document.open() takes every listener off the window and the document, this script's too, so
+  // they go back on as open() or write() returns, which keeps the channel working for a page that
+  // opens its document.
   // It isn't a boundary: page code that runs during open() or write() (a custom element's
   // reaction, a removed frame's unload, a script write() adds), or another realm's open(), can
   // put its own listener first and take the next offer. Such a page gains nothing new: reports

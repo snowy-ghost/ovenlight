@@ -4,7 +4,9 @@ import android.view.MotionEvent
 import java.net.URI
 import java.util.UUID
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** When the chrome follows the page (AppChrome.swift's WebViewObserver), and which header color an app remembers. */
@@ -157,5 +159,8 @@ class ChromeRulesTests {
         assertEquals(PageLook(cover = false), PageLook.decoded("""{"cover":false,"header":null,"background":null}"""))
         // No answer, or not the script's, is a page that didn't ask to cover the screen.
         for (result in listOf("null", "42", "\"rgb(1, 2, 3)\"", null)) assertEquals(PageLook(cover = false), PageLook.decoded(result))
+        // Android only: a plain-text 502 shown as the page is an app that isn't running.
+        assertTrue(PageLook.appIsDown("""{"cover":false,"header":null,"background":null,"down":true}"""))
+        for (result in listOf("""{"cover":false,"down":false}""", """{"cover":false}""", "null", null)) assertFalse(PageLook.appIsDown(result))
     }
 }

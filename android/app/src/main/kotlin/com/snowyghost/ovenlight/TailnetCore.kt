@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.LinkProperties
 import android.net.Network
+import android.net.NetworkCapabilities
 import android.os.Build
 import android.util.Log
 import com.snowyghost.ovenlight.core.Core
@@ -15,10 +16,13 @@ import java.net.InetSocketAddress
 import java.net.Proxy
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
 import okhttp3.Authenticator
 import okhttp3.Call
 import okhttp3.Callback
+import okhttp3.ConnectionPool
 import okhttp3.Credentials
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -58,17 +62,33 @@ object TailnetCore : Platform, TailnetClients {
 
     private lateinit var connectivity: ConnectivityManager
 
+    private val mutableOnline = MutableStateFlow(true)
+
+    /** The phone has a default network that offers the internet, as iOS's satisfied path: not in airplane mode or with no signal. */
+    val online: StateFlow<Boolean> = mutableOnline
+
     fun start(context: Context) {
         Core.init(this, BuildConfig.DEBUG)
         proxyAddress = Core.proxyAddress()
         proxySecret = Core.proxySecret()
         proxyRealm = Core.proxyRealm()
         connectivity = context.getSystemService(ConnectivityManager::class.java)
+        mutableOnline.value = hasInternet(connectivity.activeNetwork?.let(connectivity::getNetworkCapabilities))
         connectivity.registerDefaultNetworkCallback(object : ConnectivityManager.NetworkCallback() {
+            override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
+                mutableOnline.value = hasInternet(capabilities)
+            }
             override fun onLinkPropertiesChanged(network: Network, properties: LinkProperties) = reports.execute { report(properties) }
-            override fun onLost(network: Network) = reports.execute { Core.networkChanged("", "", "") }
+            // Only when no network takes over: a new default arrives with its own capabilities.
+            override fun onLost(network: Network) {
+                mutableOnline.value = false
+                reports.execute { Core.networkChanged("", "", "") }
+            }
         })
     }
+
+    private fun hasInternet(capabilities: NetworkCapabilities?): Boolean =
+        capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
 
     /**
      * Reports the current default network, as Ovenlight comes to the foreground, on the same
@@ -148,8 +168,9 @@ object TailnetCore : Platform, TailnetClients {
 
     /**
      * Fetches through the proxy with [routeKey], answering its challenge up front. Null when
-     * nothing answered; any HTTP answer, an error page included, is a response. Bodies are
-     * capped, since every fetch here is a small page, manifest, API answer or feedback screenshot.
+     * nothing answered; any HTTP answer, an error page included, is a response. A body past
+     * the cap is no answer either, since every fetch here is a small page, manifest, API answer or
+     * feedback screenshot.
      */
     override fun session(routeKey: String, timeoutMillis: Long, totalMillis: Long): Send {
         val client = client(routeKey)
@@ -174,7 +195,10 @@ object TailnetCore : Platform, TailnetClients {
 
     // Redirects are followed, as iOS's sessions follow them (an app's start page that sends
     // `/` to `/login` still names the app), but never from https to http.
-    private val http = OkHttpClient.Builder().cache(null).followSslRedirects(false).build()
+    // Idle connections go after 90 s, before the connector closes them at 2 minutes: a pooled
+    // GET on a closed one fails at once, as retries are off.
+    private val http = OkHttpClient.Builder().cache(null).followSslRedirects(false)
+        .connectionPool(ConnectionPool(5, 90, TimeUnit.SECONDS)).build()
     /** Above the connector's 5 MiB for a feedback screenshot, the largest answer Ovenlight reads. */
     private const val MAX_BODY = 6L shl 20
 
@@ -187,18 +211,23 @@ object TailnetCore : Platform, TailnetClients {
             }
 
             override fun onResponse(call: Call, response: Response) {
-                val answer = response.use {
-                    // Buffers up to the cap, or to the end of a shorter body.
-                    val body = runCatching {
-                        val source = it.body.source()
-                        source.request(MAX_BODY)
-                        source.buffer.readByteArray(minOf(source.buffer.size, MAX_BODY))
-                    }.getOrDefault(ByteArray(0))
-                    FetchResponse(it.code, body, it.headers.toMap())
-                }
+                val answer = answer(response)
                 if (done.isActive) done.resume(answer)
             }
         })
+    }
+
+    /**
+     * The response with its whole body, or null, as for no answer at all, when the body broke
+     * off or ran past [cap]: a claim must never read as answered with nothing.
+     */
+    internal fun answer(response: Response, cap: Long = MAX_BODY): FetchResponse? = response.use {
+        try {
+            val source = it.body.source()
+            if (source.request(cap + 1)) null else FetchResponse(it.code, source.buffer.readByteArray(), it.headers.toMap())
+        } catch (_: IOException) {
+            null
+        }
     }
 
     /** Only debug builds get lines, with sign-in links and keys already removed. */

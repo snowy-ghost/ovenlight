@@ -9,6 +9,7 @@ import android.graphics.Bitmap
 import android.os.Build
 import android.os.PersistableBundle
 import android.text.format.DateFormat
+import android.util.LruCache
 import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.AnimatedContent
@@ -46,9 +47,9 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -63,7 +64,7 @@ import androidx.compose.runtime.Stable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -87,12 +88,16 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
@@ -111,6 +116,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Date
 import java.util.Locale
+import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -120,6 +126,9 @@ import kotlinx.coroutines.withContext
 
 /** The owner's People & sharing. */
 object SharingList {
+    /** The command, in the not-shareable footer, that makes an app shareable on its computer. */
+    fun shareableCommand(slug: String) = "ovenlight publish --slug $slug --shareable"
+
     /**
      * How many of the tailnet's tagged devices, which Tailscale's plans count, the owner's
      * shareable apps and guests' devices take. Null before a connector has counted them.
@@ -134,8 +143,14 @@ object SharingList {
             used == 1L -> "the only tagged device"
             else -> "all $all tagged devices"
         }
-        return "Your shareable apps and your guests' devices use $share in your Tailscale network. Tailscale's plans include a set number and charge for more."
+        return "Your shareable apps and your guests’ devices use $share in your Tailscale network. Tailscale’s plans include a set number and charge for more."
     }
+
+    /** How many of [feedback] are newer than [seen], the newest an inbox showed when last opened: all of them before it ever was. */
+    fun newFeedback(feedback: List<AdminFeedback>, seen: Instant?): Int = feedback.count { seen == null || it.at > seen }
+
+    /** Where [seen] is kept, iOS's name for it. */
+    const val FEEDBACK_SEEN_KEY = "feedbackSeenUntil"
 }
 
 /**
@@ -147,12 +162,19 @@ data class SharingState(
     val machines: StateFlow<List<OwnerSharing.Machine>>,
     /** The owner is connected, which the admin API needs. */
     val isAvailable: Boolean = true,
+    /** The owner's node, for what Share says while it isn't connected. */
+    val ownerState: NodeState = NodeState.Ready,
     /** Nothing listed yet, and a refresh under way. */
     val isLoading: Boolean = false,
     val problem: String? = null,
     /** The owner's own app at a connector app's host, for its icon. */
     val localApp: (AdminApp) -> WebApp? = { null },
+    /** Goes up with each icon saved, so a refreshed icon redraws. */
+    val iconRevisions: Map<UUID, Int> = emptyMap(),
     val icon: (WebApp) -> Bitmap? = { null },
+    /** The newest feedback an inbox showed when last opened (see [SharingList.newFeedback]). */
+    val feedbackSeen: Instant? = null,
+    val seeFeedback: (Instant) -> Unit = {},
     val refresh: suspend () -> Unit = {},
     val refreshIfStale: suspend () -> Unit = {},
     val client: (OwnerSharing.Machine) -> AdminClient? = { null },
@@ -161,7 +183,27 @@ data class SharingState(
     /** Opens the invite composer: for someone new or already shared with, or another device for [person]. */
     val compose: (OwnerSharing.Machine, AdminApp, person: GuestPerson?) -> Unit = { _, _, _ -> },
     val openLink: (URI) -> Unit = {},
-)
+) {
+    /**
+     * Asks [machine]'s connector for a change: the connector's first problem, or Couldn't reach
+     * when there's no connection to it, or null.
+     */
+    suspend fun send(machine: OwnerSharing.Machine?, call: suspend (AdminClient) -> List<String>?): String? {
+        val client = machine?.let(client)
+        return try {
+            if (client == null) AdminError.Unreachable.message else call(client)?.firstOrNull()
+        } catch (failure: AdminError) {
+            failure.message
+        }
+    }
+
+    /** [send], then lists again. */
+    suspend fun change(machine: OwnerSharing.Machine?, call: suspend (AdminClient) -> List<String>?): String? {
+        val problem = send(machine, call)
+        refresh()
+        return problem
+    }
+}
 
 /** The model's sharing, for the screens and the composer. */
 @Composable
@@ -173,15 +215,28 @@ fun sharingState(model: AppModel): SharingState {
     val loading by sharing.isLoading.collectAsState()
     val problem by sharing.problem.collectAsState()
     val apps by model.registry.appsFlow.collectAsState()
+    val iconRevisions by model.registry.iconRevisions.collectAsState()
     val ownerEnabled by model.nodes.ownerEnabled.collectAsState()
     val ownerState by model.nodes.owner.state.collectAsState()
+    val preferences = remember { PreferencesStore(context) }
+    var feedbackSeen by remember { mutableStateOf(preferences.getString(SharingList.FEEDBACK_SEEN_KEY)?.let(AdminAPI::parseDate)) }
     return SharingState(
         sharing.machines,
         isAvailable = ownerEnabled && ownerState == NodeState.Ready,
-        isLoading = loading && machines.isEmpty(),
+        ownerState = ownerState,
+        // Once a pass failed, its problem shows rather than a spinner while the next one runs.
+        isLoading = loading && machines.isEmpty() && problem == null,
         problem = problem,
         localApp = { admin -> apps.firstOrNull { !it.isShared && Discovery.normalizedHost(it.host) == admin.host } },
+        iconRevisions = iconRevisions,
         icon = { IconDecoder.load(model.registry.iconFile(it)) },
+        feedbackSeen = feedbackSeen,
+        seeFeedback = { newest ->
+            if (feedbackSeen?.let { newest > it } != false) {
+                feedbackSeen = newest
+                preferences.putString(SharingList.FEEDBACK_SEEN_KEY, newest.toString())
+            }
+        },
         refresh = { sharing.refresh(model.registry.apps) },
         refreshIfStale = { sharing.refreshIfStale(model.registry.apps) },
         client = sharing::client,
@@ -207,33 +262,47 @@ sealed interface SharingPage {
     data class FeedbackItem(val machineID: String, val id: String) : SharingPage
 }
 
-/** People & sharing from the model, starting at [root]: the list, or one app's people from its menu. */
+/**
+ * Where People & sharing is: its pages, from the list or one app's people, how far each is
+ * scrolled, and the selection in People. The router's sheet holds it, so the lock, which takes
+ * the screen apart, keeps it (as [JoinRequest] keeps the join screen's invite).
+ */
+@Stable
+class SharingPlace(root: SharingPage) {
+    val pages = mutableStateListOf(root)
+    var selecting by mutableStateOf(false)
+    internal val selection = mutableStateListOf<PersonRef>()
+
+    // Each page keeps its place while others open over it, as Settings does under Acknowledgements.
+    internal val scrolls = mutableMapOf<SharingPage, ScrollState>()
+    internal val lists = mutableMapOf<SharingPage, LazyListState>()
+}
+
+/** People & sharing from the model, at [place]. */
 @Composable
-fun SharingView(model: AppModel, root: SharingPage, onClose: () -> Unit) = SharingScreen(sharingState(model), root, onClose, model.scope)
+fun SharingView(model: AppModel, place: SharingPlace, onClose: () -> Unit) = SharingScreen(sharingState(model), place, onClose, model.scope)
 
 /**
  * People & sharing, and the pages it opens. Changes run in [scope], which outlives the screen, so
  * a removal confirmed with the screen lock finishes even if the screen closes.
  */
 @Composable
-fun SharingScreen(state: SharingState, root: SharingPage, onClose: () -> Unit, scope: CoroutineScope) {
-    val pages = remember { mutableStateListOf(root) }
+fun SharingScreen(state: SharingState, place: SharingPlace, onClose: () -> Unit, scope: CoroutineScope) {
+    val pages = place.pages
     val shots = remember { ScreenshotCache() }
-    // Each page keeps its place while others open over it, as Settings does under Acknowledgements.
-    val scrolls = remember { mutableMapOf<SharingPage, ScrollState>() }
-    val open: (SharingPage) -> Unit = { pages += it }
+    // A quick second tap on the same row doesn't push its page twice.
+    val open: (SharingPage) -> Unit = { if (pages.lastOrNull() != it) pages += it }
     val back = { if (pages.size > 1) pages.removeAt(pages.lastIndex) else onClose() }
-    val lists = remember { mutableMapOf<SharingPage, LazyListState>() }
     PageStack(pages) { page ->
-        val scroll = scrolls.getOrPut(page) { ScrollState(0) }
+        val scroll = place.scrolls.getOrPut(page) { ScrollState(0) }
         // Only while it's on top: a removal's round trip can end after the page was left.
         val leave = { if (pages.lastOrNull() == page) back() }
         when (page) {
             SharingPage.List -> SharingListPage(state, scroll, open, leave)
             is SharingPage.App -> SharingAppPage(state, page, scroll, open, leave, scope)
-            SharingPage.People -> SharingPeopleList(state, scroll, open, leave, scope)
+            SharingPage.People -> SharingPeopleList(state, place, scroll, open, leave, scope)
             is SharingPage.Person -> SharingPersonView(state, page, scroll, leave, scope)
-            is SharingPage.Feedback -> FeedbackInbox(state, page, lists.getOrPut(page) { LazyListState() }, shots, open, leave)
+            is SharingPage.Feedback -> FeedbackInbox(state, page, place.lists.getOrPut(page) { LazyListState() }, shots, open, leave)
             is SharingPage.FeedbackItem -> FeedbackDetail(state, page, scroll, shots, leave)
         }
     }
@@ -244,7 +313,7 @@ fun SharingScreen(state: SharingState, root: SharingPage, onClose: () -> Unit, s
  * Acknowledgements, and Back, with its preview under the finger, slides the top one away.
  */
 @Composable
-private fun <T : Any> PageStack(pages: SnapshotStateList<T>, content: @Composable (T) -> Unit) {
+internal fun <T : Any> PageStack(pages: SnapshotStateList<T>, content: @Composable (T) -> Unit) {
     val top = pages.last()
     val state = remember { SeekableTransitionState(top) }
     LaunchedEffect(top) { state.animateTo(top, screenCurve) }
@@ -275,7 +344,7 @@ private fun <T : Any> PageStack(pages: SnapshotStateList<T>, content: @Composabl
 @Composable
 private fun SharingListPage(state: SharingState, scroll: ScrollState, open: (SharingPage) -> Unit, back: () -> Unit) {
     val machines by state.machines.collectAsState()
-    val feedbackCount = machines.sumOf { it.feedback.size }
+    val feedbackCount = SharingList.newFeedback(machines.flatMap { it.feedback }, state.feedbackSeen)
     val peopleCount = machines.sumOf { GuestPerson.all(it.guests.guests).size }
     LaunchedEffect(Unit) { state.refresh() }
     GroupedScreen(stringResource(R.string.launcher_people_sharing), onBack = back, scroll = scroll, refresh = state.refresh) {
@@ -286,7 +355,7 @@ private fun SharingListPage(state: SharingState, scroll: ScrollState, open: (Sha
                 machines.isEmpty() -> Unavailable(stringResource(R.string.sharing_no_computers), state.problem ?: stringResource(R.string.sharing_no_computers_detail))
             }
             for (machine in machines) {
-                SettingsGroup(header = if (machines.size > 1) machine.adminHost else stringResource(R.string.sharing_apps)) {
+                SettingsGroup(header = if (machines.size > 1) machine.adminHost else stringResource(R.string.sharing_apps), footer = machine.problem?.let { { Footer(it) } }) {
                     for (app in machine.apps) {
                         row { shape ->
                             SettingsRow(
@@ -317,6 +386,23 @@ private fun SharingListPage(state: SharingState, scroll: ScrollState, open: (Sha
     }
 }
 
+/** How to make an app shareable, with the command in code type, selectable to copy. */
+@Composable
+private fun NotShareableFooter(slug: String) {
+    val text = stringResource(R.string.sharing_not_shareable_footer, slug)
+    val annotated = remember(text, slug) {
+        val command = SharingList.shareableCommand(slug)
+        buildAnnotatedString {
+            append(text)
+            val start = text.indexOf(command)
+            if (start >= 0) addStyle(SpanStyle(fontFamily = FontFamily.Monospace), start, start + command.length)
+        }
+    }
+    SelectionContainer {
+        Text(annotated, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp))
+    }
+}
+
 /** "Online · 2 people", or who it's for when it isn't shareable. */
 @Composable
 private fun appSummary(app: AdminApp): String {
@@ -344,14 +430,18 @@ private fun TaggedDevicesFooter(text: String, openLink: (URI) -> Unit) {
 }
 
 @Composable
-private fun Count(count: Int) = Text("$count", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+private fun Count(count: Int) = Value("$count")
+
+/** What a row says at its end. */
+@Composable
+private fun Value(text: String) = Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
 /** A connector's app with its icon from the launcher, or a plain tile when it isn't there. */
 @Composable
 internal fun AdminAppIcon(state: SharingState, app: AdminApp) {
     val local = state.localApp(app)
     val tile = local ?: WebApp(name = app.name, startURL = app.url?.let(::uri) ?: URI("https://${app.slug}.invalid/"))
-    val image = remember(local?.id, local?.iconFile) { local?.let(state.icon) }
+    val image = local?.let { rememberIcon(it, state.iconRevisions[it.id] ?: 0, state.icon) }
     AppIconView(tile, image, 36.dp)
 }
 
@@ -368,12 +458,14 @@ internal fun Unavailable(title: String, detail: String? = null) {
     }
 }
 
-/** What went wrong, above the rest of a page. */
+/** What went wrong, above the rest of a page, and announced as it appears: TalkBack's focus is elsewhere. */
 @Composable
 internal fun SharingError(message: String) {
-    SettingsGroup {
-        row { shape ->
-            SettingsRow(shape, message, leading = { Icon(painterResource(R.drawable.ic_warning), contentDescription = null, tint = MaterialTheme.colorScheme.tertiary) })
+    Box(Modifier.semantics { liveRegion = LiveRegionMode.Polite }) {
+        SettingsGroup {
+            row { shape ->
+                SettingsRow(shape, message, leading = { Icon(painterResource(R.drawable.ic_warning), contentDescription = null, tint = MaterialTheme.colorScheme.tertiary) })
+            }
         }
     }
 }
@@ -384,9 +476,9 @@ internal fun RowMenu(label: String, items: @Composable ColumnScope.(close: () ->
     var expanded by remember { mutableStateOf(false) }
     Box {
         IconButton(onClick = { expanded = true }) {
-            Icon(painterResource(R.drawable.ic_more_vert), contentDescription = stringResource(R.string.sharing_options, label))
+            Icon(painterResource(R.drawable.ic_more_vert), contentDescription = stringResource(R.string.options, label))
         }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) { items { expanded = false } }
+        RoundedMenu(expanded = expanded, onDismissRequest = { expanded = false }) { items { expanded = false } }
     }
 }
 
@@ -402,14 +494,16 @@ private fun SharingAppPage(state: SharingState, page: SharingPage.App, scroll: S
     LaunchedEffect(Unit) { state.refreshIfStale() }
     GroupedScreen(app?.name ?: stringResource(R.string.sharing_app), onBack = back, scroll = scroll, refresh = state.refresh) {
         Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
-            if (machine == null || app == null) return@Column Unavailable(stringResource(R.string.sharing_app_not_found))
+            if (machine == null || app == null) {
+                return@Column state.problem?.let { Unavailable(stringResource(R.string.sharing_no_computers), it) } ?: Unavailable(stringResource(R.string.sharing_app_not_found))
+            }
             val people = GuestPerson.all(machine.guests.guests.filter { it.app == page.slug })
             val invites = machine.guests.invites.filter { it.app == page.slug && it.state == AdminInvite.sent }
-            val feedback = machine.feedback.count { it.app == page.slug }
-            error?.let { SharingError(it) }
+            val feedback = SharingList.newFeedback(machine.feedback.filter { it.app == page.slug }, state.feedbackSeen)
+            (error ?: machine.problem)?.let { SharingError(it) }
             SettingsGroup(
                 footer = {
-                    Footer(if (app.shareable) stringResource(R.string.sharing_share_footer) else stringResource(R.string.sharing_not_shareable_footer, app.slug))
+                    if (app.shareable) Footer(stringResource(R.string.sharing_share_footer)) else NotShareableFooter(app.slug)
                 },
             ) {
                 row { shape ->
@@ -448,11 +542,16 @@ private fun SharingAppPage(state: SharingState, page: SharingPage.App, scroll: S
                                 val title = stringResource(R.string.sharing_invite_for, invite.to)
                                 SettingsRow(
                                     shape, title,
-                                    supporting = stringResource(if (invite.review == true) R.string.sharing_review_unused else R.string.sharing_unused, invite.expiresIn),
+                                    supporting = stringResource(if (invite.review == true) R.string.sharing_review_invite else R.string.sharing_unused, invite.expiresIn),
                                     trailing = {
                                         RowMenu(title) { close ->
                                             AppMenuItem(close, stringResource(R.string.sharing_cancel_invite), R.drawable.ic_close, destructive = true) {
-                                                scope.launch { error = cancel(state, machine, invite) }
+                                                scope.launch {
+                                                    error = state.change(machine) {
+                                                        it.cancelInvite(invite.id)
+                                                        null
+                                                    }
+                                                }
                                             }
                                         }
                                     },
@@ -475,35 +574,16 @@ private fun SharingAppPage(state: SharingState, page: SharingPage.App, scroll: S
     val person = removing
     if (person != null && machine != null) {
         Confirmation(
-            stringResource(R.string.sharing_remove_title, person.name),
+            stringResource(R.string.remove_title, person.name),
             stringResource(R.string.sharing_remove_from_app_message, person.name, app?.name ?: page.slug),
             stringResource(R.string.sharing_remove), onDismiss = { removing = null },
         ) {
             scope.launch {
                 if (!state.confirm(resources.getString(R.string.sharing_remove_person, person.name))) return@launch
-                val client = state.client(machine) ?: return@launch
-                error = try {
-                    client.removeGuest(person, page.slug).errors?.firstOrNull()
-                } catch (failure: AdminError) {
-                    failure.message
-                }
-                state.refresh()
+                error = state.change(machine) { it.removeGuest(person, page.slug).errors }
             }
         }
     }
-}
-
-/** Cancels an invite no one has used: what went wrong, or null. */
-private suspend fun cancel(state: SharingState, machine: OwnerSharing.Machine, invite: AdminInvite): String? {
-    val client = state.client(machine) ?: return null
-    val error = try {
-        client.cancelInvite(invite.id)
-        null
-    } catch (failure: AdminError) {
-        failure.message
-    }
-    state.refresh()
-    return error
 }
 
 /**
@@ -524,6 +604,12 @@ class InviteComposer(
     var error by mutableStateOf<String?>(null)
     var result by mutableStateOf<AdminShareResult?>(null)
 
+    /** The invite was sent or its link copied, so closing loses nothing. */
+    var linkUsed by mutableStateOf(false)
+
+    /** An invite being made, or made and not sent yet, which a link must not close (iOS's `holdingLinks`). */
+    val holdsLinks: Boolean get() = working || (result != null && !linkUsed)
+
     val trimmed: String get() = name.text.toString().trimmingWhitespaceAndNewlines()
     val choices: List<GuestPerson> get() = GuestPerson.invitable(machine.guests)
 
@@ -537,6 +623,12 @@ class InviteComposer(
     suspend fun create(chosen: GuestPerson?, sharing: SharingState, reason: (who: String) -> String) {
         val who = chosen?.name ?: trimmed
         if (who.isEmpty() || (chosen == null && namesake != null) || working) return
+        // Without the phone's own connection no computer could answer, so it says so before the screen lock.
+        if (!sharing.isAvailable && AppLoadGate.neverConnected(sharing.ownerState)) {
+            error = ConnectionCopy.notConnected
+            return
+        }
+        error = null
         if (!sharing.confirm(reason(who))) return
         val client = sharing.client(machine) ?: run {
             error = AdminError.Unreachable.message
@@ -572,13 +664,23 @@ fun InviteComposerDialog(composer: InviteComposer, sharing: SharingState, scope:
     // As Send feedback: a stale keyboard's back callback would swallow the next Back.
     val keyboard = LocalSoftwareKeyboardController.current
     DisposableEffect(Unit) { onDispose { keyboard?.hide() } }
+    // A new invite's link shows only here: closing before it's sent or copied asks first.
+    var askingToClose by remember { mutableStateOf(false) }
+    val close = { if (composer.result != null && !composer.linkUsed) askingToClose = true else onDismiss() }
     Dialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = close,
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false, dismissOnBackPress = !composer.working),
     ) {
         FullScreenDialogBars()
         val result = composer.result
-        if (result != null) InviteResultView(result, composer.app.name, onDismiss) else InviteForm(composer, sharing, scope, onDismiss)
+        if (result != null) InviteResultView(result, composer.app.name, used = { composer.linkUsed = true }, close) else InviteForm(composer, sharing, scope, onDismiss)
+        if (askingToClose) {
+            Confirmation(
+                stringResource(R.string.sharing_close_unsent_title), stringResource(R.string.sharing_close_unsent_message),
+                confirm = stringResource(R.string.close), onDismiss = { askingToClose = false },
+                cancel = stringResource(R.string.sharing_keep), action = onDismiss,
+            )
+        }
     }
 }
 
@@ -594,7 +696,7 @@ private fun InviteForm(composer: InviteComposer, sharing: SharingState, scope: C
     GroupedScreen(
         // Not while the invite is made, whose link shows only here.
         stringResource(R.string.sharing_share_title, app.name), onBack = { if (!composer.working) onDismiss() }, scroll = rememberScrollState(),
-        navigationIcon = R.drawable.ic_close, navigationLabel = stringResource(R.string.sharing_close),
+        navigationIcon = R.drawable.ic_close, navigationLabel = stringResource(R.string.close),
         actions = {
             if (composer.working) {
                 val label = stringResource(R.string.sharing_creating)
@@ -608,8 +710,13 @@ private fun InviteForm(composer: InviteComposer, sharing: SharingState, scope: C
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
             if (target != null) {
-                SettingsGroup(footer = { Footer(error ?: stringResource(R.string.sharing_adds_a_phone, target.name, app.name)) }) {
-                    row { shape -> SettingsRow(shape, target.name, trailing = { Text(target.devices, color = MaterialTheme.colorScheme.onSurfaceVariant) }) }
+                SettingsGroup(
+                    footer = {
+                        // A failed Create is announced, as under the name field.
+                        if (error != null) Box(Modifier.semantics { liveRegion = LiveRegionMode.Polite }) { Footer(error) } else Footer(stringResource(R.string.sharing_adds_a_phone, target.name, app.name))
+                    },
+                ) {
+                    row { shape -> SettingsRow(shape, target.name, trailing = { Value(target.devices) }) }
                 }
                 return@Column
             }
@@ -625,7 +732,7 @@ private fun InviteForm(composer: InviteComposer, sharing: SharingState, scope: C
                                 else -> person.devices
                             }
                             SettingsRow(
-                                shape, person.name, trailing = { Text(value, color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                                shape, person.name, trailing = { Value(value) },
                                 onClick = { if (!composer.working) create(person) },
                             )
                         }
@@ -647,7 +754,6 @@ private fun NewPersonField(composer: InviteComposer, onDone: () -> Unit) {
     // Here, in the dialog's own window, so the field is there to take focus.
     LaunchedEffect(Unit) { focus.requestFocus() }
     val supporting = when {
-        error != null -> error
         namesake != null -> stringResource(
             if (composer.choices.any { it.id == namesake.id }) R.string.sharing_namesake_listed else R.string.sharing_namesake_invited, namesake.name,
         )
@@ -657,14 +763,15 @@ private fun NewPersonField(composer: InviteComposer, onDone: () -> Unit) {
     Column {
         Text(
             stringResource(R.string.sharing_someone_new), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
+            modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp).semantics { heading() },
         )
         OutlinedTextField(
             composer.name,
             label = { Text(stringResource(R.string.sharing_their_name)) },
             lineLimits = TextFieldLineLimits.SingleLine,
             isError = error != null || namesake != null,
-            supportingText = { Text(supporting) },
+            // A failed Create is announced; the rest is guidance that changes as they type.
+            supportingText = { if (error != null) FieldWarning(error) else Text(supporting) },
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Done),
             onKeyboardAction = { onDone() },
             modifier = Modifier.fillMaxWidth().focusRequester(focus),
@@ -674,23 +781,23 @@ private fun NewPersonField(composer: InviteComposer, onDone: () -> Unit) {
 
 /** A fresh invite: its code for in person, and the link to send, shown this once. */
 @Composable
-private fun InviteResultView(result: AdminShareResult, appName: String, onDismiss: () -> Unit) {
+private fun InviteResultView(result: AdminShareResult, appName: String, used: () -> Unit, onDismiss: () -> Unit) {
     val context = LocalContext.current
     val haptics = LocalHapticFeedback.current
     val invite = result.invite
     var copied by remember { mutableStateOf(false) }
     val subject = stringResource(R.string.sharing_invite_subject, appName)
-    val clipLabel = stringResource(R.string.sharing_invite_link)
+    val clipLabel = stringResource(R.string.invite_link)
     val code = remember(result.link) { result.link?.let(QRCode::image) }
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     // No title in the bar, which the display title says below; TalkBack still hears it as the pane changes.
     GroupedScreen(
-        "", onBack = onDismiss, scroll = rememberScrollState(), navigationIcon = R.drawable.ic_close, navigationLabel = stringResource(R.string.sharing_close),
+        "", onBack = onDismiss, scroll = rememberScrollState(), navigationIcon = R.drawable.ic_close, navigationLabel = stringResource(R.string.close),
         paneTitle = stringResource(R.string.sharing_invite_title, invite.to),
     ) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(20.dp)) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(stringResource(R.string.sharing_invite_title, invite.to), style = OvenType.displayTitle, textAlign = TextAlign.Center)
+                Text(stringResource(R.string.sharing_invite_title, invite.to), Modifier.semantics { heading() }, style = OvenType.displayTitle, textAlign = TextAlign.Center)
                 Text(
                     stringResource(R.string.sharing_invite_expires, invite.expiresIn, DateFormat.getTimeFormat(context).format(Date.from(invite.expires))),
                     style = MaterialTheme.typography.bodyMedium, color = muted, textAlign = TextAlign.Center,
@@ -708,7 +815,13 @@ private fun InviteResultView(result: AdminShareResult, appName: String, onDismis
                 Text(stringResource(R.string.sharing_in_person), style = MaterialTheme.typography.bodySmall, color = muted, textAlign = TextAlign.Center)
             }
             Column(Modifier.widthIn(max = 400.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Button(onClick = { sendInvite(context, result.message, subject) }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) {
+                Button(
+                    onClick = {
+                        used()
+                        sendInvite(context, result.message, subject)
+                    },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+                ) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(painterResource(R.drawable.ic_share), contentDescription = null)
                         Text(stringResource(R.string.sharing_send_invite), style = MaterialTheme.typography.titleMedium)
@@ -716,6 +829,7 @@ private fun InviteResultView(result: AdminShareResult, appName: String, onDismis
                 }
                 OutlinedButton(
                     onClick = {
+                        used()
                         copyLink(context, clipLabel, result.link.orEmpty())
                         if (!copied) haptics.performHapticFeedback(HapticFeedbackType.Confirm)
                         copied = true
@@ -724,7 +838,7 @@ private fun InviteResultView(result: AdminShareResult, appName: String, onDismis
                 ) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(painterResource(if (copied) R.drawable.ic_check else R.drawable.ic_content_copy), contentDescription = null)
-                        Text(stringResource(if (copied) R.string.sharing_copied else R.string.sharing_copy_link))
+                        Text(stringResource(if (copied) R.string.sharing_copied else R.string.sharing_copy_link), style = MaterialTheme.typography.titleMedium)
                     }
                 }
             }
@@ -780,9 +894,20 @@ private fun FeedbackInbox(state: SharingState, page: SharingPage.Feedback, list:
     // one client a computer.
     val clients = remember(machines) { machines.associate { it.id to state.client(it) } }
     val direction = LocalLayoutDirection.current
-    GroupedScreen(stringResource(R.string.sharing_feedback), onBack = back) { padding ->
+    // Opened, it's seen up to its newest, and the list's count starts over from there. One app's
+    // inbox leaves the mark where it is while another app has feedback from before that newest
+    // not seen yet, whose count moving it would lose.
+    val newest = items.firstOrNull()?.second?.at
+    val others = if (page.machineID == null) emptyList() else machines.flatMap { machine -> machine.feedback.filter { machine.id != page.machineID || it.app != page.slug } }
+    LaunchedEffect(newest) {
+        if (newest != null && SharingList.newFeedback(others.filter { it.at <= newest }, state.feedbackSeen) == 0) state.seeFeedback(newest)
+    }
+    GroupedScreen(stringResource(R.string.sharing_feedback), onBack = back, refresh = state.refresh) { padding ->
         if (items.isEmpty()) {
-            return@GroupedScreen Column(Modifier.padding(padding)) { Unavailable(stringResource(R.string.feedback_inbox_none), stringResource(R.string.feedback_inbox_none_detail)) }
+            // Scrolls, so it pulls to refresh too.
+            return@GroupedScreen Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(padding)) {
+                Unavailable(stringResource(R.string.feedback_inbox_none), stringResource(R.string.feedback_inbox_none_detail))
+            }
         }
         val outer = MaterialTheme.shapes.large
         val inner = MaterialTheme.shapes.extraSmall
@@ -841,6 +966,7 @@ private fun FeedbackDetail(state: SharingState, page: SharingPage.FeedbackItem, 
     val context = LocalContext.current
     val client = remember(machine) { machine?.let { state.client(it) } }
     LaunchedEffect(item?.id, client != null) { if (item != null) shots.load(item.id, ScreenshotCache.Size.Screen, client) }
+    DisposableEffect(page.id) { onDispose { shots.release(page.id) } }
     val title = item?.let { found -> machine.apps.firstOrNull { it.slug == found.app }?.name ?: found.app }.orEmpty()
     GroupedScreen(title, onBack = back, scroll = scroll) {
         if (item == null) return@GroupedScreen
@@ -857,17 +983,20 @@ private fun FeedbackDetail(state: SharingState, page: SharingPage.FeedbackItem, 
                 }
             }
             if (item.hasScreenshot) {
-                val image = shots.image(item.id, ScreenshotCache.Size.Screen)
+                // The row's thumbnail stands in while the full one comes: the same shape, so nothing moves.
+                val screen = ScreenshotCache.Size.Screen
+                val image = shots.image(item.id, screen) ?: shots.image(item.id, ScreenshotCache.Size.Thumbnail)?.takeUnless { shots.failed(item.id, screen) }
                 val bitmap = remember(image) { image?.asImageBitmap() }
                 if (bitmap != null) {
                     val shape = RoundedCornerShape(14.dp)
                     Image(
                         bitmap, contentDescription = stringResource(R.string.feedback_inbox_screenshot), contentScale = ContentScale.Fit,
-                        modifier = Modifier.fillMaxWidth().clip(shape).border(0.5.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f), shape),
+                        modifier = Modifier.fillMaxWidth().aspectRatio(bitmap.width.toFloat() / bitmap.height).clip(shape)
+                            .border(0.5.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f), shape),
                     )
                 } else {
                     Box(Modifier.fillMaxWidth().heightIn(min = 200.dp), contentAlignment = Alignment.Center) {
-                        if (shots.failed(item.id, ScreenshotCache.Size.Screen)) {
+                        if (shots.failed(item.id, screen)) {
                             Text(stringResource(R.string.feedback_inbox_screenshot_failed), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         } else {
                             CircularProgressIndicator()
@@ -884,9 +1013,9 @@ private fun sentAt(context: Context, at: Instant): String =
     "${DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.US).format(at.atZone(ZoneId.systemDefault()))} at ${DateFormat.getTimeFormat(context).format(Date.from(at))}"
 
 /**
- * Screenshots fetched from the connectors, kept while People & sharing is open: small for the
- * list, screen-sized for the one open, never at full size, since a guest chooses what the
- * connector stores.
+ * Screenshots fetched from the connectors while People & sharing is open: small for the list, up
+ * to 8 MB of them, and screen-sized for the one open, never at full size, since a guest chooses
+ * what the connector stores.
  */
 @Stable
 class ScreenshotCache {
@@ -896,18 +1025,34 @@ class ScreenshotCache {
         Screen(3000),
     }
 
-    private val images = mutableStateMapOf<Pair<String, Size>, Bitmap>()
+    private val thumbnails = object : LruCache<String, Bitmap>(8 * 1024 * 1024) {
+        override fun sizeOf(key: String, value: Bitmap) = value.allocationByteCount
+    }
+
+    /** Goes up with each thumbnail stored, so a row reading one redraws. */
+    private var stored by mutableIntStateOf(0)
+
+    /** The one screen-sized image, for the detail page showing it. */
+    private var screen by mutableStateOf<Pair<String, Bitmap>?>(null)
     private val loading = mutableSetOf<Pair<String, Size>>()
     private val failures = mutableStateListOf<Pair<String, Size>>()
 
-    fun image(id: String, size: Size): Bitmap? = images[id to size]
+    fun image(id: String, size: Size): Bitmap? = when (size) {
+        Size.Thumbnail -> stored.let { thumbnails[id] }
+        Size.Screen -> screen?.takeIf { it.first == id }?.second
+    }
 
     /** The last try to fetch or decode it failed. */
     fun failed(id: String, size: Size): Boolean = (id to size) in failures
 
+    /** Its detail page closed: its screen-sized image goes. */
+    fun release(id: String) {
+        if (screen?.first == id) screen = null
+    }
+
     suspend fun load(id: String, size: Size, client: AdminClient?) {
         val key = id to size
-        if (key in images || key in loading) return
+        if (image(id, size) != null || key in loading) return
         // No route to the computer for now: it fails, and the screen tries again once there is one.
         if (client == null) {
             if (key !in failures) failures += key
@@ -922,7 +1067,14 @@ class ScreenshotCache {
                 null
             }
             val image = data?.let { withContext(Dispatchers.Default) { IconDecoder.decode(it, size.pixels, maxSide = MAX_SIDE) } }
-            if (image != null) images[key] = image else failures += key
+            when {
+                image == null -> failures += key
+                size == Size.Screen -> screen = id to image
+                else -> {
+                    thumbnails.put(id, image)
+                    stored++
+                }
+            }
         } finally {
             loading -= key
         }

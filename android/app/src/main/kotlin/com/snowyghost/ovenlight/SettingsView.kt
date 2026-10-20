@@ -5,11 +5,6 @@ import android.content.Intent
 import android.icu.text.ListFormatter
 import android.provider.Settings as SystemSettings
 import androidx.annotation.DrawableRes
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.rememberTransition
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -51,18 +46,22 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
@@ -90,7 +89,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /** Someone who shared apps with this phone, as Settings lists them. */
-data class SharedOwner(val membershipID: String, val ownerName: String, val appNames: List<String>)
+data class SharedOwner(
+    val membershipID: String,
+    val ownerName: String,
+    val appNames: List<String>,
+    /** Invites still joining, before any app is here: each app's name, and why joining failed (null while it goes on). */
+    val joining: List<Pair<String, String?>> = emptyList(),
+)
 
 /** The owner's own computers, once they chose to use them. */
 data class OwnerSettings(
@@ -125,8 +130,8 @@ data class SettingsState(
     val approve: () -> Unit = {},
     /** Sign out, and Stop using my own computers before a sign-in: one action (see [NodeManager.disableOwner]). */
     val stopUsingMyOwnComputers: () -> Unit = {},
-    /** False when the phone has no email app. */
-    val contactUs: () -> Boolean = { true },
+    /** Opens Contact us in the mail app; the draft when the phone has none. */
+    val contactUs: () -> MailDraft? = { null },
     val privacyPolicy: () -> Unit = {},
     /** The licenses for Acknowledgements, or null when the build lacks them. */
     val notices: suspend () -> String? = { null },
@@ -134,10 +139,11 @@ data class SettingsState(
 
 /** Settings (SettingsView in LauncherView.swift, and SharedSettings.swift). */
 @Composable
-fun SettingsView(model: AppModel, onClose: () -> Unit) {
+fun SettingsView(model: AppModel, pages: SnapshotStateList<SettingsPage>, onClose: () -> Unit) {
     val context = LocalContext.current
     val nodes = model.nodes
     val memberships by nodes.memberships.membershipsFlow.collectAsState()
+    val phases by model.guests.phases.collectAsState()
     val apps by model.registry.appsFlow.collectAsState()
     val ownerEnabled by nodes.ownerEnabled.collectAsState()
     val nodeState by nodes.owner.state.collectAsState()
@@ -150,7 +156,11 @@ fun SettingsView(model: AppModel, onClose: () -> Unit) {
         lockAfterSeconds = lockAfter,
         noScreenLock = noScreenLock,
         shared = memberships.map { membership ->
-            SharedOwner(membership.id, membership.ownerName, apps.filter { it.membershipID == membership.id }.map { it.name })
+            // As the launcher's banner says it: a failed invite shows why.
+            val joining = membership.pendingClaims.map { it.invite }.distinctBy { it.invite }.map { invite ->
+                invite.name to (phases[invite.invite] as? JoinPhase.Failed)?.error?.title(invite.owner, invite.name)
+            }
+            SharedOwner(membership.id, membership.ownerName, apps.filter { it.membershipID == membership.id }.map { it.name }, joining)
         },
         owner = if (!ownerEnabled) null else OwnerSettings(
             state = nodeState,
@@ -178,35 +188,29 @@ fun SettingsView(model: AppModel, onClose: () -> Unit) {
             model.scope.launch { nodes.disableOwner() }
             onClose()
         },
-        contactUs = { MailDraft.contactUs(version).send(context) },
+        contactUs = { MailDraft.contactUs(context, nodes).takeUnless { it.send(context) } },
         privacyPolicy = { CustomTabs.open(context, AppLinks.privacyPolicy, model.lifecycle) },
         notices = { withContext(Dispatchers.IO) { Acknowledgements.notices { context.assets.open(it) } } },
     )
-    SettingsScreen(state, onClose)
+    SettingsScreen(state, onClose, pages)
 }
+
+/** The pages of Settings: the list, and Acknowledgements over it. */
+enum class SettingsPage { List, Acknowledgements }
 
 /** Settings, and Acknowledgements over it, which Back returns from. */
 @Composable
-fun SettingsScreen(state: SettingsState, onClose: () -> Unit) {
-    var acknowledgements by remember { mutableStateOf(false) }
+fun SettingsScreen(state: SettingsState, onClose: () -> Unit, pages: SnapshotStateList<SettingsPage> = remember { mutableStateListOf(SettingsPage.List) }) {
     // Outlives the slide to Acknowledgements, so coming back keeps the place in the list.
     val scroll = rememberScrollState()
-    val page = rememberScreenShown(acknowledgements)
-    ScreenBack(page, shown = acknowledgements) { acknowledgements = false }
-    rememberTransition(page, label = "settings page").AnimatedContent(
-        transitionSpec = {
-            if (targetState) {
-                slideInHorizontally(screenTween()) { it } togetherWith slideOutHorizontally(screenTween()) { -it / 3 }
-            } else {
-                // Back slides Acknowledgements away over Settings, as Android's own screens do.
-                (slideInHorizontally(screenTween()) { -it / 3 } togetherWith slideOutHorizontally(screenTween()) { it }).apply { targetContentZIndex = -1f }
-            }
-        },
-    ) { showing ->
-        if (showing) {
-            AcknowledgementsScreen(state.notices, onBack = { acknowledgements = false })
-        } else {
-            SettingsList(state, scroll, onClose, onAcknowledgements = { acknowledgements = true })
+    val back = { if (pages.size > 1) pages.removeAt(pages.lastIndex) }
+    PageStack(pages) { page ->
+        when (page) {
+            SettingsPage.List -> SettingsList(state, scroll, onClose, onAcknowledgements = {
+                // A quick second tap doesn't push it twice.
+                if (pages.last() != SettingsPage.Acknowledgements) pages += SettingsPage.Acknowledgements
+            })
+            SettingsPage.Acknowledgements -> AcknowledgementsScreen(state.notices, onBack = back)
         }
     }
 }
@@ -226,10 +230,10 @@ private fun SettingsList(state: SettingsState, scroll: ScrollState, onClose: () 
     var leaving by remember { mutableStateOf<SharedOwner?>(null) }
     /** The row asking first, by its name, which the dialog's button repeats. */
     var confirming by remember { mutableStateOf<Int?>(null) }
-    var noEmailApp by remember { mutableStateOf(false) }
+    var noEmailApp by remember { mutableStateOf<MailDraft?>(null) }
     val error = MaterialTheme.colorScheme.error
     val primary = MaterialTheme.colorScheme.primary
-    GroupedScreen(stringResource(R.string.settings_title), onBack = onClose, scroll = scroll) {
+    GroupedScreen(stringResource(R.string.settings), onBack = onClose, scroll = scroll) {
         Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
             SettingsGroup(
                 footer = {
@@ -258,13 +262,19 @@ private fun SettingsList(state: SettingsState, scroll: ScrollState, onClose: () 
                 ) {
                     for (owner in state.shared) {
                         row { shape ->
+                            val joining = stringResource(R.string.settings_joining)
+                            val supporting = when {
+                                owner.appNames.isNotEmpty() -> ListFormatter.getInstance().format(owner.appNames)
+                                owner.joining.isEmpty() -> joining
+                                else -> owner.joining.map { (app, failed) -> stringResource(R.string.settings_joining_app, app, failed ?: joining) }.joinToString("\n")
+                            }
                             SettingsRow(
                                 shape, owner.ownerName,
-                                supporting = if (owner.appNames.isEmpty()) stringResource(R.string.settings_joining) else ListFormatter.getInstance().format(owner.appNames),
+                                supporting = supporting,
                                 trailing = {
                                     // Each says whose apps, so TalkBack tells one Leave from another.
                                     TextButton(onClick = { leaving = owner }, modifier = Modifier.semantics { contentDescription = ConnectionCopy.leaveApps(owner.ownerName) }) {
-                                        Text(stringResource(R.string.settings_leave), color = error)
+                                        Text(stringResource(R.string.leave), color = error)
                                     }
                                 },
                             )
@@ -275,14 +285,14 @@ private fun SettingsList(state: SettingsState, scroll: ScrollState, onClose: () 
             val owner = state.owner
             if (owner == null) {
                 SettingsGroup(footer = { Footer(stringResource(R.string.settings_use_my_own_computers_footer)) }) {
-                    row { shape -> SettingsRow(shape, stringResource(R.string.settings_use_my_own_computers), color = primary, onClick = state.useMyOwnComputers) }
+                    row { shape -> SettingsRow(shape, stringResource(R.string.use_my_own_computers), color = primary, onClick = state.useMyOwnComputers) }
                 }
             } else {
                 OwnerGroups(owner, state, confirm = { confirming = it })
             }
             SettingsGroup(header = stringResource(R.string.settings_support)) {
                 row { shape ->
-                    SettingsRow(shape, stringResource(R.string.settings_contact_us), icon = R.drawable.ic_mail, onClick = { if (!state.contactUs()) noEmailApp = true })
+                    SettingsRow(shape, stringResource(R.string.contact_us), icon = R.drawable.ic_mail, onClick = { noEmailApp = state.contactUs() })
                 }
                 row { shape -> SettingsRow(shape, stringResource(R.string.settings_privacy_policy), icon = R.drawable.ic_privacy_tip, onClick = state.privacyPolicy) }
                 row { shape -> SettingsRow(shape, stringResource(R.string.settings_acknowledgements), icon = R.drawable.ic_description, onClick = onAcknowledgements) }
@@ -316,7 +326,7 @@ private fun SettingsList(state: SettingsState, scroll: ScrollState, onClose: () 
                     }
                 }
             },
-            confirmButton = { TextButton(onClick = { choosingDelay = false }) { Text(stringResource(R.string.settings_cancel)) } },
+            confirmButton = { TextButton(onClick = { choosingDelay = false }) { Text(stringResource(R.string.cancel)) } },
         )
     }
     leaving?.let { owner ->
@@ -329,7 +339,7 @@ private fun SettingsList(state: SettingsState, scroll: ScrollState, onClose: () 
             onDismiss = { confirming = null }, action = state.stopUsingMyOwnComputers,
         )
     }
-    if (noEmailApp) NoEmailAppDialog(onDismiss = { noEmailApp = false })
+    noEmailApp?.let { NoEmailAppDialog(it, onDismiss = { noEmailApp = null }) }
 }
 
 /**
@@ -340,10 +350,13 @@ private fun SettingsList(state: SettingsState, scroll: ScrollState, onClose: () 
 @Composable
 private fun OwnerGroups(owner: OwnerSettings, state: SettingsState, confirm: (Int) -> Unit) {
     val primary = MaterialTheme.colorScheme.primary
+    // Every row has an icon, so their text lines up.
+    @Composable
+    fun icon(drawable: Int) = Icon(painterResource(drawable), contentDescription = null, tint = primary)
     SettingsGroup {
         val login = owner.state as? NodeState.NeedsLogin
         if (login != null) {
-            row { shape -> SettingsRow(shape, stringResource(R.string.settings_sign_in), color = primary, onClick = { state.signIn(login.url) }) }
+            row { shape -> SettingsRow(shape, stringResource(R.string.sign_in_to_your_computers), color = primary, leading = { icon(R.drawable.ic_lan) }, onClick = { state.signIn(login.url) }) }
         } else {
             row { shape ->
                 SettingsRow(
@@ -352,16 +365,25 @@ private fun OwnerGroups(owner: OwnerSettings, state: SettingsState, confirm: (In
                 )
             }
             if (owner.state == NodeState.AwaitingApproval) {
-                row { shape -> SettingsRow(shape, stringResource(R.string.settings_approve), color = primary, onClick = state.approve) }
+                row { shape -> SettingsRow(shape, stringResource(R.string.approve_this_phone), color = primary, leading = { icon(R.drawable.ic_verified_user) }, onClick = state.approve) }
             }
             if (owner.account != null) {
-                row { shape -> SettingsRow(shape, stringResource(R.string.settings_sign_out), color = MaterialTheme.colorScheme.error, onClick = { confirm(R.string.settings_sign_out) }) }
+                row { shape ->
+                    val error = MaterialTheme.colorScheme.error
+                    SettingsRow(
+                        shape, stringResource(R.string.settings_sign_out), color = error,
+                        leading = { Icon(painterResource(R.drawable.ic_logout), contentDescription = null, tint = error) },
+                        onClick = { confirm(R.string.settings_sign_out) },
+                    )
+                }
             }
         }
         // While no account is signed in, Use my own computers can still be taken back.
         if (owner.hasNoAccount) {
             val stop = R.string.settings_stop_using_my_own_computers
-            row { shape -> SettingsRow(shape, stringResource(stop), color = primary, onClick = { if (owner.hasFoundApps) confirm(stop) else state.stopUsingMyOwnComputers() }) }
+            row { shape ->
+                SettingsRow(shape, stringResource(stop), color = primary, leading = { icon(R.drawable.ic_logout) }, onClick = { if (owner.hasFoundApps) confirm(stop) else state.stopUsingMyOwnComputers() })
+            }
         }
     }
     SettingsGroup(header = stringResource(R.string.settings_advanced)) {
@@ -394,7 +416,7 @@ private fun AcknowledgementsScreen(notices: suspend () -> String?, onBack: () ->
                         val text = remember(paragraph, space) {
                             buildAnnotatedString {
                                 for ((indent, line) in Acknowledgements.lines(paragraph)) {
-                                    withStyle(ParagraphStyle(textIndent = TextIndent(space * indent, space * indent))) { append(line) }
+                                    withStyle(ParagraphStyle(textIndent = TextIndent(space * indent, space * indent))) { append(Acknowledgements.unbroken(line)) }
                                 }
                             }
                         }
@@ -409,9 +431,9 @@ private fun AcknowledgementsScreen(notices: suspend () -> String?, onBack: () ->
 /**
  * A full-screen destination on the grouped background, which its top app bar shares, with a
  * back arrow (or [navigationIcon]) and [actions]. With [scroll] the content scrolls in a
- * centered column, and [refresh] adds a pull to refresh; without, it gets the bars' padding and
- * scrolls itself. Its title names the pane for TalkBack, since it replaces another screen in
- * the same window.
+ * centered column; without, it gets the bars' padding and scrolls itself. [refresh] adds a pull
+ * to refresh. Its title names the pane for TalkBack, since it replaces another screen in the
+ * same window.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -420,7 +442,7 @@ internal fun GroupedScreen(
     onBack: () -> Unit,
     scroll: ScrollState? = null,
     @DrawableRes navigationIcon: Int = R.drawable.ic_arrow_back,
-    navigationLabel: String = stringResource(R.string.settings_back),
+    navigationLabel: String = stringResource(R.string.back),
     actions: @Composable RowScope.() -> Unit = {},
     refresh: (suspend () -> Unit)? = null,
     paneTitle: String = title,
@@ -428,8 +450,13 @@ internal fun GroupedScreen(
 ) {
     val background = LocalOvenColors.current.groupedBackground
     val direction = LocalLayoutDirection.current
+    // A page coming back keeps its place in [scroll], and its bar starts as tinted as that leaves it.
+    val barHeight = with(LocalDensity.current) { TopAppBarDefaults.TopAppBarExpandedHeight.toPx() }
+    val bar = TopAppBarDefaults.pinnedScrollBehavior(
+        rememberTopAppBarState(initialHeightOffsetLimit = -barHeight, initialContentOffset = -(scroll?.value ?: 0).toFloat()),
+    )
     Scaffold(
-        modifier = Modifier.semantics { this.paneTitle = paneTitle },
+        modifier = Modifier.nestedScroll(bar.nestedScrollConnection).semantics { this.paneTitle = paneTitle },
         containerColor = background,
         topBar = {
             TopAppBar(
@@ -440,17 +467,22 @@ internal fun GroupedScreen(
                     }
                 },
                 actions = actions,
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = background, scrolledContainerColor = background),
+                colors = scrollingBarColors(background),
+                scrollBehavior = bar,
             )
         },
     ) { bars ->
         // Clear of a navigation bar or cutout at the side, in landscape.
         val start = bars.calculateStartPadding(direction)
         val end = bars.calculateEndPadding(direction)
+        val top = bars.calculateTopPadding()
         if (scroll == null) {
-            return@Scaffold content(PaddingValues(start = start, top = bars.calculateTopPadding() + 8.dp, end = end, bottom = bars.calculateBottomPadding() + 16.dp))
+            val bottom = bars.calculateBottomPadding() + 16.dp
+            if (refresh == null) return@Scaffold content(PaddingValues(start = start, top = top + 8.dp, end = end, bottom = bottom))
+            // Below the bar, where the pull's indicator shows.
+            return@Scaffold Refreshable(refresh, Modifier.fillMaxSize().padding(top = top)) { content(PaddingValues(start = start, top = 8.dp, end = end, bottom = bottom)) }
         }
-        val modifier = Modifier.fillMaxSize().padding(start = start, top = bars.calculateTopPadding(), end = end)
+        val modifier = Modifier.fillMaxSize().padding(start = start, top = top, end = end)
         val column = @Composable {
             Column(Modifier.widthIn(max = 640.dp).fillMaxWidth().verticalScroll(scroll).padding(horizontal = 16.dp)) {
                 Spacer(Modifier.height(8.dp))
@@ -459,25 +491,41 @@ internal fun GroupedScreen(
             }
         }
         if (refresh == null) return@Scaffold Box(modifier, contentAlignment = Alignment.TopCenter) { column() }
-        val scope = rememberCoroutineScope()
-        var refreshing by remember { mutableStateOf(false) }
-        PullToRefreshBox(
-            isRefreshing = refreshing,
-            onRefresh = {
-                scope.launch {
-                    refreshing = true
-                    try {
-                        refresh()
-                    } finally {
-                        refreshing = false
-                    }
-                }
-            },
-            modifier = modifier,
-            contentAlignment = Alignment.TopCenter,
-        ) { column() }
+        Refreshable(refresh, modifier) { column() }
     }
 }
+
+/** Pull to refresh over [content], which scrolls. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun Refreshable(refresh: suspend () -> Unit, modifier: Modifier, content: @Composable () -> Unit) {
+    val scope = rememberCoroutineScope()
+    var refreshing by remember { mutableStateOf(false) }
+    PullToRefreshBox(
+        isRefreshing = refreshing,
+        onRefresh = {
+            scope.launch {
+                refreshing = true
+                try {
+                    refresh()
+                } finally {
+                    refreshing = false
+                }
+            }
+        },
+        modifier = modifier,
+        contentAlignment = Alignment.TopCenter,
+    ) { content() }
+}
+
+/**
+ * A top app bar's colors on [background], a step deeper once content scrolls under it, as
+ * Material's bars do on surface. The grouped background is already surfaceContainer, so it's High.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun scrollingBarColors(background: Color) =
+    TopAppBarDefaults.topAppBarColors(containerColor = background, scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh)
 
 /** Collects a group's rows, so each can take its place's shape. */
 internal class GroupRows {

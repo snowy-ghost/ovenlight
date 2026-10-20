@@ -6,7 +6,9 @@ import android.content.res.Configuration
 import android.icu.text.Normalizer2
 import android.os.SystemClock
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.rememberTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -14,6 +16,7 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
@@ -24,15 +27,21 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import java.io.File
 import java.net.URI
+import java.util.UUID
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -41,6 +50,8 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -64,12 +75,9 @@ class OvenlightApp : Application() {
     }
 
     companion object {
-        /** Made once per process, so a configuration change or a restore after process death starts locked. */
+        /** Made once per process, so a configuration change keeps the lock as it is, and a restore after process death locks by the lock's own rule (see [LockManager]). */
         lateinit var model: AppModel
             private set
-
-        val lock: LockManager get() = model.lock
-        val router: Router get() = model.router
 
         /**
          * Whether this phone has kept anything: apps, invites or a node. Apps and invites live
@@ -100,18 +108,22 @@ class AppModel(context: Context) {
     private val nodesDirectory = File(context.noBackupFilesDir, "tailscale")
 
     /** Lives with the process, never in saved instance state. */
-    val lock = LockManager(preferences, hasSavedData = { OvenlightApp.hasSavedData(ovenlight, nodesDirectory) }, now = SystemClock::elapsedRealtime)
-    val router = Router(isLocked = { lock.holdsLinks })
+    val lock = LockManager(
+        preferences, hasSavedData = { OvenlightApp.hasSavedData(ovenlight, nodesDirectory) }, now = SystemClock::elapsedRealtime,
+        bootCount = { android.provider.Settings.Global.getInt(context.contentResolver, android.provider.Settings.Global.BOOT_COUNT, 0) },
+    )
+    // No page before WebView is ready: the update screen holds every one back.
+    val router = Router(isLocked = { lock.holdsLinks }, prepare = { if (WebViewSetup.state.value == WebViewSetup.State.Ready) pool.page(it) })
     val nodes = NodeManager(
         TailnetCore, preferences, MembershipStore(ovenlight), nodesDirectory, scope, Dispatchers.IO, SystemClock::elapsedRealtime,
         log = { OvenlightLog.i(it) }, debugBuild = BuildConfig.DEBUG,
     )
-    val pool = WebViewPool(context, nodes, scope, isLocked = { lock.isLocked.value })
+    val pool = WebViewPool(context, nodes, scope, lock.isLocked)
     val registry = AppRegistry(
         ovenlight, session = nodes::fetch, webData = WebProfiles(context, discard = pool::discard),
         iconPNG = { withContext(Dispatchers.Default) { IconDecoder.png(it) } }, scope = scope,
     )
-    val guests = GuestManager(nodes, registry, router, scope, SystemClock::elapsedRealtime, log = { OvenlightLog.i(it) })
+    val guests = GuestManager(nodes, registry, router, scope, SystemClock::uptimeMillis, log = { OvenlightLog.i(it) }, isOnline = { TailnetCore.online.value })
         .also { pool.guests = it }
     val sharing = OwnerSharing(nodes, scope, SystemClock::elapsedRealtime, log = { OvenlightLog.i(it) })
 
@@ -119,6 +131,9 @@ class AppModel(context: Context) {
     val composer = MutableStateFlow<InviteComposer?>(null)
     /** The router's sheet showing in a Custom Tab, kept with the process so a recreated activity returns from it. */
     var openTab: RootSheet? = null
+
+    /** Last session's downloads and captures are gone, once a process (see MainActivity.onCreate). */
+    var shelfEmptied = false
     val lifecycle = AppLifecycle(
         scope, SystemClock::elapsedRealtime, setAway = {
             nodes.pollingPaused = it
@@ -127,7 +142,37 @@ class AppModel(context: Context) {
         cameToFront = { didBecomeActive(context) },
     )
 
+    /** Missing icons being fetched, each app's once its node is connected; the next return starts over. */
+    private var iconRefresh: Job? = null
+
+    /** The last link that came while Send feedback held work it would lose (see [handleLink]). */
+    private var heldLink: URI? = null
+
+    /**
+     * A link from outside, which opens a screen or another app and so closes the open one: while
+     * its Send feedback has a send under way or a note (see [FeedbackDraft.holdsLinks]), the link
+     * waits until that closes, however it closes, as on iOS. A link that goes straight through
+     * drops one still waiting, so the newest link always wins.
+     */
+    fun handleLink(url: URI) {
+        val feedback = router.openApp.value?.let { pool.feedback(it.id) }
+        if (feedback?.value?.holdsLinks != true) {
+            heldLink = null
+            return router.handle(url, registry.apps)
+        }
+        if (heldLink == null) {
+            scope.launch {
+                feedback.first { it == null }
+                heldLink?.let { router.handle(it, registry.apps) }
+                heldLink = null
+            }
+        }
+        heldLink = url
+    }
+
     init {
+        nodes.canHear = { TailnetCore.online.value && !lifecycle.inExcursion }
+        nodes.owner.launcherApps = { registry.apps }
         scope.launch {
             registry.appsFlow.drop(1).collect { apps ->
                 router.appsChanged(apps)
@@ -171,10 +216,14 @@ class AppModel(context: Context) {
         }
         scope.launch { lock.isLocked.collect { locked -> if (locked) pool.stopCapture() } }
         // Which apps can be shared follows the owner's computers: ask again once the connection is
-        // up and whenever a computer comes or goes.
+        // up, whenever a computer comes or goes, and as discovery adds or drops the owner's apps.
         scope.launch {
             combine(nodes.ownerEnabled, nodes.owner.state, nodes.owner.status) { _, _, _ -> if (nodes.ownerIsConnected) nodes.ownersOnlineHosts else null }
                 .distinctUntilChanged().collectLatest { if (it != null) refreshSharing(force = true) }
+        }
+        scope.launch {
+            registry.appsFlow.map { apps -> apps.filter { !it.isShared && it.discovered }.map { it.host }.toSet() }
+                .distinctUntilChanged().drop(1).collectLatest { refreshSharing(force = true) }
         }
         // An app a link asked for while locked opens once Ovenlight unlocks.
         scope.launch { lock.isLocked.drop(1).collect { locked -> if (!locked) router.appsChanged(registry.apps) } }
@@ -208,7 +257,9 @@ class AppModel(context: Context) {
         // The launcher has no pull to refresh; Ovenlight looks for new apps each time it comes
         // to the front instead.
         nodes.rediscover()
-        registry.refreshAllMissingIcons()
+        // Nothing reaches an app until its node is connected.
+        iconRefresh?.cancel()
+        iconRefresh = scope.launch { registry.refreshAllMissingIcons { app -> nodes.node(app)?.state?.first { it == NodeState.Ready } != null } }
         refreshSharing()
     }
 
@@ -233,7 +284,11 @@ class AppModel(context: Context) {
  * first and waits until it's gone: the screens call [appDismissed] and [sheetDismissed] once
  * they have finished closing, after [openApp] or [sheet] is already null.
  */
-class Router(private val isLocked: () -> Boolean = { false }) {
+class Router(
+    private val isLocked: () -> Boolean = { false },
+    /** Makes the app's page, so it loads while a screen closes before it opens. */
+    private val prepare: (WebApp) -> Unit = {},
+) {
     val openApp = MutableStateFlow<WebApp?>(null)
     val sheet = MutableStateFlow<RootSheet?>(null)
 
@@ -253,15 +308,19 @@ class Router(private val isLocked: () -> Boolean = { false }) {
     private val isClear: Boolean
         get() = openApp.value == null && sheet.value == null && !appOnScreen && !sheetOnScreen
 
-    /** Opens an app, closing any sheet first. */
+    /** Opens an app, closing any sheet first, while its page starts loading. */
     fun open(app: WebApp) {
         if (sheet.value == null && !sheetOnScreen) {
             openApp.value = app
             return
         }
+        prepare(app)
         sheet.value = null
         afterClear { openApp.value = app }
     }
+
+    /** Whether the join screen shows the invite with this ID. */
+    fun showsInvite(id: String): Boolean = (sheet.value as? RootSheet.Join)?.request?.invite?.getOrNull()?.invite == id
 
     /** Shows a sheet, closing the open app first. */
     fun present(sheet: RootSheet) {
@@ -364,7 +423,7 @@ sealed class RootSheet {
      * Shown as a screen over the launcher by RootView. Add App is a dialog, and the sign-in and
      * Machines pages show in a Custom Tab (see MainActivity).
      */
-    val isScreen: Boolean get() = this == Settings || this is Join || this == Sharing || this is People
+    val isScreen: Boolean get() = this is Settings || this is Join || this is Sharing || this is People
 
     /** An invite link, or the Join with Invite entry. */
     data class Join(val request: JoinRequest) : RootSheet() {
@@ -381,8 +440,9 @@ sealed class RootSheet {
         override val id: String get() = "approve"
     }
 
-    /** The owner's People & Sharing. */
-    data object Sharing : RootSheet() {
+    /** The owner's People & Sharing, holding where in it the person is, so the lock keeps that too. */
+    class Sharing : RootSheet() {
+        val place = SharingPlace(SharingPage.List)
         override val id: String get() = "sharing"
     }
 
@@ -390,12 +450,15 @@ sealed class RootSheet {
         override val id: String get() = "add"
     }
 
-    data object Settings : RootSheet() {
+    /** Settings, holding whether Acknowledgements is open over it, so the lock keeps that too. */
+    class Settings : RootSheet() {
+        val pages = mutableStateListOf(SettingsPage.List)
         override val id: String get() = "settings"
     }
 
-    /** One app's people, from its menu. */
+    /** One app's people, from its menu, holding the pages opened from there as [Sharing] does. */
     data class People(val machineID: String, val slug: String) : RootSheet() {
+        val place = SharingPlace(SharingPage.App(machineID, slug))
         override val id: String get() = "people $machineID $slug"
     }
 }
@@ -417,9 +480,16 @@ fun RootView(model: AppModel) {
     }
 }
 
+/** Where each app's icon sits on the launcher, in the root's pixels, for its open app to grow from and shrink back into. */
+internal val launcherIcons = mutableMapOf<UUID, Offset>()
+
+private const val APP_ZOOM_MILLIS = 300
+
 /**
- * The open app over the launcher, growing in and shrinking away. It reports when it has
- * appeared and once it has finished closing, as the screens do (see [ScreenLayer]).
+ * The open app over the launcher, growing from its icon and shrinking back into it (the
+ * screen's center for an app not on the launcher). It fades only while small, quickly, so the
+ * page and the launcher never show through each other. It reports when it has appeared and once
+ * it has finished closing, as the screens do (see [ScreenLayer]).
  */
 @Composable
 private fun AppLayer(model: AppModel) {
@@ -429,14 +499,27 @@ private fun AppLayer(model: AppModel) {
     if (open != null) last = open
     // An app closed while the lock kept this layer out of composition never ran its own dismissal.
     LaunchedEffect(Unit) { if (router.openApp.value == null) router.appDismissed() }
-    AnimatedVisibility(visible = open != null, enter = scaleIn(initialScale = 0.9f) + fadeIn(), exit = scaleOut(targetScale = 0.9f) + fadeOut()) {
-        val shown = open ?: last ?: return@AnimatedVisibility
-        key(shown.id) {
-            DisposableEffect(Unit) {
-                router.appAppeared()
-                onDispose { router.appDismissed() }
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val origin = (open ?: last)?.let { launcherIcons[it.id] }
+            // An icon scrolled out of sight gives the nearest point on screen.
+            ?.let { TransformOrigin((it.x / constraints.maxWidth).coerceIn(0f, 1f), (it.y / constraints.maxHeight).coerceIn(0f, 1f)) } ?: TransformOrigin.Center
+        val zoom = tween<Float>(APP_ZOOM_MILLIS, easing = FastOutSlowInEasing)
+        AnimatedVisibility(
+            visible = open != null,
+            enter = scaleIn(zoom, initialScale = 0.2f, transformOrigin = origin) + fadeIn(tween(90)),
+            exit = scaleOut(zoom, targetScale = 0.2f, transformOrigin = origin) + fadeOut(tween(120, delayMillis = APP_ZOOM_MILLIS - 120)),
+        ) {
+            val shown = open ?: last ?: return@AnimatedVisibility
+            // Nothing of the launcher beneath takes a touch, even where the app draws nothing of its own.
+            Box(Modifier.fillMaxSize().pointerInput(Unit) {}) {
+                key(shown.id) {
+                    DisposableEffect(Unit) {
+                        router.appAppeared()
+                        onDispose { router.appDismissed() }
+                    }
+                    AppHostView(model, shown, origin, onClose = { if (router.openApp.value?.id == shown.id) router.openApp.value = null })
+                }
             }
-            AppHostView(model, shown, onClose = { if (router.openApp.value?.id == shown.id) router.openApp.value = null })
         }
     }
 }
@@ -472,10 +555,10 @@ private fun ScreenLayer(model: AppModel) {
             }
             ScreenBack(shownState, shown = screen != null, back = close)
             when (shown) {
-                RootSheet.Settings -> SettingsView(model, onClose = close)
+                is RootSheet.Settings -> SettingsView(model, shown.pages, onClose = close)
                 is RootSheet.Join -> JoinFlowView(model, shown.request, onClose = close)
-                RootSheet.Sharing -> SharingView(model, SharingPage.List, onClose = close)
-                is RootSheet.People -> SharingView(model, SharingPage.App(shown.machineID, shown.slug), onClose = close)
+                is RootSheet.Sharing -> SharingView(model, shown.place, onClose = close)
+                is RootSheet.People -> SharingView(model, shown.place, onClose = close)
                 else -> Unit
             }
         }
@@ -484,7 +567,8 @@ private fun ScreenLayer(model: AppModel) {
 
 /**
  * The router's Add App, a dialog over the launcher that reports when it shows and goes as the
- * screens do, and "No longer shared with you" once each time a share ends.
+ * screens do, and the guests' notices: "No longer shared with you" once each time a share ends,
+ * and why a join failed with its screen closed.
  */
 @Composable
 private fun DialogLayer(model: AppModel) {
@@ -504,7 +588,7 @@ private fun DialogLayer(model: AppModel) {
             onDismissRequest = done,
             title = { Text(shown.title) },
             text = { Text(shown.message) },
-            confirmButton = { TextButton(onClick = done) { Text(stringResource(R.string.join_ok)) } },
+            confirmButton = { TextButton(onClick = done) { Text(stringResource(R.string.ok)) } },
         )
     }
 }

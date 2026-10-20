@@ -40,14 +40,27 @@ data class MailDraft(val to: String = AppLinks.supportEmail, val subject: String
         get() = uri("mailto:$to?subject=${encoded(subject)}&body=${encoded(body)}")
 
     companion object {
-        fun contactUs(version: String) = MailDraft(subject = "Ovenlight", body = "\n\nOvenlight $version")
+        /**
+         * Contact us: room to write, then the lines Report a Problem ends with, and how the
+         * owner's own computers are connected ([computers]) when they're on.
+         */
+        fun contactUs(version: String, android: String, webView: String, model: String, computers: String?): MailDraft {
+            val lines = listOf("", "", "") + device(version, android, webView, model) + listOfNotNull(computers?.let { "Your computers: $it" })
+            return MailDraft(subject = "Ovenlight", body = lines.joinToString("\n"))
+        }
+
+        /** Contact us as things are now. */
+        fun contactUs(context: Context, nodes: NodeManager): MailDraft = contactUs(
+            version, Build.VERSION.RELEASE, webView(context), model,
+            computers = if (nodes.ownerEnabled.value) connection(nodes.owner.state.value, listedOffline = false) else null,
+        )
 
         /**
          * Report a Problem for one app: what it is and where it comes from, how its connection
-         * is doing (none for an app loaded directly) and where opening it got, with room at the
-         * top for what went wrong. Nothing else is attached. Where iOS ends with its `iOS`
-         * version, Android gives [android] (`Build.VERSION.RELEASE`), [webView] (the WebView
-         * package's version) and [model] (`Build.MANUFACTURER` and `Build.MODEL`).
+         * is doing (whether it was refused, for an app with no node) and where opening it got,
+         * with room at the top for what went wrong. Nothing else is attached. Where iOS ends with
+         * its `iOS` version, Android gives [android] (`Build.VERSION.RELEASE`), [webView] (the
+         * WebView package's version) and [model] (`Build.MANUFACTURER` and `Build.MODEL`).
          */
         fun problemReport(
             appName: String, host: String, sharedBy: String?, connection: String?, opening: String? = null,
@@ -57,9 +70,12 @@ data class MailDraft(val to: String = AppLinks.supportEmail, val subject: String
             sharedBy?.let { lines += "Shared by: $it" }
             connection?.let { lines += "Connection: $it" }
             opening?.let { lines += "Opening: $it" }
-            lines += listOf("Ovenlight: $version", "Android: $android", "WebView: $webView", "Model: $model")
+            lines += device(version, android, webView, model)
             return MailDraft(subject = "Ovenlight report: $appName", body = lines.joinToString("\n"))
         }
+
+        private fun device(version: String, android: String, webView: String, model: String) =
+            listOf("Ovenlight: $version", "Android: $android", "WebView: $webView", "Model: $model")
 
         /**
          * Report a Problem for one app as it is now: its connection, where opening it got, and
@@ -68,13 +84,18 @@ data class MailDraft(val to: String = AppLinks.supportEmail, val subject: String
          */
         fun problemReport(context: Context, nodes: NodeManager, pool: WebViewPool, app: WebApp): MailDraft = problemReport(
             appName = app.name, host = app.host, sharedBy = app.sharedBy,
-            connection = nodes.node(app)?.let { connection(it.state.value, it.isListedOffline(app.host)) },
-            opening = pool.gate(app.id)?.logDescription,
-            version = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+            connection = nodes.node(app)?.let { connection(it.state.value, it.isListedOffline(app.host)) }
+                ?: "Refused (on no known tailnet)".takeUnless { app.isShared },
+            opening = pool.opening(app.id),
+            version = version,
             android = Build.VERSION.RELEASE,
-            webView = WebViewCompat.getCurrentWebViewPackage(context)?.versionName ?: "unknown",
-            model = "${Build.MANUFACTURER} ${Build.MODEL}",
+            webView = webView(context),
+            model = model,
         )
+
+        private val version: String get() = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})"
+        private val model: String get() = "${Build.MANUFACTURER} ${Build.MODEL}"
+        private fun webView(context: Context): String = WebViewCompat.getCurrentWebViewPackage(context)?.versionName ?: "unknown"
 
         /**
          * The state as shown, then in detail as the log has it (no sign-in link), and whether
@@ -83,22 +104,14 @@ data class MailDraft(val to: String = AppLinks.supportEmail, val subject: String
         fun connection(state: NodeState, listedOffline: Boolean): String =
             "${state.summary} (${state.logDescription}${if (listedOffline) ", computer listed offline" else ""})"
 
-        private const val hexDigits = "0123456789ABCDEF"
+        /** Where opening the app got, then what a page that failed to load came to (see [AppLoadGate.loadFailure]). */
+        fun opening(gate: AppLoadGate, failure: String?): String = gate.logDescription + (failure?.let { ", $it" } ?: "")
 
         /**
          * Percent-encoded as iOS encodes a query value: UTF-8, leaving only letters, digits and
          * `!$'()*,-./:;@_~`, so `&+=?#` can't cut an app name short.
          */
-        private fun encoded(value: String): String = buildString {
-            for (byte in value.toByteArray(Charsets.UTF_8)) {
-                val c = byte.toInt() and 0xFF
-                if (c in 'a'.code..'z'.code || c in 'A'.code..'Z'.code || c in '0'.code..'9'.code || c.toChar() in "!$'()*,-./:;@_~") {
-                    append(c.toChar())
-                } else {
-                    append('%').append(hexDigits[c shr 4]).append(hexDigits[c and 0xF])
-                }
-            }
-        }
+        private fun encoded(value: String): String = percentEncoded(value, "!$'()*,-./:;@_~")
     }
 }
 
@@ -114,33 +127,33 @@ fun MailDraft.intent(): Intent = Intent(Intent.ACTION_SENDTO, (mailtoURL?.toStri
 /** Opens the draft in the person's mail app; false when the phone has none. */
 fun MailDraft.send(context: Context): Boolean = context.startOrFalse(intent())
 
-/** For a phone with no email app: where to write instead, with the address to copy. */
+/** For a phone with no email app: where to write instead, with the address and the filled-in [draft] to copy. */
 @Composable
-fun NoEmailAppDialog(onDismiss: () -> Unit) {
+fun NoEmailAppDialog(draft: MailDraft, onDismiss: () -> Unit) {
     val clipboard = LocalClipboard.current
     val haptics = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
+    // Closes once copied: closing first would cancel the copy with the dialog's scope.
+    fun copy(label: String, text: String) = scope.launch {
+        clipboard.setClipEntry(ClipEntry(ClipData.newPlainText(label, text)))
+        haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+        onDismiss()
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.mail_no_app_title)) },
         text = { Text(stringResource(R.string.mail_no_app_body, AppLinks.supportEmail)) },
-        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.mail_ok)) } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.ok)) } },
         dismissButton = {
-            TextButton(onClick = {
-                // Closes once copied: closing first would cancel the copy with the dialog's scope.
-                scope.launch {
-                    clipboard.setClipEntry(ClipEntry(ClipData.newPlainText(AppLinks.supportEmail, AppLinks.supportEmail)))
-                    haptics.performHapticFeedback(HapticFeedbackType.Confirm)
-                    onDismiss()
-                }
-            }) { Text(stringResource(R.string.mail_copy_address)) }
+            TextButton(onClick = { copy(AppLinks.supportEmail, AppLinks.supportEmail) }) { Text(stringResource(R.string.mail_copy_address)) }
+            TextButton(onClick = { copy(draft.subject, draft.body) }) { Text(stringResource(R.string.mail_copy_report)) }
         },
     )
 }
 
 /** Every license the app ships, which the build writes into assets/licenses. */
 object Acknowledgements {
-    val files = listOf("android-libraries.txt", "go-core.txt", "material-symbols.txt", "source-serif-4.txt")
+    val files = listOf("android-libraries.txt", "go-core.txt", "libyuv.txt", "material-symbols.txt", "source-serif-4.txt")
 
     /** All of them in one text, or null when any is missing; [open] opens an asset by path. */
     fun notices(open: (String) -> InputStream): String? = try {
@@ -155,6 +168,14 @@ object Acknowledgements {
 
     /** A paragraph's lines, each with the spaces that indent it, so a line too long for the screen wraps under its own text. */
     fun lines(paragraph: String): List<Pair<Int, String>> = paragraph.lines().map { line -> line.takeWhile { it == ' ' }.length.let { it to line.drop(it) } }
+
+    /**
+     * A line with no spaces, such as a library's "group:artifact:version" or a URL, kept whole
+     * where it fits, and otherwise broken only after a colon: a zero-width space after each `:`,
+     * and a word joiner after each `-` and `/`, where it would otherwise break.
+     */
+    fun unbroken(line: String): String =
+        if (line.any(Char::isWhitespace)) line else line.replace(Regex("[-/:]")) { it.value + if (it.value == ":") "\u200B" else "\u2060" }
 
     /** A title underlined with `=`, the heading of one library's or one file's licenses. */
     fun heading(paragraph: String): String? = paragraph.lines().takeIf { it.size == 2 && it[1].isNotEmpty() && it[1].all { c -> c == '=' } }?.first()

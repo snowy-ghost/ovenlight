@@ -45,6 +45,18 @@ class AppRegistryTests {
     val temp = TemporaryFolder()
     private val dir: File get() = temp.root
 
+    /** Add app with a host already listed returns that app, which Add app then opens, rather than a second tile. */
+    @Test
+    fun testAddingAnAppAlreadyListedOpensIt() {
+        val registry = offlineRegistry(dir)
+        val notes = registry.add(URI("https://notes.tailabc123.ts.net/"))
+        assertEquals(notes, registry.add(URI("https://Notes.TailABC123.ts.net/")))
+        assertEquals(listOf(notes), registry.apps)
+        val shared = registry.addShared("Echo", "echo.taildef456.ts.net", "echo", "m1", "Riley")
+        assertTrue("a shared app at the host isn't the owner's", registry.add(URI("https://echo.taildef456.ts.net/")) != shared)
+        assertEquals(3, registry.apps.size)
+    }
+
     @Test
     fun testStartsEmptyAndPersistsChanges() {
         val first = offlineRegistry(dir)
@@ -172,6 +184,74 @@ class AppRegistryTests {
         val reopened = offlineRegistry(dir)
         assertEquals(listOf("Coach", "notes.example.com"), reopened.apps.map { it.name })
         assertFalse(reopened.readInFull)
+    }
+
+    /** Android only: an icon that couldn't be written is fetched again, and no icon is fetched before its node can carry it. */
+    @Test
+    fun testAnIconIsSavedOnlyWhenWrittenAndFetchedOnlyWhenReachable() = runTest {
+        var fetches = 0
+        val registry = AppRegistry(
+            dir, session = { { _ -> fetches += 1; FetchResponse(200, "icon".toByteArray()) } },
+            webData = object : AppRegistry.WebData {
+                override fun discard(app: UUID) {}
+                override suspend fun clear(store: UUID) {}
+                override fun delete(store: UUID) {}
+                override suspend fun stores() = emptyList<UUID>()
+            },
+            iconPNG = { it }, scope = backgroundScope,
+        )
+        val coach = DiscoveredApp("coach.tailabc123.ts.net", OvenlightManifest(name = "Coach", icon = "/icon.png", version = 1))
+        assertTrue(registry.iconsDirectory.delete())
+        registry.iconsDirectory.writeText("in the way")
+        registry.mergeDiscovered(listOf(coach))
+        assertEquals(1, fetches)
+        assertNull("nothing was written", registry.apps.single().iconFile)
+
+        assertTrue(registry.iconsDirectory.delete())
+        assertTrue(registry.iconsDirectory.mkdirs())
+        registry.refreshAllMissingIcons { false }
+        assertEquals("its node isn't connected", 1, fetches)
+        registry.mergeDiscovered(listOf(coach))
+        val app = registry.apps.single()
+        assertEquals("${app.id.toString().uppercase()}.png", app.iconFile)
+        assertArrayEquals("icon".toByteArray(), registry.iconFile(app)!!.readBytes())
+    }
+
+    /**
+     * Coming to the front looks again for each missing icon. A connector's app with none stops
+     * after its manifest when coming to the front, and a manifest that changes nothing writes
+     * nothing.
+     */
+    @Test
+    fun testARefreshThatChangesNothingSavesNothing() = runTest {
+        val fetched = mutableListOf<String>()
+        var manifest = """{"name":"Coach","version":1}"""
+        val registry = AppRegistry(
+            dir, session = { { url -> fetched += url.path; FetchResponse(200, manifest.toByteArray()) } },
+            webData = object : AppRegistry.WebData {
+                override fun discard(app: UUID) {}
+                override suspend fun clear(store: UUID) {}
+                override fun delete(store: UUID) {}
+                override suspend fun stores() = emptyList<UUID>()
+            },
+            iconPNG = { it }, scope = backgroundScope,
+        )
+        registry.mergeDiscovered(listOf(DiscoveredApp("coach.tailabc123.ts.net", OvenlightManifest(name = "Coach", version = 1))))
+        val saved = File(dir, "apps.json")
+        assertTrue(saved.delete())
+        registry.refreshAllMissingIcons { true }
+        assertEquals("the manifest only, not the start page", listOf(OvenlightManifest.path), fetched)
+        assertFalse("nothing was saved", saved.exists())
+
+        manifest = """{"name":"Coach","themeColor":"#336699","version":1}"""
+        registry.refreshAllMissingIcons { true }
+        assertEquals("#336699", registry.apps.single().themeColorHex)
+        assertTrue("a change is saved", saved.exists())
+
+        // Refresh icon reads the page too: an icon added since the connector last read it isn't in its manifest yet.
+        fetched.clear()
+        registry.refreshMetadata(registry.apps.single().id)
+        assertEquals(listOf(OvenlightManifest.path, "/"), fetched)
     }
 }
 

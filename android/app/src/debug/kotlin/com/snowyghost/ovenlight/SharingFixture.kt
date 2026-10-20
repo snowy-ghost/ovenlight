@@ -22,9 +22,9 @@ object SharingFixture {
         fun ago(days: Double): Instant = now.minus(Duration.ofSeconds((86_400 * days).toLong()))
         val guests = AdminGuestList(
             guests = listOf(
-                AdminGuest("n1", "p1", "Sam", "book-club", "ovenlight-4k2x9q", claimedAt = ago(120.0), lastOpened = ago(64.0)),
-                AdminGuest("n4", "p1", "Sam", "book-club", "ovenlight-m7c1pw", claimedAt = ago(63.0), lastOpened = ago(0.1)),
-                AdminGuest("n2", "p2", "Kim", "book-club", "ovenlight-r5j8de", claimedAt = ago(30.0), lastOpened = ago(1.0)),
+                AdminGuest("n1", "p1", "Sam", "book-club", claimedAt = ago(120.0), lastOpened = ago(64.0)),
+                AdminGuest("n4", "p1", "Sam", "book-club", claimedAt = ago(63.0), lastOpened = ago(0.1)),
+                AdminGuest("n2", "p2", "Kim", "book-club", claimedAt = ago(30.0), lastOpened = ago(1.0)),
             ),
             invites = listOf(AdminInvite("i3", "Lee", "p3", "book-club", AdminInvite.sent, expires = now.plusSeconds(86_400))),
             openedSince = ago(200.0),

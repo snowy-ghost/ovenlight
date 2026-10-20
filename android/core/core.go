@@ -110,14 +110,6 @@ func SetRoute(key, membershipID string) error {
 	return theProxy.setRoute(key, membershipID)
 }
 
-// DebugAnswerWithin changes how long the proxy holds a CONNECT and dials, in debug
-// builds only, so a test can reach Chromium's own 10 second tunnel timeout.
-func DebugAnswerWithin(millis int64) {
-	if debug {
-		answerWithin.Store(int64(time.Duration(millis) * time.Millisecond))
-	}
-}
-
 // ClearRoute removes a key's route, closes its tunnels and refuses its held CONNECTs.
 // node-<membership ID> is cleared when that membership is removed.
 func ClearRoute(key string) {

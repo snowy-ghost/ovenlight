@@ -3,6 +3,7 @@ package com.snowyghost.ovenlight
 import java.net.URI
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -85,14 +86,7 @@ class NodeMachineTests {
     fun testTheLogNeverCarriesTheSignInLink() {
         assertEquals("needsLogin", NodeState.NeedsLogin(login).logDescription)
         assertEquals("retrying(attempt: 2)", NodeState.Retrying(2).logDescription)
-        assertEquals("""failed("boom")""", NodeState.Failed("boom").logDescription)
-    }
-
-    /** Android only: the rest of what iOS escapes in a failure's text. */
-    @Test
-    fun testTheLogQuotesAFailureAsIOSDoes() {
-        assertEquals("""failed("Ovenlight couldn\'t connect.")""", NodeState.Failed("Ovenlight couldn't connect.").logDescription)
-        assertEquals("""failed("a\tb\r\n\"c\" \\ \0 \u{7}")""", NodeState.Failed("a\tb\r\n\"c\" \\ \u0000 \u0007").logDescription)
+        assertEquals("the message is the summary's, not the log's", "failed", NodeState.Failed("boom").logDescription)
     }
 
     @Test
@@ -114,5 +108,19 @@ class NodeMachineTests {
         val needsLogin = TailnetStatus.decode("""{"BackendState":"NeedsLogin","AuthURL":"https://login.tailscale.com/a/abc","Peer":null}""")!!
         assertEquals(NodeEvent.Backend("NeedsLogin", login), needsLogin.event)
         assertEquals(emptyList<TailnetStatus.Peer>(), needsLogin.peers)
+    }
+
+    /** The same status polled twice is equal, whatever order its peers come in, so a poll that finds nothing new publishes nothing. */
+    @Test
+    fun testTheSameStatusTwiceIsEqual() {
+        val peers = listOf(
+            """"nodekey:1":{"HostName":"interview-coach","DNSName":"interview-coach.tailabc123.ts.net.","OS":"macOS","Online":true,"UserID":42}""",
+            """"nodekey:2":{"HostName":"laptop","DNSName":"laptop.tailabc123.ts.net.","OS":"macOS","Online":false,"UserID":42}""",
+            """"nodekey:3":{"HostName":"phone","DNSName":"phone.tailabc123.ts.net.","OS":"iOS","Online":true,"UserID":42}""",
+        )
+        fun status(peers: List<String>) = TailnetStatus.decode("""{"BackendState":"Running","Peer":{${peers.joinToString(",")}}}""")!!
+        assertEquals(status(peers), status(peers))
+        assertEquals(status(peers), status(peers.reversed()))
+        assertNotEquals("a peer coming online is a change", status(peers), status(peers.map { it.replace("false", "true") }))
     }
 }

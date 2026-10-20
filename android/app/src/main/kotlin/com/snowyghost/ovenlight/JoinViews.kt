@@ -3,11 +3,8 @@ package com.snowyghost.ovenlight
 import android.Manifest
 import android.content.ClipboardManager
 import android.content.Context
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
-import android.net.Uri
-import android.provider.Settings
 import androidx.camera.compose.CameraXViewfinder
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
@@ -22,9 +19,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -77,19 +72,18 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
-import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
@@ -206,18 +200,20 @@ fun JoinFlowView(model: AppModel, request: JoinRequest, onClose: () -> Unit) {
 fun JoinFlowScreen(request: JoinRequest, state: JoinState, onClose: () -> Unit) {
     val background = LocalOvenColors.current.groupedBackground
     val title = ConnectionCopy.joinWithInvite
+    val bar = TopAppBarDefaults.pinnedScrollBehavior()
     Scaffold(
-        modifier = Modifier.semantics { paneTitle = title },
+        modifier = Modifier.nestedScroll(bar.nestedScrollConnection).semantics { paneTitle = title },
         containerColor = background,
         topBar = {
             TopAppBar(
                 title = { if (request.invite == null) Text(title) },
                 navigationIcon = {
                     IconButton(onClick = onClose) {
-                        Icon(painterResource(R.drawable.ic_close), contentDescription = stringResource(R.string.join_close))
+                        Icon(painterResource(R.drawable.ic_close), contentDescription = stringResource(R.string.close))
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = background, scrolledContainerColor = background),
+                colors = scrollingBarColors(background),
+                scrollBehavior = bar,
             )
         },
     ) { bars ->
@@ -253,7 +249,13 @@ private fun InviteEntry(canScan: Boolean, found: (InviteLink) -> Unit) {
     ) {
         Text(ConnectionCopy.invitePrompt, style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp))
         // The clipboard is read only on a tap, and Android says when it is.
-        FilledTonalButton(onClick = { use(clipboardText(context)) }, modifier = Modifier.fillMaxWidth().height(56.dp)) {
+        val nothingToPaste = stringResource(R.string.join_nothing_to_paste)
+        FilledTonalButton(
+            onClick = { clipboardText(context).let { if (it.isBlank()) error = nothingToPaste else use(it) } },
+            modifier = Modifier.fillMaxWidth().height(56.dp),
+        ) {
+            Icon(painterResource(R.drawable.ic_content_paste), contentDescription = null, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(8.dp))
             Text(stringResource(R.string.join_paste), style = MaterialTheme.typography.titleMedium)
         }
         Text(
@@ -264,7 +266,7 @@ private fun InviteEntry(canScan: Boolean, found: (InviteLink) -> Unit) {
         Column {
             OutlinedTextField(
                 text,
-                label = { Text(stringResource(R.string.join_link)) },
+                label = { Text(stringResource(R.string.invite_link)) },
                 placeholder = { Text("https://ovenlight.app/join#…", style = monospace) },
                 textStyle = monospace,
                 lineLimits = TextFieldLineLimits.MultiLine(maxHeightInLines = 4),
@@ -283,16 +285,9 @@ private fun InviteEntry(canScan: Boolean, found: (InviteLink) -> Unit) {
         if (canScan) {
             OutlinedButton(
                 onClick = {
-                    val activity = context.componentActivity()
-                    val rationale = { activity?.shouldShowRequestPermissionRationale(Manifest.permission.CAMERA) == true }
-                    val before = rationale()
-                    val askedBefore = cameraAsked
-                    RuntimePermissions.request(context, listOf(Manifest.permission.CAMERA)) { granted ->
-                        cameraAsked = true
-                        // Turned off for good, the scanner says so, with the way to Settings. Android
-                        // gives no rationale both before the first question and after a dismissed one,
-                        // so only a refusal of a question asked before counts.
-                        if (granted || (askedBefore && !before && !rationale())) scanning = true
+                    // Turned off for good, the scanner says so, with the way to Settings.
+                    RuntimePermissions.request(context, listOf(Manifest.permission.CAMERA), refusedForGood = { scanning = true }) { granted ->
+                        if (granted) scanning = true
                     }
                 },
                 modifier = Modifier.fillMaxWidth().height(56.dp),
@@ -313,9 +308,6 @@ private fun InviteEntry(canScan: Boolean, found: (InviteLink) -> Unit) {
     }
 }
 
-/** Whether this process asked for the camera already, for telling a refusal for good from a first one. */
-private var cameraAsked = false
-
 /** What's on the clipboard as plain text, or nothing: never a copied file, which reading would open. */
 private fun clipboardText(context: Context): String {
     val clip = context.getSystemService(ClipboardManager::class.java)?.primaryClip ?: return ""
@@ -324,25 +316,18 @@ private fun clipboardText(context: Context): String {
 
 /** A link that isn't an invite Ovenlight can use, and why. */
 @Composable
-private fun CantUseInvite(message: String, tryAnother: () -> Unit) = BoxWithConstraints(Modifier.fillMaxSize()) {
-    // Centered, scrolling only when the largest font sizes don't fit.
-    Column(
-        Modifier.verticalScroll(rememberScrollState()).heightIn(min = maxHeight).fillMaxWidth().padding(32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Icon(painterResource(R.drawable.ic_error), contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(48.dp))
-        Text(
-            stringResource(R.string.join_cant_use), Modifier.padding(top = 16.dp).semantics { heading() },
-            style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center,
-        )
-        Text(
-            message, Modifier.padding(top = 8.dp),
-            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center,
-        )
-        Button(onClick = tryAnother, modifier = Modifier.padding(top = 24.dp).height(56.dp)) {
-            Text(stringResource(R.string.join_try_another), style = MaterialTheme.typography.titleMedium)
-        }
+private fun CantUseInvite(message: String, tryAnother: () -> Unit) = CenteredScroll(contentPadding = 32.dp) {
+    Icon(painterResource(R.drawable.ic_error), contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(48.dp))
+    Text(
+        stringResource(R.string.join_cant_use), Modifier.padding(top = 16.dp).semantics { heading() },
+        style = OvenType.displayTitle, textAlign = TextAlign.Center,
+    )
+    Text(
+        message, Modifier.padding(top = 8.dp),
+        style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center,
+    )
+    Button(onClick = tryAnother, modifier = Modifier.padding(top = 24.dp).height(56.dp)) {
+        Text(stringResource(R.string.join_try_another), style = MaterialTheme.typography.titleMedium)
     }
 }
 
@@ -350,7 +335,8 @@ private fun CantUseInvite(message: String, tryAnother: () -> Unit) = BoxWithCons
 @Composable
 private fun JoinInvite(invite: InviteLink, state: JoinState, close: () -> Unit) {
     val colors = MaterialTheme.colorScheme
-    val phase = state.phases[invite.invite]
+    // Joined, but the app went since (removed, or its access ended): the invite asks again.
+    val phase = state.phases[invite.invite]?.takeUnless { it is JoinPhase.Joined && state.apps.none { app -> app.id == it.app } }
     val preflight = state.preflight(invite)
     // The invited app once it's on this phone, joined now or before. Its icon can't be fetched
     // until joining gives this phone access to its computer; adding the app fetches it, so the
@@ -373,6 +359,13 @@ private fun JoinInvite(invite: InviteLink, state: JoinState, close: () -> Unit) 
         felt = phase
     }
 
+    // Joining a computer that isn't Tailscale's says so, right above Join.
+    val warns = phase == null && preflight !is Preflight.AlreadyAdded && preflight != Preflight.OwnApp && !invite.usesTailscaleControl
+    val scroll = rememberScrollState()
+    // When it all doesn't fit, it sits scrolled to the end, so the warning shows beside Join,
+    // again after anything changes its height (a rotation, the font size).
+    LaunchedEffect(warns) { if (warns) snapshotFlow { scroll.maxValue }.collect { scroll.scrollTo(it) } }
+
     // The actions stay at the bottom; what's above them sits just over them rather than floating
     // mid-screen, and scrolls when it doesn't fit (the largest font sizes, a phone on its side).
     BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
@@ -381,7 +374,7 @@ private fun JoinInvite(invite: InviteLink, state: JoinState, close: () -> Unit) 
         Column(Modifier.widthIn(max = 640.dp).fillMaxSize().padding(horizontal = 28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             BoxWithConstraints(Modifier.weight(1f)) {
                 Column(
-                    Modifier.verticalScroll(rememberScrollState()).heightIn(min = maxHeight).fillMaxWidth().animateContentSize(),
+                    Modifier.verticalScroll(scroll).heightIn(min = maxHeight).fillMaxWidth().animateContentSize(),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Bottom,
                 ) {
@@ -438,6 +431,15 @@ private fun JoinInvite(invite: InviteLink, state: JoinState, close: () -> Unit) 
                             }
                         }
                     }
+                    if (warns) {
+                        Row(Modifier.padding(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Icon(painterResource(R.drawable.ic_warning), contentDescription = null, tint = colors.tertiary, modifier = Modifier.size(18.dp))
+                            Text(
+                                ConnectionCopy.privateServer(invite.control.bareHost.orEmpty(), invite.owner),
+                                style = MaterialTheme.typography.bodySmall, color = colors.tertiary,
+                            )
+                        }
+                    }
                 }
             }
             Column(Modifier.padding(bottom = 12.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -455,7 +457,7 @@ private fun JoinInvite(invite: InviteLink, state: JoinState, close: () -> Unit) 
                         TextButton(onClick = { state.accept(invite) }) { Text(stringResource(R.string.join_again)) }
                     }
                     phase is JoinPhase.Failed && phase.error.isRetryable -> {
-                        primary(stringResource(R.string.join_try_again)) { state.retry(invite) }
+                        primary(stringResource(R.string.try_again)) { state.retry(invite) }
                         TextButton(onClick = { state.cancel(invite, close) }, colors = ButtonDefaults.textButtonColors(contentColor = colors.error)) {
                             Text(stringResource(R.string.join_stop))
                         }
@@ -463,18 +465,8 @@ private fun JoinInvite(invite: InviteLink, state: JoinState, close: () -> Unit) 
                     phase is JoinPhase.Failed || (phase == null && preflight == Preflight.OwnApp) -> primary(stringResource(R.string.join_done), close)
                     phase != null -> Unit
                     else -> {
-                        // With the actions, so it shows whenever Join does.
-                        if (!invite.usesTailscaleControl) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Icon(painterResource(R.drawable.ic_warning), contentDescription = null, tint = colors.tertiary, modifier = Modifier.size(18.dp))
-                                Text(
-                                    ConnectionCopy.privateServer(invite.control.bareHost.orEmpty(), invite.owner),
-                                    style = MaterialTheme.typography.bodySmall, color = colors.tertiary,
-                                )
-                            }
-                        }
                         primary(stringResource(R.string.join_join)) { state.accept(invite) }
-                        TextButton(onClick = close) { Text(stringResource(R.string.join_not_now)) }
+                        TextButton(onClick = close) { Text(stringResource(R.string.not_now)) }
                     }
                 }
             }
@@ -509,9 +501,7 @@ private fun InviteScannerView(found: (String) -> Unit, cancel: () -> Unit) {
                     verticalArrangement = Arrangement.spacedBy(24.dp),
                 ) {
                     Text(stringResource(R.string.join_camera_denied), color = Color.White, style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center)
-                    Button(onClick = {
-                        context.startOrFalse(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null)))
-                    }) { Text(stringResource(R.string.join_open_settings)) }
+                    Button(onClick = { RuntimePermissions.openSettings(context) }) { Text(stringResource(R.string.open_settings)) }
                 }
             }
             Row(
@@ -520,7 +510,7 @@ private fun InviteScannerView(found: (String) -> Unit, cancel: () -> Unit) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(stringResource(R.string.join_point_at_code), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
-                TextButton(onClick = cancel) { Text(stringResource(R.string.join_cancel)) }
+                TextButton(onClick = cancel) { Text(stringResource(R.string.cancel)) }
             }
         }
     }
@@ -607,33 +597,16 @@ object LauncherWelcome {
 @Composable
 fun LauncherWelcome(join: () -> Unit, useOwnComputers: () -> Unit, modifier: Modifier = Modifier) {
     val colors = MaterialTheme.colorScheme
-    val glow = LocalOvenColors.current.lampGlow.copy(alpha = if (isSystemInDarkTheme()) 0.25f else 0.2f)
-    BoxWithConstraints(modifier.fillMaxWidth()) {
-        Column(
-            Modifier.verticalScroll(rememberScrollState()).heightIn(min = maxHeight).fillMaxWidth().padding(horizontal = 32.dp, vertical = 24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-        ) {
-            // The empty rack, in the light, waiting for apps.
-            Box(Modifier.size(270.dp, 64.dp), contentAlignment = Alignment.Center) {
-                Canvas(Modifier.matchParentSize().clearAndSetSemantics {}) {
-                    scale(scaleX = 1f, scaleY = size.height / size.width) {
-                        drawCircle(Brush.radialGradient(listOf(glow, Color.Transparent), center = center, radius = size.width / 2), radius = size.width / 2)
-                    }
-                }
-                OvenRack(250.dp)
-            }
-            Spacer(Modifier.height(30.dp))
-            Text(LauncherWelcome.title, style = OvenType.displayTitle, color = colors.onSurface, textAlign = TextAlign.Center)
-            Spacer(Modifier.height(10.dp))
-            Text(LauncherWelcome.message, style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant, textAlign = TextAlign.Center)
-            Spacer(Modifier.height(24.dp))
-            Button(onClick = join, modifier = Modifier.height(56.dp)) {
-                Text(ConnectionCopy.joinWithInvite, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 8.dp))
-            }
-            Spacer(Modifier.height(14.dp))
-            TextButton(onClick = useOwnComputers) { Text(stringResource(R.string.launcher_use_own_computers)) }
+    CenteredScroll(modifier, contentPadding = 32.dp) {
+        Text(LauncherWelcome.title, Modifier.semantics { heading() }, style = OvenType.displayTitle, color = colors.onSurface, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(10.dp))
+        Text(LauncherWelcome.message, style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(24.dp))
+        Button(onClick = join, modifier = Modifier.height(56.dp)) {
+            Text(ConnectionCopy.joinWithInvite, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 8.dp))
         }
+        Spacer(Modifier.height(14.dp))
+        TextButton(onClick = useOwnComputers) { Text(stringResource(R.string.use_my_own_computers)) }
     }
 }
 
@@ -642,13 +615,12 @@ fun LauncherWelcome(join: () -> Unit, useOwnComputers: () -> Unit, modifier: Mod
 fun PendingInvitesBanner(invites: List<InviteLink>, phases: Map<String, JoinPhase>, open: (InviteLink) -> Unit, modifier: Modifier = Modifier) {
     if (invites.isEmpty()) return
     val colors = MaterialTheme.colorScheme
-    val container = if (isSystemInDarkTheme()) colors.surfaceContainerHigh else colors.surfaceContainerLowest
     Column(modifier.padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         for (invite in invites.distinctBy { it.invite }) {
             key(invite.invite) {
                 val failed = (phases[invite.invite] as? JoinPhase.Failed)?.error
                 val app = remember(invite.invite) { WebApp(name = invite.name, startURL = invite.appURL) }
-                Surface(onClick = { open(invite) }, shape = RoundedCornerShape(16.dp), color = container, modifier = Modifier.fillMaxWidth()) {
+                Surface(onClick = { open(invite) }, shape = RoundedCornerShape(16.dp), color = cardColor, modifier = Modifier.fillMaxWidth()) {
                     Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                         AppIconView(app, image = null, size = 36.dp)
                         Column(Modifier.weight(1f)) {

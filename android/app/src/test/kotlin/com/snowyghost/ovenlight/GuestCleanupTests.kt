@@ -55,13 +55,6 @@ class GuestCleanupTests {
     }
 
     @Test
-    fun testLostLoginMeansRemovedOnlyAfterJoining() {
-        assertTrue(GuestCleanup.isRemoved(membership("a")))
-        assertTrue("a second invite in progress doesn't hide the removal", GuestCleanup.isRemoved(membership("a", claiming = listOf(notes))))
-        assertFalse("a first join passes through NeedsLogin", GuestCleanup.isRemoved(membership("a", joined = false)))
-    }
-
-    @Test
     fun testWhoamiAndClaimAnswers() {
         fun refusal(code: String, words: String = "refused") = """{"error":"$words","code":"$code"}""".toByteArray()
         assertEquals(Reach.Reached, GuestProbe.classify(403, header = "unknown_caller", body = "Unknown caller.".toByteArray()))
@@ -196,10 +189,9 @@ class GuestCleanupTests {
         )
 
         val answers = mutableMapOf<String, Boolean>() // what a node records when nothing was left to probe
-        val tile = AppReachability.forTile(echo, NodeState.Ready, answers)
-        assertEquals(AppReachability.Offline, tile)
+        assertTrue(NodeManager.isOffline(echo, NodeState.Ready, answers))
         answers[echo] = true
-        assertNull(AppReachability.forTile(echo, NodeState.Ready, answers))
+        assertFalse(NodeManager.isOffline(echo, NodeState.Ready, answers))
     }
 
     @Test

@@ -3,8 +3,8 @@ package com.snowyghost.ovenlight
 import java.time.Instant
 import java.util.UUID
 import kotlin.math.min
-import kotlin.math.pow
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.buildJsonObject
@@ -47,10 +47,10 @@ enum class JoinError {
         KeyUsed -> "This invite was already used"
         // A connector expires an invite's key once it's claimed, so "expired" also means used.
         Expired -> "This invite no longer works"
-        KeyRefused, NotInvited -> "This invite didn't work"
+        KeyRefused, NotInvited -> "This invite didn’t work"
         UsedOnAnotherDevice -> "This invite was used on another phone"
         SomeoneElses -> "This invite is for someone else"
-        Network -> "Can't reach $owner's $app"
+        Network -> "Can’t reach $owner’s $app"
         Canceled -> "Joining canceled"
         OwnApp -> "$app is already yours"
         WrongNetwork -> "This invite leads somewhere else"
@@ -60,11 +60,11 @@ enum class JoinError {
         KeyUsed, UsedOnAnotherDevice -> "Each invite works once. Ask $owner for a new one."
         Expired -> "Invites expire, and each works only once. Ask $owner for a new one."
         KeyRefused, NotInvited -> "$owner may have canceled it. Ask $owner for a new one."
-        SomeoneElses -> "This phone already joined $owner's apps under another name. Ask $owner to invite that name instead."
-        Network -> "Check that you're online. $owner's computer may also be asleep or offline. Try again in a moment."
+        SomeoneElses -> "This phone already joined $owner’s apps under another name. Ask $owner to invite that name instead."
+        Network -> "Check that you’re online. $owner’s computer may also be asleep or offline. Try again in a moment."
         Canceled -> "Nothing was added to Ovenlight."
         OwnApp -> "This invite is for one of your own apps. Open it from your apps instead."
-        WrongNetwork -> "It didn't lead to $owner's $app, so Ovenlight disconnected and added nothing. Ask $owner for a new one."
+        WrongNetwork -> "It didn’t lead to $owner’s $app, so Ovenlight disconnected and added nothing. Ask $owner for a new one."
     }
 
     companion object {
@@ -73,8 +73,6 @@ enum class JoinError {
          * text unchanged: "authkey already used", "authkey expired" (Headscale), "invalid key:
          * ..." (Tailscale).
          */
-        operator fun invoke(upError: Throwable): JoinError = invoke(upMessage = upError.message ?: upError.toString())
-
         operator fun invoke(upMessage: String): JoinError {
             val text = upMessage.lowercase()
             return when {
@@ -96,7 +94,7 @@ sealed class JoinPhase {
     data class Failed(val error: JoinError) : JoinPhase()
 }
 
-/** The connector's answer to `POST /__ovenlight/claim`. */
+/** The connector's names for an app: its answer to `POST /__ovenlight/claim`, and to `GET /__ovenlight/whoami` too. */
 @Serializable
 data class ClaimResponse(val app: String? = null, val appName: String? = null, val owner: String? = null) {
     data class Names(val owner: String, val appName: String, val app: String)
@@ -117,8 +115,20 @@ object Claim {
 
     const val path = "/__ovenlight/claim"
 
-    /** How long the manager keeps trying one claim (`GuestManager.claimTime` on iOS). */
-    val claimTime: Duration = 25.seconds
+    /** How long a claim keeps trying, in all. */
+    val budget: Duration = 25.seconds
+
+    /** One try's timeout: 8 s, or what's left of the budget, but never under 2 s. */
+    fun tryTimeout(left: Duration): Duration = left.coerceIn(2.seconds, 8.seconds)
+
+    /**
+     * The wait before the next try, doubling from half a second up to 4 s, and no longer than
+     * what's left of the budget. Null once it's spent.
+     */
+    fun wait(after: Int, left: Duration): Duration? {
+        if (left <= Duration.ZERO) return null
+        return minOf(500.milliseconds * (1 shl min(after, 3)), left)
+    }
 
     sealed class Landing {
         data object InNetwork : Landing()
@@ -169,29 +179,20 @@ object Claim {
             else -> Step.Retry
         }
     }
-
-    /**
-     * The wait before claim attempt [attempt] (from 0) is tried again: doubling from half a
-     * second, at most 4 (the manager's loop on iOS).
-     */
-    fun retryDelay(attempt: Int): Duration = min(0.5 * 2.0.pow(attempt), 4.0).seconds
 }
 
-/** Someone's apps stopped being shared with this phone. */
-data class AccessEndedNotice(val owner: String, val apps: List<String>, val id: UUID = UUID.randomUUID()) {
-    val title: String get() = ConnectionCopy.noLongerSharedTitle
-    val message: String get() = ConnectionCopy.noLongerShared(apps, owner)
-
+/** What a guest is told once, over the launcher: someone's apps stopped being shared, or a join failed with its screen closed. */
+data class Notice(val title: String, val message: String, val id: UUID = UUID.randomUUID()) {
     companion object {
         /**
          * The notice for apps taken away together, named by the first one's owner, or none when
          * every one of them is already gone from [listed], the registry's apps, so two sweeps of
          * the same app say so once (`GuestManager.accessEnded` on iOS).
          */
-        fun of(apps: List<WebApp>, listed: List<WebApp>): AccessEndedNotice? {
+        fun accessEnded(apps: List<WebApp>, listed: List<WebApp>): Notice? {
             val remaining = apps.filter { app -> listed.any { it.id == app.id } }
             val first = remaining.firstOrNull() ?: return null
-            return AccessEndedNotice(first.sharedBy ?: "Its owner", remaining.map { it.name })
+            return Notice(ConnectionCopy.noLongerSharedTitle, ConnectionCopy.noLongerShared(remaining.map { it.name }, first.sharedBy ?: "Its owner"))
         }
     }
 }

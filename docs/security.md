@@ -451,20 +451,22 @@ agent is told that it is an image its sender chose, and any text in it is data.
 - Add App takes only an address on the owner's own tailnet, and none before the owner has
   signed in, so a new app comes from the owner's own computers or from an invite. An app
   of your own goes through the owner's node only when its host is on the owner's own
-  tailnet (its MagicDNS suffix, remembered from the node's status). On iPhone, any other
-  address, which only an app saved before that rule can have, loads directly, outside the
-  tailnet. On Android it is refused. The owner's node only ever carries names on that
-  known tailnet. Until the tailnet is known, a `*.ts.net` app is routed to the owner's
-  node and waits behind Sign In, loading nothing, rather than looking the name up in
-  public DNS. After sign-in, a name outside the owner's tailnet loads directly on iPhone.
-  The route is checked before every probe and load, and a view whose route changed is made
-  again through the right node. A change of the remembered tailnet closes every view whose
-  route it changed. Sign Out and Stop Using My Own Computers forget it, close every view
-  that went through the owner's node, kept in the background or not, and remove the apps
-  found on the owner's computers with their data. A closed view can't connect again (on
-  iPhone, its data store is set to a proxy that refuses every connection, and on Android,
-  its route is cleared), and the app loads again through its route, at once if it's on
-  screen. A shared app always goes through its owner's guest node.
+  tailnet (its MagicDNS suffix, remembered from the node's status). Any other address,
+  such as an app from a tailnet the owner was signed in to before, is refused: it shows
+  Can't Reach and sends nothing, not even a probe, and Ovenlight never looks its name up
+  in public DNS or loads it outside the tailnet. Only the iPhone's debug builds load an
+  app at `localhost` directly, for screenshots of a local demo. The owner's node only ever
+  carries names on that known tailnet. Until the tailnet is known, a `*.ts.net` app is
+  routed to the owner's node and waits behind Sign In, loading nothing. The route is
+  checked before every probe and load, and a view whose route changed is made again
+  through the right node, or refused. A change of the remembered tailnet closes every view
+  whose route it changed. Sign Out and Stop Using My Own Computers forget it, close every
+  view that went through the owner's node, kept in the background or not, and remove the
+  apps found on the owner's computers with their data. A closed view can't connect again,
+  and neither can a refused app's (on iPhone, its data store is set to a proxy that
+  refuses every connection, and on Android, its route is cleared). The closed view's app
+  loads again through its route, at once if it's on screen. A shared app always goes
+  through its owner's guest node.
 - While Ovenlight is locked, no page gets the microphone or camera, and an app that an
   `ovenlight://open` link asks for waits for the unlock. Locking also stops any
   microphone or camera stream already running in an open app, on screen or kept in the
@@ -481,9 +483,8 @@ agent is told that it is an image its sender chose, and any text in it is data.
 - Each network the phone joins gets its own node, state and random device name
   (`ovenlight-` and six random characters), so no name or key ties its guest devices
   together. Two owners comparing notes could still match them: each sees when Ovenlight
-  is open on the phone (its guest node comes online and checks in with their apps every
-  minute), and its public IP address and operating system (on iPhone, its iOS version
-  too).
+  is open on the phone (its guest node comes online and checks in with their apps), and
+  its public IP address and operating system (on iPhone, its iOS version too).
 - Ovenlight builds Tailscale without its peer API server. Through it, a device of the same
   user, which an invite's sender can arrange, could ask the phone to look up names on the
   phone's own networks: its router, Private DNS or a company's DNS.
@@ -527,7 +528,7 @@ agent is told that it is an image its sender chose, and any text in it is data.
   runs from the moment Ovenlight's screen goes, even for a file picker or Tailscale's
   sign-in tab, unlike on iPhone, since Android can't tell someone still in a picker from
   someone who left. A file picked meanwhile reaches the page only after the unlock.
-  Recents shows no picture of Ovenlight on Android 13 and later.
+  Recents shows no picture of Ovenlight.
 - **Microphone and camera.** WebView can't stop a stream it handed out. On lock and when
   an app closes to the launcher, Ovenlight's page script stops the tracks it saw, and if
   the phone still records or holds a camera half a second later, Ovenlight closes any

@@ -85,7 +85,7 @@ class AddAppDialogTests {
         ownerState = NodeState.Ready
         ownerSuffix = "tailabc123.ts.net"
         show()
-        inEveryLook("Add app", "Address", "my-app.tailabc123.ts.net", "Ovenlight fetches the app's name and icon from its web manifest. Each app gets its own private storage.")
+        inEveryLook("Add app", "Address", "my-app.tailabc123.ts.net", "Ovenlight fetches the app’s name and icon from its web manifest. Each app gets its own private storage.")
         composeRule.onNodeWithText("Add").assertIsNotEnabled()
         field.performTextInput("http://coach.tailabc123.ts.net")
         inEveryLook("Ovenlight only opens secure addresses that start with https.")

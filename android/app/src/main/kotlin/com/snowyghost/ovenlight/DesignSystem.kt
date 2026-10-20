@@ -11,19 +11,16 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
@@ -86,6 +83,9 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.foundation.clickable
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 
 /**
  * Ovenlight's brand, as iOS's asset catalog has it: the ember accent on warm paper, and
@@ -400,34 +400,6 @@ private inline fun DrawScope.turned(source: LightSource, draw: DrawScope.(Float,
     }) { draw(originX, originY, across, along) }
 }
 
-/** The oven rack: a thin ember line the light falls on, under the wordmark and the welcome. */
-@Composable
-fun OvenRack(width: Dp, modifier: Modifier = Modifier) {
-    val oven = LocalOvenColors.current
-    val alpha = if (isSystemInDarkTheme()) 0.6f else 0.45f
-    Box(modifier.size(width, 3.dp).clip(CircleShape).background(oven.ember.copy(alpha = alpha)).clearAndSetSemantics {})
-}
-
-/** Whether an app's computer is reachable, for its launcher tile. */
-enum class AppReachability {
-    Offline,
-    ;
-
-    val label: String get() = "Offline"
-
-    companion object {
-        /**
-         * Tiles only speak up when something is wrong: an app reached through Ovenlight's node
-         * whose computer didn't answer the last probe, or wasn't online to be probed. Nothing
-         * before the node is ready (the launcher shows that) or before the first probe.
-         */
-        fun forTile(host: String, nodeState: NodeState, answers: Map<String, Boolean>?): AppReachability? {
-            if (nodeState != NodeState.Ready || answers == null) return null
-            return if (answers[Discovery.normalizedHost(host)] == true) null else Offline
-        }
-    }
-}
-
 /**
  * A full-screen state centered in the safe area, that scrolls only when the largest text sizes
  * don't fit. [modifier] reaches behind the bars, for a background.
@@ -448,6 +420,17 @@ fun CenteredScroll(modifier: Modifier = Modifier, contentPadding: Dp = 0.dp, spa
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SheetDragHandle() = BottomSheetDefaults.DragHandle(Modifier.minimumInteractiveComponentSize())
+
+/** A choice in a sheet: its icon and label. */
+@Composable
+fun SheetRow(icon: Int, label: String, onClick: () -> Unit) {
+    ListItem(
+        headlineContent = { Text(label) },
+        leadingContent = { Icon(painterResource(icon), contentDescription = null) },
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+        modifier = Modifier.clickable(onClick = onClick),
+    )
+}
 
 /** The window of the dialog this composable is in, if it's in one. */
 fun View.dialogWindow(): Window? = generateSequence(parent) { it.parent }.firstNotNullOfOrNull { (it as? DialogWindowProvider)?.window }

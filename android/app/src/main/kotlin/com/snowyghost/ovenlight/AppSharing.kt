@@ -9,7 +9,7 @@ data class AppMenuPlan(
     /** People and how many have it, when the owner can share the app. */
     val people: Int? = null,
     val reportProblem: Boolean = false,
-    /** Whose apps a guest can leave. */
+    /** Whose apps a guest can leave, when that's more than this one: Remove app covers one alone. */
     val leaveOwner: String? = null,
 ) {
     enum class Share {
@@ -21,11 +21,14 @@ data class AppMenuPlan(
     }
 
     companion object {
-        const val notShareableDetail = "Make it shareable on your computer first"
+        fun notShareableDetail(slug: String) = "Make it shareable first: on your computer, run ${SharingList.shareableCommand(slug)}"
 
-        /** [admin] is the connector's view of the app and its computer's guests, when there is one. */
-        fun plan(app: WebApp, admin: Pair<AdminApp, AdminGuestList>?): AppMenuPlan {
-            if (app.isShared) return AppMenuPlan(reportProblem = true, leaveOwner = app.sharedBy ?: "Its owner")
+        /** [admin] is the connector's view of the app and its computer's guests, when there is one; [apps], every app on this phone. */
+        fun plan(app: WebApp, admin: Pair<AdminApp, AdminGuestList>?, apps: List<WebApp>): AppMenuPlan {
+            if (app.isShared) {
+                val more = apps.count { it.membershipID == app.membershipID } > 1
+                return AppMenuPlan(reportProblem = true, leaveOwner = (app.sharedBy ?: "Its owner").takeIf { more })
+            }
             val (adminApp, guests) = admin ?: return AppMenuPlan()
             if (!adminApp.shareable) return AppMenuPlan(share = Share.NotShareable)
             val people = GuestPerson.all(guests.guests.filter { it.app == adminApp.slug }).size

@@ -73,7 +73,7 @@ class PageSheetsTests {
         val answers = mutableListOf<Boolean>()
         var prompt by mutableStateOf(PageCapture.Prompt(MediaCaptureType.Camera, null, DialogAnswer(false) { answers += it }))
         show { CapturePromptDialog(capturePromptTitle(prompt, "Recipe Box"), prompt.answer::invoke) }
-        inEveryLook { assertShows("Allow Recipe Box to use the camera?", "Allow", "Don't allow") }
+        inEveryLook { assertShows("Allow Recipe Box to use the camera?", "Allow", "Don’t allow") }
         composeRule.onNodeWithText("Allow").performClick()
         assertEquals("Allow does nothing at first, so a page's double tap can't land on it", emptyList<Boolean>(), answers)
         ShadowSystemClock.advanceBy(Duration.ofMillis(PROMPT_DELAY_MILLIS))

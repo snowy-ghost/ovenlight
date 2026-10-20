@@ -22,6 +22,8 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.window.Dialog
@@ -56,6 +58,13 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         if (givesWayToAnotherOvenlight()) return finishAndRemoveTask()
+        // As Ovenlight opens, not as its process starts: Android starts it to serve a file another
+        // app still reads from the shelf, too.
+        if (!model.shelfEmptied) {
+            DownloadShelf.emptyAtLaunch(this)
+            CaptureFileProvider.emptyAtLaunch(this)
+            model.shelfEmptied = true
+        }
         unlockPrompt = UnlockPrompt(
             this, confirmedAfterRestart = { lifecycleScope.launch { lock.unlock(screenLockEntered) } },
             confirmAnswered = { confirmed ->
@@ -79,7 +88,7 @@ class MainActivity : ComponentActivity() {
         // replays.
         val handled = savedInstanceState?.getBoolean(HANDLED_LAUNCH) ?: false
         if (!handled && intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY == 0) receive(intent)
-        setContent { Root(OvenlightApp.model, onUnlock = { lifecycleScope.launch { lock.unlock(unlockPrompt) } }) }
+        setContent { Root(model, onUnlock = { lifecycleScope.launch { lock.unlock(unlockPrompt) } }) }
     }
 
     /**
@@ -123,11 +132,27 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        hideFromRecents(false)
         // The answer always comes before this; should it not, the lock doesn't wait for it any longer.
         if (lockCheckWaits) checkLock()
         lock.screenLockChecked(getSystemService(KeyguardManager::class.java).isDeviceSecure)
         lifecycleScope.launch { lock.didBecomeActive(unlockPrompt) }
         returnedFromTab()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        hideFromRecents(true)
+    }
+
+    /**
+     * Below Android 13, which keeps Ovenlight out of Recents' snapshots (onCreate), the window is
+     * secure only while Ovenlight isn't in front: Recents shows a blank card, and the person's own
+     * screenshots of Ovenlight still work.
+     */
+    private fun hideFromRecents(hide: Boolean) {
+        if (Build.VERSION.SDK_INT >= 33) return
+        if (hide) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE) else window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
     }
 
     override fun onStop() {
@@ -230,17 +255,17 @@ class MainActivity : ComponentActivity() {
         if (intent.action != Intent.ACTION_VIEW) return
         val url = intent.dataString?.let { runCatching { URI(it) }.getOrNull() } ?: return
         // The link goes in front of an invite not yet made, as iOS's composer goes with the sheet
-        // under it. One being made or made stays, since its link shows only once.
-        val composer = OvenlightApp.model.composer
-        composer.value?.let { if (it.result == null && !it.working) composer.value = null }
-        OvenlightApp.router.handle(url, OvenlightApp.model.registry.apps)
+        // under it. One being made or not sent yet stays, since its link shows only once.
+        val composer = model.composer
+        composer.value?.let { if (!it.holdsLinks) composer.value = null }
+        model.handleLink(url)
     }
 
     private companion object {
         const val HANDLED_LAUNCH = "handledLaunch"
 
         /** Tailscale's device list, where a new device waits for approval. */
-        val machinesPage = URI("https://login.tailscale.com/admin/machines")
+        val machinesPage = URI("https://console.tailscale.com/admin/machines")
     }
 }
 
@@ -250,13 +275,17 @@ private fun Root(model: AppModel, onUnlock: () -> Unit) {
     OvenlightTheme {
         val locked by lock.isLocked.collectAsState()
         val state by WebViewSetup.state.collectAsState()
+        val context = LocalContext.current
         // While locked, nothing is in the activity's window, so neither TalkBack nor a keyboard
-        // can reach what's behind the lock.
+        // can reach what's behind the lock. What it held, text typed in a field among it, comes back.
+        val saved = rememberSaveableStateHolder()
         if (!locked) {
-            when (val s = state) {
-                is WebViewSetup.State.NeedsUpdate -> WebViewUpdateScreen(s.webViewPackage)
-                WebViewSetup.State.Ready -> RootView(model)
-                WebViewSetup.State.Starting -> Unit
+            saved.SaveableStateProvider("root") {
+                when (val s = state) {
+                    is WebViewSetup.State.NeedsUpdate -> WebViewUpdateScreen(s) { MailDraft.contactUs(context, model.nodes) }
+                    WebViewSetup.State.Ready -> RootView(model)
+                    WebViewSetup.State.Starting -> Unit
+                }
             }
         }
         LockWindow(lock, locked, onUnlock)

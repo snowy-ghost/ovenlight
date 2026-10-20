@@ -243,4 +243,123 @@ class NodeManagerTests {
         clients.upError = "tsnet.Up: backend: invalid key: unable to validate API key"
         assertEquals("tsnet.Up: backend: invalid key: unable to validate API key", nodes.owner.waitUntilUp(1_000))
     }
+
+    /** A node coming up is asked four times a second, so an app opened on it loads soon after; a wait for a login stays at once a second. */
+    @Test
+    fun testANodeComingUpIsPolledQuickly() = runTest {
+        val clients = FakeClients()
+        val nodes = manager(clients)
+        clients.status[Membership.ownerID] = status("Starting")
+        nodes.owner.start()
+        advanceTimeBy(1_100)
+        assertEquals(NodeState.Starting, nodes.owner.state.value)
+        assertEquals("at 0, 250, 500, 750 and 1000 ms", 5, clients.statusReads)
+
+        clients.status[Membership.ownerID] = status("NeedsLogin")
+        advanceTimeBy(100)
+        var reads = clients.statusReads
+        advanceTimeBy(3_000)
+        assertEquals(NodeState.Starting, nodes.owner.state.value)
+        assertEquals(reads + 3, clients.statusReads)
+
+        // Offline, as in a subway: no quicker than once a second.
+        nodes.canHear = { false }
+        clients.status[Membership.ownerID] = status("Starting")
+        advanceTimeBy(1_100)
+        reads = clients.statusReads
+        advanceTimeBy(3_000)
+        assertEquals(reads + 3, clients.statusReads)
+    }
+
+    /**
+     * Through the poll: an app node that missed is asked each minute, and once every one answered
+     * nothing is asked again. A private app's node has no tag: new to a look, or once found, its
+     * miss counts too; a TV's counts only while it's new (testWatchesAppHostsAndNewOnes).
+     */
+    @Test
+    fun testOnlyAMissedHostIsProbedAgain() = runTest {
+        val clients = FakeClients()
+        val nodes = manager(clients)
+        val manifest = { host: String -> "https://$host.tailabc123.ts.net/.well-known/ovenlight.json" }
+        val desktop = """"k2":{"HostName":"desktop","DNSName":"desktop.tailabc123.ts.net.","OS":"linux","Online":true,"Tags":["tag:ovenlight-app-pantry"]}"""
+        clients.pages[manifest("laptop")] = FetchResponse(200, """{"name":"Recipe Box","version":1}""".toByteArray())
+        clients.status[Membership.ownerID] = status("Running", self = ownerSelf, peers = "$laptop,$desktop")
+        nodes.enableOwner()
+        advanceTimeBy(2_500)
+        assertEquals(NodeState.Ready, nodes.owner.state.value)
+        val probes = { clients.fetched.count { it.second == manifest("desktop") } }
+        val missed = probes()
+        advanceTimeBy(150_000)
+        assertTrue("a host that missed is asked again each minute", probes() >= missed + 2)
+
+        clients.pages[manifest("desktop")] = FetchResponse(200, """{"name":"Pantry","version":1}""".toByteArray())
+        advanceTimeBy(80_000)
+        assertEquals(mapOf("desktop.tailabc123.ts.net" to true, "laptop.tailabc123.ts.net" to true), nodes.owner.answers.value)
+        val asked = clients.fetched.size
+        advanceTimeBy(300_000)
+        assertEquals("every host answered, so nothing is asked again", asked, clients.fetched.size)
+
+        val asks = { host: String -> clients.fetched.count { it.second == manifest(host) } }
+        val notes = """"k3":{"HostName":"notes","DNSName":"notes.tailabc123.ts.net.","OS":"linux","Online":true,"UserID":1}"""
+        val tv = """"k4":{"HostName":"tv","DNSName":"tv.tailabc123.ts.net.","OS":"tvOS","Online":true,"UserID":1}"""
+        clients.status[Membership.ownerID] = status("Running", self = ownerSelf, peers = "$laptop,$desktop,$notes,$tv")
+        advanceTimeBy(15_000)
+        assertEquals(listOf(1, 1), listOf(asks("notes"), asks("tv")))
+        clients.pages[manifest("notes")] = FetchResponse(200, """{"name":"Notes","version":1}""".toByteArray())
+        advanceTimeBy(70_000)
+        assertEquals("a new private app that missed is asked again a minute later", 2, asks("notes"))
+        assertTrue(nodes.owner.discovered.value.any { it.host == "notes.tailabc123.ts.net" })
+        advanceTimeBy(300_000)
+        assertEquals("a TV without a connector gets no timer", 2, asks("tv"))
+
+        // The launcher keeps the app it found, as the app model tells the node.
+        nodes.owner.launcherApps = { listOf(WebApp(name = "Notes", startURL = URI("https://notes.tailabc123.ts.net/"), discovered = true)) }
+        clients.pages.remove(manifest("notes"))
+        clients.status[Membership.ownerID] = status("Running", self = ownerSelf, peers = "$laptop,$desktop,$notes")
+        advanceTimeBy(15_000)
+        val stopped = asks("notes")
+        advanceTimeBy(70_000)
+        assertEquals("a found private app that stops answering is asked again a minute later", stopped + 1, asks("notes"))
+        advanceTimeBy(70_000)
+        assertEquals("and each minute after, while its tile is on the launcher", stopped + 2, asks("notes"))
+    }
+
+    /** With nothing answering, as with the connector's Mac asleep and only a PC online, the owner's node looks once a minute, not at every poll. */
+    @Test
+    fun testALookThatFindsNothingWaitsAMinute() = runTest {
+        val clients = FakeClients()
+        val nodes = manager(clients)
+        val looks = mutableListOf<Long>()
+        clients.respond = { request -> if (request.url.host == "laptop.tailabc123.ts.net") looks += testScheduler.currentTime; null }
+        clients.status[Membership.ownerID] = status("Running", self = ownerSelf, peers = laptop)
+        nodes.enableOwner()
+        advanceTimeBy(30_000)
+        assertEquals(NodeState.Ready, nodes.owner.state.value)
+        val ready = looks.size
+        advanceTimeBy(180_000)
+        val gaps = looks.drop(ready - 1).zipWithNext { a, b -> b - a }
+        assertTrue("a look each minute while Ready: $gaps", gaps.size in 2..3 && gaps.all { it > 60_000 })
+    }
+
+    /** A probe canceled under way, as when its app's screen closes, says nothing about the host. */
+    @Test
+    fun testACanceledProbeLeavesTheHostsAnswer() = runTest {
+        val clients = FakeClients()
+        val nodes = manager(clients)
+        clients.pages["https://laptop.tailabc123.ts.net/.well-known/ovenlight.json"] =
+            FetchResponse(200, """{"name":"Recipe Box","version":1}""".toByteArray())
+        clients.status[Membership.ownerID] = status("Running", self = ownerSelf, peers = laptop)
+        nodes.enableOwner()
+        advanceTimeBy(2_500)
+        assertEquals(NodeState.Ready, nodes.owner.state.value)
+        assertEquals(mapOf("laptop.tailabc123.ts.net" to true), nodes.owner.answers.value)
+
+        val held = CompletableDeferred<Unit>()
+        clients.beforeAnswer = { held.await() }
+        val probe = launch { nodes.owner.canReach(WebApp(name = "Recipe Box", startURL = URI("https://laptop.tailabc123.ts.net/"))) }
+        runCurrent()
+        probe.cancel()
+        runCurrent()
+        assertEquals(mapOf("laptop.tailabc123.ts.net" to true), nodes.owner.answers.value)
+    }
 }

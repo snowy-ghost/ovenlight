@@ -190,7 +190,8 @@ Debug builds take these as launch arguments:
 - `-sharingFixture YES` fills in sample sharing data for screenshots.
 
 Debug builds also accept an `http` control server on loopback in invites; release builds
-only `https`.
+only `https`. Only debug builds load an app at `localhost` directly, so a seeded launcher
+can open a local demo app for screenshots (loopback IP literals stay blocked).
 
 ## Local Headscale
 
@@ -279,10 +280,12 @@ Sign Ovenlight in to the first with `-authKey`, and open the second owner's invi
   Add App also takes an address, but only one on the owner's own tailnet (`AppAddress`,
   with `Routing.isOnOwnersTailnet`). Before the owner has signed in it says to sign in
   first, and any other address gets a refusal that points to publishing the app or asking
-  its owner for an invite. An app saved by another address before this rule keeps its
-  tile and loads directly. One tile per host either way, and a removed app stays
-  removed. Discovery only adds: an app unpublished on its computer keeps its tile until
-  the owner removes it.
+  its owner for an invite. Once the owner's tailnet is known, an app of your own off it,
+  such as one from a tailnet the owner was signed in to before, keeps its tile but is
+  refused (`Routing.route`): it shows Can't Reach and nothing goes out. Until then a
+  `*.ts.net` app waits behind Sign In, and any other address is refused. One tile per
+  host either way, and a removed app stays removed until Sign Out. Discovery only adds:
+  an app unpublished on its computer keeps its tile until the owner removes it.
 - **Copy.** Everything a guest can see (connection states, joining, errors,
   "No Longer Shared with You", feedback) is in `ConnectionCopy` and never says Tailscale
   or tailnet; a unit test checks. Only the owner's sign-in card, status pill and Settings
@@ -486,8 +489,6 @@ folder, which `e2e.sh` makes, or else a throwaway one.
   admin API, feedback, downloads, through OkHttp) goes through one password-protected
   proxy in the Go core (`android/core/proxy.go`, `TailnetCore.kt`), and each app has its
   own WebView profile. [security.md](security.md#on-android) has the rules.
-- **No direct route.** An app on no tailnet Ovenlight knows is refused
-  (`Routing.route`), never loaded outside the tailnet.
 - **The lock** is Android's biometric prompt: a fingerprint or face, or the screen lock.
   Android 10's prompt can't fall back to the screen lock, so there a button opens the
   screen lock's own screen, at once when no fingerprint or face is enrolled

@@ -1,10 +1,10 @@
 package com.snowyghost.ovenlight
 
 import java.net.URI
-import kotlin.test.assertFailsWith
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -36,7 +36,6 @@ class InviteLinkTests {
         assertEquals("+ is a space", "Sam Lee", link.to)
         assertEquals("taildef456.ts.net", link.networkDomain)
         assertEquals("https://echo-board.taildef456.ts.net/", link.appURL.toString())
-        assertEquals("round trip", link, InviteLink.parse(link.url, allowLocalHTTP = false))
     }
 
     @Test
@@ -47,15 +46,7 @@ class InviteLinkTests {
             val text = universalLink.replace("https://ovenlight.app/join#", variant)
             assertEquals(variant, link, parse(text))
         }
-
-        // What Ovenlight sends: the App Link, with nothing for the website but the path.
-        val sent = link.universalURL
-        assertEquals("https://ovenlight.app/join", sent.toString().split("#").first())
-        assertEquals(null, sent.rawQuery)
-        assertTrue(sent.rawFragment?.contains("key=tskey-auth-kX1abc-DEF") == true)
-        assertEquals("round trip", link, InviteLink.parse(sent, allowLocalHTTP = false))
-        assertEquals("both forms carry the same fields", sent.rawFragment, link.url.rawQuery)
-        assertTrue(InviteLink.isInvite(sent) && InviteLink.isInvite(link.url))
+        assertTrue(InviteLink.isInvite(URI(universalLink)) && InviteLink.isInvite(URI(connectorLink)))
     }
 
     /** Android only: the join page hands an invite to an unverified App Link this way. */
@@ -66,7 +57,7 @@ class InviteLinkTests {
         assertEquals(link, parse(fragment))
         assertTrue(InviteLink.isInvite(URI(fragment)))
         assertEquals("the query wins when both are there", link, parse(connectorLink + "#v=2"))
-        assertEquals(InviteLink.ParseError.UnsupportedVersion, error("ovenlight://join"))
+        assertEquals("no fields at all is incomplete", InviteLink.ParseError.MissingField("v"), error("ovenlight://join"))
         assertEquals("found in a message too", "3f9a1c2b7e", InviteLink.parse(text = "Open this: $fragment", allowLocalHTTP = false).invite)
         assertEquals("an empty address is none, as iOS's URL(string:) says", null, uri(""))
     }
@@ -88,7 +79,7 @@ class InviteLinkTests {
         // The old address is no longer an App Link, in a message or on its own.
         for (old in listOf("https://snowyghost.com/ovenlight/join#", "https://www.snowyghost.com/ovenlight/join#")) {
             assertEquals(old, InviteLink.ParseError.NotAnInvite, error(old + fields))
-            assertFailsWith<InviteLink.ParseError> { InviteLink.parse(text = "Open this link: ${old + fields}", allowLocalHTTP = false) }
+            assertThrows(InviteLink.ParseError::class.java) { InviteLink.parse(text = "Open this link: ${old + fields}", allowLocalHTTP = false) }
         }
     }
 
@@ -98,7 +89,7 @@ class InviteLinkTests {
         assertEquals("3f9a1c2b7e", InviteLink.parse(text = message, allowLocalHTTP = false).invite)
         val universal = "Riley shared Echo Board with you in Ovenlight. Open this link on your iPhone: $universalLink\n"
         assertEquals("3f9a1c2b7e", InviteLink.parse(text = universal, allowLocalHTTP = false).invite)
-        assertFailsWith<InviteLink.ParseError> { InviteLink.parse(text = "no link here", allowLocalHTTP = false) }
+        assertThrows(InviteLink.ParseError::class.java) { InviteLink.parse(text = "no link here", allowLocalHTTP = false) }
     }
 
     @Test
@@ -106,7 +97,6 @@ class InviteLinkTests {
         assertEquals(InviteLink.ParseError.NotAnInvite, error("ovenlight://open?app=Coach"))
         assertEquals(InviteLink.ParseError.NotAnInvite, error("https://example.com/join?v=1"))
         assertEquals(InviteLink.ParseError.UnsupportedVersion, error(connectorLink.replace("&v=1", "&v=2")))
-        assertEquals(InviteLink.ParseError.UnsupportedVersion, error(connectorLink.replace("&v=1", "")))
         assertEquals(InviteLink.ParseError.InsecureControl, error(connectorLink.replace("https%3A%2F%2F", "http%3A%2F%2F")))
         for (field in listOf("key", "app", "invite", "host", "control")) {
             val without = connectorLink.replace(Regex("""(^|[?&])$field=[^&]*"""), "$1")
@@ -116,6 +106,16 @@ class InviteLinkTests {
             InviteLink.ParseError.MissingField("key"),
             error(connectorLink.replace("key=tskey-auth-kX1abc-DEF%2Bghi", "key=")),
         )
+    }
+
+    /** The connector writes v last, so a link cut short loses it first: it's incomplete, not for a newer Ovenlight. */
+    @Test
+    fun testAnInviteMissingItsVersionIsIncomplete() {
+        val cut = connectorLink.substringBefore("&to=")
+        assertEquals(InviteLink.ParseError.MissingField("v"), error(cut))
+        assertEquals("This link is incomplete. Ask for it again and copy the whole link.", error(cut)?.message)
+        assertEquals(InviteLink.ParseError.MissingField("v"), error(connectorLink.replace("&v=1", "&v=")))
+        assertEquals(InviteLink.ParseError.UnsupportedVersion, error(connectorLink.replace("&v=1", "&v=2")))
     }
 
     @Test
@@ -201,5 +201,12 @@ class InviteLinkTests {
             InviteLink.ParseError.MissingField("key"), InviteLink.ParseError.InvalidField("host"),
         )
         for (message in errors.map { it.message }) CopyRules.assertNeutral(message)
+    }
+
+    /** Android only: a character outside the BMP, written raw, decodes whole, as Swift's removingPercentEncoding does. */
+    @Test
+    fun testARawEmojiSurvivesDecoding() {
+        assertEquals("\uD83C\uDF73 Pantry", removingPercentEncoding("\uD83C\uDF73%20Pantry"))
+        assertEquals("Riley \uD83C\uDF73", parse(connectorLink.replace("owner=Riley", "owner=Riley+\uD83C\uDF73")).owner)
     }
 }

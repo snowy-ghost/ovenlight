@@ -74,27 +74,9 @@ sealed class NodeState {
             Connecting -> "connecting"
             Ready -> "ready"
             is Retrying -> "retrying(attempt: $attempt)"
-            is Failed -> "failed(${swiftQuoted(message)})"
+            // Its message is the summary, which Report a problem shows beside it.
+            is Failed -> "failed"
         }
-
-    /** The text as Swift's `String(describing:)` quotes it inside an enum's payload. */
-    private fun swiftQuoted(text: String): String = buildString {
-        append('"')
-        text.codePoints().forEach { c ->
-            when {
-                c == '\\'.code -> append("\\\\")
-                c == '"'.code -> append("\\\"")
-                c == '\''.code -> append("\\'")
-                c == '\n'.code -> append("\\n")
-                c == '\r'.code -> append("\\r")
-                c == '\t'.code -> append("\\t")
-                c == 0 -> append("\\0")
-                Character.getType(c) == Character.CONTROL.toInt() -> append("\\u{").append(Integer.toHexString(c)).append('}')
-                else -> appendCodePoint(c)
-            }
-        }
-        append('"')
-    }
 }
 
 /**
@@ -256,11 +238,13 @@ class MembershipNode(
     private val now: () -> Long,
     private val log: (String) -> Unit,
     /** The owner's node saw its tailnet's MagicDNS suffix. */
-    private val rememberOwnerSuffix: (String) -> Unit = {},
+    private val rememberOwnerSuffix: (String) -> Unit,
     /** Ovenlight is away (see AppLifecycle): the node idles until it comes back. */
-    private val pollingPaused: () -> Boolean = { false },
+    private val pollingPaused: () -> Boolean,
     /** Runs as the node starts to log out, so the web views it carried go first. */
-    private val loggingOut: (MembershipNode) -> Unit = {},
+    private val loggingOut: (MembershipNode) -> Unit,
+    /** Whether the phone could hear an app's answer now (see [NodeManager.canHear]). */
+    private val canHear: () -> Boolean,
 ) {
     data class Settings(
         val controlURL: String,
@@ -287,8 +271,14 @@ class MembershipNode(
     /** For a guest: the app hosts to probe, its apps and the invites being claimed. */
     var guestHosts: () -> List<String> = { emptyList() }
 
+    /** For the owner: the launcher's apps (see [Discovery.watchedHosts]). */
+    var launcherApps: () -> List<WebApp> = { emptyList() }
+
     /** For a guest: hosts whose connector said "not invited" in a probe. */
     var onNotInvited: (Set<String>) -> Unit = {}
+
+    /** For a guest: each app's name as its connector gives it in a probe, by host. */
+    var onAppNames: (Map<String, String>) -> Unit = {}
 
     /** For a guest: the backend has needed a login for a few polls in a row. */
     var onLoginLost: () -> Unit = {}
@@ -304,6 +294,12 @@ class MembershipNode(
     private val lifecycle = Mutex()
     private var probedHosts: List<String>? = null
     private var lastProbe: Long? = null
+
+    /** The last look had a host that didn't answer. */
+    private var lastProbeMissed = false
+
+    /** Every host this node has looked at. */
+    private var seenHosts = emptySet<String>()
     private var loginLostPolls = 0
     private var absence = PeerAbsence()
     private val silence = GuestSilence()
@@ -432,6 +428,7 @@ class MembershipNode(
         preferences.remove(onlineReportedKey)
         mutableAnswers.value = null
         mutableDiscovered.value = emptyList()
+        seenHosts = emptySet()
     }
 
     // Status and reachability
@@ -443,7 +440,7 @@ class MembershipNode(
                 continue
             }
             val node = node ?: return
-            val status = withContext(io) { runCatching { node.statusJSON() }.getOrNull() }?.let(TailnetStatus::decode)
+            val status = withContext(io) { runCatching { node.statusJSON() }.getOrNull()?.let(TailnetStatus::decode) }
             if (status != null && current == generation) {
                 // Polls repeat while nothing changes; only a change should redraw.
                 if (status != mutableStatus.value) {
@@ -463,15 +460,20 @@ class MembershipNode(
                     checkReachability(current)
                     continue
                 }
-                if (state == NodeState.Ready) {
-                    // Look again when a computer comes online or goes away (the owner's new apps,
-                    // and tiles), and once a minute regardless: a host that missed one look, as a
-                    // newly published app's first answer can, would otherwise wait for the next change.
-                    val hostsChanged = probeHosts != probedHosts
-                    if (hostsChanged || lastProbe?.let { now() - it > 60_000 } == true) rediscover()
-                }
+                if (state == NodeState.Ready && Discovery.lookAgain(probeHosts != probedHosts, lastProbe, lastProbeMissed, now())) rediscover()
             }
-            delay(if (mutableState.value == NodeState.Ready) 10_000 else 1_000)
+            // Quick while the node comes up, so an app opened on a closed node loads as soon as it
+            // can, though not on a phone that can't reach the network; a wait for a login keeps
+            // its once a second, which the login watches count in.
+            val after = mutableState.value
+            val comingUp = (after == NodeState.Starting || after == NodeState.Connecting) && status?.backendState != "NeedsLogin"
+            delay(
+                when {
+                    after == NodeState.Ready -> 10_000
+                    comingUp && canHear() -> 250
+                    else -> 1_000
+                },
+            )
         }
     }
 
@@ -523,13 +525,27 @@ class MembershipNode(
 
     private suspend fun probe(hosts: List<String>, firstAnswer: () -> Unit = {}): Discovery.Outcome {
         lastProbe = now()
-        if (isOwner) return Discovery.probe(hosts, fetch(), firstAnswer)
-        // A guest's hosts count as looked at even when none answers: they come back with a
-        // change to the list, or in a minute, not every poll.
+        // Hosts count as looked at even when none answers: they come back with a change to the
+        // list, or in a minute, not every poll.
         probedHosts = hosts
-        val outcome = GuestProbe.probe(hosts, fetch(), firstAnswer)
-        if (outcome.notInvited.isNotEmpty()) onNotInvited(outcome.notInvited)
-        return outcome.base
+        val outcome = if (isOwner) {
+            Discovery.probe(hosts, fetch(), firstAnswer)
+        } else {
+            GuestProbe.probe(hosts, fetch(), firstAnswer).also {
+                if (it.notInvited.isNotEmpty()) onNotInvited(it.notInvited)
+                if (it.appNames.isNotEmpty()) onAppNames(it.appNames)
+            }.base
+        }
+        // An owner's laptop or TV without a connector never answers: only app hosts count.
+        val watched = if (isOwner) {
+            Discovery.watchedHosts(hosts, mutableStatus.value, found = mutableDiscovered.value.map { it.host }.toSet(), apps = launcherApps(), seenBefore = seenHosts)
+        } else {
+            hosts.toSet()
+        }
+        // Seen only by a look whose path worked: one that failed outright says nothing of them.
+        if (isOwner && outcome.reachable) seenHosts = seenHosts + hosts
+        lastProbeMissed = watched.any { outcome.answered[it] != true }
+        return outcome
     }
 
     /**
@@ -566,7 +582,7 @@ class MembershipNode(
         if (current != generation) return
         record(outcome, hosts)
         if (outcome.reachable && isOwner && mutableDiscovered.value != outcome.apps) mutableDiscovered.value = outcome.apps
-        if (isOwner || !silence.record(hosts, outcome.reachable)) return
+        if (isOwner || !silence.record(hosts, outcome.reachable, heard = canHear())) return
         log("$id: no app has answered for a while, restarting the node")
         scope.launch { restart() }
     }
@@ -574,7 +590,6 @@ class MembershipNode(
     private fun record(outcome: Discovery.Outcome, hosts: List<String>) {
         // Only a working path, or no computer online at all, says anything about them.
         if (!outcome.reachable && hosts.isNotEmpty()) return
-        probedHosts = hosts
         val answers = hosts.associateWith { outcome.answered[it] ?: false }
         if (answers != mutableAnswers.value) mutableAnswers.value = answers
     }
@@ -590,11 +605,13 @@ class MembershipNode(
         val host = Discovery.normalizedHost(app.host)
         val reach = if (isOwner) {
             val manifest = app.startURL.resolve(OvenlightManifest.path)
-            if (runCatching { fetch(manifest) }.getOrNull() != null) Reach.Reached else Reach.Unreachable
+            if (fetchOrNull(fetch, manifest) != null) Reach.Reached else Reach.Unreachable
         } else {
             GuestProbe.whoami(host, fetch)
         }
         mutableAnswers.value = mutableAnswers.value?.plus(host to (reach != Reach.Unreachable))
+        // Look again in a minute, as after any look that missed a host.
+        if (reach == Reach.Unreachable) lastProbeMissed = true
         return reach
     }
 
@@ -673,11 +690,18 @@ class NodeManager(
 
     private fun node(id: String, settings: () -> MembershipNode.Settings?) = MembershipNode(
         id, settings, clients, ::stateDirectory, preferences, scope, io, now, log, rememberOwnerSuffix = ::rememberOwnerSuffix,
-        pollingPaused = { pollingPaused }, loggingOut = { onLoggingOut(it) },
+        pollingPaused = { pollingPaused }, loggingOut = { onLoggingOut(it) }, canHear = { canHear() },
     )
 
     /** Set while Ovenlight is away, so no node polls (see AppLifecycle). */
     var pollingPaused = false
+
+    /**
+     * Whether the phone could hear an app's answer now, so a guest's look that none answered
+     * counts as silence (see [GuestSilence]) and a node coming up is polled quickly: not
+     * without a network, nor during an excursion (the app model sets this).
+     */
+    var canHear: () -> Boolean = { true }
 
     // The owner's own tailnet (what the launcher and Settings show)
 
@@ -765,9 +789,9 @@ class NodeManager(
     /** Tries the owner's node again after a failure. */
     suspend fun restart() = owner.restart()
 
-    suspend fun rediscover() {
-        owner.rediscover()
-        for (node in mutableGuests.value.values) node.rediscover()
+    suspend fun rediscover() = coroutineScope {
+        launch { owner.rediscover() }
+        for (node in mutableGuests.value.values) launch { node.rediscover() }
     }
 
     // Guest nodes
@@ -816,13 +840,10 @@ class NodeManager(
     /** A fetch for the app's pages and icon, through its node; null until the node is up, and for a refused app. */
     fun fetch(app: WebApp): Fetch? = node(app)?.fetch()
 
-    /** A fetch for posting to an app (feedback), with its own timeouts, through the app's node; null without one. */
-    fun uploadSession(app: WebApp, timeoutMillis: Long): Send? = node(app)?.makeSession(timeoutMillis)
-
-    /** What an app's launcher tile shows about its computer. */
-    fun reachability(app: WebApp): AppReachability? {
-        val node = node(app) ?: return null
-        return AppReachability.forTile(app.host, node.state.value, node.answers.value)
+    /** Whether an app's tile shows its computer offline. */
+    fun isOffline(app: WebApp): Boolean {
+        val node = node(app) ?: return false
+        return isOffline(app.host, node.state.value, node.answers.value)
     }
 
     // Configuration
@@ -849,6 +870,14 @@ class NodeManager(
         const val AUTH_KEY_KEY = "authKey"
 
         /**
+         * Tiles only speak up when something is wrong: a computer that didn't answer the last
+         * probe, or wasn't online to be probed. Nothing before the node is ready (the launcher
+         * shows that) or before the first probe.
+         */
+        fun isOffline(host: String, nodeState: NodeState, answers: Map<String, Boolean>?): Boolean =
+            nodeState == NodeState.Ready && answers != null && answers[Discovery.normalizedHost(host)] != true
+
+        /**
          * The name the tailnet gave this node, which is the one it asked for ([hostName]) unless
          * another device already has it; then the control server adds a suffix.
          */
@@ -859,14 +888,21 @@ class NodeManager(
 
 /** How a guest node checks its apps: `/__ovenlight/whoami` answers 200 for an admitted guest and 403 `not_invited` for anyone else. */
 object GuestProbe {
-    data class Outcome(val base: Discovery.Outcome = Discovery.Outcome(), val notInvited: Set<String> = emptySet())
+    data class Outcome(
+        val base: Discovery.Outcome = Discovery.Outcome(),
+        val notInvited: Set<String> = emptySet(),
+        /** Each admitted app's name as its connector gives it now, by host. */
+        val appNames: Map<String, String> = emptyMap(),
+    )
 
     /** [firstAnswer] as in [Discovery.probeEach]. */
     suspend fun probe(hosts: List<String>, fetch: Fetch?, firstAnswer: () -> Unit = {}): Outcome {
         if (fetch == null || hosts.isEmpty()) return Outcome()
-        val reaches = Discovery.probeEach(hosts, firstAnswer) { host -> whoami(host, fetch).takeIf { it != Reach.Unreachable } }
+        val responses = Discovery.probeEach(hosts, firstAnswer) { host -> whoamiResponse(host, fetch) }
+        val reaches = responses.mapValues { it.value?.let(::classify) }
         val answered = reaches.mapValues { it.value != null }
-        return Outcome(Discovery.Outcome(reachable = answered.containsValue(true), answered = answered), reaches.filterValues { it == Reach.NotInvited }.keys)
+        val names = responses.mapNotNull { (host, response) -> response?.takeIf { it.status == 200 }?.let { appName(it.body) }?.let { host to it } }.toMap()
+        return Outcome(Discovery.Outcome(reachable = answered.containsValue(true), answered = answered), reaches.filterValues { it == Reach.NotInvited }.keys, names)
     }
 
     /**
@@ -888,9 +924,17 @@ object GuestProbe {
      */
     fun reportsOnline(status: TailnetStatus): Boolean = status.peers.any { it.online }
 
-    suspend fun whoami(host: String, fetch: Fetch): Reach {
-        val response = uri("https://$host/__ovenlight/whoami")?.let { fetchOrNull(fetch, it) } ?: return Reach.Unreachable
-        return classify(response.status, response.header(ConnectorError.header), response.body)
+    suspend fun whoami(host: String, fetch: Fetch): Reach = whoamiResponse(host, fetch)?.let(::classify) ?: Reach.Unreachable
+
+    private suspend fun whoamiResponse(host: String, fetch: Fetch): FetchResponse? = uri("https://$host/__ovenlight/whoami")?.let { fetchOrNull(fetch, it) }
+
+    private fun classify(response: FetchResponse): Reach = classify(response.status, response.header(ConnectorError.header), response.body)
+
+    /** The app's name in an admitted guest's whoami answer, cleaned as an invite's names are. */
+    fun appName(body: ByteArray): String? = try {
+        InviteLink.label(ovenlightJSON.decodeFromString(ClaimResponse.serializer(), strictUTF8(body)).appName)
+    } catch (_: Exception) {
+        null
     }
 
     /**
@@ -926,15 +970,16 @@ class GuestSilence {
     private var looks = 0
     private var gap = firstRestart
 
-    /** Records one look; true when the node should restart. */
-    fun record(probed: List<String>, reachable: Boolean): Boolean {
+    /** Records one look; true when the node should restart. [heard] is false when the phone couldn't have heard an answer. */
+    fun record(probed: List<String>, reachable: Boolean, heard: Boolean = true): Boolean {
         if (reachable) {
             looks = 0
             gap = firstRestart
             return false
         }
-        // Nothing listed online says nothing: the computers are asleep.
-        if (probed.isEmpty()) return false
+        // Nothing listed online says nothing: the computers are asleep. Nor does a phone with no
+        // network, or one out on an excursion, which may be frozen.
+        if (probed.isEmpty() || !heard) return false
         looks += 1
         if (looks < gap) return false
         looks = 0

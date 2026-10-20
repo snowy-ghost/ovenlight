@@ -9,6 +9,7 @@ import kotlinx.serialization.json.booleanOrNull
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -41,6 +42,21 @@ class MembershipStoreLoadTests {
         fresh.upsert(Membership(invite))
         assertEquals(1, MembershipStore(dir).memberships.size)
         assertTrue(fresh.readInFull)
+    }
+
+    /** Android only: a save cut short, by a full disk say, leaves the list as it was and no temporary file. */
+    @Test
+    fun testASaveThatFailsLeavesTheOldFile() {
+        val file = File(dir, "apps.json")
+        SavedJSON.write("[1]", file)
+        assertThrows(java.io.IOException::class.java) {
+            SavedJSON.write(file) { stream ->
+                stream.write("[1,".toByteArray())
+                throw java.io.IOException("no space left")
+            }
+        }
+        assertEquals("[1]", file.readText())
+        assertEquals(listOf("apps.json"), dir.list()!!.toList())
     }
 
     /** Android only: bytes that aren't UTF-8 are a file it can't read, as iOS's decoder finds, not text to save back altered. */

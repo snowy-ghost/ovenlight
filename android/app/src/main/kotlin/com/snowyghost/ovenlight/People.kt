@@ -1,16 +1,17 @@
 package com.snowyghost.ovenlight
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.ScrollState
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -20,12 +21,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
@@ -40,7 +41,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
 /** A person on one computer. */
-private data class PersonRef(val machineID: String, val person: String)
+internal data class PersonRef(val machineID: String, val person: String)
 
 /**
  * Everyone the owner shares with, across apps, those who opened one most recently first. People
@@ -48,12 +49,13 @@ private data class PersonRef(val machineID: String, val person: String)
  * or Select in the menu), and their devices leave the owner's Tailscale network.
  */
 @Composable
-internal fun SharingPeopleList(state: SharingState, scroll: ScrollState, open: (SharingPage) -> Unit, back: () -> Unit, scope: CoroutineScope) {
+internal fun SharingPeopleList(state: SharingState, place: SharingPlace, scroll: ScrollState, open: (SharingPage) -> Unit, back: () -> Unit, scope: CoroutineScope) {
     val resources = LocalResources.current
     val machines by state.machines.collectAsState()
     val groups = machines.map { it to GuestPerson.byActivity(it.guests) }.filter { it.second.isNotEmpty() }
-    var selecting by remember { mutableStateOf(false) }
-    val selection = remember { mutableStateListOf<PersonRef>() }
+    // On the screen's place, so the lock keeps a selection.
+    var selecting by place::selecting
+    val selection = place.selection
     var removing by remember { mutableStateOf(emptyList<PersonRef>()) }
     var working by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -80,26 +82,8 @@ internal fun SharingPeopleList(state: SharingState, scroll: ScrollState, open: (
         }
         if (refs.isEmpty() || !state.confirm(reason)) return
         working = true
-        val problems = mutableListOf<String>()
         val current = state.machines.value
-        if (refs.any { ref -> current.none { it.id == ref.machineID } }) problems += AdminError.Unreachable.message
-        for (machine in current) {
-            val theirs = refs.filter { it.machineID == machine.id }
-            if (theirs.isEmpty()) continue
-            val client = state.client(machine)
-            if (client == null) {
-                problems += AdminError.Unreachable.message
-                continue
-            }
-            for (ref in theirs) {
-                try {
-                    problems += client.removePerson(ref.person).errors.orEmpty()
-                } catch (failure: AdminError) {
-                    problems += failure.message
-                }
-            }
-        }
-        error = problems.firstOrNull()
+        error = refs.mapNotNull { ref -> state.send(current.firstOrNull { it.id == ref.machineID }) { it.removePerson(ref.person).errors } }.firstOrNull()
         state.refresh()
         working = false
         stopSelecting()
@@ -109,7 +93,7 @@ internal fun SharingPeopleList(state: SharingState, scroll: ScrollState, open: (
     GroupedScreen(
         title, onBack = if (selecting) stopSelecting else back, scroll = scroll, refresh = state.refresh,
         navigationIcon = if (selecting) R.drawable.ic_close else R.drawable.ic_arrow_back,
-        navigationLabel = stringResource(if (selecting) R.string.people_done_selecting else R.string.sharing_back),
+        navigationLabel = stringResource(if (selecting) R.string.people_done_selecting else R.string.back),
         actions = {
             when {
                 working -> {
@@ -127,7 +111,7 @@ internal fun SharingPeopleList(state: SharingState, scroll: ScrollState, open: (
                         IconButton(onClick = { menu = true }) {
                             Icon(painterResource(R.drawable.ic_more_vert), contentDescription = stringResource(R.string.launcher_more))
                         }
-                        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        RoundedMenu(expanded = menu, onDismissRequest = { menu = false }) {
                             DropdownMenuItem(text = { Text(stringResource(R.string.people_select)) }, onClick = {
                                 menu = false
                                 selecting = true
@@ -139,7 +123,7 @@ internal fun SharingPeopleList(state: SharingState, scroll: ScrollState, open: (
         },
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
-            error?.let { SharingError(it) }
+            (error ?: machines.firstNotNullOfOrNull { it.problem })?.let { SharingError(it) }
             if (groups.isEmpty()) Unavailable(stringResource(R.string.sharing_no_one_yet), stringResource(R.string.people_no_one))
             for ((machine, people) in groups) {
                 val last = machine.id == groups.last().first.id
@@ -151,7 +135,7 @@ internal fun SharingPeopleList(state: SharingState, scroll: ScrollState, open: (
                 SettingsGroup(header = if (groups.size > 1) machine.adminHost else null, footer = if (last) ({ Footer(footer) }) else null) {
                     for (person in people) {
                         val ref = PersonRef(machine.id, person.id)
-                        // Removing them would cancel App Review's unused invites: never in passing.
+                        // Removing them would cancel App Review's open review invites: never in passing.
                         val selectable = !machine.guests.hasOpenInvites(person.id, review = true)
                         val selected = ref in selection
                         row { shape ->
@@ -193,7 +177,7 @@ internal fun SharingPeopleList(state: SharingState, scroll: ScrollState, open: (
         val invited = refs.any { ref -> machines.any { it.id == ref.machineID && it.guests.hasOpenInvites(ref.person) } }
         val message = stringResource(R.string.people_remove_message, who) + if (invited) " " + stringResource(R.string.people_invites_canceled) else ""
         Confirmation(
-            if (refs.size == 1) stringResource(R.string.sharing_remove_title, name(refs[0])) else pluralStringResource(R.plurals.people_remove_several_title, refs.size, refs.size),
+            if (refs.size == 1) stringResource(R.string.remove_title, name(refs[0])) else pluralStringResource(R.plurals.people_remove_several_title, refs.size, refs.size),
             message, stringResource(R.string.sharing_remove), onDismiss = { removing = emptyList() },
         ) { scope.launch { remove(refs) } }
     }
@@ -232,18 +216,14 @@ internal fun SharingPersonView(state: SharingState, page: SharingPage.Person, sc
             Removal.Everything -> resources.getString(R.string.sharing_remove_person, found.name)
         }
         if (machine == null || !state.confirm(reason)) return@launch
-        val client = state.client(machine) ?: return@launch
         working = true
-        error = try {
+        error = state.change(machine) { client ->
             when (removal) {
                 is Removal.App -> client.removeGuest(found, removal.app.slug)
                 is Removal.Device -> client.removeDevice(removal.id)
                 Removal.Everything -> client.removePerson(found.id)
-            }.errors?.firstOrNull()
-        } catch (failure: AdminError) {
-            failure.message
+            }.errors
         }
-        state.refresh()
         working = false
         // Gone from every app: back to the list, unless there's a problem to read here.
         if (person(state.machines.value) == null && error == null) back()
@@ -251,9 +231,9 @@ internal fun SharingPersonView(state: SharingState, page: SharingPage.Person, sc
 
     GroupedScreen(person?.name.orEmpty(), onBack = back, scroll = scroll, refresh = state.refresh) {
         Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
-            error?.let { SharingError(it) }
+            (error ?: machine?.problem)?.let { SharingError(it) }
             if (machine == null || person == null) {
-                if (!working) Unavailable(stringResource(R.string.person_not_shared))
+                if (!working) state.problem?.let { Unavailable(stringResource(R.string.sharing_no_computers), it) } ?: Unavailable(stringResource(R.string.person_not_shared))
                 return@Column
             }
             val since = machine.guests.openedSince
@@ -293,7 +273,10 @@ internal fun SharingPersonView(state: SharingState, page: SharingPage.Person, sc
             SettingsGroup {
                 row { shape ->
                     if (working) {
-                        Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                        // In the row's place, its size and on its background.
+                        Box(Modifier.fillMaxWidth().heightIn(min = 56.dp).clip(shape).background(LocalOvenColors.current.groupedRow), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.5.dp)
+                        }
                     } else {
                         SettingsRow(shape, stringResource(R.string.sharing_remove_person, person.name), color = MaterialTheme.colorScheme.error, onClick = { removing = Removal.Everything })
                     }
@@ -308,7 +291,7 @@ internal fun SharingPersonView(state: SharingState, page: SharingPage.Person, sc
         val title = when (removal) {
             is Removal.App -> stringResource(R.string.person_remove_from_title, name, removal.app.name)
             is Removal.Device -> stringResource(R.string.person_remove_device_title)
-            Removal.Everything -> stringResource(R.string.sharing_remove_title, name)
+            Removal.Everything -> stringResource(R.string.remove_title, name)
         }
         val message = when (removal) {
             is Removal.App -> stringResource(R.string.sharing_remove_from_app_message, name, removal.app.name)

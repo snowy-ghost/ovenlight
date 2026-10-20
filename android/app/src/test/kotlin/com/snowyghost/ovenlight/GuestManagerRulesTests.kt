@@ -3,6 +3,7 @@ package com.snowyghost.ovenlight
 import java.net.URI
 import java.time.Instant
 import java.util.UUID
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import org.junit.Assert.assertEquals
@@ -51,9 +52,19 @@ class GuestManagerRulesTests {
     }
 
     @Test
-    fun testClaimsWaitLongerEachTryUpToFourSeconds() {
-        assertEquals(listOf(500.milliseconds, 1.seconds, 2.seconds, 4.seconds, 4.seconds), (0..4).map(Claim::retryDelay))
-        assertEquals(25.seconds, Claim.claimTime)
+    fun testAClaimTriesWithinItsBudget() {
+        var left = Claim.budget
+        val waits = mutableListOf<Duration>()
+        while (true) {
+            val wait = Claim.wait(after = waits.size, left = left) ?: break
+            waits += wait
+            left -= wait
+        }
+        assertEquals(listOf(500.milliseconds, 1.seconds, 2.seconds, 4.seconds, 4.seconds), waits.take(5))
+        assertEquals("the waits alone end at the budget", Claim.budget, waits.fold(Duration.ZERO, Duration::plus))
+        assertEquals(8.seconds, Claim.tryTimeout(left = 20.seconds))
+        assertEquals("no longer than what's left", 5.seconds, Claim.tryTimeout(left = 5.seconds))
+        assertEquals("the try after a last wait still gets a moment", 2.seconds, Claim.tryTimeout(left = Duration.ZERO))
     }
 
     @Test
@@ -90,28 +101,25 @@ class GuestManagerRulesTests {
     fun testAnEndedShareIsNamedByItsFirstAppsOwner() {
         val shared = WebApp(name = "Echo", startURL = URI("https://$echo/"), membershipID = "m1", sharedBy = "Riley")
         val notes = shared.copy(id = UUID.randomUUID(), name = "Notes", sharedBy = null)
-        val notice = AccessEndedNotice.of(listOf(shared, notes), listed = listOf(shared, notes))!!
-        assertEquals("Riley", notice.owner)
-        assertEquals(listOf("Echo", "Notes"), notice.apps)
-        val later = AccessEndedNotice.of(listOf(shared, notes), listed = listOf(notes))
-        assertEquals("only what's still listed", listOf("Its owner", "Notes"), listOf(later?.owner, later?.apps?.single()))
-        assertNull("a second sweep of the same apps says nothing", AccessEndedNotice.of(listOf(shared), listed = listOf(notes)))
-        assertNull(AccessEndedNotice.of(emptyList(), listed = listOf(shared)))
+        val notice = Notice.accessEnded(listOf(shared, notes), listed = listOf(shared, notes))!!
+        assertEquals(ConnectionCopy.noLongerSharedTitle, notice.title)
+        assertEquals(ConnectionCopy.noLongerShared(listOf("Echo", "Notes"), "Riley"), notice.message)
+        val later = Notice.accessEnded(listOf(shared, notes), listed = listOf(notes))
+        assertEquals("only what's still listed", ConnectionCopy.noLongerShared(listOf("Notes"), "Its owner"), later?.message)
+        assertNull("a second sweep of the same apps says nothing", Notice.accessEnded(listOf(shared), listed = listOf(notes)))
+        assertNull(Notice.accessEnded(emptyList(), listed = listOf(shared)))
         CopyRules.assertNeutral(notice.message)
     }
 
-    /** Every join error a guest can see is neutral and says "phone" for the guest's device. */
+    /** Every join error says "phone" for the guest's device (GuestCopyTests checks they are neutral). */
     @Test
     fun testJoinErrorsAreNeutralAndSayPhone() {
         for (error in JoinError.entries) {
-            CopyRules.assertNeutral(error.title("Riley", "Echo Board"))
-            CopyRules.assertNeutral(error.message("Riley", "Echo Board"))
             for (text in listOf(error.title("Riley", "Echo Board"), error.message("Riley", "Echo Board"))) {
                 assertFalse(text, text.contains("iPhone"))
             }
         }
         assertEquals("This invite was used on another phone", JoinError.UsedOnAnotherDevice.title("Riley", "Echo Board"))
-        assertTrue(JoinError.SomeoneElses.message("Riley", "Echo Board").startsWith("This phone already joined Riley's apps"))
-        assertEquals("a Go error's text is read as up()'s", JoinError.KeyUsed, JoinError(upError = Exception("backend: authkey already used")))
+        assertTrue(JoinError.SomeoneElses.message("Riley", "Echo Board").startsWith("This phone already joined Riley’s apps"))
     }
 }

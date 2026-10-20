@@ -47,10 +47,14 @@ class PageCaptureTests {
     private var destroyed = 0
     private val asked = mutableListOf<List<String>>()
 
+    /** What Android refuses without asking, turned off for Ovenlight for good. */
+    private var refusedForGood = emptyList<String>()
+
     private fun TestScope.capture() = PageCapture(
         app, ownersHosts = { setOf("coach.tailabc123.ts.net") }, isLocked = { locked }, isOnScreen = { onScreen }, scope = this,
-        permissions = { needed, done ->
+        permissions = { needed, refused, done ->
             asked += needed
+            needed.filter { it in refusedForGood }.takeIf { it.isNotEmpty() }?.let(refused)
             done(held)
         },
         stillCapturing = { capturing },
@@ -65,6 +69,30 @@ class PageCaptureTests {
         assertEquals(listOf(audio), request.granted)
         assertNull(capture.prompt.value)
         assertEquals("Android's own permission first", listOf(listOf(Manifest.permission.RECORD_AUDIO)), asked)
+    }
+
+    /** Android refused for good, without asking: Ovenlight says which, and where to allow it. The camera counts first. */
+    @Test
+    fun testARefusedCameraOrMicrophoneSaysWhereToAllowIt() = runTest {
+        val capture = capture()
+        held = false
+        fun refused(vararg resources: String): MediaCaptureType? {
+            capture.refused.value = null
+            capture.onPermissionRequest(Request(own, *resources))
+            return capture.refused.value
+        }
+        refusedForGood = listOf(Manifest.permission.RECORD_AUDIO)
+        assertEquals(MediaCaptureType.Microphone, refused(audio))
+        assertEquals(MediaCaptureType.Microphone, refused(video, audio))
+        assertNull("the camera isn't asked for", refused(video))
+        refusedForGood = listOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
+        assertEquals(MediaCaptureType.Camera, refused(video))
+        assertEquals(MediaCaptureType.Camera, refused(video, audio))
+        refusedForGood = emptyList()
+        assertNull("Android still asks", refused(video, audio))
+        capture.refused.value = MediaCaptureType.Camera
+        capture.stop()
+        assertNull("the lock or closing the app puts it away", capture.refused.value)
     }
 
     @Test
@@ -144,21 +172,22 @@ class PageCaptureTests {
         val capture = capture()
         capture.stop()
         capturing = true
-        advanceTimeBy(PageCapture.CHECK_AFTER_MILLIS + 1)
+        advanceTimeBy(PageCapture.STOP_WAIT_MILLIS + 1)
         assertEquals("a page never granted capture can't hold any", 0, destroyed)
 
         capture.onPermissionRequest(Request(own, audio))
         onScreen = false
         capture.stop()
-        advanceTimeBy(PageCapture.CHECK_AFTER_MILLIS - 1)
-        assertEquals("the system is asked half a second later", 0, destroyed)
+        advanceTimeBy(PageCapture.STOP_WAIT_MILLIS - 1)
+        assertEquals("the system is given two seconds to let go", 0, destroyed)
         advanceTimeBy(2)
         runCurrent()
         assertEquals(1, destroyed)
 
-        capturing = false
         capture.stop()
-        advanceTimeBy(PageCapture.CHECK_AFTER_MILLIS + 1)
-        assertEquals("stopped in time, it stays", 1, destroyed)
+        advanceTimeBy(PageCapture.STOP_WAIT_MILLIS / 2)
+        capturing = false
+        advanceTimeBy(PageCapture.STOP_WAIT_MILLIS)
+        assertEquals("let go within the wait, it stays", 1, destroyed)
     }
 }

@@ -4,6 +4,8 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.MutableContextWrapper
 import android.graphics.Bitmap
+import android.view.ViewGroup
+import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.webkit.HttpAuthHandler
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebResourceError
@@ -11,16 +13,19 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.Toast
 import androidx.webkit.WebViewCompat
 import com.snowyghost.ovenlight.core.Core
-import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.TimeSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * One app's web view and everything about loading it (iOS's WebCoordinator): its profile, its
@@ -42,7 +47,11 @@ class AppPage(
 
     /** Off screen it holds the application's context; on screen, the activity's (see [attach]). */
     val context = MutableContextWrapper(context.applicationContext)
-    val view = PageWebView(this.context)
+    /**
+     * As tall as where it shows: without layout params WebView takes its height as wrap-content,
+     * and a page's `100vh` comes out as 0.
+     */
+    val view = PageWebView(this.context).apply { layoutParams = ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT) }
 
     /** Links out, other apps, the page's dialogs, file input and full screen; made once the profile is on. */
     val edges: PageEdges
@@ -53,6 +62,15 @@ class AppPage(
     val hasLoadedOnce: StateFlow<Boolean> = loaded
     private val error = MutableStateFlow<String?>(null)
     val loadError: StateFlow<String?> = error
+
+    /** The gate gave up because the node never came up, not because the app didn't answer: the phone's own connection. */
+    private val mutableNeverConnected = MutableStateFlow(false)
+    val neverConnected: StateFlow<Boolean> = mutableNeverConnected
+
+    /** What [loadError] came from, in codes only, for Report a Problem (see [AppLoadGate.loadFailure]). */
+    var loadFailure: String? = null
+        get() = field.takeIf { error.value != null }
+        private set
 
     /**
      * Whether the page lays itself out under the bars, and its colors, read as each page finishes
@@ -79,21 +97,26 @@ class AppPage(
     /** Its downloads, refetched on its route with its profile's cookies (PageDownloads.kt). */
     val downloads = PageDownloads(
         app.id, app.host, DownloadShelf.folder(context), scope,
-        mayStart = { shown && !pool.isLocked() }, isLocked = pool.isLocked,
+        mayStart = { shown && !pool.isLocked.value }, isLocked = { pool.isLocked.value },
         client = { PageDownloads.client(TailnetCore.client(routeKey), ProfileCookieJar(WebViewCompat.getProfile(view).cookieManager)) },
         freeBytes = { DownloadShelf.freeBytes(this.context.applicationContext) },
         busy = { busy ->
             isDownloading = busy
             if (!busy && rendererGone) pool.replace(this)
         },
+        failed = { name ->
+            val app = this.context.applicationContext
+            val text = name?.let { app.getString(R.string.download_failed, it) } ?: app.getString(R.string.download_failed_file)
+            Toast.makeText(app, text, Toast.LENGTH_LONG).show()
+        },
     )
 
     /** Its microphone and camera (PageCapture.kt). */
     val capture = PageCapture(
-        app, ownersHosts = { nodes.ownersHosts }, isLocked = pool.isLocked, isOnScreen = { shown }, scope = scope,
-        permissions = { needed, done ->
+        app, ownersHosts = { nodes.ownersHosts }, isLocked = { pool.isLocked.value }, isOnScreen = { shown }, scope = scope,
+        permissions = { needed, refusedForGood, done ->
             CaptureMonitor.watch(this.context)
-            RuntimePermissions.request(this.context, needed, done)
+            RuntimePermissions.request(this.context, needed, refusedForGood, done)
         },
         stillCapturing = { CaptureMonitor.capturing(this.context) },
         destroy = { pool.replace(this) },
@@ -104,6 +127,12 @@ class AppPage(
 
     /** First pages the connector answered for because the app itself was down. */
     private var appDownLoads = 0
+
+    /**
+     * This try's app-down page was counted. The same page can report it twice: WebView may send
+     * its HTTP error before onPageStarted, and the page's script reads it again as it finishes.
+     */
+    private var appDownCounted = false
 
     /** The navigation under way failed, so its finished page doesn't count as loaded. */
     private var navigationFailed = false
@@ -126,8 +155,8 @@ class AppPage(
         WebViewSetup.configure(view)
         if (node != null) Core.setRoute(routeKey, node.id) else Core.clearRoute(routeKey)
         edges = PageEdges(
-            app, view, this.context, scope, OvenlightApp.lock.isLocked, OvenlightApp.model.lifecycle, capture, isShown = { shown },
-            home = { if (routeIsCurrent() && nodeMayCarry && !destroyed) view.loadUrl(app.startURL.toString()) },
+            app, view, this.context, scope, pool.isLocked, OvenlightApp.model.lifecycle, capture, isShown = { shown },
+            home = { loadStart() },
         )
         view.webViewClient = Client()
         view.webChromeClient = edges.chrome
@@ -172,6 +201,7 @@ class AppPage(
         failedLoads = 0
         appDownLoads = 0
         error.value = null
+        mutableNeverConnected.value = false
         mutableGate.value = mutableGate.value.next(AppLoadGate.Event.Retry)
         openGate()
     }
@@ -193,13 +223,26 @@ class AppPage(
             if (app.isShared) pool.guests.collectOrphans()
             return giveUp()
         }
-        val opened = TimeSource.Monotonic.markNow()
+        val deadline = NodeDeadline()
         var probingSince: TimeSource.Monotonic.ValueTimeMark? = null
         while (mutableGate.value == AppLoadGate.Waiting || mutableGate.value == AppLoadGate.Probing) {
             // Not even a probe goes through a node the app's route no longer names.
             if (!routeIsCurrent()) return
-            if (node.state.value == NodeState.Ready && nodeMayCarry) {
+            // No network: say so at once, and start over quietly when one comes. A page that
+            // already loaded stays and is checked as usual, as on iPhone.
+            val online = TailnetCore.online.value
+            if (!online && !loaded.value) {
+                mutableGate.value = mutableGate.value.next(AppLoadGate.Event.PhoneOffline)
+                TailnetCore.online.first { it }
+                mutableGate.value = mutableGate.value.next(AppLoadGate.Event.PhoneOnline)
+                deadline.restart()
+                probingSince = null
+                continue
+            }
+            val state = node.state.value
+            if (state == NodeState.Ready && nodeMayCarry) {
                 mutableGate.value = mutableGate.value.next(AppLoadGate.Event.NodeReady)
+                deadline.restart()
                 // Its computer is listed offline, asleep most likely: Can't Reach shows at
                 // once, and the app opens as soon as the computer answers.
                 if (!loaded.value && node.isListedOffline(app.host)) {
@@ -210,7 +253,7 @@ class AppPage(
                 when (node.canReach(app)) {
                     Reach.Reached -> {
                         mutableGate.value = mutableGate.value.next(AppLoadGate.Event.Reached)
-                        return load()
+                        return loadStart(reload = true)
                     }
                     // The owner stopped sharing it; Ovenlight takes the app away.
                     Reach.NotInvited -> return pool.guests.accessEnded(listOf(app))
@@ -222,8 +265,14 @@ class AppPage(
                 mutableGate.value = mutableGate.value.next(AppLoadGate.Event.NodeNotReady)
                 probingSince = null
                 // Sign-in and node failures have their own screens and wait for the owner.
-                if (node.state.value.isBusy && opened.elapsedNow() >= AppLoadGate.nodeTimeout) return giveUp()
-                delay(250.milliseconds)
+                val left = deadline.left(state)
+                if (!left.isPositive()) return giveUp(neverConnected = AppLoadGate.neverConnected(state))
+                // Until the node, its tailnet or the phone's network changes, or a busy node's time runs out.
+                // Only a value other than the one read above ends the wait, so the loop can't spin.
+                val seen = Triple(state, node.status.value, online)
+                withTimeoutOrNull(left) {
+                    combine(node.state, node.status, TailnetCore.online, ::Triple).first { it != seen }
+                }
             }
         }
     }
@@ -240,7 +289,7 @@ class AppPage(
                     Reach.Reached -> {
                         if (mutableGate.value != AppLoadGate.Unreachable) return
                         mutableGate.value = mutableGate.value.next(AppLoadGate.Event.Woke)
-                        return load()
+                        return loadStart(reload = true)
                     }
                     Reach.NotInvited -> return pool.guests.accessEnded(listOf(app))
                     Reach.Unreachable -> Unit
@@ -251,8 +300,9 @@ class AppPage(
         }
     }
 
-    private fun giveUp() {
+    private fun giveUp(neverConnected: Boolean = false) {
         OvenlightLog.i("${app.host}: unreachable")
+        mutableNeverConnected.value = neverConnected
         mutableGate.value = mutableGate.value.next(AppLoadGate.Event.GaveUp)
         // A page already on screen keeps it; the person's Reload checks the path again.
         if (loaded.value) {
@@ -261,11 +311,13 @@ class AppPage(
         }
     }
 
-    private fun load() {
+    /** Loads the start page, or with [reload] the page the view has, unless the route changed or its node may not carry it. */
+    private fun loadStart(reload: Boolean = false) {
+        appDownCounted = false
         if (!routeIsCurrent() || !nodeMayCarry || destroyed) return
         error.value = null
         val current = view.url
-        if (current != null && current != "about:blank") view.reload() else view.loadUrl(app.startURL.toString())
+        if (reload && current != null && current != "about:blank") view.reload() else view.loadUrl(app.startURL.toString())
     }
 
     /**
@@ -287,10 +339,13 @@ class AppPage(
 
     /** The first page's app is down on its computer: the placeholder stays while it's tried again, then the error says so. */
     private fun appIsDown() {
+        if (appDownCounted) return
+        appDownCounted = true
         clearHistoryOnLoad = true
         if (appDownLoads >= AppLoadGate.appDownRetries.size) {
             appDownLoads = 0
-            error.value = ConnectionCopy.notResponding(app.name)
+            loadFailure = AppLoadGate.appDownFailure
+            error.value = ConnectionCopy.notResponding(app)
             return
         }
         val wait = AppLoadGate.appDownRetries[appDownLoads]
@@ -299,7 +354,7 @@ class AppPage(
         gateJob?.cancel()
         gateJob = scope.launch {
             delay(wait)
-            if (routeIsCurrent() && nodeMayCarry && !destroyed) view.loadUrl(app.startURL.toString())
+            loadStart()
         }
     }
 
@@ -307,7 +362,11 @@ class AppPage(
         // Once the app has rendered, a failed load leaves the page as it is. A link the person
         // tapped that can't reach the computer says so; what the page loads by itself never does.
         if (loaded.value) {
-            if (tapped && code in retryableThroughNode) cantReachAlert.value = true
+            if (tapped && code in retryableThroughNode) {
+                // The node carried the link, so its computer is what didn't answer.
+                mutableNeverConnected.value = false
+                cantReachAlert.value = true
+            }
             return
         }
         if (code in retryableThroughNode && failedLoads < MAX_FAILED_LOADS) {
@@ -319,7 +378,8 @@ class AppPage(
         failedLoads = 0
         // Chromium's description is a code ("net::ERR_TOO_MANY_REDIRECTS"): the log keeps it, the page says it plainly.
         if (code !in retryableThroughNode) OvenlightLog.i("${app.host}: error $code, $description")
-        error.value = if (code in retryableThroughNode) ConnectionCopy.cantReachDetail else ConnectionCopy.pageFailed
+        loadFailure = AppLoadGate.loadFailure(code, description)
+        error.value = if (code in retryableThroughNode) ConnectionCopy.cantReachDetail(app) else ConnectionCopy.pageFailed
     }
 
     // Leaving
@@ -365,13 +425,19 @@ class AppPage(
                 view.clearHistory()
             }
             view.evaluateJavascript(PageLook.script) {
-                if (destroyed) return@evaluateJavascript
+                // An error that came meanwhile, the app-down one among them, has been seen to.
+                if (destroyed || navigationFailed) return@evaluateJavascript
+                if (!loaded.value && PageLook.appIsDown(it)) {
+                    navigationFailed = true
+                    return@evaluateJavascript appIsDown()
+                }
                 look.value = PageLook.decoded(it)
                 loaded.value = true
+                // Only a page that counts starts the tries over: an app-down one keeps its count.
+                error.value = null
+                failedLoads = 0
+                appDownLoads = 0
             }
-            error.value = null
-            failedLoads = 0
-            appDownLoads = 0
         }
 
         override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
@@ -384,6 +450,8 @@ class AppPage(
             if (!request.isForMainFrame) return
             val header = response.responseHeaders?.entries?.firstOrNull { it.key.equals(ConnectorError.header, ignoreCase = true) }?.value
             if (!loaded.value && AppLoadGate.appIsDown(response.statusCode, header)) {
+                // The page's script found it first.
+                if (navigationFailed) return
                 navigationFailed = true
                 view.stopLoading()
                 return appIsDown()
@@ -416,7 +484,7 @@ class AppPage(
 
         // WebView's codes for a path through the proxy that didn't connect: -11 for a tunnel the
         // proxy refused or couldn't open (502, 503, 504), -8 for one held past 10 s, -5 for the
-        // proxy itself gone (Phase 1's G5), and the plain connection failures.
+        // proxy itself gone, and the plain connection failures.
         val retryableThroughNode = setOf(
             WebViewClient.ERROR_FAILED_SSL_HANDSHAKE, WebViewClient.ERROR_TIMEOUT, WebViewClient.ERROR_PROXY_AUTHENTICATION,
             WebViewClient.ERROR_CONNECT, WebViewClient.ERROR_HOST_LOOKUP, WebViewClient.ERROR_IO,

@@ -80,7 +80,7 @@ class SettingsViewTests {
         inEveryLook {
             assertShows(
                 "Require screen lock", "After 1 minute", "How long Ovenlight can stay in the background before it locks.",
-                "Use my own computers", "Open apps that run on your own computers. You'll sign in once to connect them.",
+                "Use my own computers", "Open apps that run on your own computers. You’ll sign in once to connect them.",
                 "Support", "Contact us", "Privacy policy", "Acknowledgements", "Version", "1.0.0 (12)",
             )
             assertLacks("Shared with you", "Your computers", "Sign in to your computers", "Advanced", "Set screen lock")
@@ -97,6 +97,8 @@ class SettingsViewTests {
                 shared = listOf(
                     SharedOwner("riley", "Riley", listOf("Recipe Box", "Garden Log")),
                     SharedOwner("sam", "Sam", emptyList()),
+                    // Android only: an invite still joining, or failed, as the launcher's banner says it.
+                    SharedOwner("kim", "Kim", emptyList(), listOf("Notes" to JoinError.Network.title("Kim", "Notes"), "Pantry" to null)),
                 ),
             )
         }
@@ -104,7 +106,8 @@ class SettingsViewTests {
             assertShows("Shared with you", "Riley", "Sam", "Joining…", "Leaving removes their apps and everything they stored on this phone.")
             row("Recipe Box", substring = true).assertIsDisplayed()
             row("Garden Log", substring = true).assertIsDisplayed()
-            assertEquals(2, composeRule.onAllNodesWithText("Leave").fetchSemanticsNodes().size)
+            row("Notes · Can’t reach Kim’s Notes\nPantry · Joining…", substring = true).assertIsDisplayed()
+            assertEquals(3, composeRule.onAllNodesWithText("Leave").fetchSemanticsNodes().size)
             // TalkBack hears whose apps each Leave is for.
             composeRule.onNodeWithContentDescription(ConnectionCopy.leaveApps("Riley")).assertExists()
             composeRule.onNodeWithContentDescription(ConnectionCopy.leaveApps("Sam")).assertExists()
@@ -249,7 +252,7 @@ class SettingsViewTests {
         var opened = false
         show { SettingsState(noScreenLock = true, setScreenLock = { opened = true }) }
         inEveryLook {
-            assertShows("Require screen lock", "Ovenlight can't lock until this phone has a screen lock.", "Set screen lock")
+            assertShows("Require screen lock", "Ovenlight can’t lock until this phone has a screen lock.", "Set screen lock")
             assertLacks("How long Ovenlight can stay in the background before it locks.")
         }
         row("Set screen lock").performClick()
@@ -327,12 +330,13 @@ class SettingsViewTests {
     @Test
     fun testContactUsWithNoEmailAppSaysWhereToWrite() {
         var privacy = false
-        show { SettingsState(contactUs = { false }, privacyPolicy = { privacy = true }) }
+        show { SettingsState(contactUs = { MailDraft(subject = "Ovenlight", body = "Ovenlight: 1.0 (1)") }, privacyPolicy = { privacy = true }) }
         inEveryLook {
             row("Contact us").performClick()
             inDialog("No email app").assertIsDisplayed()
             inDialog("Write to team@snowyghost.com.").assertIsDisplayed()
             inDialog("Copy address").assertIsDisplayed()
+            inDialog("Copy report").assertIsDisplayed()
             composeRule.checkAccessibility()
             inDialog("OK").performClick()
             composeRule.onNode(isDialog()).assertDoesNotExist()

@@ -58,9 +58,7 @@ import okhttp3.Request
  *   --es lab eval --es labJs <script>        logs the result of the open view's script
  *   --es lab wipe --es labProfile A          deleteBrowsingData now, deleteProfile next launch
  *   --es lab clearRoute --es labProfile A
- *   --es lab insets                          the page's env(safe-area-inset-*) beside Android's insets
  *   --es lab closedPort | proxy              the proxy override on a closed port, or back
- *   --el labHold <ms>                        how long the proxy holds a CONNECT (default 8000)
  *   --ez fakeOldWebView true                 the update screen
  *   --ez writeProxySecret true               files/proxy.txt: address, secret, realm
  *
@@ -99,7 +97,6 @@ object DebugLaunch {
         if (intent.getBooleanExtra("writeProxySecret", false)) {
             File(activity.filesDir, "proxy.txt").writeText(listOf(TailnetCore.proxyAddress, TailnetCore.proxySecret, TailnetCore.proxyRealm).joinToString("\n", postfix = "\n"))
         }
-        intent.getLongExtra("labHold", 0).takeIf { it > 0 }?.let(Core::debugAnswerWithin)
         val command = intent.getStringExtra("lab") ?: return
         showing.value = true
         val id = intent.getStringExtra("labId") ?: "lab"
@@ -200,16 +197,6 @@ object DebugLaunch {
                 val profile = intent.getStringExtra("labProfile") ?: return log("clearRoute: no labProfile")
                 Core.clearRoute(ProxyChallenge.routeKey(profile))
                 log("clearRoute $profile: cleared")
-            }
-            "insets" -> {
-                val web = view.value ?: return log("insets: no view")
-                val insets = androidx.core.view.ViewCompat.getRootWindowInsets(web) ?: return log("insets: none yet")
-                val density = activity.resources.displayMetrics.density
-                fun dp(i: androidx.core.graphics.Insets) = "top ${(i.top / density).toInt()} right ${(i.right / density).toInt()} bottom ${(i.bottom / density).toInt()} left ${(i.left / density).toInt()}"
-                val bars = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars())
-                val cutout = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.displayCutout())
-                val ime = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.ime())
-                web.evaluateJavascript("labInsets()") { log("insets $viewProfile: page $it; Android dp: bars ${dp(bars)}; cutout ${dp(cutout)}; keyboard ${dp(ime)}") }
             }
             "closedPort" -> WebViewSetup.overrideProxy(activity, "http://127.0.0.1:1") { log("proxy override: 127.0.0.1:1, a closed port") }
             "proxy" -> WebViewSetup.overrideProxy(activity, "http://${TailnetCore.proxyAddress}") { log("proxy override: the core's proxy") }
