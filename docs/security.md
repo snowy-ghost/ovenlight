@@ -478,7 +478,9 @@ agent is told that it is an image its sender chose, and any text in it is data.
   of the node's peers. So no page reaches the phone's own network, or the router in front
   of it, through Ovenlight. On iPhone, WebKit sends a load to one of the phone's own
   addresses straight out, past the proxy, so content rules block every loopback, private
-  and link-local IP literal, though not the phone's own public address.
+  and link-local IP literal. Every other IP literal is left to the proxy, the tailnet
+  ranges (100.64.0.0/10 and Tailscale's fd7a:115c:a1e0::/48) included, so a phone's own
+  address outside the blocked ranges, such as a carrier's or another VPN's, isn't blocked.
 - Ovenlight takes WebRTC away from pages. Its traffic wouldn't go through Ovenlight's
   proxy: through a TURN relay a page could reach any address it names, the phone's own
   network included. A script at the start of every document, in every frame, removes it.
@@ -486,11 +488,10 @@ agent is told that it is an image its sender chose, and any text in it is data.
   made. On Android it doesn't run there: it strips a new `about:blank` frame as it's made,
   but a page that sets out to can still find WebRTC in a frame's first, empty document,
   before the frame's own page loads.
-- From iOS 27.1, pages on iPhone can use WebTransport. The content rules, which block
-  loads to loopback, private and link-local IP literals, don't cover it, but the data
-  store's SOCKS5 proxy does, and every release route sets that proxy (its node's, or one
-  that refuses every connection). A route without one would need WebTransport removed, as
-  WebRTC is.
+- From iOS 27.1, pages on iPhone can use WebTransport. The content rules don't cover it,
+  but the data store's SOCKS5 proxy does, and every release route sets that proxy (its
+  node's, or one that refuses every connection). A route without one would need
+  WebTransport removed, as WebRTC is.
 - While Ovenlight is locked, no page gets the microphone or camera, and an app that an
   `ovenlight://open` link asks for waits for the unlock. Locking also stops any
   microphone or camera stream already running in an open app, on screen or kept in the
