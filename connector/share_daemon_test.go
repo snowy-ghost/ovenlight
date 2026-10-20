@@ -1952,6 +1952,46 @@ func TestStatusShowsSyncError(t *testing.T) {
 	}
 }
 
+// auth set refuses a credential whose tailnet has none of the running connector's apps,
+// and takes one while the connector is down or no app node knows its ID.
+func TestAuthSetRefusesAnotherTailnet(t *testing.T) {
+	d, f := testDaemon(t)
+	state, err := os.MkdirTemp("", "ol") // a socket path has to be short
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(state) })
+	f.Devices = []tsapi.Device{{ID: "1", NodeID: "nWork", User: "alex@work.example", Authorized: true}}
+	if err := verifyCredentials(f.TokenCredentials(), state); err != nil {
+		t.Errorf("with the connector down: %v", err)
+	}
+	ln, err := listenControl(socketPath(state))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	go d.serveControl(ln)
+	if err := verifyCredentials(f.TokenCredentials(), state); err == nil || !strings.Contains(err.Error(), "another tailnet") {
+		t.Errorf("another tailnet's credential: %v", err)
+	}
+	n := d.node("coach")
+	n.mu.Lock()
+	n.selfID = ""
+	n.mu.Unlock()
+	if err := verifyCredentials(f.TokenCredentials(), state); err != nil {
+		t.Errorf("before the node knows its ID: %v", err)
+	}
+	n.mu.Lock()
+	n.selfID = "ncoach"
+	n.mu.Unlock()
+	f.Mu.Lock()
+	f.Devices = append(f.Devices, tsapi.Device{ID: "c", NodeID: "ncoach"})
+	f.Mu.Unlock()
+	if err := verifyCredentials(f.TokenCredentials(), state); err != nil {
+		t.Errorf("this tailnet's credential: %v", err)
+	}
+}
+
 // A node gets its certificate as it starts serving, not at the first visit, and check
 // and publish say when it can't, trying again first so a fix shows at once.
 func TestCertificateWarmUp(t *testing.T) {

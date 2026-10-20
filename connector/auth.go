@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -74,7 +75,7 @@ func cmdAuthSet(args []string) error {
 		return err
 	}
 	fmt.Fprintln(os.Stderr, "Checking the credential with the Tailscale API...")
-	if err := verifyCredentials(creds); err != nil {
+	if err := verifyCredentials(creds, p.state); err != nil {
 		return fmt.Errorf("not saved: %w", err)
 	}
 	path := credentialsPath(p.config)
@@ -130,32 +131,44 @@ func checkSecretShape(c tsapi.Credentials) error {
 	return nil
 }
 
-// verifyCredentials makes the read-only calls setup-sharing depends on, and says so.
-func verifyCredentials(c tsapi.Credentials) error {
+// verifyCredentials makes the read-only calls setup-sharing depends on, and says so. Its
+// tailnet must hold one of the running connector's app nodes, once any knows its ID.
+func verifyCredentials(c tsapi.Credentials, stateDir string) error {
 	devices, err := credentialAccess(c)
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "ok: it can list your %d devices and read the policy file.\n", devices)
+	var ids []string
+	if reply, err := callDaemon(stateDir, "status", 10*time.Second); err == nil {
+		for _, app := range reply.Apps {
+			if app.DeviceID != "" {
+				ids = append(ids, app.DeviceID)
+			}
+		}
+	}
+	if len(ids) > 0 && !slices.ContainsFunc(devices, func(d tsapi.Device) bool { return slices.Contains(ids, d.NodeID) }) {
+		return errors.New("the credential's tailnet has none of this computer's apps, so it's for another tailnet; make one in the tailnet this computer's apps are in")
+	}
+	fmt.Fprintf(os.Stderr, "ok: it can list your %d devices and read the policy file.\n", len(devices))
 	return nil
 }
 
-// credentialAccess makes those calls quietly and returns how many devices it listed.
-func credentialAccess(c tsapi.Credentials) (int, error) {
+// credentialAccess makes those calls quietly and returns the devices it listed.
+func credentialAccess(c tsapi.Credentials) ([]tsapi.Device, error) {
 	client, err := tsapi.New(c, nil)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	devices, err := client.Devices(ctx)
 	if err != nil {
-		return 0, fmt.Errorf("listing devices failed: %w", err)
+		return nil, fmt.Errorf("listing devices failed: %w", err)
 	}
 	if _, err := client.GetPolicy(ctx); err != nil {
-		return 0, fmt.Errorf("reading the policy file failed (an OAuth client needs the policy_file scope): %w", err)
+		return nil, fmt.Errorf("reading the policy file failed (an OAuth client needs the policy_file scope): %w", err)
 	}
-	return len(devices), nil
+	return devices, nil
 }
 
 func cmdAuthStatus(args []string) error {
@@ -182,7 +195,7 @@ func cmdAuthStatus(args []string) error {
 	}
 	fmt.Printf("Tailscale API credential: %s, fingerprint %s (tailnet %s, %s)\n", kind, creds.Fingerprint(), tailnet, base)
 	if *check {
-		return verifyCredentials(creds)
+		return verifyCredentials(creds, p.state)
 	}
 	return nil
 }
