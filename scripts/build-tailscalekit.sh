@@ -4,28 +4,36 @@
 # same pin does nothing. Pass --force to rebuild.
 set -euo pipefail
 
-# Pinned upstream commit (libtailscale main, 2026-09). Bump deliberately: rerun, then
-# test the embedded node end to end before shipping.
+# Pinned upstream commit (libtailscale 0.2.0, with tailscale.com v1.104.1). Bump
+# deliberately: rerun, then test the embedded node end to end before shipping.
 LIBTAILSCALE_REPO=https://github.com/tailscale/libtailscale.git
-LIBTAILSCALE_COMMIT=59d4bb82744915815178e0f0776d60026a397ee7
-# libtailscale's tailscale.com dependency doesn't build with Go 1.27 yet. Keep the
-# latest 1.26 patch release: it carries the standard library's security fixes.
-GO_TOOLCHAIN=go1.26.9
+LIBTAILSCALE_COMMIT=d1dc45d039edb7759ecbee6ba2aea0c4bca884b8
+# libtailscale's go.mod asks for Go 1.27.1 or later. Keep the latest 1.27 patch
+# release: it carries the standard library's security fixes.
+GO_TOOLCHAIN=go1.27.2
 # -trimpath keeps the build machine's file paths, such as /Users/<name>/go, out of the binary.
 GO_FLAGS=-trimpath
 # Modules raised past libtailscale's go.mod for security fixes (govulncheck). Drop an
 # entry once the pinned go.mod reaches it: go get would otherwise move it back down.
-GO_UPGRADES="golang.org/x/net@v0.60.0 golang.org/x/text@v0.42.0"
+GO_UPGRADES="golang.org/x/net@v0.60.0"
 # ts_omit_debug drops the node's debug LocalAPI, pprof and debug HTTP handlers, which
-# Ovenlight never calls. ts_omit_peerapiserver drops the server other nodes reach the
-# phone through: nothing uses it, and its DNS endpoint answers any untagged node of the
-# same user, which an inviter can arrange for a guest's node, from the phone's own
-# networks. libtailscale's Makefile has no knob for tags, so it is edited.
-BUILD_TAGS=ios,ts_omit_debug,ts_omit_peerapiserver
+# Ovenlight never calls. ts_omit_peerapiserver drops the server other nodes reach the phone
+# through: nothing uses it, and its DNS endpoint answers any untagged node of the same user,
+# which an inviter can arrange for a guest's node, from the phone's own networks.
+# ts_omit_cachenetmap keeps a node from starting on a saved network map, which would hide a
+# guest's removal from the tailnet. ts_omit_webclient leaves out Tailscale's web client,
+# which Ovenlight never serves, and the font and JavaScript bundle it embeds, as the
+# connector's release does. libtailscale's Makefile has no knob for tags, so it is edited.
+BUILD_TAGS=ios,ts_omit_debug,ts_omit_peerapiserver,ts_omit_cachenetmap,ts_omit_webclient
 # Every node would otherwise upload its logs to log.tailscale.com, guests' phones
 # included. The knob is read in Go, so it is set from a Go init: a setenv from Swift
-# comes after the Go runtime has copied the environment.
+# comes after the Go runtime has copied the environment. logtail.Disable keeps tsnet from
+# buffering the backend log, sign-in links included, in tailscaled.log*.txt in the node's folder.
 NO_LOGS_FILE=ovenlight_nologs.go
+# tsnet's loopback SOCKS5 proxy dials any address a page names, the phone's loopback and
+# local network included. libtailscale/ holds the guarded proxy that stands in for it, by
+# Android's rules, with its tests, which run against the pinned modules before each build.
+PATCH_DIR=scripts/libtailscale
 # The licenses of libtailscale and everything it links, in each framework slice, for the
 # app's Acknowledgements screen.
 NOTICES=THIRD_PARTY_NOTICES.txt
@@ -34,9 +42,9 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 out="$root/Frameworks/TailscaleKit.xcframework"
 stamp="$root/Frameworks/.tailscalekit-pin"
 src="$root/build/libtailscale"
-# A change to the settings above or to the notices script rebuilds the framework.
-notices_sum="$(shasum -a 256 < "$root/scripts/third-party-notices.sh" | cut -d' ' -f1)"
-want="$LIBTAILSCALE_COMMIT $GO_TOOLCHAIN $GO_FLAGS $BUILD_TAGS $GO_UPGRADES $NO_LOGS_FILE $NOTICES $notices_sum"
+# A change to the settings above, the notices script or the patch rebuilds the framework.
+inputs_sum="$(cat "$root/scripts/third-party-notices.sh" "$root/$PATCH_DIR"/* | shasum -a 256 | cut -d' ' -f1)"
+want="$LIBTAILSCALE_COMMIT $GO_TOOLCHAIN $GO_FLAGS $BUILD_TAGS $GO_UPGRADES $NO_LOGS_FILE $NOTICES $inputs_sum"
 
 if [ "${1:-}" != "--force" ] && [ -d "$out" ] && [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$want" ]; then
   echo "TailscaleKit.xcframework is current ($LIBTAILSCALE_COMMIT)"
@@ -56,15 +64,30 @@ grep -q -- "-tags $BUILD_TAGS " "$src/Makefile" || { echo "couldn't set build ta
 cat > "$src/$NO_LOGS_FILE" <<'EOF'
 package main
 
-import "tailscale.com/envknob"
+import (
+	"tailscale.com/envknob"
+	"tailscale.com/logtail"
+)
 
-func init() { envknob.SetNoLogsNoSupport() }
+func init() {
+	envknob.SetNoLogsNoSupport()
+	logtail.Disable()
+}
 EOF
+cp "$root/$PATCH_DIR"/*.go "$src/"
+sed -i '' 's/:= s\.s\.Loopback()/:= guardedLoopback(s.s)/; s/:= s\.s\.Close();/:= closeServer(s.s);/' "$src/tailscale.go"
+[ "$(grep -c -e 'guardedLoopback(s\.s)' -e 'closeServer(s\.s)' "$src/tailscale.go")" = 2 ] &&
+  ! grep -q -e 's\.s\.Loopback()' -e 's\.s\.Close()' "$src/tailscale.go" ||
+  { echo "couldn't point libtailscale's loopback and close at the guarded proxy" >&2; exit 1; }
 # shellcheck disable=SC2086
 (cd "$src" && tsbefore="$(GOTOOLCHAIN="$GO_TOOLCHAIN" go list -m tailscale.com)" &&
   GOTOOLCHAIN="$GO_TOOLCHAIN" go get $GO_UPGRADES &&
   [ "$(GOTOOLCHAIN="$GO_TOOLCHAIN" go list -m tailscale.com)" = "$tsbefore" ]) ||
   { echo "raising $GO_UPGRADES failed or moved tailscale.com; check the pins" >&2; exit 1; }
+# On this computer, so without the ios tag. The end-to-end test runs its own control
+# server, and skips the public site when offline.
+(cd "$src" && GOTOOLCHAIN="$GO_TOOLCHAIN" go test -count=1 -run '^TestOvenlight|^TestConn$' -tags "${BUILD_TAGS#ios,}" .) ||
+  { echo "the guarded loopback proxy's tests failed" >&2; exit 1; }
 
 # The device slice is arm64 and the simulator's arm64 and x86_64; they link the same modules.
 for arch in arm64 amd64; do

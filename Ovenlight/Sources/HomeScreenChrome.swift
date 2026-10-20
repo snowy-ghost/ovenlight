@@ -6,6 +6,12 @@ import SwiftUI
 /// between them while it matters.
 struct HomeTopBar<Status: View, MenuItems: View>: View {
     @Binding var isEditing: Bool
+    /// Not while the welcome shows, with nothing set up to lock away.
+    let showsLock: Bool
+    /// Add App once the owner uses their own computers, the only place apps are added from.
+    let showsAddApp: Bool
+    /// Edit Apps while there are apps to edit.
+    let showsEditApps: Bool
     let lock: () -> Void
     let addApp: () -> Void
     let settings: () -> Void
@@ -16,8 +22,8 @@ struct HomeTopBar<Status: View, MenuItems: View>: View {
     var body: some View {
         HStack(spacing: 8) {
             if isEditing {
-                GlassIconButton(systemName: "plus", label: "Add App", action: addApp)
-            } else {
+                if showsAddApp { GlassIconButton(systemName: "plus", label: "Add App", action: addApp) }
+            } else if showsLock {
                 GlassIconButton(systemName: "lock", label: "Lock Ovenlight", action: lock)
             }
             Spacer(minLength: 0)
@@ -35,9 +41,13 @@ struct HomeTopBar<Status: View, MenuItems: View>: View {
                 .accessibilityShowsLargeContentViewer()
             } else {
                 Menu {
-                    Button(action: addApp) { Label("Add App", systemImage: "plus") }
-                    Button { withAnimation { isEditing = true } } label: {
-                        Label("Edit Apps", systemImage: "apps.iphone")
+                    if showsAddApp {
+                        Button(action: addApp) { Label("Add App", systemImage: "plus") }
+                    }
+                    if showsEditApps {
+                        Button { withAnimation { isEditing = true } } label: {
+                            Label("Edit Apps", systemImage: "apps.iphone")
+                        }
                     }
                     menuItems
                     Divider()
@@ -48,6 +58,7 @@ struct HomeTopBar<Status: View, MenuItems: View>: View {
                 // A menu tints its label with the accent; match the Lock button beside it.
                 .tint(.primary)
                 .accessibilityLabel("More")
+                .accessibilityShowsLargeContentViewer { Label("More", systemImage: "ellipsis") }
             }
         }
         .padding(.horizontal, 16)
@@ -65,6 +76,8 @@ struct GlassIconButton: View {
         Button(action: action) { GlassIconLabel(systemName: systemName) }
             .buttonStyle(.plain)
             .accessibilityLabel(label)
+            // The bars stop growing at the largest text sizes; a long press shows it large.
+            .accessibilityShowsLargeContentViewer { Label(label, systemImage: systemName) }
     }
 }
 
@@ -85,23 +98,41 @@ struct GlassIconLabel: View {
 /// Nothing when connected or off; signing in and approval have a card instead.
 struct TailnetStatusPill: View {
     let state: NodeState
+    /// The phone has no network, so a node coming up can't.
+    var offline = false
     let retry: () -> Void
 
+    /// Busy for a beat: a quick reconnect, coming back after a minute away, shows nothing.
+    @State private var busyAWhile = false
+
     var body: some View {
+        // A container that's always there, for the task.
+        ZStack { pill }
+            .task(id: state.isBusy) {
+                busyAWhile = false
+                guard state.isBusy else { return }
+                try? await Task.sleep(for: .milliseconds(700))
+                if !Task.isCancelled { withAnimation(.smooth) { busyAWhile = true } }
+            }
+    }
+
+    @ViewBuilder private var pill: some View {
         switch state {
         case .starting, .connecting, .retrying:
-            HStack(spacing: 7) {
-                ProgressView().controlSize(.small)
-                Text(ConnectionCopy.connecting)
-                    .font(.footnote.weight(.medium))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+            if offline || busyAWhile {
+                HStack(spacing: 7) {
+                    if !offline { ProgressView().controlSize(.small) }
+                    Text(offline ? ConnectionCopy.offline : ConnectionCopy.connecting)
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 14)
+                .frame(minHeight: 34)
+                .ovenlightGlass(in: Capsule())
+                .accessibilityElement(children: .combine)
+                .transition(.opacity.combined(with: .scale(scale: 0.9)))
             }
-            .padding(.horizontal, 14)
-            .frame(minHeight: 34)
-            .ovenlightGlass(in: Capsule())
-            .accessibilityElement(children: .combine)
-            .transition(.opacity.combined(with: .scale(scale: 0.9)))
         case .failed(let message):
             Button(action: retry) {
                 HStack(spacing: 6) {
@@ -119,7 +150,7 @@ struct TailnetStatusPill: View {
                 .ovenlightGlass(in: Capsule(), interactive: true)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(message)
+            .accessibilityLabel("\(message) Try Again")
             .accessibilityHint("Tries to connect again")
         case .idle, .ready, .needsLogin, .awaitingApproval:
             EmptyView()
@@ -188,11 +219,12 @@ struct RemoveBadge: View {
                 .background(Circle().fill(.regularMaterial))
                 .overlay(Circle().strokeBorder(Color.primary.opacity(0.1), lineWidth: 0.5))
                 .shadow(color: .black.opacity(0.15), radius: 2, y: 1)
-                .padding(8)
+                // 44 points to tap, the badge in its middle.
+                .padding(10)
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
-        .padding(-8)
+        .padding(-10)
         .accessibilityLabel("Remove \(name)")
         .transition(.scale.combined(with: .opacity))
     }
@@ -214,9 +246,10 @@ struct EmptyHomeSlot: View {
                             .font(.system(size: size * 0.36, weight: .medium))
                             .foregroundStyle(.secondary)
                     }
+                // As a tile's label, legible over the light.
                 Text("Add App")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.primary)
                     .lineLimit(1)
             }
         }

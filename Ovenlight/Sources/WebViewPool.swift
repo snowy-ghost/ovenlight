@@ -1,3 +1,4 @@
+import AVFoundation
 import Combine
 import os
 import SafariServices
@@ -40,6 +41,8 @@ final class WebViewPool: ObservableObject {
             // screen or not.
             if Routing.mayLoad(built: coordinator.node, current: NodeManager.shared.node(for: app)) {
                 touch(app.id)
+                // Its name now, for the page's dialogs, after a rename while it was open.
+                coordinator.app = app
                 return (view, coordinator)
             }
             discard(app.id)
@@ -49,7 +52,7 @@ final class WebViewPool: ObservableObject {
         let config = WKWebViewConfiguration()
         config.websiteDataStore = WKWebsiteDataStore(forIdentifier: app.dataStoreID)
         // The owner's tailnet apps go through the owner's node, shared apps through their
-        // owner's guest node, everything else loads directly.
+        // owner's guest node, and nothing else loads (see `Routing.route`).
         let node = NodeManager.shared.node(for: app)
         Self.configure(config)
 
@@ -59,7 +62,8 @@ final class WebViewPool: ObservableObject {
         if let node {
             node.attach(store, for: app.id)
         } else {
-            store.proxyConfigurations = app.isShared ? [MembershipNode.closedProxy] : []
+            let direct = !app.isShared && NodeManager.shared.route(for: app.startURL) == .direct
+            store.proxyConfigurations = direct ? [] : [MembershipNode.closedProxy]
         }
         view.allowsBackForwardNavigationGestures = true
         // Short pages still rubber-band, so pulling down at the top can bring the chrome back.
@@ -75,7 +79,9 @@ final class WebViewPool: ObservableObject {
         view.navigationDelegate = coordinator
         view.uiDelegate = coordinator
         coordinator.webView = view
-        coordinator.start()
+        // Every app waits for its host to answer before the first navigation, however it's
+        // reached (see AppLoadGate).
+        coordinator.openGate()
 
         views[app.id] = view
         coordinators[app.id] = coordinator
@@ -89,12 +95,34 @@ final class WebViewPool: ObservableObject {
         coordinators.values.forEach { $0.presentWaitingDownloads() }
     }
 
+    /// Where opening the app is, while it has a view, for Report a Problem.
+    func opening(of id: UUID) -> String? {
+        coordinators[id].map { WebCoordinator.opening(gate: $0.gate, failure: $0.loadFailure) }
+    }
+
     /// What every app view gets, whichever app it shows.
     static func configure(_ config: WKWebViewConfiguration) {
         config.allowsInlineMediaPlayback = true
         config.mediaTypesRequiringUserActionForPlayback = []
         config.applicationNameForUserAgent = userAgentName(after: config.applicationNameForUserAgent)
+        // In every frame: WebKit runs it in a frame's first about:blank document too, as the
+        // frame is made, so no page can reach a frame that still has WebRTC.
+        config.userContentController.addUserScript(WKUserScript(source: noWebRTC, injectionTime: .atDocumentStart,
+                                                                forMainFrameOnly: false))
     }
+
+    /// Takes WebRTC away from pages. Its traffic goes around the node's proxy, to any address
+    /// a page names through a TURN relay, and nothing in Ovenlight uses it. Each interface
+    /// becomes a fixed undefined that page script can't delete or set back.
+    static let noWebRTC = """
+        for (const target of [window, Window.prototype]) {
+            for (const name of Object.getOwnPropertyNames(target)) {
+                if (!/^(webkit)?RTC/.test(name)) continue;
+                delete target[name];
+                if (target === window) Object.defineProperty(window, name, { value: undefined });
+            }
+        }
+        """
 
     /// The end of every app view's user agent, so a page can tell it runs in Ovenlight.
     /// WebKit's own name (`Mobile/...`) stays before it, so pages still see mobile Safari.
@@ -105,10 +133,13 @@ final class WebViewPool: ObservableObject {
 
     /// Ends every microphone and camera stream, on screen or not, so none runs under the lock.
     func stopCapture() {
-        for view in views.values {
-            view.setMicrophoneCaptureState(.none)
-            view.setCameraCaptureState(.none)
-        }
+        views.values.forEach(Self.stopCapture)
+    }
+
+    /// Ends one page's microphone and camera streams, as its app closes to the launcher.
+    static func stopCapture(in view: WKWebView) {
+        view.setMicrophoneCaptureState(.none)
+        view.setCameraCaptureState(.none)
     }
 
     /// Drops a coordinator whose route is stale, unless the pool already replaced it, and
@@ -169,7 +200,7 @@ final class WebViewPool: ObservableObject {
 /// Navigation and UI delegate for one app's web view.
 @MainActor
 final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate {
-    let app: WebApp
+    fileprivate(set) var app: WebApp
     /// The node the app loads through, if any; the first navigation then waits for the gate.
     let node: MembershipNode?
     var usesNode: Bool { node != nil }
@@ -186,7 +217,10 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
         }
     }
 
-    @Published var loadError: String?
+    @Published var loadError: String? { didSet { if loadError == nil { loadFailure = nil } } }
+    /// What put `loadError` up, for Report a Problem: what failed and its code, never a URL or
+    /// an error's own words.
+    private(set) var loadFailure: String?
     @Published var hasLoadedOnce = false
     /// The page lays itself out to the bottom and side edges (`viewport-fit=cover`), read as
     /// each page finishes loading and before the first one shows, so it never moves. One that
@@ -201,16 +235,31 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
     /// What the page shows at its top, as WebKit reads it.
     var headerColor: UIColor? { themeColor ?? underPageColor }
 
+    /// Publishes only a real change: the gate's waits go round every second, and an equal
+    /// assignment would redraw the page's cover each time.
+    private func advance(_ event: AppLoadGate.Event) {
+        let next = gate.next(event)
+        if next != gate { gate = next }
+    }
+
     private static let log = Logger(subsystem: "com.snowyghost.ovenlight", category: "node")
     /// First navigations that failed at the connection level after the probe answered.
     private var failedLoads = 0
     private static let maxFailedLoads = 2
+    /// First pages the connector answered for because the app itself was down.
+    private var appDownLoads = 0
+    /// One of them was just cancelled, which WebKit reports as a failed load.
+    private var cancelledAppDown = false
     /// The page's latest navigation is a link the person tapped (see `isTap`), not one the
     /// page started itself.
     private var tapped = false
     private var gateTask: Task<Void, Never>?
-    /// Each download under way, and the file it's written to once WebKit asks where.
-    private var downloads: [ObjectIdentifier: (download: WKDownload, file: URL?)] = [:]
+    /// Each download under way, the file it's written to once WebKit asks where, and whether
+    /// the person started it (see `isTap`), who then hears if it fails.
+    private var downloads: [ObjectIdentifier: (download: WKDownload, file: URL?, tapped: Bool)] = [:]
+    /// A brief message over the page, such as a download that failed; it goes by itself.
+    @Published private(set) var notice: String?
+    private var noticeTask: Task<Void, Never>?
     /// The share sheet up, whichever page presented it, from presenting until it closes.
     private(set) static weak var sheet: ShareSheet?
     /// A sheet that never showed has had its one retry; the next trigger allows another,
@@ -226,12 +275,6 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
         self.node = node
     }
 
-    /// Every app waits for its host to answer before the first navigation, however it's
-    /// reached (see AppLoadGate).
-    func start() {
-        openGate()
-    }
-
     /// The view was discarded: stop waiting on the node for it, and end its downloads under
     /// way, whose delegate this is no longer, with their files.
     func stop() {
@@ -239,7 +282,7 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
         gateTask?.cancel()
         gateTask = nil
         watcher?.cancel()
-        for (download, file) in downloads.values {
+        for (download, file, _) in downloads.values {
             download.cancel { _ in
                 if let file { DownloadPolicy.removeFolder(of: file) }
             }
@@ -247,39 +290,73 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
         downloads = [:]
     }
 
+    /// The page landed in a window: opened again, its dialogs may show again (see
+    /// `PageDialogs`), and files that finished meanwhile show.
+    func appeared() {
+        dialogs.stopped = false
+        presentWaitingDownloads()
+    }
+
     /// Try Again, and Reload from the app menu. A page that already loaded stays on screen
     /// while the path is checked again.
     func reload() {
+        dialogs.stopped = false
         failedLoads = 0
+        appDownLoads = 0
         loadError = nil
-        gate = gate.next(.retry)
+        advance(.retry)
         openGate()
     }
 
-    private func openGate() {
+    func openGate() {
         gateTask?.cancel()
         gateTask = Task { [weak self] in await self?.runGate() }
     }
 
     /// Waits for the node, then probes this app's host until it answers or time runs out.
     private func runGate() async {
+        if let webView, !(await LocalAddressRules.install(in: webView)) { return giveUp() }
         // A shared app always goes through its owner's node; without one it has no way in.
         if app.isShared && node == nil { return await GuestManager.shared.collectOrphans() }
-        let opened = Date.now
+        // An app of your own on no tailnet Ovenlight knows, such as one from a tailnet the
+        // owner was signed in to before: Can't Reach at once, and nothing goes out, not
+        // even a probe.
+        if node == nil && NodeManager.shared.route(for: app.startURL) == .refused {
+            Self.log.notice("\(self.app.host, privacy: .public): on no known tailnet, refused")
+            return giveUp()
+        }
+        var busySince: Date? = .now
         var probingSince: Date?
         while !Task.isCancelled, gate == .waiting || gate == .probing {
             // Not even a probe goes through a node the app's route no longer names.
             guard routeIsCurrent() else { return }
-            // Apps loaded directly (on the public internet) have no node to wait for.
+            // With no network at all there is nothing to wait for or probe: You're Offline shows
+            // at once, and the app opens once the phone has a network again.
+            if !hasLoadedOnce, !NetworkPath.shared.isSatisfied {
+                advance(.offline)
+                await NetworkPath.shared.satisfied()
+                guard !Task.isCancelled, gate == .offline else { return }
+                advance(.online)
+                probingSince = nil
+                busySince = .now
+                continue
+            }
+            // An app at localhost in a debug build has no node to wait for.
             if node == nil || (node?.state == .ready && nodeMayCarry) {
-                gate = gate.next(.nodeReady)
+                advance(.nodeReady)
+                // Its computer is listed offline, asleep most likely: Can't Reach shows at
+                // once, and the app opens as soon as the computer answers.
+                if !hasLoadedOnce, let node, node.isListedOffline(app.host) {
+                    giveUp()
+                    return await retryQuietly(through: node)
+                }
                 let since = probingSince ?? .now
                 probingSince = since
                 let reach = if let node { await node.canReach(app) } else { await Self.canReachDirectly(app.startURL) ? Reach.reached : .unreachable }
                 switch reach {
                 case .reached:
                     guard !Task.isCancelled else { return }
-                    gate = gate.next(.reached)
+                    advance(.reached)
                     load()
                     return
                 case .notInvited:
@@ -292,12 +369,55 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
                 if Date.now.timeIntervalSince(since) >= AppLoadGate.reachTimeout { return giveUp() }
                 try? await Task.sleep(for: .seconds(1))
             } else {
-                gate = gate.next(.nodeNotReady)
+                advance(.nodeNotReady)
                 probingSince = nil
                 // Sign-in and node failures have their own screens and wait for the owner.
-                if node?.state.isBusy == true, Date.now.timeIntervalSince(opened) >= AppLoadGate.nodeTimeout { return giveUp() }
-                try? await Task.sleep(for: .milliseconds(250))
+                guard let node else { return }
+                let deadline = AppLoadGate.nodeDeadline(busySince: &busySince, state: node.state, now: .now)
+                if let deadline, Date.now >= deadline { return giveUp(AppLoadGate.nodeGiveUp(node.state)) }
+                await Self.change(of: node, before: deadline)
             }
+        }
+    }
+
+    /// Waits for the node to change (its state, or its status, which says what the owner's
+    /// node carries), or the phone's network to drop, for a second at most, and never past
+    /// `deadline`. The second catches a change made before the waits listened.
+    private static func change(of node: MembershipNode, before deadline: Date?) async {
+        let wait = min(deadline.map { max($0.timeIntervalSinceNow, 0) } ?? 1, 1)
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { @MainActor in
+                for await _ in node.objectWillChange.values { return }
+            }
+            group.addTask { @MainActor in
+                // Only a drop: the publisher starts with the path as it is now.
+                for await satisfied in NetworkPath.shared.$isSatisfied.dropFirst().values where !satisfied { return }
+            }
+            group.addTask { try? await Task.sleep(for: .seconds(wait)) }
+            await group.next()
+            group.cancelAll()
+        }
+    }
+
+    /// Probes the app behind its Can't Reach screen, from at once (a computer can be listed
+    /// offline for a moment while it answers) until it answers, Try Again starts over, or
+    /// the app closes to the launcher, after which opening it again tries again.
+    private func retryQuietly(through node: MembershipNode) async {
+        while !Task.isCancelled, gate == .unreachable, routeIsCurrent() {
+            if node.state == .ready, nodeMayCarry {
+                switch await node.canReach(app) {
+                case .reached:
+                    guard !Task.isCancelled, gate == .unreachable else { return }
+                    advance(.woke)
+                    return load()
+                case .notInvited:
+                    return GuestManager.shared.accessEnded(for: [app])
+                case .unreachable:
+                    break
+                }
+            }
+            try? await Task.sleep(for: .seconds(AppLoadGate.quietRetryInterval))
+            guard webView?.window != nil else { return }
         }
     }
 
@@ -314,15 +434,15 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
         return (try? await directProbe.data(from: url)) != nil
     }
 
-    private func giveUp() {
+    private func giveUp(_ event: AppLoadGate.Event = .gaveUp) {
         guard !Task.isCancelled else { return }
-        Self.log.info("\(self.app.host, privacy: .public): unreachable")
-        gate = gate.next(.gaveUp)
+        Self.log.notice("\(self.app.host, privacy: .public): \(event == .gaveUp ? "unreachable" : "not connected", privacy: .public)")
+        advance(event)
         // A page already on screen keeps it. Once a page has loaded, only the person's Reload
         // checks the path again, so an alert tells them it couldn't reach the computer.
         if hasLoadedOnce {
             gate = .ready
-            alertCantReach()
+            alertCantReach(event == .nodeGaveUp ? ConnectionCopy.notConnected : nil)
         }
     }
 
@@ -342,7 +462,7 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
     /// drops this view and the app's screen makes a new one through the right node.
     private func routeIsCurrent() -> Bool {
         if Routing.mayLoad(built: node, current: NodeManager.shared.node(for: app)) { return true }
-        Self.log.info("\(self.app.host, privacy: .public): route changed, making a new view")
+        Self.log.notice("\(self.app.host, privacy: .public): route changed, making a new view")
         WebViewPool.shared.replace(self)
         return false
     }
@@ -365,7 +485,7 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
         case .allow where action.shouldPerformDownload:
             // `<a download>`, of the app's own pages or of a blob or data URL.
             let source = (action.sourceFrame as WKFrameInfo?)?.securityOrigin.host
-            decisionHandler(mayDownload(url, from: source) ? .download : .cancel)
+            decisionHandler(mayDownload(url, from: source, tapped: Self.isTap(action)) ? .download : .cancel)
         case .allow:
             decisionHandler(.allow)
         case .openExternally(let external):
@@ -393,6 +513,11 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
                  decisionHandler: @escaping @MainActor (WKNavigationResponsePolicy) -> Void) {
         guard response.isForMainFrame else { return decisionHandler(.allow) }
         let http = response.response as? HTTPURLResponse
+        if !hasLoadedOnce, AppLoadGate.appIsDown(status: http?.statusCode, header: http?.value(forHTTPHeaderField: ConnectorError.header)) {
+            cancelledAppDown = true
+            decisionHandler(.cancel)
+            return appIsDown()
+        }
         if app.isShared, http?.statusCode == 403 {
             let app = app
             Task { await GuestManager.shared.verifyAccess(to: app) }
@@ -403,13 +528,32 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
             decisionHandler(.allow)
         case .download:
             guard let url = response.response.url else { return decisionHandler(.cancel) }
-            decisionHandler(mayDownload(url, from: nil) ? .download : .cancel)
+            decisionHandler(mayDownload(url, from: nil, tapped: tapped) ? .download : .cancel)
+        }
+    }
+
+    /// The first page's app is down on its computer: the placeholder stays while it's tried
+    /// again a few times, then the app's error screen says so.
+    private func appIsDown() {
+        guard appDownLoads < AppLoadGate.appDownRetries.count else {
+            appDownLoads = 0
+            fail(ConnectionCopy.notResponding(app.name, sharedBy: app.sharedBy), "app not responding (502 unavailable)")
+            return
+        }
+        let delay = AppLoadGate.appDownRetries[appDownLoads]
+        appDownLoads += 1
+        Self.log.notice("\(self.app.host, privacy: .public): the app is down, trying again in \(delay) s")
+        gateTask?.cancel()
+        gateTask = Task { [weak self] in
+            guard (try? await Task.sleep(for: .seconds(delay))) != nil, let self, routeIsCurrent(), nodeMayCarry else { return }
+            webView?.load(URLRequest(url: app.startURL))
         }
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         loadError = nil
         failedLoads = 0
+        appDownLoads = 0
         webView.evaluateJavaScript(Self.coverScript) { [weak self] result, _ in
             self?.fitsCover = result as? Bool == true
             self?.hasLoadedOnce = true
@@ -440,6 +584,11 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
     private func handle(_ error: Error) {
         let ns = error as NSError
         if ns.domain == NSURLErrorDomain && ns.code == NSURLErrorCancelled { return }
+        // WebKit reports the app-down response it was told to cancel (see `appIsDown`).
+        if cancelledAppDown {
+            cancelledAppDown = false
+            if ns.domain == "WebKitErrorDomain" && ns.code == Self.frameLoadInterrupted { return }
+        }
         // Once the app has rendered, a failed load (offline, a file WebKit can't show)
         // leaves the page as it is. A link the person tapped says so when it can't reach the
         // computer; what the page loads by itself, a reload on a timer say, never does.
@@ -456,19 +605,36 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
             if failedLoads < Self.maxFailedLoads {
                 failedLoads += 1
                 Self.log.info("\(self.app.host, privacy: .public): error \(ns.code), checking the path again")
-                gate = gate.next(.loadFailed)
+                advance(.loadFailed)
                 openGate()
                 return
             }
             failedLoads = 0
-            loadError = ConnectionCopy.cantReachDetail
+            fail(ConnectionCopy.cantReachDetail(sharedBy: app.sharedBy), Self.failure(ns))
             return
         }
         if ns.domain == NSURLErrorDomain && Self.unreachable.contains(ns.code) {
-            loadError = ConnectionCopy.cantReachDetail
+            fail(ConnectionCopy.cantReachDetail(sharedBy: app.sharedBy), Self.failure(ns))
         } else {
-            loadError = error.localizedDescription
+            // WebKit's own words ("The URL was blocked by a content blocker") mean nothing here.
+            #if DEBUG
+            Self.log.debug("\(self.app.host, privacy: .public): load failed: \(ns.domain, privacy: .public) \(ns.code): \(ns.localizedDescription, privacy: .public)")
+            #endif
+            fail(ConnectionCopy.pageFailed, Self.failure(ns))
         }
+    }
+
+    private func fail(_ message: String, _ failure: String) {
+        loadError = message
+        loadFailure = failure
+    }
+
+    /// A failed load as Report a Problem gives it: the error's domain and code alone.
+    static func failure(_ error: NSError) -> String { "page failed (\(error.domain) \(error.code))" }
+
+    /// Report a Problem's Opening line: where the gate is, and what failed after it opened.
+    static func opening(gate: AppLoadGate, failure: String?) -> String {
+        [String(describing: gate), failure].compactMap { $0 }.joined(separator: ", ")
     }
 
     static let unreachable: Set<Int> = [NSURLErrorCannotFindHost, NSURLErrorCannotConnectToHost,
@@ -476,6 +642,8 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
                                         NSURLErrorNetworkConnectionLost, NSURLErrorDNSLookupFailed]
     static let retryableThroughNode: Set<Int> = [NSURLErrorBadURL, NSURLErrorTimedOut, NSURLErrorCannotFindHost,
                                                  NSURLErrorCannotConnectToHost, NSURLErrorNetworkConnectionLost]
+    /// WebKit's "Frame load interrupted", for a navigation whose response policy cancelled it.
+    static let frameLoadInterrupted = 102
 
     // MARK: UI
 
@@ -501,59 +669,109 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
     func webView(_ webView: WKWebView, requestMediaCapturePermissionFor origin: WKSecurityOrigin,
                  initiatedByFrame frame: WKFrameInfo, type: WKMediaCaptureType,
                  decisionHandler: @escaping @MainActor (WKPermissionDecision) -> Void) {
-        decisionHandler(MediaCapturePolicy.decide(type: type, scheme: origin.protocol, host: origin.host, app: app,
-                                                  ownersHosts: NodeManager.shared.ownersHosts,
-                                                  locked: OverlayPresenter.pageWindow == nil))
+        let decision = MediaCapturePolicy.decide(type: type, scheme: origin.protocol, host: origin.host, app: app,
+                                                 ownersHosts: NodeManager.shared.ownersHosts,
+                                                 locked: OverlayPresenter.pageWindow == nil, onScreen: webView.window != nil)
+        // Refused in Settings, the request would fail without a word: say where to allow it.
+        if decision != .deny, let device = MediaCapturePolicy.refusedDevice(for: type) {
+            alertRefused(device)
+            return decisionHandler(.deny)
+        }
+        decisionHandler(decision)
+    }
+
+    /// One dialog for a camera or microphone the person refused Ovenlight in Settings.
+    private func alertRefused(_ device: String) {
+        guard !(topController is UIAlertController) else { return }
+        let alert = UIAlertController(title: "Ovenlight Can’t Use the \(device)",
+                                      message: "Allow it in Settings, then try again in \(app.name).", preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "Not Now", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Open Settings", style: .default) { _ in
+            if let settings = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(settings) }
+        })
+        present(alert, orElse: {})
     }
 
     func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,
                  initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor () -> Void) {
-        let answer = DialogAnswer(fallback: ()) { _ in completionHandler() }
-        let alert = UIAlertController(title: app.name, message: message, preferredStyle: .alert)
+        let answer = pageAnswer(fallback: ()) { _ in completionHandler() }
+        let alert = UIAlertController(title: app.name, message: PageDialogs.cut(message), preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in answer(()) })
-        present(alert) { answer(()) }
+        presentPageDialog(alert, answer: answer)
     }
 
     func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String,
                  initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor (Bool) -> Void) {
-        let answer = DialogAnswer(fallback: false, completionHandler)
-        let alert = UIAlertController(title: app.name, message: message, preferredStyle: .alert)
+        let answer = pageAnswer(fallback: false, completionHandler)
+        let alert = UIAlertController(title: app.name, message: PageDialogs.cut(message), preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in answer(false) })
         alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in answer(true) })
-        present(alert) { answer(false) }
+        presentPageDialog(alert, answer: answer)
     }
 
     func webView(_ webView: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String,
                  defaultText: String?, initiatedByFrame frame: WKFrameInfo,
                  completionHandler: @escaping @MainActor (String?) -> Void) {
-        let answer = DialogAnswer(fallback: nil, completionHandler)
-        let alert = UIAlertController(title: app.name, message: prompt, preferredStyle: .alert)
-        alert.addTextField { $0.text = defaultText }
+        let answer = pageAnswer(fallback: nil, completionHandler)
+        let alert = UIAlertController(title: app.name, message: PageDialogs.cut(prompt), preferredStyle: .alert)
+        alert.addTextField { field in
+            field.text = defaultText.map(PageDialogs.cut)
+            // Also what VoiceOver calls the field; the page's question is the alert's message.
+            field.placeholder = "Answer"
+        }
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in answer(nil) })
         alert.addAction(UIAlertAction(title: "OK", style: .default) { [weak alert] _ in answer(alert?.textFields?.first?.text) })
-        present(alert) { answer(nil) }
+        presentPageDialog(alert, answer: answer)
+    }
+
+    /// The page's dialogs in a row, and whether the person stopped them.
+    private var dialogs = PageDialogs()
+
+    /// An answer that also marks when the dialog closed, for the run of dialogs.
+    private func pageAnswer<Value: Sendable>(fallback: Value, _ handler: @escaping @MainActor (Value) -> Void) -> DialogAnswer<Value> {
+        DialogAnswer(fallback: fallback) { [weak self] value in
+            self?.dialogs.closed()
+            handler(value)
+        }
+    }
+
+    /// Past a few in a row, a page's dialog also offers to stop the rest (see `PageDialogs`).
+    private func presentPageDialog<Value>(_ alert: UIAlertController, answer: DialogAnswer<Value>) {
+        let offersStop = dialogs.next()
+        if dialogs.stopped { return answer.fallBack() }
+        if offersStop {
+            alert.addAction(UIAlertAction(title: PageDialogs.stopTitle, style: .default) { [weak self] _ in
+                self?.dialogs.stopped = true
+                answer.fallBack()
+            })
+        }
+        present(alert) { answer.fallBack() }
     }
 
     // MARK: Downloads
 
     /// Nothing downloads while this page is kept off screen either: a script's `a.click()`
-    /// would start one under another app.
-    private func mayDownload(_ url: URL, from sourceHost: String?) -> Bool {
-        webView?.window != nil
-            && DownloadPolicy.allows(url: url, from: sourceHost, appHost: app.host, locked: OverlayPresenter.pageWindow == nil)
+    /// would start one under another app. One the person started and the policy refused
+    /// says so.
+    private func mayDownload(_ url: URL, from sourceHost: String?, tapped: Bool) -> Bool {
+        guard webView?.window != nil else { return false }
+        let locked = OverlayPresenter.pageWindow == nil
+        if DownloadPolicy.allows(url: url, from: sourceHost, appHost: app.host, locked: locked) { return true }
+        if tapped, !locked { downloadFailed(DownloadPolicy.name(in: url)) }
+        return false
     }
 
     func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
-        track(download)
+        track(download, tapped: Self.isTap(navigationAction))
     }
 
     func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
-        track(download)
+        track(download, tapped: tapped)
     }
 
-    private func track(_ download: WKDownload) {
+    private func track(_ download: WKDownload, tapped: Bool) {
         download.delegate = self
-        downloads[ObjectIdentifier(download)] = (download, nil)
+        downloads[ObjectIdentifier(download)] = (download, nil, tapped)
     }
 
     /// Each download gets a folder of its own, so the file keeps the name the page gave it.
@@ -566,7 +784,7 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
             return completionHandler(nil)
         }
         let file = folder.appendingPathComponent(DownloadPolicy.fileName(suggestedFilename))
-        downloads[ObjectIdentifier(download)] = (download, file)
+        downloads[ObjectIdentifier(download)]?.file = file
         completionHandler(file)
     }
 
@@ -581,8 +799,26 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
 
     func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
         Self.log.info("\(self.app.host, privacy: .public): download failed: \(error.localizedDescription, privacy: .public)")
-        guard let file = downloads.removeValue(forKey: ObjectIdentifier(download))?.file else { return }
-        DownloadPolicy.removeFolder(of: file)
+        // None after `stop()`, which cancelled them all.
+        guard let failed = downloads.removeValue(forKey: ObjectIdentifier(download)) else { return }
+        if let file = failed.file { DownloadPolicy.removeFolder(of: file) }
+        if failed.tapped { downloadFailed(failed.file?.lastPathComponent ?? DownloadPolicy.name(in: download.originalRequest?.url)) }
+    }
+
+    /// Says a download the person started didn't make it, while the page is on screen.
+    private func downloadFailed(_ name: String?) {
+        guard webView?.window != nil, OverlayPresenter.pageWindow != nil else { return }
+        show(notice: DownloadPolicy.failedNotice(name))
+    }
+
+    private func show(notice text: String) {
+        notice = text
+        UIAccessibility.post(notification: .announcement, argument: text)
+        noticeTask?.cancel()
+        noticeTask = Task { [weak self] in
+            guard (try? await Task.sleep(for: .seconds(3))) != nil else { return }
+            self?.notice = nil
+        }
     }
 
     /// Shows this app's finished files in one share sheet once its page is on screen,
@@ -648,7 +884,7 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
         if ["http", "https"].contains(url.scheme?.lowercased() ?? "") {
             present(SFSafariViewController(url: url), orElse: {})
         } else if NavigationPolicy.asksBeforeOpening(url) {
-            let alert = UIAlertController(title: "Open in another app?",
+            let alert = UIAlertController(title: "Open in Another App?",
                                           message: "\(app.name) wants to open \(NavigationPolicy.target(of: url)).", preferredStyle: .alert)
             alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
             alert.addAction(UIAlertAction(title: "Open", style: .default) { _ in UIApplication.shared.open(url) })
@@ -661,9 +897,9 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
     /// Tells the person that their Reload, or a link they tapped, couldn't reach the app's
     /// computer; the page already on screen stays. Never over another alert, so they can't
     /// stack.
-    private func alertCantReach() {
+    private func alertCantReach(_ message: String? = nil) {
         guard !(topController is UIAlertController) else { return }
-        let alert = UIAlertController(title: ConnectionCopy.cantReach(app.name), message: ConnectionCopy.cantReachDetail,
+        let alert = UIAlertController(title: ConnectionCopy.cantReach(app.name), message: message ?? ConnectionCopy.cantReachDetail(sharedBy: app.sharedBy),
                                       preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "OK", style: .default))
         present(alert, orElse: {})
@@ -767,6 +1003,12 @@ final class DialogAnswer<Value: Sendable>: @unchecked Sendable {
         handler(value)
     }
 
+    /// Answers as if the dialog was dismissed.
+    @MainActor
+    func fallBack() {
+        self(fallback)
+    }
+
     deinit {
         guard let handler else { return }
         let fallback = fallback
@@ -774,15 +1016,70 @@ final class DialogAnswer<Value: Sendable>: @unchecked Sendable {
     }
 }
 
+/// A page's dialogs in a row, each within a second of the last one closing. Past three in a
+/// row, however long each was read, each offers to stop the page's dialogs, as Chrome does,
+/// so a page that asks in a loop can't trap the person. Once stopped, each is answered at
+/// once with its fallback, until the person reloads the app or opens it again.
+struct PageDialogs {
+    static let loopCount = 3
+    static let gap: Duration = .seconds(1)
+    /// A page's text past this many UTF-16 units is cut: a page can pass megabytes.
+    static let maxText = 4000
+    static let stopTitle = "Don’t Let This App Show More Dialogs"
+
+    var stopped = false
+    private var run = 0
+    private var lastClosed: ContinuousClock.Instant?
+    private let now: () -> ContinuousClock.Instant
+
+    init(now: @escaping () -> ContinuousClock.Instant = { .now }) {
+        self.now = now
+    }
+
+    /// Counts a new dialog; true when it offers the way out.
+    mutating func next() -> Bool {
+        let at = now()
+        run = lastClosed.map { $0.duration(to: at) < Self.gap } == true ? run + 1 : 1
+        return run > Self.loopCount
+    }
+
+    /// The dialog closed: answered, dismissed or let go.
+    mutating func closed() {
+        lastClosed = now()
+    }
+
+    /// A page's text as its dialog shows it, cut at `maxText` without splitting a character.
+    static func cut(_ text: String) -> String {
+        guard text.utf16.count > maxText else { return text }
+        var end = text.startIndex
+        var units = 0
+        for character in text {
+            units += character.utf16.count
+            if units > maxText { break }
+            end = text.index(after: end)
+        }
+        return text[..<end] + "\u{2026}"
+    }
+}
+
 /// Who gets the microphone without the page asking again (iOS still asks once): the
 /// owner's own apps (discovered, or on one of `ownersHosts`), on their own origin. The
 /// camera, shared apps, other sites added by address (someone's public Funnel URL among
 /// them) and every other origin get WebKit's prompt. Nothing gets either while Ovenlight
-/// is locked.
+/// is locked, or while the page is kept off screen.
 enum MediaCapturePolicy {
+    /// The device the person refused Ovenlight in Settings that this request needs, camera
+    /// first; nil when iOS would still ask, or already allows it.
+    static func refusedDevice(for type: WKMediaCaptureType,
+                              status: (AVMediaType) -> AVAuthorizationStatus = AVCaptureDevice.authorizationStatus(for:)) -> String? {
+        if type != .microphone, status(.video) == .denied { return "Camera" }
+        if type != .camera, status(.audio) == .denied { return "Microphone" }
+        return nil
+    }
+
     static func decide(type: WKMediaCaptureType, scheme: String, host: String, app: WebApp,
-                       ownersHosts: Set<String>, locked: Bool) -> WKPermissionDecision {
-        if locked { return .deny }
+                       ownersHosts: Set<String>, locked: Bool, onScreen: Bool) -> WKPermissionDecision {
+        if locked || !onScreen { return .deny }
         guard type == .microphone, !app.isShared,
               app.discovered || ownersHosts.contains(Discovery.normalizedHost(app.host)),
               scheme.lowercased() == "https",
@@ -811,9 +1108,7 @@ enum DownloadPolicy {
         case "http", "https":
             return Discovery.normalizedHost(url.host ?? "") == app
         case "blob":
-            // blob:https://host/<uuid> names the origin of the page that made it.
-            return URL(string: String(url.absoluteString.dropFirst("blob:".count)))
-                .map { Discovery.normalizedHost($0.host ?? "") } == app
+            return NavigationPolicy.blobHost(url) == app
         case "data":
             // Has no origin of its own: only one the app's own page started.
             return sourceHost != nil
@@ -857,4 +1152,80 @@ enum DownloadPolicy {
 
     /// Well under the 255 bytes APFS allows.
     static let maxFileNameBytes = 200
+
+    /// A file's name from its address, for the notice when it fails: the last part of an
+    /// http or https path. A blob or data URL, or one with no path, has none.
+    static func name(in url: URL?) -> String? {
+        guard let url, ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
+              !url.lastPathComponent.isEmpty, url.lastPathComponent != "/" else { return nil }
+        return fileName(url.lastPathComponent)
+    }
+
+    static func failedNotice(_ name: String?) -> String {
+        name.map { "Couldn’t download \($0)" } ?? "Couldn’t download the file"
+    }
+}
+
+/// WebKit sends a load to the phone's loopback address or its own network address straight
+/// out, past the node's proxy, which would refuse it. These rules block every load to a
+/// loopback, private or link-local IP literal, in an app's frames and from its scripts alike,
+/// so a page can't reach the phone itself or map what listens there. Tailnet addresses
+/// (100.64.0.0/10 and Tailscale's fd7a:115c:a1e0::/48) are left to the proxy, which allows
+/// only the node's peers, and names go through it as well. Release builds also block the name
+/// localhost, in case WebKit sends it out as it does the loopback literals.
+@MainActor
+enum LocalAddressRules {
+    /// Hosts as WebKit writes them in a URL: IPv4 in dotted decimal, IPv6 bracketed in
+    /// compressed hex, an IPv4-mapped address as `::ffff:7f00:1`. A url-filter has no
+    /// alternation, so each range needs its own pattern.
+    static let blockedHosts = [
+        "127\\.[0-9]+\\.[0-9]+\\.[0-9]+[:/]", "10\\.[0-9]+\\.[0-9]+\\.[0-9]+[:/]",
+        "172\\.1[6-9]\\.[0-9]+\\.[0-9]+[:/]", "172\\.2[0-9]\\.[0-9]+\\.[0-9]+[:/]", "172\\.3[01]\\.[0-9]+\\.[0-9]+[:/]",
+        "192\\.168\\.[0-9]+\\.[0-9]+[:/]", "169\\.254\\.[0-9]+\\.[0-9]+[:/]", "0\\.[0-9]+\\.[0-9]+\\.[0-9]+[:/]",
+        "\\[::1?\\]",
+        "\\[::ffff:7f[0-9a-f][0-9a-f]:[0-9a-f]+\\]", "\\[::ffff:a[0-9a-f][0-9a-f]:[0-9a-f]+\\]",
+        "\\[::ffff:ac1[0-9a-f]:[0-9a-f]+\\]", "\\[::ffff:c0a8:[0-9a-f]+\\]", "\\[::ffff:a9fe:[0-9a-f]+\\]",
+        "\\[::ffff:[0-9a-f]?[0-9a-f]?:[0-9a-f]+\\]",
+        "\\[fe[89ab][0-9a-f]:", "\\[f[cd][0-9a-f][0-9a-f]:",
+    ]
+    /// localhost and its subdomains, blocked in release builds only: a debug build loads a
+    /// local demo at localhost (`Routing.Route.direct`).
+    static let localhostHosts = ["localhost\\.?[:/]", "[^/@]*\\.localhost\\.?[:/]"]
+    #if DEBUG
+    static let blocksLocalhost = false
+    #else
+    static let blocksLocalhost = true
+    #endif
+    /// Checked after the blocks, so Tailscale's range inside fc00::/7 stays open.
+    static let allowedHosts = ["\\[fd7a:115c:a1e0:"]
+
+    /// The host comes right after the scheme and any user info, so the same text in a path
+    /// or query doesn't match.
+    static func urlFilter(host: String) -> String { "^[a-z]+://([^/@]*@)?" + host }
+
+    static func json(blockingLocalhost: Bool = blocksLocalhost) -> String {
+        let blocked = blockedHosts + (blockingLocalhost ? localhostHosts : [])
+        let rules = blocked.map { ["trigger": ["url-filter": urlFilter(host: $0)], "action": ["type": "block"]] }
+            + allowedHosts.map { ["trigger": ["url-filter": urlFilter(host: $0)], "action": ["type": "ignore-previous-rules"]] }
+        return String(decoding: try! JSONSerialization.data(withJSONObject: rules), as: UTF8.self)
+    }
+
+    private static let compiled = Task { () -> WKContentRuleList? in
+        do {
+            return try await WKContentRuleListStore.default().compileContentRuleList(forIdentifier: "local-addresses",
+                                                                                     encodedContentRuleList: json())
+        } catch {
+            Logger(subsystem: "com.snowyghost.ovenlight", category: "node")
+                .error("local address rules didn't compile: \(String(describing: error), privacy: .public)")
+            return nil
+        }
+    }
+    /// Adds the rules to a view before its first load. False if they couldn't be compiled:
+    /// the view then loads nothing. A controller keeps one list per identifier, so adding
+    /// it again, as each reload does, changes nothing.
+    static func install(in view: WKWebView) async -> Bool {
+        guard let list = await compiled.value else { return false }
+        view.configuration.userContentController.add(list)
+        return true
+    }
 }

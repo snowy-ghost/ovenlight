@@ -16,28 +16,29 @@ struct LauncherView: View {
     @State private var mail: MailDraft?
     @State private var leaving: Membership?
     @ObservedObject private var sharing = OwnerSharing.shared
+    @ObservedObject private var network = NetworkPath.shared
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
+        let welcome = registry.apps.isEmpty && !node.ownerEnabled && node.memberships.memberships.isEmpty
         VStack(spacing: 0) {
-            HomeTopBar(isEditing: $isEditing, lock: { lock.lock() }, addApp: { router.present(.addApp) },
-                       settings: { router.present(.settings) }) {
+            HomeTopBar(isEditing: $isEditing, showsLock: !welcome, showsAddApp: node.ownerEnabled, showsEditApps: !registry.apps.isEmpty,
+                       lock: { lock.lock() }, addApp: { router.present(.addApp) }, settings: { router.present(.settings) }) {
                 // The owner's own connection only once they set Ovenlight up for their machines.
-                TailnetStatusPill(state: node.ownerEnabled ? node.state : .idle) { Task { await node.restart() } }
+                TailnetStatusPill(state: node.ownerEnabled ? node.state : .idle, offline: !network.isSatisfied) {
+                    Task { await node.owner.restart() }
+                }
             } menuItems: {
                 LauncherShareMenuItems()
             }
             // Stops growing where the system's bars do.
             .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
-            TailnetBanner(state: node.ownerEnabled ? node.state : .idle, connect: { router.present(.login($0)) },
-                          approve: { router.present(.approve) })
-            PendingInvitesBanner { router.present(.join(JoinRequest(invite: .success($0)))) }
-                .padding(.horizontal, 26)
-            if registry.apps.isEmpty && !node.ownerEnabled && node.memberships.memberships.isEmpty {
+            if welcome {
                 LauncherWelcome { router.present(.join(JoinRequest())) }
             } else {
             HomeScreenGrid(apps: registry.apps, ownerEnabled: node.ownerEnabled, isEditing: $isEditing,
-                           reachability: { node.reachability(of: $0) },
+                           isOffline: { node.isOffline($0) },
                            open: { router.open($0) },
                            move: { registry.move($0, to: $1) },
                            remove: { removing = $0 },
@@ -47,6 +48,15 @@ struct LauncherView: View {
                 AppPreviewCard(app: app, icon: registry.icon(for: app))
                     // The menu is open: bring its People count and Share up to date.
                     .task { if !app.isShared { await refreshSharing() } }
+            } header: {
+                VStack(spacing: 0) {
+                    TailnetBanner(state: node.ownerEnabled ? node.state : .idle, signedInBefore: node.owner.magicDNSSuffixSeen != nil,
+                                  connect: { router.present(.login($0)) }, approve: { router.present(.approve) })
+                    PendingInvitesBanner { router.present(.join(JoinRequest(invite: .success($0)))) }
+                        .padding(.horizontal, 26)
+                }
+                // The reader's own size: the grid's limit is for its names.
+                .dynamicTypeSize(typeSize)
             }
             // Any larger and names break inside words.
             .dynamicTypeSize(...DynamicTypeSize.accessibility1)
@@ -62,6 +72,11 @@ struct LauncherView: View {
         .onChange(of: node.ownerIsConnected ? node.ownersOnlineHosts : nil) { _, hosts in
             if hosts != nil { Task { await refreshSharing(force: true) } }
         }
+        // And as discovery adds or drops the owner's apps: at the first connection the node is
+        // ready before they're found, and the ask then had nothing to ask about.
+        .onChange(of: Set(registry.apps.filter { !$0.isShared && $0.discovered }.map(\.host))) {
+            Task { await refreshSharing(force: true) }
+        }
         .task {
             await registry.refreshAllMissingIcons()
             await refreshSharing()
@@ -73,15 +88,16 @@ struct LauncherView: View {
                 .submitLabel(.done)
             Button("Cancel", role: .cancel) {}
             Button("Save") {
-                if let app = renaming, !renameText.isEmpty { registry.rename(app.id, to: renameText) }
+                let name = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
+                if let app = renaming, !name.isEmpty { registry.rename(app.id, to: name) }
             }
         }
-        .alert(clearing.map { "Sign out of \($0.name)?" } ?? "", isPresented: isPresent($clearing),
+        .alert(clearing.map { "Clear \($0.name)’s Data?" } ?? "", isPresented: isPresent($clearing),
                presenting: clearing) { app in
             Button("Cancel", role: .cancel) {}
-            Button("Sign Out and Clear Data", role: .destructive) { Task { await registry.clearData(app.id) } }
+            Button("Clear App Data", role: .destructive) { Task { await registry.clearData(app.id) } }
         } message: { _ in
-            Text("This deletes the app's cookies and storage on this iPhone.")
+            Text("This deletes the app’s cookies and storage on this \(ConnectionCopy.device).")
         }
         .alert(removing.map { "Remove \($0.name)?" } ?? "", isPresented: isPresent($removing),
                presenting: removing) { app in
@@ -92,7 +108,8 @@ struct LauncherView: View {
             }
         } message: { app in
             Text(app.sharedBy.map(ConnectionCopy.removeSharedDetail)
-                 ?? "This removes the app from Ovenlight and deletes everything it stored on this iPhone.")
+                 ?? "This removes the app from Ovenlight and deletes everything it stored on this \(ConnectionCopy.device)."
+                 + (app.discovered ? " It won’t come back on its own. Add it again with Add App." : ""))
         }
         .sensoryFeedback(.success, trigger: removals)
         .onChange(of: registry.apps.isEmpty) { _, empty in if empty { isEditing = false } }
@@ -104,7 +121,8 @@ struct LauncherView: View {
         let app = SharingFixture.apply(to: app)
         #endif
         let info = sharing.info(for: app)
-        let plan = AppMenuPlan.plan(for: app, admin: info.map { ($0.app, $0.machine.guests) })
+        let plan = AppMenuPlan.plan(for: app, admin: info.map { ($0.app, $0.machine.guests) },
+                                    ownersApps: registry.apps.filter { $0.isShared && $0.membershipID == app.membershipID }.count)
         Section {
             Button { router.open(app) } label: { Label("Open", systemImage: "arrow.up.forward.app") }
             Button { renameText = app.name; renaming = app } label: { Label("Rename", systemImage: "pencil") }
@@ -120,7 +138,7 @@ struct LauncherView: View {
                 case .notShareable:
                     Button {} label: {
                         Label("Share…", systemImage: "square.and.arrow.up")
-                        Text(AppMenuPlan.notShareableDetail)
+                        if let info { Text(AppMenuPlan.notShareableDetail(slug: info.app.slug)) }
                     }
                     .disabled(true)
                 case .hidden:
@@ -145,7 +163,7 @@ struct LauncherView: View {
         }
         Section {
             Button { clearing = app } label: {
-                Label("Sign Out and Clear Data", systemImage: "eraser")
+                Label("Clear App Data", systemImage: "eraser")
             }
             Button(role: .destructive) { removing = app } label: {
                 Label("Remove App", systemImage: "trash")
@@ -177,29 +195,39 @@ struct LauncherView: View {
 /// connecting and failures show in `TailnetStatusPill`.
 struct TailnetBanner: View {
     let state: NodeState
+    /// Connected before and not signed out since: the sign-in ended (it expired, or the phone
+    /// was removed from the account), which the card says rather than starting over.
+    let signedInBefore: Bool
     let connect: (URL) -> Void
     let approve: () -> Void
+
+    static func signIn(before: Bool) -> (title: String, message: String, button: String) {
+        before ? ("Sign In Again", "This \(ConnectionCopy.device)’s Tailscale sign-in ended. Sign in again to reach your computers.", "Sign In")
+            : ("Connect Your Computers", "Ovenlight connects privately to your own computers with your Tailscale account, without a VPN.", "Connect")
+    }
 
     var body: some View {
         switch state {
         case .needsLogin(let url):
+            let copy = Self.signIn(before: signedInBefore)
             card {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack(spacing: 10) {
                         SettingsSymbol(systemName: "network", color: .ember)
-                        Text("Connect Your Computers")
+                        Text(copy.title)
                             .font(.headline)
+                            .accessibilityAddTraits(.isHeader)
                     }
-                    Text("Ovenlight connects privately to your own computers with your Tailscale account, without a VPN. If Tailscale says this iPhone needs approval, open the admin console and tap Approve.")
+                    Text(copy.message)
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
                     Button { connect(url) } label: {
-                        Text("Connect")
+                        Text(copy.button)
                             .font(.body.weight(.semibold))
                             .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.ovenlightProminent)
                     .buttonBorderShape(.capsule)
                     .controlSize(.large)
                 }
@@ -236,19 +264,20 @@ struct OwnerApprovalPrompt: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
                 SettingsSymbol(systemName: "checkmark.shield", color: .ember)
-                Text("Approve This iPhone")
+                Text("Approve This \(ConnectionCopy.device)")
                     .font(.headline)
+                    .accessibilityAddTraits(.isHeader)
             }
             Text("Your Tailscale network asks you to approve each new device once. On the Machines page, find \(name), open its ••• menu and choose Approve. Ovenlight connects as soon as you do.")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
             Button(action: approve) {
                 Text("Open Machines Page")
                     .font(.body.weight(.semibold))
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.ovenlightProminent)
             .buttonBorderShape(.capsule)
             .controlSize(.large)
         }
@@ -275,7 +304,7 @@ struct AppTile: View {
     let app: WebApp
     var namespace: Namespace.ID?
     /// Set when the app's machine isn't answering; the icon dims and gets a badge.
-    var reachability: AppReachability?
+    var isOffline = false
     /// Editing the Home Screen: a tap doesn't open the app.
     var isEditing = false
 
@@ -285,11 +314,9 @@ struct AppTile: View {
         VStack(spacing: HomeGridLayout.labelGap) {
             AppIconView(app: app, image: registry.icon(for: app), size: iconSize)
                 .launchSource(for: app, in: namespace, iconSize: iconSize)
-                .opacity(reachability == .offline ? 0.5 : 1)
+                .opacity(isOffline ? 0.5 : 1)
                 .overlay(alignment: .topTrailing) {
-                    if let reachability {
-                        ReachabilityBadge(status: reachability).offset(x: 4, y: -4)
-                    }
+                    if isOffline { OfflineBadge().offset(x: 4, y: -4) }
                 }
                 .shadow(color: .black.opacity(0.08), radius: 3, y: 1)
             label
@@ -306,7 +333,7 @@ struct AppTile: View {
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(app.sharedBy.map { "\(app.name), \(ConnectionCopy.sharedBy($0))" } ?? app.name)
-        .accessibilityValue([app.isNew ? "New" : nil, reachability?.label].compactMap { $0 }.joined(separator: ", "))
+        .accessibilityValue([app.isNew ? "New" : nil, isOffline ? "Offline" : nil].compactMap { $0 }.joined(separator: ", "))
         .accessibilityHint(isEditing ? "" : "Opens the app")
     }
 
@@ -332,7 +359,7 @@ struct AppPreviewCard: View {
                     .font(.headline)
                 Text(app.sharedBy.map(ConnectionCopy.sharedBy) ?? app.host)
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.secondaryText)
             }
             .multilineTextAlignment(.center)
         }
@@ -344,6 +371,7 @@ struct AppPreviewCard: View {
 }
 
 struct AddAppView: View {
+    static let insecureWarning = "Ovenlight only opens secure addresses that start with https."
     @EnvironmentObject private var registry: AppRegistry
     @EnvironmentObject private var node: NodeManager
     @EnvironmentObject private var router: Router
@@ -363,6 +391,8 @@ struct AddAppView: View {
                 if let ownerSuffix {
                     Section {
                         TextField("Address", text: $text, prompt: Text(verbatim: "my-app.\(ownerSuffix)"))
+                            // A field with a prompt passes neither its title nor a name to VoiceOver.
+                            .accessibilityLabel("Address")
                             .keyboardType(.URL)
                             .textContentType(.URL)
                             .textInputAutocapitalization(.never)
@@ -371,15 +401,16 @@ struct AddAppView: View {
                             .focused($focused)
                             .onSubmit(add)
                             .onChange(of: text) { refused = false }
+                            .announcing(isInsecure ? Self.insecureWarning : nil)
                     } footer: {
                         if isInsecure {
-                            Label("Ovenlight only opens secure addresses that start with https.", systemImage: "exclamationmark.triangle.fill")
+                            Label(Self.insecureWarning, systemImage: "exclamationmark.triangle.fill")
                                 .labelStyle(.warning)
                         } else if refused {
                             Label(AppAddress.notYourComputer, systemImage: "exclamationmark.triangle.fill")
                                 .labelStyle(.warning)
                         } else {
-                            Text("Ovenlight fetches the app's name and icon from its web manifest. Each app gets its own private storage.")
+                            Text("Ovenlight fetches the app’s name and icon from its web manifest. Each app gets its own private storage.")
                         }
                     }
                     .ovenlightRows()
@@ -394,7 +425,7 @@ struct AddAppView: View {
                         } else if case .needsLogin(let url) = node.state {
                             Button("Sign In to Your Computers") { router.present(.login(url)) }
                         } else if node.state == .awaitingApproval {
-                            Button("Approve This iPhone") { router.present(.approve) }
+                            Button("Approve This \(ConnectionCopy.device)") { router.present(.approve) }
                         }
                     }
                     .ovenlightRows()
@@ -407,7 +438,7 @@ struct AddAppView: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 if ownerSuffix != nil {
                     ToolbarItem(placement: .confirmationAction) {
-                        Button("Add", action: add).disabled(AppAddress.url(from: text) == nil)
+                        Button("Add", action: add).disabled(AppAddress.url(from: text, completingWith: ownerSuffix) == nil)
                     }
                 }
             }
@@ -419,12 +450,15 @@ struct AddAppView: View {
 
     private func add() {
         guard let url = AppAddress.url(from: text, ownerSuffix: ownerSuffix) else {
-            refused = AppAddress.url(from: text) != nil
+            refused = AppAddress.url(from: text, completingWith: ownerSuffix) != nil
             // The refusal shows under the field, away from VoiceOver's focus.
             if refused { AccessibilityNotification.Announcement(AppAddress.notYourComputer).post() }
             return
         }
-        registry.add(url: url)
+        let listed = Set(registry.apps.map(\.id))
+        let app = registry.add(url: url)
+        // One already here opens instead.
+        if listed.contains(app.id) { return router.open(app) }
         // An app discovery already found (one removed, then added back) joins it at once.
         Task { await registry.mergeDiscovered(node.discovered) }
         dismiss()
@@ -438,6 +472,7 @@ struct SettingsView: View {
     @EnvironmentObject private var lock: LockManager
     @Environment(\.dismiss) private var dismiss
     @AppStorage(LockManager.lockAfterKey) private var lockAfterSeconds = LockManager.defaultLockAfter
+    @Environment(\.dynamicTypeSize) private var typeSize
     /// Sign Out, or Stop Using My Own Computers with apps to remove, asks first.
     @State private var confirming = false
     @State private var mail: MailDraft?
@@ -447,19 +482,15 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 Section {
-                    Picker(selection: $lockAfterSeconds) {
-                        Text("Immediately").tag(0)
-                        Text("After 1 Minute").tag(60)
-                        Text("After 5 Minutes").tag(300)
-                        Text("After 15 Minutes").tag(900)
-                    } label: {
-                        Label { Text("Require \(lock.biometry.name)") } icon: {
-                            SettingsSymbol(systemName: lock.biometry.symbol, color: .green)
-                        }
+                    // The menu's value would be cut short at the largest sizes; a page of its own has the room.
+                    if typeSize.isAccessibilitySize {
+                        lockAfterPicker.pickerStyle(.navigationLink)
+                    } else {
+                        lockAfterPicker
                     }
                 } footer: {
                     if lock.noPasscode {
-                        Text("Ovenlight can't lock until this iPhone has a passcode. Set one in the Settings app.")
+                        Text("Ovenlight can’t lock until this \(ConnectionCopy.device) has a passcode. Set one in the Settings app.")
                     } else {
                         Text("How long Ovenlight can stay in the background before it locks.")
                     }
@@ -479,7 +510,7 @@ struct SettingsView: View {
                                 }
                             }
                             if node.state == .awaitingApproval {
-                                Button("Approve This iPhone") { router.present(.approve) }
+                                Button("Approve This \(ConnectionCopy.device)") { router.present(.approve) }
                             }
                             if signedIn {
                                 Button("Sign Out", role: .destructive) { confirming = true }
@@ -497,11 +528,11 @@ struct SettingsView: View {
                         }
                     }
                     .ovenlightRows()
-                    .confirmationDialog(signedIn ? "Sign out of your computers?" : "Stop using your own computers?",
+                    .confirmationDialog(signedIn ? "Sign Out of Your Computers?" : "Stop Using Your Own Computers?",
                                         isPresented: $confirming, titleVisibility: .visible) {
                         Button(signedIn ? "Sign Out" : "Stop Using My Own Computers", role: .destructive) { stopUsingMyOwnComputers() }
                     } message: {
-                        Text("This removes the apps found on your computers and everything they stored on this iPhone.")
+                        Text("This removes the apps found on your computers and everything they stored on this \(ConnectionCopy.device).")
                     }
                     Section {
                         NavigationLink("Advanced") { AdvancedSettingsView() }
@@ -509,7 +540,7 @@ struct SettingsView: View {
                     .ovenlightRows()
                 }
                 Section("Support") {
-                    Button { mail = .contactUs(version: Bundle.main.versionString) } label: {
+                    Button { mail = .contactUs() } label: {
                         Label { Text("Contact Us") } icon: {
                             SettingsSymbol(systemName: "envelope.fill", color: .blue)
                         }
@@ -539,6 +570,19 @@ struct SettingsView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+            }
+        }
+    }
+
+    private var lockAfterPicker: some View {
+        Picker(selection: $lockAfterSeconds) {
+            Text("Immediately").tag(0)
+            Text("After 1 Minute").tag(60)
+            Text("After 5 Minutes").tag(300)
+            Text("After 15 Minutes").tag(900)
+        } label: {
+            Label { Text("Require \(lock.biometry.name)") } icon: {
+                SettingsSymbol(systemName: lock.biometry.symbol, color: .green)
             }
         }
     }
@@ -575,7 +619,7 @@ struct AdvancedSettingsView: View {
                 if let tailnet = node.status?.tailnet?.name, !tailnet.isEmpty {
                     LabeledContent("Tailnet", value: tailnet)
                 }
-                LabeledContent("This iPhone", value: node.deviceName)
+                LabeledContent("This \(ConnectionCopy.device)", value: node.deviceName)
             }
             .ovenlightRows()
         }

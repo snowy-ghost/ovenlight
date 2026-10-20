@@ -7,6 +7,7 @@ struct SharedSettingsSections: View {
     @EnvironmentObject private var node: NodeManager
     @EnvironmentObject private var registry: AppRegistry
     @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var guests = GuestManager.shared
     @State private var leaving: Membership?
 
     var body: some View {
@@ -18,19 +19,20 @@ struct SharedSettingsSections: View {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(membership.ownerName)
-                            Text(apps.isEmpty ? "Joining…" : ListFormatter.localizedString(byJoining: apps.map(\.name)))
+                            Text(apps.isEmpty ? joinDetail(membership) : ListFormatter.localizedString(byJoining: apps.map(\.name)))
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Color.secondaryText)
                         }
                         Spacer()
                         Button("Leave", role: .destructive) { leaving = membership }
                             .buttonStyle(.borderless)
+                            .accessibilityLabel(ConnectionCopy.leaveApps(membership.ownerName))
                     }
                 }
             } header: {
                 Text("Shared with You")
             } footer: {
-                Text("Leaving removes their apps and everything they stored on this iPhone.")
+                Text("Leaving removes their apps and everything they stored on this \(ConnectionCopy.device).")
             }
             .ovenlightRows()
             .leaveConfirmation($leaving)
@@ -42,9 +44,21 @@ struct SharedSettingsSections: View {
                     dismiss()
                 }
             } footer: {
-                Text("Open apps that run on your own computers. You'll sign in once to connect them.")
+                Text("Open apps that run on your own computers. You’ll sign in once to connect them.")
             }
             .ovenlightRows()
         }
+    }
+
+    /// A membership with no apps yet: a line for each invite still joining, its app and how
+    /// joining it went, as the join screen says it.
+    private func joinDetail(_ membership: Membership) -> String {
+        guard !membership.pendingClaims.isEmpty else { return "Joining…" }
+        return membership.pendingClaims.map(\.invite).map { invite in
+            if case .failed(let error) = guests.phases[invite.invite] {
+                return "\(invite.name) · \(error.title(owner: membership.ownerName, app: invite.name))"
+            }
+            return "\(invite.name) · Joining…"
+        }.joined(separator: "\n")
     }
 }

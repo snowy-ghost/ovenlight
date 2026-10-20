@@ -6,13 +6,13 @@
   `internal/tsapi` talks to the Tailscale API, and `e2e/` holds the end-to-end sharing
   test.
 - `project.yml`, `Ovenlight/`, `OvenlightTests/`: the iPhone app.
+- `android/`: the Android app. `scripts/build-android-core.sh` builds its Go core,
+  `android/core/`, into the library the app links.
 - `scripts/build-tailscalekit.sh`: builds the embedded Tailscale library.
-- `android/`: the Android app, a Gradle project, with its Go core in `android/core/`, which
-  `scripts/build-android-core.sh` builds.
 - `scripts/release-connector.sh`: builds a connector release, and
   `scripts/publish-connector.sh` publishes it.
-- `design/icon/generate.py`: writes the app icon, and the site's `icon.svg` and
-  `icon-180.png`.
+- `design/icon/generate.py`: writes the iPhone and Android app icons, the Google Play
+  icon, and the site's `icon.svg` and `icon-180.png`.
 - `.claude-plugin/marketplace.json`, `plugins/ovenlight/`: the Claude Code plugin (the MCP
   server and a skill that points to `ovenlight guide`). Check it with
   `claude plugin validate .`.
@@ -159,13 +159,15 @@ needed only after editing `project.yml`: then run `xcodegen generate`.
 `scripts/build-tailscalekit.sh` builds `Frameworks/TailscaleKit.xcframework` from
 `tailscale/libtailscale` at a pinned commit. Run it once before building in Xcode. The
 output is gitignored and cached; `--force` rebuilds. It needs Go, and fetches the
-`go1.26.9` toolchain itself. On top of upstream it:
+`go1.27.2` toolchain itself. On top of upstream it:
 
 - builds with the `ts_omit_debug` tag, which drops the node's debug LocalAPI, pprof and
-  debug HTTP handlers;
+  debug HTTP handlers, `ts_omit_peerapiserver` and `ts_omit_cachenetmap` (the script says
+  why), and `ts_omit_webclient`, which leaves out Tailscale's web client and the font and
+  JavaScript bundle it embeds;
 - turns off log upload to `log.tailscale.com` from a Go `init`, for every node the app
   runs, guests' included;
-- raises a few `golang.org/x` modules for security fixes;
+- raises `golang.org/x` modules past libtailscale's own when they have security fixes;
 - adds a privacy manifest to the framework, which Apple requires of a framework that
   calls a required-reason API.
 
@@ -233,8 +235,9 @@ Sign Ovenlight in to the first with `-authKey`, and open the second owner's invi
   go with their data (`AppRegistry.removeDiscovered`), and the launcher goes back to its
   welcome when nothing else is saved. Apps added by hand and shared ones stay, and
   signing in again finds the owner's apps. Sign Out asks first, and so does Stop Using My
-  Own Computers when it has apps to remove. Both close every app view that went through
-  the owner's node, kept in the background included (`WebViewPool.discard(attachedTo:)`).
+  Own Computers when it has apps to remove. A Sign Out cut short by a quit finishes at the
+  next launch. Both close every app view that went through the owner's node, kept in the
+  background included (`WebViewPool.discard(attachedTo:)`).
 - **Memberships.** One embedded node per network: the owner's own tailnet (state in
   `Application Support/Ovenlight/tailscale/owner`) and one guest node per owner whose
   invite this iPhone accepted (`tailscale/<membership ID>`, listed in
@@ -251,18 +254,29 @@ Sign Ovenlight in to the first with `-authKey`, and open the second owner's invi
 - **Opening an app** shows its icon and "Connecting…" at once, but the page loads only
   after the node is ready and the app's host answers a probe through the current proxy
   (`AppLoadGate`). After about 10 seconds the app shows "Can't Reach \<App>" with Try
-  Again. Launcher tiles dim with a badge while their machine isn't answering.
+  Again. When the network lists the app's computer as offline (believed by a guest's node
+  only once its network has listed a peer online), it shows that at once,
+  keeps trying quietly while it's on screen, and opens as soon as the computer answers.
+  Launcher tiles dim with a badge while their computer isn't answering, or is listed
+  offline, which is never probed. When the connector answers but the app itself isn't
+  running (a 502 with the code `unavailable`), the first page is tried a few more times,
+  then Ovenlight says the app isn't responding rather than showing the connector's text.
 - **The open app** starts below a band at the top, the status bar's height plus the
   handle's 20 points (`AppChrome.handleHeight`), painted in the page's header color: its
   `theme-color`, else its background, and before the first load the one remembered from
-  the last (`StatusBarTint`). The status bar's text takes the tone that reads on it
-  (`StatusBarTone`). A page with `viewport-fit=cover` runs to the bottom and side edges;
-  any other stays inside the side safe areas. The one piece of native chrome is a small
-  capsule at the top with the way home and the app's menu, which tucks up under the status
-  bar as the page appears, leaving its handle in the band. Tapping the handle or pulling
-  down at the top of the page brings it back. Tapping the status bar scrolls the page to
-  the top, as iOS does, and leaves the chrome alone.
-- **Lock.** What locking holds back is in [security.md](security.md#on-the-phone);
+  the last (`StatusBarTint`). The status bar's text takes the tone that reads on what is
+  under it: iOS 26 and later choose it, and before that `StatusBarTone` sets it from the
+  band. A page with `viewport-fit=cover` runs to the bottom and side edges; any other
+  stays inside the side safe areas. The one piece of native chrome is a small capsule at
+  the top with the way home and the app's menu. It starts tucked up under the status bar,
+  leaving its handle in the band (the first time, it shows with a one-time tip about the
+  handle until the tip is closed). Before the app has loaded, its sign-in, approval and
+  error screens each have Back to Apps. Tapping the band or pulling down at the top of the
+  page brings it back. With no status bar above the band (a phone on its side, the iPhone
+  Duo's cover), the handle's tap reaches 44 points down at its middle. Tapping the status
+  bar scrolls the page to the top, as iOS does, and leaves the chrome alone. Ovenlight
+  removes WebRTC from every frame of every page (`WebViewPool.noWebRTC`).
+- **Lock.** What locking holds back is in [security.md](security.md#on-the-phone).
   `WebViewPool.stopCapture` ends the microphone and camera streams already running.
 - **Permissions.** Besides the camera (scanning invite codes, and pages when allowed) and
   the microphone (pages), Ovenlight asks to add to the photo library, for Save to Photos
@@ -315,11 +329,12 @@ Sign Ovenlight in to the first with `-authKey`, and open the second owner's invi
   Again rather than claiming on its own, and a membership's saved names change only when
   a claim succeeds.
 - **Failures** say what happened without naming the network: key already used, no longer
-  valid, invite canceled, used on another iPhone, or the owner's computer not answering
+  valid, invite canceled, used on another phone, or the owner's computer not answering
   (the invite is kept for Try Again).
 - **Report a Problem** (every app's menu, and a guest's long-press menu) opens a mail to
-  team@snowyghost.com with the app, its address, who shared it, its connection state and
-  the Ovenlight and iOS versions. Settings, Support has Contact Us, the privacy policy
+  team@snowyghost.com with the app, its address, who shared it, its connection state (in
+  detail, without the sign-in link), how far opening it got, and the Ovenlight and iOS
+  versions. Settings, Support has Contact Us, the privacy policy
   (`AppLinks` in `Support.swift`) and Acknowledgements, the licenses
   `scripts/build-tailscalekit.sh` puts in the framework.
 - **Leaving.** Settings, Shared with You, Leave (or Leave in a shared app's menu) removes

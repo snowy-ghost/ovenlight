@@ -20,13 +20,8 @@ extension View {
     }
 
     /// Zooms this presented view out of the app's launcher icon.
-    @ViewBuilder
-    func launchDestination(for app: WebApp, in namespace: Namespace.ID?) -> some View {
-        if let namespace {
-            navigationTransition(.zoom(sourceID: app.id, in: namespace))
-        } else {
-            self
-        }
+    func launchDestination(for app: WebApp, in namespace: Namespace.ID) -> some View {
+        navigationTransition(.zoom(sourceID: app.id, in: namespace))
     }
 }
 
@@ -60,8 +55,6 @@ enum StatusBarTint {
 struct LaunchPlaceholder: View {
     let app: WebApp
     let icon: UIImage?
-    /// Said under the spinner, for example while Ovenlight connects.
-    var caption: String?
 
     @State private var showsSpinner = false
 
@@ -71,11 +64,9 @@ struct LaunchPlaceholder: View {
             AppIconView(app: app, image: icon, size: 96)
             VStack(spacing: 10) {
                 ProgressView()
-                if let caption {
-                    Text(caption)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
+                Text(ConnectionCopy.connecting)
+                    .font(.subheadline)
+                    .foregroundStyle(Color.secondaryText)
             }
             .padding(.top, 28)
             .opacity(showsSpinner ? 1 : 0)
@@ -89,6 +80,6 @@ struct LaunchPlaceholder: View {
             withAnimation(.easeIn(duration: 0.25)) { showsSpinner = true }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(caption.map { _ in ConnectionCopy.connecting(to: app.name) } ?? "Opening \(app.name)")
+        .accessibilityLabel(ConnectionCopy.connecting(to: app.name))
     }
 }

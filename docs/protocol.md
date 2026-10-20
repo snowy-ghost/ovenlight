@@ -259,7 +259,7 @@ Ovenlight takes a shared app away when:
 
 - the guest node loses its login (the owner deleted the device);
 - `whoami` answers 403 `not_invited` (checked when the app opens, each time Ovenlight
-  comes to the front, when the owner's computers come or go, a minute after a check an app
+  comes to the front, when the owner's app nodes come or go, a minute after a check an app
   didn't answer, and on a 403 page). Any other answer from `whoami`, even an error page
   that says "not invited" without the code, counts as reaching the app;
 - the app's node has been missing from the guest node's peers for about 3 minutes while

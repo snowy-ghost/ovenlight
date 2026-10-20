@@ -20,6 +20,7 @@ struct OvenlightApp: App {
             if let open = router?.openApp, open.discovered, !open.isShared { router?.openApp = nil }
             await registry?.removeDiscovered()
         }
+        NodeManager.shared.owner.launcherApps = { [weak registry] in registry?.apps ?? [] }
         #if DEBUG
         // Simulator testing: `-resetTips YES` shows first-run tips again.
         if UserDefaults.standard.bool(forKey: "resetTips") { try? Tips.resetDatastore() }
@@ -27,14 +28,15 @@ struct OvenlightApp: App {
         try? Tips.configure()
         // Guest nodes get their hooks from the first one on.
         _ = GuestManager.shared
+        // Its first report comes a moment after it starts, so it starts with the app.
+        _ = NetworkPath.shared
     }
 
     /// Whether this iPhone has kept anything: apps, invites or a node. It asks only whether
     /// the files exist and their size, which iOS answers even before the first unlock after
     /// a restart, when a prewarmed launch can't read them.
     static func hasSavedData(in directory: URL? = nil) -> Bool {
-        let base = directory ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Ovenlight", isDirectory: true)
+        let base = directory ?? SavedJSON.directory
         let files = FileManager.default
         // A failed join, leaving the last network and removing the last app each leave an
         // empty list, `[]`; a file whose size can't be read still counts.
@@ -92,9 +94,11 @@ final class Router: ObservableObject {
         self.isLocked = isLocked
     }
 
-    /// Opens an app, closing any sheet first.
+    /// Opens an app, closing any sheet first. Its page starts loading meanwhile: the app's
+    /// screen picks up the same one from the pool.
     func open(_ app: WebApp) {
         guard sheet != nil || sheetOnScreen else { openApp = app; return }
+        _ = WebViewPool.shared.webView(for: app)
         sheet = nil
         afterClear { self.openApp = app }
     }
@@ -132,7 +136,25 @@ final class Router: ObservableObject {
         actions.forEach { $0() }
     }
 
+    /// Sheets with work a link would lose (an invite being made or not yet sent, a note in
+    /// Send Feedback) hold links until they close; the last link waits.
+    private var holds: Set<UUID> = []
+    private var heldLink: (url: URL, apps: [WebApp])?
+
+    func hold(_ id: UUID, _ held: Bool) {
+        if held {
+            holds.insert(id)
+        } else if holds.remove(id) != nil, holds.isEmpty, let link = heldLink {
+            heldLink = nil
+            handle(link.url, apps: link.apps)
+        }
+    }
+
     func handle(_ url: URL, apps: [WebApp]) {
+        guard holds.isEmpty else {
+            heldLink = (url, apps)
+            return
+        }
         let scheme = url.scheme?.lowercased() ?? ""
         if InviteLink.isInvite(url) {
             present(.join(JoinRequest(url: url)))
@@ -154,6 +176,27 @@ final class Router: ObservableObject {
         pendingName = nil
         defer { open(app) }
         return openApp?.id != app.id
+    }
+}
+
+extension View {
+    /// Once `held`, a deep link waits for this sheet to close (see `Router.hold`).
+    func holdingLinks(_ held: Bool) -> some View { modifier(LinkHold(held: held)) }
+}
+
+private struct LinkHold: ViewModifier {
+    let held: Bool
+    @EnvironmentObject private var router: Router
+    @State private var id = UUID()
+
+    func body(content: Content) -> some View {
+        content
+            // Once held, until the sheet closes: one that's still open (a note emptied, a
+            // Create that failed with its error showing) would close under a waiting link.
+            .onChange(of: held, initial: true) { _, held in if held { router.hold(id, true) } }
+            // A turn later: a sheet that replaces this one (the composer's result) takes its
+            // hold first, so no link slips through between them.
+            .onDisappear { Task { @MainActor in router.hold(id, false) } }
     }
 }
 
@@ -206,6 +249,8 @@ struct RootView: View {
                 .fullScreenCover(item: $router.openApp, onDismiss: router.appDismissed) { app in
                     AppHostView(app: app) { router.openApp = nil }
                         .launchDestination(for: app, in: launch)
+                        // The launcher under it leaves VoiceOver's reach.
+                        .accessibilityAddTraits(.isModal)
                         // Pulling down or pinching would fight the page's own gestures.
                         .interactiveDismissDisabled()
                         .onAppear(perform: router.appAppeared)
@@ -247,11 +292,11 @@ struct RootView: View {
                 }
             default: break
             }
-            overlay.update(isLocked: lock.isLocked, isActive: phase == .active)
+            overlay.update(isLocked: lock.isLocked, isActive: Self.countsAsActive(phase))
             if phase == .active { Task { await lock.didBecomeActive() } }
         }
         .onChange(of: lock.isLocked) { _, locked in
-            overlay.update(isLocked: locked, isActive: scenePhase == .active)
+            overlay.update(isLocked: locked, isActive: Self.countsAsActive(scenePhase))
             if locked { WebViewPool.shared.stopCapture() }
             // Only the page on top shows its files. One a pending link opens shows them as it
             // appears; the page it replaces is going, and its files wait for it.
@@ -289,6 +334,13 @@ struct RootView: View {
         } message: { notice in
             Text(notice.message)
         }
+    }
+
+    /// For the privacy cover: Face ID's prompt for an owner's change makes Ovenlight inactive,
+    /// with no app switcher to hide from, so the sheet that asked stays in sight. In the
+    /// background the cover is always up.
+    private static func countsAsActive(_ phase: ScenePhase) -> Bool {
+        phase == .active || phase == .inactive && OwnerAuth.isAsking
     }
 
     @ViewBuilder
@@ -359,8 +411,22 @@ final class OverlayPresenter: ObservableObject {
         apply()
     }
 
+    /// Face ID's prompt for an owner's change held the cover back (see `RootView`). One the
+    /// person left for the app switcher leaves Ovenlight inactive, with no phase change to
+    /// bring the cover: it goes up a moment later, once a prompt that succeeded has had time
+    /// to make Ovenlight active again.
+    static func ownerAuthEnded() {
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(500))
+            guard let installed, !OwnerAuth.isAsking, UIApplication.shared.applicationState == .inactive else { return }
+            installed.update(isLocked: installed.isLocked, isActive: false)
+        }
+    }
+
     func update(isLocked: Bool, isActive: Bool) {
-        if self.isLocked && !isLocked { unlocked = true }
+        // Only an unlock the lock screen showed fades it: at launch, before the window
+        // exists, a launch that doesn't lock would otherwise flash it.
+        if window != nil, self.isLocked && !isLocked { unlocked = true }
         self.isLocked = isLocked
         self.isActive = isActive
         apply()
@@ -447,4 +513,11 @@ extension Color {
     static let groupedBackground = Color("GroupedBackground")
     /// Rows on `groupedBackground`: white in light, a warm step up from it in dark.
     static let groupedRow = Color("GroupedRow")
+    /// Labels on ember: white in light, and in dark a deep brown, where white on the brighter
+    /// ember is too faint to read.
+    static let onEmber = Color("OnEmber")
+    /// Secondary content text (details, row values): `.secondary` is about 3.2:1 on the warm
+    /// paper, this is 4.5:1 or more on it, its rows and the system backgrounds, light and dark.
+    /// With Increase Contrast, 4.5:1 or more over the welcome's light too.
+    static let secondaryText = Color("SecondaryText")
 }

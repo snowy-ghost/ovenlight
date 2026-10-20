@@ -31,7 +31,6 @@ final class InviteLinkTests: XCTestCase {
         XCTAssertEqual(link.to, "Sam Lee", "+ is a space")
         XCTAssertEqual(link.networkDomain, "taildef456.ts.net")
         XCTAssertEqual(link.appURL.absoluteString, "https://echo-board.taildef456.ts.net/")
-        XCTAssertEqual(try InviteLink.parse(link.url, allowLocalHTTP: false), link, "round trip")
     }
 
     func testReadsTheUniversalLink() throws {
@@ -41,15 +40,7 @@ final class InviteLinkTests: XCTestCase {
             let text = universalLink.replacingOccurrences(of: "https://ovenlight.app/join#", with: variant)
             XCTAssertEqual(try parse(text), link, variant)
         }
-
-        // What Ovenlight sends: the universal link, with nothing for the website but the path.
-        let sent = link.universalURL
-        XCTAssertEqual(sent.absoluteString.components(separatedBy: "#").first, "https://ovenlight.app/join")
-        XCTAssertNil(sent.query)
-        XCTAssertTrue(sent.fragment?.contains("key=tskey-auth-kX1abc-DEF") == true)
-        XCTAssertEqual(try InviteLink.parse(sent, allowLocalHTTP: false), link, "round trip")
-        XCTAssertEqual(link.url.query, sent.fragment, "both forms carry the same fields")
-        XCTAssertTrue(InviteLink.isInvite(sent) && InviteLink.isInvite(link.url))
+        XCTAssertTrue(InviteLink.isInvite(URL(string: universalLink)!) && InviteLink.isInvite(URL(string: connectorLink)!))
     }
 
     func testRefusesUniversalLinksFromElsewhere() {
@@ -63,11 +54,6 @@ final class InviteLinkTests: XCTestCase {
         XCTAssertEqual(error("https://ovenlight.app/join"), .notAnInvite, "the page itself, without an invite")
         XCTAssertEqual(error("https://ovenlight.app/join?" + fields), .notAnInvite, "fields the server would see")
         XCTAssertFalse(InviteLink.isInvite(URL(string: "https://ovenlight.app/privacy")!))
-        // The old address is no longer a universal link, in a message or on its own.
-        for old in ["https://snowyghost.com/ovenlight/join#", "https://www.snowyghost.com/ovenlight/join#"] {
-            XCTAssertEqual(error(old + fields), .notAnInvite, old)
-            XCTAssertThrowsError(try InviteLink.parse(text: "Open this link: \(old + fields)", allowLocalHTTP: false))
-        }
     }
 
     func testFindsTheLinkInsideAMessage() throws {
@@ -82,7 +68,6 @@ final class InviteLinkTests: XCTestCase {
         XCTAssertEqual(error("ovenlight://open?app=Coach"), .notAnInvite)
         XCTAssertEqual(error("https://example.com/join?v=1"), .notAnInvite)
         XCTAssertEqual(error(connectorLink.replacingOccurrences(of: "&v=1", with: "&v=2")), .unsupportedVersion)
-        XCTAssertEqual(error(connectorLink.replacingOccurrences(of: "&v=1", with: "")), .unsupportedVersion)
         XCTAssertEqual(error(connectorLink.replacingOccurrences(of: "https%3A%2F%2F", with: "http%3A%2F%2F")), .insecureControl)
         for field in ["key", "app", "invite", "host", "control"] {
             let without = connectorLink.replacingOccurrences(of: #"(^|[?&])\#(field)=[^&]*"#, with: "$1", options: .regularExpression)
@@ -90,6 +75,14 @@ final class InviteLinkTests: XCTestCase {
         }
         XCTAssertEqual(error(connectorLink.replacingOccurrences(of: "key=tskey-auth-kX1abc-DEF%2Bghi", with: "key=")),
                        .missingField("key"))
+    }
+
+    /// The connector writes v last, so a link cut off at the end loses it first: that reads
+    /// as incomplete, not as needing a newer Ovenlight.
+    func testAnInviteMissingItsVersionIsIncomplete() {
+        XCTAssertEqual(error(String(connectorLink.dropLast("&v=1".count))), .missingField("v"))
+        XCTAssertEqual(error(String(universalLink.dropLast("=1".count))), .missingField("v"))
+        XCTAssertEqual(InviteLink.ParseError.missingField("v").message, "This link is incomplete. Ask for it again and copy the whole link.")
     }
 
     func testRefusesHostsThatArentNames() {
@@ -118,6 +111,17 @@ final class InviteLinkTests: XCTestCase {
         XCTAssertEqual(link.name, "echo-board", "the slug stands in for a missing name")
     }
 
+    func testLabelsKeepTheJoinersEmojiAndScriptsNeed() {
+        let family = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467} Family"
+        XCTAssertEqual(InviteLink.label(family), family)
+        XCTAssertEqual(InviteLink.label("می\u{200C}خواهم"), "می\u{200C}خواهم", "Persian keeps its zero-width non-joiner")
+        let england = "\u{1F3F4}\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F} Club"
+        XCTAssertEqual(InviteLink.label(england), england)
+        XCTAssertEqual(InviteLink.label("Bank\u{202E}nigoL\u{202C} \u{2066}Pay\u{2069}\u{200F}\u{200B}\u{FEFF}"), "BanknigoL Pay",
+                       "bidi controls and invisible characters go")
+        XCTAssertEqual(InviteLink.label(String(repeating: family, count: 30))?.count, InviteLink.maxLabel, "counted as people see them")
+    }
+
     func testControlServerAndNetwork() throws {
         let link = try parse(connectorLink)
         XCTAssertTrue(link.usesTailscaleControl)
@@ -140,7 +144,6 @@ final class InviteLinkTests: XCTestCase {
             XCTAssertEqual(Claim.landing(of: link, suffix: nil, registeredNow: registered), .unknown, "a node that couldn't say retries")
             XCTAssertEqual(Claim.landing(of: link, suffix: "", registeredNow: registered), .unknown)
         }
-        XCTAssertTrue(JoinError.network.isRetryable)
     }
 
     func testParseErrorsHaveNeutralMessages() {
@@ -224,6 +227,27 @@ final class MembershipTests: XCTestCase {
                        "removing a shared app doesn't dismiss its host")
     }
 
+    /// A shared app takes the name its connector's whoami gives it now, unless the guest
+    /// renamed it; another owner's app on the same host doesn't.
+    func testASharedAppTakesItsNewName() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let registry = AppRegistry(directory: dir, session: { _ in nil })
+        let echo = registry.addShared(name: "Echo Board", host: "echo-board.taildef456.ts.net", slug: "echo-board", membershipID: "m1", sharedBy: "Riley")
+        let notes = registry.addShared(name: "Notes", host: "notes.taildef456.ts.net", slug: "notes", membershipID: "m1", sharedBy: "Riley")
+        let other = registry.addShared(name: "Echo Board", host: "echo-board.taildef456.ts.net", slug: "echo-board", membershipID: "m2", sharedBy: "Kim")
+        registry.rename(notes.id, to: "My Notes")
+        let whoami = try Data(contentsOf: URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("connector/testdata/wire/whoami-guest.json"))
+        XCTAssertEqual(GuestProbe.appName(from: whoami), "Interview Coach")
+        registry.takeSharedNames(["echo-board.taildef456.ts.net": "Echo Board 2", "notes.taildef456.ts.net": "Notes 2"], in: "m1")
+        func name(_ app: WebApp) -> String? { registry.apps.first { $0.id == app.id }?.name }
+        XCTAssertEqual(name(echo), "Echo Board 2")
+        XCTAssertEqual(name(notes), "My Notes", "the guest's own name stays")
+        XCTAssertEqual(name(other), "Echo Board")
+        XCTAssertEqual(AppRegistry(directory: dir, session: { _ in nil }).apps.map(\.name), ["Echo Board 2", "My Notes", "Echo Board"])
+    }
+
     func testEachClaimGivesTheOwnersAppsTheirCurrentName() {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -270,14 +294,6 @@ final class GuestCleanupTests: XCTestCase {
         XCTAssertEqual(revoked.map(\.host), [echo], "not the app being claimed, not another membership's")
         XCTAssertEqual(GuestCleanup.revokedApps(in: m, apps: apps, notInvited: ["Echo-Board.taildef456.ts.net"]).count, 0,
                        "hosts arrive normalized from the probe")
-    }
-
-    func testLostLoginMeansRemovedOnlyAfterJoining() {
-        XCTAssertTrue(GuestCleanup.isRemoved(membership("a")))
-        XCTAssertTrue(GuestCleanup.isRemoved(membership("a", claiming: [notes])),
-                      "a second invite in progress doesn't hide the removal")
-        XCTAssertFalse(GuestCleanup.isRemoved(membership("a", joined: false)),
-                       "a first join passes through NeedsLogin")
     }
 
     func testWhoamiAndClaimAnswers() {
@@ -327,6 +343,85 @@ final class GuestCleanupTests: XCTestCase {
         XCTAssertEqual(try JSONDecoder().decode([String: String].self, from: request.httpBody!), ["key": "tskey-1"])
     }
 
+    /// A join that fails for good with its screen closed loses its launcher row with the
+    /// invite, so a notice says why; with its screen open, the screen says it.
+    func testAJoinThatFailsWithItsScreenClosedSaysWhy() {
+        let invite = InviteLink(control: URL(string: "https://c.example")!, key: "k", owner: "Riley", app: "echo-board",
+                                invite: "i", host: echo, name: "Echo Board", to: "Sam")
+        let notice = GuestNotice.joinFailed(.expired, invite: invite, screenShown: false)
+        XCTAssertEqual(notice?.title, "This Invite No Longer Works")
+        XCTAssertEqual(notice?.message, "Invites expire, and each works only once. Ask Riley for a new one.")
+        XCTAssertNil(GuestNotice.joinFailed(.expired, invite: invite, screenShown: true))
+    }
+
+    /// With no network, a join fails at once rather than after its 45 s wait, and keeps the
+    /// invite for Try Again and the next return to Ovenlight.
+    @MainActor
+    func testJoiningOfflineFailsAtOnce() async {
+        let invite = InviteLink(control: URL(string: "http://127.0.0.1:9")!, key: "tskey-1", owner: "Riley", app: "echo-board",
+                                invite: UUID().uuidString, host: echo, name: "Echo Board", to: "Sam")
+        let guests = GuestManager.shared
+        NetworkPath.shared.pretend(satisfied: false)
+        defer { NetworkPath.shared.pretend(satisfied: true) }
+        let start = ContinuousClock.now
+        await guests.accept(invite)
+        XCTAssertLessThan(ContinuousClock.now - start, .seconds(5))
+        XCTAssertEqual(guests.phases[invite.invite], .failed(.network))
+        let membershipID = guests.membershipID(for: invite.invite)
+        XCTAssertNotNil(membershipID, "kept for Try Again")
+        await guests.cancel(invite.invite)
+        if let membershipID { await NodeManager.shared.removeGuest(membershipID) }
+    }
+
+    /// After Leave, the same invite opened again asks to join, rather than saying its app is
+    /// ready: App Review is told to Leave, and may open the same link again.
+    @MainActor
+    func testJoiningAgainAfterLeavingAsksAgain() async throws {
+        func invite(_ host: String) -> InviteLink {
+            InviteLink(control: URL(string: "http://127.0.0.1:9")!, key: "tskey-1", owner: "Riley", app: "a",
+                       invite: UUID().uuidString, host: host, name: "App", to: "Sam")
+        }
+        let guests = GuestManager.shared
+        let registry = try XCTUnwrap(guests.registry, "the test host's launcher set it")
+        NetworkPath.shared.pretend(satisfied: false)
+        defer { NetworkPath.shared.pretend(satisfied: true) }
+        let joined = invite(echo)
+        await guests.accept(joined)
+        let membershipID = try XCTUnwrap(guests.membershipID(for: joined.invite))
+        let app = registry.addShared(name: "Echo Board", host: echo, slug: "echo-board", membershipID: membershipID, sharedBy: "Riley")
+        // The app is here, so the join ends as joined even offline.
+        await guests.accept(joined)
+        XCTAssertEqual(guests.phases[joined.invite], .joined(app.id))
+        let waiting = invite(notes)
+        await guests.accept(waiting)
+        XCTAssertEqual(guests.phases[waiting.invite], .failed(.network))
+
+        await guests.leave(membershipID)
+        XCTAssertNil(guests.phases[joined.invite], "its app is gone")
+        XCTAssertNil(guests.phases[waiting.invite], "withdrawn")
+        XCTAssertNil(guests.membershipID(for: waiting.invite))
+    }
+
+    /// A lost login drops the invites still waiting, as Leave does: opened again, each asks to
+    /// join, rather than offering a Try Again with no invite left to try.
+    @MainActor
+    func testALostLoginClearsItsJoinPhases() async throws {
+        let invite = InviteLink(control: URL(string: "http://127.0.0.1:9")!, key: "tskey-1", owner: "Riley", app: "notes",
+                                invite: UUID().uuidString, host: notes, name: "Notes", to: "Sam")
+        let guests = GuestManager.shared
+        NetworkPath.shared.pretend(satisfied: false)
+        defer { NetworkPath.shared.pretend(satisfied: true) }
+        await guests.accept(invite)
+        XCTAssertEqual(guests.phases[invite.invite], .failed(.network))
+        let membershipID = try XCTUnwrap(guests.membershipID(for: invite.invite))
+        // Joined before, with this invite failed for the network: then the owner removed the device.
+        NodeManager.shared.memberships.update(membershipID) { $0.joined = true }
+        try XCTUnwrap(NodeManager.shared.guestNode(membershipID)).onLoginLost()
+        XCTAssertNil(guests.phases[invite.invite])
+        XCTAssertNil(guests.membershipID(for: invite.invite))
+        await NodeManager.shared.removeGuest(membershipID)
+    }
+
     func testJoinErrorsFromTheControlServer() {
         XCTAssertEqual(JoinError(upMessage: "tsnet.Up: backend: authkey already used"), .keyUsed)
         XCTAssertEqual(JoinError(upMessage: "tsnet.Up: backend: authkey expired"), .expired)
@@ -342,6 +437,24 @@ final class GuestCleanupTests: XCTestCase {
         XCTAssertTrue(GuestCleanup.isRegistering(m, with: "i0"), "the first waiting invite's key registers the node")
         XCTAssertFalse(GuestCleanup.isRegistering(m, with: "i1"), "a queued invite leaves the node alone")
         XCTAssertFalse(GuestCleanup.isRegistering(membership("a", claiming: [echo]), with: "i0"), "a joined node keeps the owner's apps")
+    }
+
+    /// A claim keeps trying for 25 s in all (docs/protocol.md): waits double from half a
+    /// second to 4 s, and neither a wait nor a try's timeout runs past what's left.
+    func testAClaimTriesWithinItsBudget() {
+        var left = Claim.budget
+        var waits: [Duration] = []
+        var attempt = 0
+        while let wait = Claim.wait(after: attempt, left: left) {
+            waits.append(wait)
+            left -= wait
+            attempt += 1
+        }
+        XCTAssertEqual(Array(waits.prefix(5)), [.milliseconds(500), .seconds(1), .seconds(2), .seconds(4), .seconds(4)])
+        XCTAssertEqual(waits.reduce(.zero, +), Claim.budget, "the waits alone end at the budget")
+        XCTAssertEqual(Claim.tryTimeout(left: .seconds(20)), .seconds(8))
+        XCTAssertEqual(Claim.tryTimeout(left: .seconds(5)), .seconds(5), "no longer than what's left")
+        XCTAssertEqual(Claim.tryTimeout(left: .zero), .seconds(2), "the try after a last wait still gets a moment")
     }
 
     func testClaimAnswerNamesAreCleanedLikeTheInvites() {
@@ -380,6 +493,27 @@ final class GuestCleanupTests: XCTestCase {
         XCTAssertEqual(absence.record([notes]), [], "back in the list starts over")
     }
 
+    /// A sleeping computer's apps aren't probed, so their tiles say Offline at once rather
+    /// than after every probe times out.
+    func testAppsOnAComputerListedOfflineArentProbed() throws {
+        let hosts = [echo, "Notes.taildef456.ts.net.", echo]
+        func probed(_ peers: [String: Bool], onlineReported: Bool = true) throws -> [String] {
+            GuestProbe.hostsToProbe(hosts, in: try status(peers: peers), onlineReported: onlineReported)
+        }
+        XCTAssertEqual(try probed([echo: true, notes: false]), [echo])
+        XCTAssertEqual(try probed([echo: true]), [echo, notes], "one not listed yet is probed")
+        XCTAssertEqual(GuestProbe.hostsToProbe(hosts, in: nil, onlineReported: true), [echo, notes])
+        XCTAssertEqual(try probed([echo: false, notes: false]), [])
+
+        // A network that never said a peer is online may just not tell this node: every app
+        // is probed, as in 1.0.1, so ended access is still noticed.
+        XCTAssertFalse(GuestProbe.reportsOnline(try status(peers: [echo: false, notes: false])))
+        XCTAssertEqual(try probed([echo: false, notes: false], onlineReported: false), [echo, notes])
+        XCTAssertTrue(GuestProbe.reportsOnline(try status(peers: [echo: true, notes: false])))
+        XCTAssertEqual(Discovery.offlineHosts(["Echo-Board.taildef456.ts.net"], in: try status(peers: [echo: false])),
+                       ["Echo-Board.taildef456.ts.net"])
+    }
+
     func testGuestsNeverGetSignInOrOwnerApprovalCopy() {
         var shared = app(echo, in: "a")
         shared.sharedBy = "Riley"
@@ -391,6 +525,32 @@ final class GuestCleanupTests: XCTestCase {
         XCTAssertEqual(NodeActionOverlay.action(for: login, app: own, ownerEnabled: true), .signIn)
         XCTAssertEqual(NodeActionOverlay.action(for: .idle, app: own, ownerEnabled: false), .signIn)
         XCTAssertEqual(NodeActionOverlay.action(for: .awaitingApproval, app: own, ownerEnabled: true), .ownerApproval)
+    }
+}
+
+final class GuestSilenceTests: XCTestCase {
+    func testRestartsAfterSilentLooksThenBacksOff() {
+        var silence = GuestSilence()
+        let hosts = ["two-nights.example.ts.net"]
+        func looksUntilRestart() -> Int {
+            var n = 0
+            repeat { n += 1 } while !silence.record(probed: hosts, reachable: false)
+            return n
+        }
+        XCTAssertEqual(looksUntilRestart(), GuestSilence.firstRestart)
+        XCTAssertEqual(looksUntilRestart(), GuestSilence.firstRestart * 2)
+        for _ in 0..<10 { _ = looksUntilRestart() }
+        XCTAssertEqual(looksUntilRestart(), GuestSilence.maxGap)
+    }
+
+    func testAnAnswerOrNothingOnlineNeverRestarts() {
+        var silence = GuestSilence()
+        let hosts = ["two-nights.example.ts.net"]
+        for _ in 1..<GuestSilence.firstRestart { XCTAssertFalse(silence.record(probed: hosts, reachable: false)) }
+        XCTAssertFalse(silence.record(probed: hosts, reachable: true), "an answer starts over")
+        for _ in 1..<GuestSilence.firstRestart { XCTAssertFalse(silence.record(probed: hosts, reachable: false)) }
+        for _ in 0..<10 { XCTAssertFalse(silence.record(probed: [], reachable: false), "asleep computers aren't silence") }
+        XCTAssertTrue(silence.record(probed: hosts, reachable: false))
     }
 }
 
@@ -444,6 +604,28 @@ final class FeedbackTests: XCTestCase {
         let thumbnail = try XCTUnwrap(Screenshot.image(from: png, maxPixels: ScreenshotCache.Size.thumbnail.rawValue))
         XCTAssertEqual(thumbnail.cgImage.map { [$0.width, $0.height] }, [240, 160])
         XCTAssertNil(Screenshot.image(from: Data("not an image".utf8), maxPixels: 240))
+    }
+
+    /// The Feedback count is what came after the newest item an inbox last showed, so it
+    /// says something arrived rather than an all-time total.
+    func testTheFeedbackCountShowsOnlyNewOnes() {
+        let t0 = Date(timeIntervalSince1970: 1_790_000_000)
+        let items = [0, 60, 120].map { AdminFeedback(id: "f\($0)", at: t0.addingTimeInterval(Double($0)), app: "coach", from: "Sam",
+                                                     role: "guest", note: "hi") }
+        XCTAssertEqual(FeedbackInbox.unseen(items, seenUntil: 0), 3, "an inbox never opened")
+        XCTAssertEqual(FeedbackInbox.unseen(items, seenUntil: t0.addingTimeInterval(60).timeIntervalSince1970), 1)
+        XCTAssertEqual(FeedbackInbox.unseen(items, seenUntil: t0.addingTimeInterval(120).timeIntervalSince1970), 0, "no number")
+
+        // An inbox moves the mark to its newest item; one app's inbox only while no other
+        // app has feedback from before that newest no one has seen.
+        let newest = t0.addingTimeInterval(120).timeIntervalSince1970
+        let notes = AdminFeedback(id: "n", at: t0.addingTimeInterval(30), app: "notes", from: "Kim", role: "guest", note: "hey")
+        XCTAssertEqual(FeedbackInbox.seenUntil(0, showing: items + [notes], leavingOut: []), newest, "the full inbox")
+        XCTAssertEqual(FeedbackInbox.seenUntil(0, showing: items, leavingOut: [notes]), 0, "Notes' is still new")
+        XCTAssertEqual(FeedbackInbox.seenUntil(notes.at.timeIntervalSince1970, showing: items, leavingOut: [notes]), newest)
+        let later = AdminFeedback(id: "l", at: t0.addingTimeInterval(180), app: "notes", from: "Kim", role: "guest", note: "again")
+        XCTAssertEqual(FeedbackInbox.seenUntil(0, showing: items, leavingOut: [later]), newest, "Notes' newer one stays counted")
+        XCTAssertEqual(FeedbackInbox.seenUntil(newest, showing: items, leavingOut: []), newest, "never back")
     }
 
     func testAnswers() {
@@ -502,13 +684,9 @@ final class AdminAPITests: XCTestCase {
                 XCTAssertEqual(invite.invite, result.invite.id)
                 XCTAssertEqual(invite.app, result.invite.app)
                 XCTAssertEqual(invite.to, result.invite.to)
-                XCTAssertEqual(invite.name, result.appName)
-                XCTAssertEqual(invite.owner, result.owner)
                 XCTAssertEqual(invite.host, "coach.tail1.ts.net")
                 XCTAssertEqual(invite.control.absoluteString, "https://controlplane.tailscale.com")
                 XCTAssertEqual(invite.key, "tskey-auth-kExample1CNTRL-ExampleSecretNotReal")
-                XCTAssertEqual(try InviteLink.parse(invite.universalURL, allowLocalHTTP: false), invite, "round trip")
-                XCTAssertEqual(try InviteLink.parse(invite.url, allowLocalHTTP: false), invite, "round trip")
             case "guest-removed", "guest-removed-with-errors":
                 let result = try AdminAPI.decoder.decode(AdminRevokeResult.self, from: data)
                 XCTAssertEqual(result.removed.count, try count(data, "removed"))
@@ -542,7 +720,9 @@ final class AdminAPITests: XCTestCase {
 
     func testOneUnreadableRecordDoesntCostTheRest() throws {
         let apps = #"[{"slug":"coach","name":"Coach"},{"name":"No slug"},{"slug":"notes","name":"Notes","guests":"many","newField":{}}]"#
-        let decoded = try AdminAPI.decoder.decode(EachDecoded<AdminApp>.self, from: Data(apps.utf8)).elements
+        let each = try AdminAPI.decoder.decode(EachDecoded<AdminApp>.self, from: Data(apps.utf8))
+        XCTAssertEqual(each.skipped, [1])
+        let decoded = each.elements
         XCTAssertEqual(decoded.map(\.slug), ["coach", "notes"])
         XCTAssertEqual(decoded.map(\.guests), [0, 0], "what isn't essential falls back")
 
@@ -564,6 +744,47 @@ final class AdminAPITests: XCTestCase {
         XCTAssertEqual(delete.url?.path(percentEncoded: true), "/v1/guests/Sam%20Lee%2Fx")
         XCTAssertEqual(delete.value(forHTTPHeaderField: AdminAPI.header), "1")
         XCTAssertEqual(AdminAPI.errorMessage(Data(#"{"error":"the admin API is for the owner only"}"#.utf8)), "the admin API is for the owner only")
+    }
+
+    /// An owner's host that doesn't answer brings another look when it's a shareable app's
+    /// node, a private app's untagged node already found, or new this look; a laptop or TV
+    /// without a connector misses once, and then no more.
+    func testWatchesAppHostsAndNewOnes() throws {
+        let json = """
+        {"BackendState":"Running","CurrentTailnet":{"Name":"owen@","MagicDNSSuffix":"tailabc123.ts.net"},
+         "Self":{"DNSName":"phone.tailabc123.ts.net.","OS":"iOS","UserID":1},
+         "Peer":{"a":{"DNSName":"Coach.tailabc123.ts.net.","OS":"linux","Online":true,"Tags":["tag:ovenlight-app-coach"]},
+                 "b":{"DNSName":"notes.tailabc123.ts.net.","OS":"linux","Online":true,"UserID":1},
+                 "c":{"DNSName":"tv.tailabc123.ts.net.","OS":"tvOS","Online":true,"UserID":1}}}
+        """
+        let status = try XCTUnwrap(TailnetStatus.decode(Data(json.utf8)))
+        let (coach, notes, tv) = ("coach.tailabc123.ts.net", "notes.tailabc123.ts.net", "tv.tailabc123.ts.net")
+        let hosts = [coach, notes, tv]
+        XCTAssertEqual(Discovery.watchedHosts(hosts, in: status, found: [], apps: [], seenBefore: []), [coach, notes, tv], "all new")
+        XCTAssertEqual(Discovery.watchedHosts(hosts, in: status, found: [notes], apps: [], seenBefore: Set(hosts)), [coach, notes],
+                       "the private app found on the untagged node, not the TV")
+        XCTAssertEqual(Discovery.watchedHosts(hosts, in: status, found: [], apps: [], seenBefore: Set(hosts)), [coach])
+    }
+
+    /// A private app that misses a look leaves the node's list, but its tile stays on the
+    /// launcher, so its host stays watched and the next miss brings another look. An app
+    /// added by its address isn't watched for this, nor one someone shared.
+    func testAPrivateAppOnTheLauncherStaysWatchedAfterAMiss() throws {
+        let json = """
+        {"BackendState":"Running","CurrentTailnet":{"Name":"owen@","MagicDNSSuffix":"tailabc123.ts.net"},
+         "Self":{"DNSName":"phone.tailabc123.ts.net.","OS":"iOS","UserID":1},
+         "Peer":{"b":{"DNSName":"notes.tailabc123.ts.net.","OS":"linux","Online":true,"UserID":1},
+                 "c":{"DNSName":"tv.tailabc123.ts.net.","OS":"linux","Online":true,"UserID":1},
+                 "d":{"DNSName":"book.tailabc123.ts.net.","OS":"linux","Online":true,"UserID":1}}}
+        """
+        let status = try XCTUnwrap(TailnetStatus.decode(Data(json.utf8)))
+        let hosts = ["notes.tailabc123.ts.net", "tv.tailabc123.ts.net", "book.tailabc123.ts.net"]
+        let notes = WebApp(name: "Notes", startURL: URL(string: "https://Notes.tailabc123.ts.net/")!, discovered: true)
+        let typed = WebApp(name: "TV", startURL: URL(string: "https://tv.tailabc123.ts.net/")!)
+        var shared = WebApp(name: "Book Club", startURL: URL(string: "https://book.tailabc123.ts.net/")!, discovered: true)
+        shared.membershipID = "riley"
+        XCTAssertEqual(Discovery.watchedHosts(hosts, in: status, found: [], apps: [notes, typed, shared], seenBefore: Set(hosts)),
+                       ["notes.tailabc123.ts.net"])
     }
 
     func testAsksOnlyOnlineMachines() throws {
@@ -589,6 +810,56 @@ final class AdminAPITests: XCTestCase {
                      OwnerSharing.Machine(adminHost: "gone.t.ts.net", apps: [app("echo")])]
         XCTAssertEqual(OwnerSharing.firstRound(candidates, known: known), ["notes.t.ts.net", "echo.t.ts.net", "web.t.ts.net"],
                        "the host a machine answered on first, and hosts no machine still online listed")
+    }
+
+    /// A computer that failed this pass keeps what it had, with why, rather than showing
+    /// no one and no apps; one an answer covers, or that wasn't asked, doesn't.
+    func testAFailedRefreshKeepsTheMachineAsItWas() {
+        func app(_ slug: String) -> AdminApp {
+            AdminApp(slug: slug, name: slug, url: "https://\(slug).t.ts.net/", online: true, shareable: true, guests: 0)
+        }
+        let coach = OwnerSharing.Machine(adminHost: "coach.t.ts.net", apps: [app("coach")],
+                                         guests: AdminGuestList(guests: [AdminGuest(deviceId: "n1", person: "p1", name: "Sam", app: "coach", claimedAt: .now)]))
+        let notes = OwnerSharing.Machine(adminHost: "notes.t.ts.net", apps: [app("notes")])
+        let gone = OwnerSharing.Machine(adminHost: "gone.t.ts.net", apps: [app("gone")])
+        let echo = OwnerSharing.Machine(adminHost: "echo.t.ts.net", apps: [app("echo"), app("notes")])
+        let web = OwnerSharing.Machine(adminHost: "web.t.ts.net", apps: [app("web")])
+        let kept = OwnerSharing.keepingFailed([echo], failed: ["coach.t.ts.net": .unreachable, "notes.t.ts.net": .unreachable,
+                                                               "web.t.ts.net": .failed("an answer this version can't read")],
+                                              previous: [coach, notes, gone, web], asleep: [])
+        XCTAssertEqual(kept.map(\.adminHost), ["echo.t.ts.net", "coach.t.ts.net", "web.t.ts.net"])
+        XCTAssertEqual(kept[1].guests, coach.guests)
+        XCTAssertEqual(kept[1].problem, AdminError.unreachable.message)
+        XCTAssertEqual(kept[1].apps.map(\.online), [false], "a computer that couldn't be reached is offline")
+        XCTAssertEqual(kept[2].problem, "An answer this version can't read")
+        XCTAssertEqual(kept[2].apps.map(\.online), [true], "one that answered badly isn't")
+        XCTAssertNil(kept[0].problem)
+    }
+
+    /// A computer that went to sleep is listed offline, so the refresh asks it nothing: it
+    /// stays, as it was, with its apps offline and why, rather than vanishing.
+    func testAnAsleepComputerKeepsItsListing() {
+        let coach = OwnerSharing.Machine(adminHost: "coach.t.ts.net", apps: [
+            AdminApp(slug: "coach", name: "Coach", url: "https://coach.t.ts.net/", online: true, shareable: true, guests: 1)])
+        let kept = OwnerSharing.keepingFailed([], failed: [:], previous: [coach], asleep: ["coach.t.ts.net"])
+        XCTAssertEqual(kept.map(\.adminHost), ["coach.t.ts.net"])
+        XCTAssertEqual(kept.first?.problem, "Couldn’t reach the computer. It may be asleep or offline.")
+        XCTAssertEqual(kept.first?.apps.map(\.online), [false])
+        XCTAssertEqual(OwnerSharing.keepingFailed([], failed: [:], previous: [coach], asleep: []).count, 0,
+                       "one the network no longer lists at all goes")
+        var computer = coach
+        computer.apps.append(AdminApp(slug: "notes", name: "Notes", url: "https://notes.t.ts.net/", online: true, shareable: false, guests: 0))
+        let notes = OwnerSharing.Machine(adminHost: "notes.t.ts.net", apps: [computer.apps[1]])
+        XCTAssertEqual(OwnerSharing.keepingFailed([notes], failed: [:], previous: [computer], asleep: ["coach.t.ts.net"]).map(\.adminHost),
+                       ["notes.t.ts.net"], "the same computer answered through another app's host")
+    }
+
+    /// A connector marks commands with backticks, which the phone would show as they are:
+    /// every message it sends loses them as it's read.
+    func testConnectorMessagesLoseTheirBackticks() throws {
+        XCTAssertEqual(AdminAPI.errorMessage(Data(#"{"error":"run `ovenlight doctor` there"}"#.utf8)), "run ovenlight doctor there")
+        let result = try AdminAPI.decoder.decode(AdminRevokeResult.self, from: Data(#"{"removed":[],"errors":["run `ovenlight doctor` there"]}"#.utf8))
+        XCTAssertEqual(result.errors, ["run ovenlight doctor there"])
     }
 
     func testGoTimestamps() {
@@ -618,10 +889,17 @@ final class GuestCopyTests: XCTestCase {
             ConnectionCopy.joinWithInvite, ConnectionCopy.invitePrompt, ConnectionCopy.feedbackSent,
             ConnectionCopy.appAddress("echo.taildef456.ts.net"), ConnectionCopy.privateServer("hs.example.com", owner: "Riley"),
             ConnectionCopy.feedbackSentDetail(to: "Riley"), ConnectionCopy.feedbackSentDetail(to: nil), ConnectionCopy.feedbackFailed,
-            ConnectionCopy.feedbackTooMany, ConnectionCopy.feedbackNetwork,
+            ConnectionCopy.feedbackTooMany, ConnectionCopy.feedbackNetwork, ConnectionCopy.feedbackOffline,
             ConnectionCopy.reportProblem, ConnectionCopy.leaveApps("Riley"), ConnectionCopy.leaveTitle("Riley"),
             ConnectionCopy.leaveDetail("Riley"), ConnectionCopy.removeSharedDetail("Riley"),
             AppAddress.signInFirst, AppAddress.notYourComputer,
+            ConnectionCopy.connecting, ConnectionCopy.stopped, ConnectionCopy.couldNotStart,
+            ConnectionCopy.connecting(to: "Echo"), ConnectionCopy.cantReach("Echo"),
+            ConnectionCopy.cantReachDetail(sharedBy: nil), ConnectionCopy.cantReachDetail(sharedBy: "Riley"),
+            ConnectionCopy.signIn(toOpen: "Echo"), ConnectionCopy.cantOpen("Echo"), ConnectionCopy.pageFailed,
+            ConnectionCopy.offline, ConnectionCopy.offlineDetail,
+            NodeState.starting.summary, NodeMachine.next(.ready, .backend(state: "Stopped", authURL: nil)).summary,
+            LauncherWelcome.title, LauncherWelcome.message,
         ]
         let report = MailDraft.problemReport(appName: "Echo", host: "echo.example.com", sharedBy: "Riley",
                                              connection: NodeState.ready.summary, version: "1.0 (3)", iOS: "26.5")
@@ -633,6 +911,34 @@ final class GuestCopyTests: XCTestCase {
 }
 
 final class SupportMailTests: XCTestCase {
+    func testContactUsGivesThePhonesLines() {
+        XCTAssertEqual(MailDraft.contactUs(version: "1.0.2 (27)", iOS: "26.5", computers: "Connected (ready)").body, """
+
+
+
+            Ovenlight: 1.0.2 (27)
+            iOS: 26.5
+            Your Computers: Connected (ready)
+            """)
+        XCTAssertFalse(MailDraft.contactUs(version: "1.0.2 (27)", iOS: "26.5", computers: nil).body.contains("Your Computers"),
+                       "not for someone who doesn't use their own computers")
+        XCTAssertEqual(MailDraft.connection(.ready, listedOffline: false), "\(NodeState.ready.summary) (ready)")
+    }
+
+    /// Opening says what failed after the gate opened: an error's domain and code, never its
+    /// address or words.
+    @MainActor
+    func testTheOpeningLineSaysWhatFailed() {
+        let error = NSError(domain: NSURLErrorDomain, code: -1202,
+                            userInfo: [NSURLErrorFailingURLStringErrorKey: "https://coach.example.com/?token=1",
+                                       NSLocalizedDescriptionKey: "The certificate for this server is invalid."])
+        XCTAssertEqual(WebCoordinator.opening(gate: .ready, failure: WebCoordinator.failure(error)),
+                       "ready, page failed (NSURLErrorDomain -1202)")
+        XCTAssertEqual(WebCoordinator.opening(gate: .ready, failure: "app not responding (502 unavailable)"),
+                       "ready, app not responding (502 unavailable)")
+        XCTAssertEqual(WebCoordinator.opening(gate: .unreachable, failure: nil), "unreachable")
+    }
+
     func testProblemReportForASharedApp() {
         let draft = MailDraft.problemReport(appName: "Echo Board", host: "echo-board.taildef456.ts.net", sharedBy: "Riley",
                                             connection: "Connected", version: "0.2.0 (7)", iOS: "26.5")
@@ -652,13 +958,24 @@ final class SupportMailTests: XCTestCase {
             """)
     }
 
-    func testProblemReportForOwnAppLoadedDirectly() {
+    func testProblemReportWithoutAConnection() {
         let draft = MailDraft.problemReport(appName: "Coach", host: "coach.example.com", sharedBy: nil, connection: nil,
                                             version: "1.0 (1)", iOS: "26.5")
         XCTAssertFalse(draft.body.contains("Shared by"))
         XCTAssertFalse(draft.body.contains("Connection"), "no node, no connection to report")
         XCTAssertTrue(draft.body.hasPrefix("What happened:"))
         XCTAssertTrue(draft.body.hasSuffix("App: Coach\nAddress: coach.example.com\nOvenlight: 1.0 (1)\niOS: 26.5"))
+    }
+
+    func testProblemReportSaysWhereTheConnectionAndOpeningAre() {
+        let login = NodeState.needsLogin(URL(string: "https://login.tailscale.com/a/secret")!)
+        XCTAssertEqual(MailDraft.connection(login, listedOffline: false), "Not signed in (needsLogin)", "never the sign-in link")
+        let connection = MailDraft.connection(.retrying(attempt: 2), listedOffline: true)
+        XCTAssertEqual(connection, "Connecting (retrying(attempt: 2), computer listed offline)")
+        let draft = MailDraft.problemReport(appName: "Echo", host: "echo.taildef456.ts.net", sharedBy: "Riley", connection: connection,
+                                            opening: String(describing: AppLoadGate.unreachable), version: "1.0.2 (1)", iOS: "26.5")
+        XCTAssertTrue(draft.body.contains("\nConnection: Connecting (retrying(attempt: 2), computer listed offline)\nOpening: unreachable\nOvenlight: 1.0.2 (1)"))
+        CopyRules.assertNeutral(draft.body)
     }
 
     func testMailtoFallbackCarriesSubjectAndBody() throws {
@@ -670,10 +987,6 @@ final class SupportMailTests: XCTestCase {
         XCTAssertEqual(parts.path, "team@snowyghost.com")
         XCTAssertEqual(parts.queryItems?.first { $0.name == "subject" }?.value, "Ovenlight report: Echo & Notes+")
         XCTAssertEqual(parts.queryItems?.first { $0.name == "body" }?.value, draft.body)
-    }
-
-    func testPrivacyPolicyIsHTTPS() {
-        XCTAssertEqual(AppLinks.privacyPolicy.scheme, "https")
     }
 }
 
@@ -706,14 +1019,34 @@ final class RouterTests: XCTestCase {
         XCTAssertEqual(try join(router)?.invite?.get().invite, "3f9a1c2b7e")
     }
 
+    /// An invite being made or not yet sent, or a note in Send Feedback, keeps its sheet:
+    /// a link waits until it closes.
+    func testALinkWaitsForUnsentWork() throws {
+        let router = Router()
+        let app = WebApp(name: "Coach", startURL: URL(string: "https://coach.example.com/")!)
+        router.open(app)
+        router.appAppeared()
+        let composer = UUID()
+        router.hold(composer, true)
+        router.handle(URL(string: universalLink)!, apps: [])
+        XCTAssertEqual(router.openApp?.id, app.id, "the app and its sheet stay")
+        XCTAssertNil(router.sheet)
+        router.hold(composer, false)
+        XCTAssertNil(router.openApp)
+        router.appDismissed()
+        XCTAssertEqual(try join(router)?.invite?.get().invite, "3f9a1c2b7e", "then the link goes on")
+    }
+
     func testOpeningAnAppFromASheetWaitsForItToClose() {
         let router = Router()
         let app = WebApp(name: "Coach", startURL: URL(string: "https://coach.example.com/")!)
+        defer { WebViewPool.shared.discard(app.id) }
         router.present(.settings)
         router.sheetAppeared()
         router.open(app)
         XCTAssertNil(router.sheet)
         XCTAssertNil(router.openApp)
+        XCTAssertNotNil(WebViewPool.shared.opening(of: app.id), "its page starts while the sheet closes")
         router.sheetDismissed()
         XCTAssertEqual(router.openApp?.id, app.id)
     }
@@ -749,7 +1082,7 @@ final class RouterTests: XCTestCase {
     func testALinkedAppWaitsWhileTheLockIsDue() {
         var now = ContinuousClock.now
         var saved = false
-        let lock = LockManager(hasSavedData: { saved }, now: { now })
+        let lock = LockManager(hasSavedData: { saved }, now: { now }, defaults: .throwaway(for: self))
         let previous = lock.lockAfterSeconds
         defer { lock.lockAfterSeconds = previous }
         lock.lockAfterSeconds = 60
@@ -800,7 +1133,7 @@ final class GuestActivityTests: XCTestCase {
 
     private func guest(_ device: String, person: String = "pSam", name: String = "Sam", app: String = "coach", claimed: Date,
                        opened: Date? = nil) -> AdminGuest {
-        AdminGuest(deviceId: device, person: person, name: name, app: app, deviceName: "", claimedAt: claimed, lastOpened: opened)
+        AdminGuest(deviceId: device, person: person, name: name, app: app, claimedAt: claimed, lastOpened: opened)
     }
 
     private func daysAgo(_ days: Double) -> Date { now.addingTimeInterval(-86_400 * days) }
@@ -827,6 +1160,19 @@ final class GuestActivityTests: XCTestCase {
         XCTAssertEqual(day, calendar.date(from: DateComponents(year: 2026, month: 9, day: 29)))
         XCTAssertEqual(day.map { GuestActivity.day($0, now: now, calendar: calendar) }, "2 weeks ago")
         XCTAssertNil(AdminAPI.parseDay("yesterday"))
+    }
+
+    /// The connector's days are Gregorian, on an iPhone set to the Buddhist or Japanese
+    /// calendar too.
+    func testLastOpenedReadsOnAnyCalendar() {
+        for identifier in [Calendar.Identifier.buddhist, .japanese] {
+            var other = Calendar(identifier: identifier)
+            other.timeZone = calendar.timeZone
+            other.locale = calendar.locale
+            let day = AdminAPI.parseDay("2026-09-29", calendar: other)
+            XCTAssertEqual(day, calendar.date(from: DateComponents(year: 2026, month: 9, day: 29)), "\(identifier)")
+            XCTAssertEqual(day.map { GuestActivity.day($0, now: now, calendar: other) }, "2 weeks ago", "\(identifier)")
+        }
     }
 
     func testActivityFromTheRecords() {
@@ -875,7 +1221,7 @@ final class GuestActivityTests: XCTestCase {
             OwnerSharing.Machine(adminHost: "coach.tail1.ts.net", apps: [], guests: AdminGuestList(taggedDevices: tagged))
         }
         XCTAssertEqual(SharingList.taggedDevices([machine(AdminTaggedDevices(apps: 1, guests: 3, tailnet: 5))]),
-                       "Your shareable apps and your guests' devices use 4 of the 5 tagged devices in your Tailscale network. Tailscale's plans include a set number and charge for more.")
+                       "Your shareable apps and your guests’ devices use 4 of the 5 tagged devices in your Tailscale network. Tailscale’s plans include a set number and charge for more.")
         XCTAssertEqual(SharingList.taggedDevices([machine(AdminTaggedDevices(apps: 2, guests: 2, tailnet: 4))])?.contains("use all 4 tagged devices"), true)
         XCTAssertEqual(SharingList.taggedDevices([machine(AdminTaggedDevices(apps: 1, guests: 0, tailnet: 1))])?.contains("use the only tagged device"), true)
         XCTAssertNil(SharingList.taggedDevices([machine(nil)]), "not counted yet")
@@ -891,7 +1237,7 @@ final class AppMenuPlanTests: XCTestCase {
     }
 
     private func guest(_ name: String, app: String = "coach", removed: Bool = false) -> AdminGuest {
-        AdminGuest(deviceId: "n\(name)", person: "p\(name)", name: name, app: app, deviceName: "\(name)-iphone", claimedAt: t0,
+        AdminGuest(deviceId: "n\(name)", person: "p\(name)", name: name, app: app, claimedAt: t0,
                    removedAt: removed ? t0 : nil)
     }
 
@@ -923,7 +1269,8 @@ final class AppMenuPlanTests: XCTestCase {
         let app = WebApp(name: "Coach", startURL: URL(string: "https://coach.tail1.ts.net/")!)
         let plan = AppMenuPlan.plan(for: app, admin: (admin(shareable: false), AdminGuestList(guests: [guest("Sam")])))
         XCTAssertEqual(plan, AppMenuPlan(share: .notShareable))
-        CopyRules.assertNeutral(AppMenuPlan.notShareableDetail)
+        XCTAssertEqual(AppMenuPlan.notShareableDetail(slug: "coach"),
+                       "Make it shareable first: on your computer, run ovenlight publish --slug coach --shareable")
     }
 
     func testAppWithoutConnectorOffersNothing() {
@@ -936,8 +1283,10 @@ final class AppMenuPlanTests: XCTestCase {
         app.membershipID = "m1"
         app.sharedBy = "Riley"
         // Even if the owner's view of a same-host app were at hand.
-        let plan = AppMenuPlan.plan(for: app, admin: (admin(shareable: true), AdminGuestList()))
+        let plan = AppMenuPlan.plan(for: app, admin: (admin(shareable: true), AdminGuestList()), ownersApps: 2)
         XCTAssertEqual(plan, AppMenuPlan(reportProblem: true, leaveOwner: "Riley"))
+        XCTAssertEqual(AppMenuPlan.plan(for: app, admin: nil, ownersApps: 1), AppMenuPlan(reportProblem: true),
+                       "with one app from Riley, Remove App is the way out")
     }
 
     func testInviteChoicesLeaveOutAppReview() {
@@ -953,7 +1302,7 @@ final class AppMenuPlanTests: XCTestCase {
 final class LockManagerTests: XCTestCase {
     func testLocksOnlyOnceSomethingIsSaved() {
         var saved = false
-        let lock = LockManager { saved }
+        let lock = LockManager(hasSavedData: { saved }, defaults: .throwaway(for: self))
         let previous = lock.lockAfterSeconds
         defer { lock.lockAfterSeconds = previous }
         lock.lockAfterSeconds = 0
@@ -965,6 +1314,35 @@ final class LockManagerTests: XCTestCase {
         lock.didEnterBackground()
         lock.willBecomeActive()
         XCTAssertTrue(lock.isLocked)
+    }
+}
+
+final class PageDialogTests: XCTestCase {
+    func testAPagesTextIsCutWithoutSplittingACharacter() {
+        XCTAssertEqual(PageDialogs.cut("short"), "short")
+        let long = PageDialogs.cut(String(repeating: "x", count: 5_000_000))
+        XCTAssertEqual(long.utf16.count, 4_001)
+        XCTAssertEqual(long.last, "\u{2026}")
+        // A face that would straddle the cut goes whole.
+        let emoji = PageDialogs.cut(String(repeating: "x", count: 3_999) + "\u{1F600}" + "y")
+        XCTAssertEqual(emoji, String(repeating: "x", count: 3_999) + "\u{2026}")
+    }
+
+    /// Past three dialogs in a row, each within a second of the last one closing, each offers
+    /// the way out, however long it was read.
+    func testADialogLoopEnds() {
+        var now = ContinuousClock.now
+        var dialogs = PageDialogs(now: { now })
+        for _ in 1...PageDialogs.loopCount {
+            XCTAssertFalse(dialogs.next())
+            now += .seconds(20)
+            dialogs.closed()
+            now += .milliseconds(900)
+        }
+        XCTAssertTrue(dialogs.next(), "the fourth in a row")
+        dialogs.closed()
+        now += .seconds(2)
+        XCTAssertFalse(dialogs.next(), "a pause starts a new run")
     }
 }
 

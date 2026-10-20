@@ -211,12 +211,20 @@ enum NavigationPolicy {
         case "http", "https":
             if !isMainFrame { return .allow }
             return Discovery.normalizedHost(url.host ?? "") == Discovery.normalizedHost(appHost) ? .allow : .openExternally(url)
-        case "about", "data", "blob", "javascript":
+        case "blob":
+            // A frame of another site can make one too: the page shows only the app's own.
+            return !isMainFrame || blobHost(url) == Discovery.normalizedHost(appHost) ? .allow : .refuse
+        case "about", "data", "javascript":
             return .allow
         default:
             // Never Ovenlight's own scheme: a page could hand it an invite of its choosing.
             return tapped && isMainFrame && scheme != InviteLink.scheme ? .openExternally(url) : .refuse
         }
+    }
+
+    /// The host of the page that made a blob URL: `blob:https://host/<uuid>` names its origin.
+    static func blobHost(_ url: URL) -> String? {
+        URL(string: String(url.absoluteString.dropFirst("blob:".count))).map { Discovery.normalizedHost($0.host ?? "") }
     }
 
     /// A popup loaded in the app's own view goes out as Ovenlight's load, without the
@@ -230,22 +238,27 @@ enum NavigationPolicy {
     }
 }
 
-/// Turns what someone types into Add App into an app address. A bare host gets https;
-/// anything that isn't https is refused. Add App opens only the owner's own computers:
-/// apps anywhere else come by an invite, or by discovery once their owner publishes them.
+/// Turns what someone types into Add App into an app address. A bare host gets https, and
+/// a bare name (`notes`) the owner's tailnet once it's known; anything that isn't https is
+/// refused. Add App opens only the owner's own computers: apps anywhere else come by an
+/// invite, or by discovery once their owner publishes them.
 enum AppAddress {
-    static func url(from text: String) -> URL? {
+    static func url(from text: String, completingWith suffix: String? = nil) -> URL? {
         var text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if !text.contains("://") { text = "https://" + text }
-        guard let url = URL(string: text), url.scheme?.lowercased() == "https",
-              let host = url.host, host.contains(".") else { return nil }
-        return url
+        guard var url = URL(string: text), url.scheme?.lowercased() == "https", let host = url.host else { return nil }
+        if !host.contains("."), let suffix = suffix.map(Discovery.normalizedHost), !suffix.isEmpty,
+           var parts = URLComponents(url: url, resolvingAgainstBaseURL: false) {
+            parts.host = host + "." + suffix
+            url = parts.url ?? url
+        }
+        return url.host?.contains(".") == true ? url : nil
     }
 
     /// The address, only if it's on the owner's own tailnet. Nil `ownerSuffix` (owner mode
     /// off, or not signed in yet) takes nothing.
     static func url(from text: String, ownerSuffix: String?) -> URL? {
-        guard let url = url(from: text),
+        guard let url = url(from: text, completingWith: ownerSuffix),
               Routing.isOnOwnersTailnet(host: url.host ?? "", ownerSuffix: ownerSuffix) else { return nil }
         return url
     }

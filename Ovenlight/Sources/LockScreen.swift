@@ -15,13 +15,16 @@ struct LockScreen: View {
                     Label(error, systemImage: "exclamationmark.circle.fill")
                         .labelStyle(ErrorLabelStyle())
                 } else {
+                    // Over the light, secondary text falls short of 4.5:1.
                     Text("Locked")
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.primary)
                 }
             }
             .transition(.opacity)
             .multilineTextAlignment(.center)
+            // As large as the wordmark above it gets.
+            .dynamicTypeSize(...DynamicTypeSize.accessibility1)
             .padding(.horizontal, 40)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(lock.lastError ?? "Ovenlight is locked")
@@ -42,6 +45,8 @@ struct LockScreen: View {
             unlockButton
                 .buttonBorderShape(.capsule)
                 .controlSize(.large)
+                // Two lines at most, so it stays a capsule.
+                .dynamicTypeSize(...DynamicTypeSize.accessibility2)
                 .padding(.horizontal, 40)
         }
         .sensoryFeedback(.error, trigger: failures)
@@ -50,6 +55,7 @@ struct LockScreen: View {
         .onChange(of: lock.lastError) { _, error in
             if error != nil { failures += 1 }
         }
+        .announcing(lock.lastError)
         .onAppear { appeared = true }
     }
 
@@ -67,8 +73,8 @@ struct LockScreen: View {
                 .foregroundStyle(.primary)
                 .buttonStyle(.glass)
         } else {
-            unlockButton(symbolColor: .white)
-                .buttonStyle(.borderedProminent)
+            unlockButton(symbolColor: .onEmber)
+                .buttonStyle(.ovenlightProminent)
         }
     }
 
@@ -139,7 +145,7 @@ private struct ErrorLabelStyle: LabelStyle {
     func makeBody(configuration: Configuration) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             configuration.icon.foregroundStyle(.red)
-            configuration.title.foregroundStyle(.secondary)
+            configuration.title.foregroundStyle(.primary)
         }
         .font(.subheadline)
     }

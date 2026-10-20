@@ -6,8 +6,18 @@ import SwiftUI
 /// Face ID (or the passcode) before anything that changes who can open an app. An iPhone
 /// with no passcode has nothing to ask for, and Ovenlight already opens without one there
 /// (see `LockManager`).
+@MainActor
 enum OwnerAuth {
+    /// The prompt is up. It makes Ovenlight inactive, which is no reason for the privacy
+    /// cover over the sheet that asked.
+    private(set) static var isAsking = false
+
     static func confirm(_ reason: String) async -> Bool {
+        isAsking = true
+        defer {
+            isAsking = false
+            OverlayPresenter.ownerAuthEnded()
+        }
         do {
             return try await LAContext().evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason)
         } catch {
@@ -33,6 +43,28 @@ struct LauncherShareMenuItems: View {
     }
 }
 
+/// None of the owner's computers answered, and why, where a list would be.
+struct SharingProblemView: View {
+    let problem: String?
+
+    var body: some View {
+        ContentUnavailableView("No Computers Answered", systemImage: "desktopcomputer.trianglebadge.exclamationmark",
+                               description: Text(problem ?? "Your computers may be asleep or offline. Wake one, or run ovenlight doctor on it."))
+            .ovenlightRows()
+    }
+}
+
+/// A failure in a sharing list's row or footer.
+struct ProblemLabel: View {
+    let text: String
+    init(_ text: String) { self.text = text }
+
+    var body: some View {
+        Label(text, systemImage: "exclamationmark.triangle.fill").labelStyle(.warning)
+    }
+}
+
+
 /// The owner's controls for their connectors: apps and who they're shared with, and
 /// feedback. Admin credentials never leave the machines; Ovenlight asks each connector
 /// over the owner's own node.
@@ -40,8 +72,9 @@ struct SharingList: View {
     @EnvironmentObject private var registry: AppRegistry
     @ObservedObject private var sharing = OwnerSharing.shared
     @State private var showingPricing = false
+    @AppStorage(FeedbackInbox.seenKey) private var feedbackSeenUntil: Double = 0
 
-    private var feedbackCount: Int { sharing.machines.reduce(0) { $0 + $1.feedback.count } }
+    private var feedbackCount: Int { FeedbackInbox.unseen(sharing.machines.flatMap(\.feedback), seenUntil: feedbackSeenUntil) }
     private var peopleCount: Int { sharing.machines.reduce(0) { $0 + GuestPerson.all($1.guests.guests).count } }
 
     var body: some View {
@@ -54,13 +87,11 @@ struct SharingList: View {
                 if sharing.isLoading {
                     HStack { Spacer(); ProgressView(); Spacer() }.listRowBackground(Color.clear)
                 } else {
-                    ContentUnavailableView("No Computers Answered", systemImage: "desktopcomputer.trianglebadge.exclamationmark",
-                                           description: Text(sharing.problem ?? "Check that the Ovenlight connector is running on your computers."))
-                        .ovenlightRows()
+                    SharingProblemView(problem: sharing.problem)
                 }
             }
             ForEach(sharing.machines) { machine in
-                Section(sharing.machines.count > 1 ? machine.adminHost : "Apps") {
+                Section {
                     ForEach(machine.apps) { app in
                         NavigationLink {
                             SharingAppView(machineID: machine.id, slug: app.slug)
@@ -68,6 +99,10 @@ struct SharingList: View {
                             SharingAppRow(app: app)
                         }
                     }
+                } header: {
+                    Text(sharing.machines.count > 1 ? machine.adminHost : "Apps")
+                } footer: {
+                    if let problem = machine.problem { ProblemLabel(problem) }
                 }
                 .ovenlightRows()
             }
@@ -123,7 +158,7 @@ struct SharingList: View {
         let used = min(counts.reduce(0) { $0 + $1.apps + $1.guests }, all)
         guard used > 0 else { return nil }
         let share = used < all ? "\(used) of the \(all) tagged devices" : used == 1 ? "the only tagged device" : "all \(all) tagged devices"
-        return "Your shareable apps and your guests' devices use \(share) in your Tailscale network. Tailscale's plans include a set number and charge for more."
+        return "Your shareable apps and your guests’ devices use \(share) in your Tailscale network. Tailscale’s plans include a set number and charge for more."
     }
 }
 
@@ -135,7 +170,7 @@ private struct SharingAppRow: View {
             AdminAppIcon(app: app)
             VStack(alignment: .leading, spacing: 2) {
                 Text(app.name)
-                Text(summary).font(.caption).foregroundStyle(.secondary)
+                Text(summary).font(.caption).foregroundStyle(Color.secondaryText)
             }
         }
         .accessibilityElement(children: .combine)
@@ -172,6 +207,7 @@ struct SharingAppView: View {
     @State private var composing: Composing?
     @State private var removing: GuestPerson?
     @State private var error: String?
+    @AppStorage(FeedbackInbox.seenKey) private var feedbackSeenUntil: Double = 0
 
     private var machine: OwnerSharing.Machine? { sharing.machines.first { $0.id == machineID } }
     private var app: AdminApp? { machine?.apps.first { $0.slug == slug } }
@@ -189,14 +225,16 @@ struct SharingAppView: View {
 
     var body: some View {
         List {
+            // Above everything, so a failed Cancel or Remove says so even when the app or its
+            // computer is gone from the list.
+            if let error = error ?? machine?.problem {
+                Section { ProblemLabel(error) }
+                    .ovenlightRows()
+            }
             if let app, let machine {
                 let people = GuestPerson.all(machine.guests.guests.filter { $0.app == slug })
                 let invites = machine.guests.invites.filter { $0.app == slug && $0.state == AdminInvite.sent }
-                let feedback = machine.feedback.filter { $0.app == slug }.count
-                if let error {
-                    Section { Label(error, systemImage: "exclamationmark.triangle.fill").labelStyle(.warning) }
-                        .ovenlightRows()
-                }
+                let feedback = FeedbackInbox.unseen(machine.feedback.filter { $0.app == slug }, seenUntil: feedbackSeenUntil)
                 Section {
                     if app.shareable {
                         Button { compose(.anyone) } label: {
@@ -207,16 +245,21 @@ struct SharingAppView: View {
                     }
                 } footer: {
                     if app.shareable {
-                        Text("Each invite is a link that works once, on one iPhone, for 7 days. Guests reach only this app.")
+                        Text("Each invite is a link that works once, on one phone, for 7 days. Guests reach only this app.")
                     } else {
-                        Text("To share it, run this on its computer: ovenlight publish --slug \(app.slug) --shareable")
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("To share it, run this on its computer:")
+                            Text(verbatim: "ovenlight publish --slug \(app.slug) --shareable")
+                                .font(.footnote.monospaced())
+                                .textSelection(.enabled)
+                        }
                     }
                 }
                 .ovenlightRows()
                 if app.shareable {
                     Section("People") {
                         if people.isEmpty {
-                            Text("No one yet").foregroundStyle(.secondary)
+                            Text("No one yet").foregroundStyle(Color.secondaryText)
                         }
                         ForEach(people) { person in
                             NavigationLink {
@@ -240,8 +283,8 @@ struct SharingAppView: View {
                             ForEach(invites) { invite in
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text("For \(invite.to)")
-                                    Text("\(invite.review == true ? "Review invite, unused" : "Unused"), expires \(invite.expiresIn)")
-                                        .font(.caption).foregroundStyle(.secondary)
+                                    Text("\(invite.review == true ? "Review invite" : "Unused"), expires \(invite.expiresIn)")
+                                        .font(.caption).foregroundStyle(Color.secondaryText)
                                 }
                                 .accessibilityElement(children: .combine)
                                 .swipeActions {
@@ -268,6 +311,8 @@ struct SharingAppView: View {
                     }
                 }
                 .ovenlightRows()
+            } else if let problem = sharing.problem {
+                SharingProblemView(problem: problem)
             } else {
                 ContentUnavailableView("App Not Found", systemImage: "questionmark.app")
                     .ovenlightRows()
@@ -275,6 +320,7 @@ struct SharingAppView: View {
         }
         .ovenlightGroupedBackground()
         .navigationTitle(app?.name ?? "App")
+        .announcing(error)
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await sharing.refresh(apps: registry.apps) }
         .task { await sharing.refreshIfStale(apps: registry.apps) }
@@ -284,27 +330,45 @@ struct SharingAppView: View {
             Button("Cancel", role: .cancel) {}
             Button("Remove", role: .destructive) { Task { await remove(person) } }
         } message: { person in
-            Text("\(person.name) can't open \(app?.name ?? "the app") anymore, on any device. Each of their devices is also removed from your Tailscale network unless it has another of your apps.")
+            Text("\(person.name) can’t open \(app?.name ?? "the app") anymore, on any device. Each of their devices is also removed from your Tailscale network unless it has another of your apps.")
         }
     }
 
     private func remove(_ person: GuestPerson) async {
-        guard let machine, await OwnerAuth.confirm("Remove \(person.name)"), let client = sharing.client(for: machine) else { return }
+        guard let machine, await OwnerAuth.confirm("Remove \(person.name)") else { return }
+        guard let client = sharing.client(for: machine) else {
+            error = AdminError.unreachable.message
+            return
+        }
         defer { client.session.finishTasksAndInvalidate() }
         do {
             let result = try await client.removeGuest(person, app: slug)
             error = result.errors?.first
-        } catch let failure as AdminError {
-            error = failure.message
-        } catch {}
+        } catch {
+            show(error)
+        }
         await sharing.refresh(apps: registry.apps)
     }
 
     private func cancel(_ invite: AdminInvite) async {
-        guard let machine, let client = sharing.client(for: machine) else { return }
+        guard let machine else { return }
+        guard let client = sharing.client(for: machine) else {
+            error = AdminError.unreachable.message
+            return
+        }
         defer { client.session.finishTasksAndInvalidate() }
-        _ = try? await client.cancelInvite(invite.id)
+        do {
+            _ = try await client.cancelInvite(invite.id)
+            error = nil
+        } catch {
+            show(error)
+        }
         await sharing.refresh(apps: registry.apps)
+    }
+
+    /// As People shows it: the connector's words, or that the computer didn't answer.
+    private func show(_ failure: Error) {
+        error = (failure as? AdminError)?.message ?? AdminError.unreachable.message
     }
 }
 
@@ -326,7 +390,7 @@ struct InviteComposer: View {
     @State private var name = ""
     @State private var working = false
     @State private var error: String?
-    @State private var result: InviteResultItem?
+    @State private var result: AdminShareResult?
     @FocusState private var focused: Bool
 
     private var trimmed: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -339,9 +403,17 @@ struct InviteComposer: View {
         people.first { $0.name.caseInsensitiveCompare(trimmed) == .orderedSame }
     }
 
+    /// Why Create waits, under the name, while an error isn't showing there instead.
+    private var namesakeWarning: String? {
+        guard let namesake, error == nil else { return nil }
+        return choices.contains { $0.id == namesake.id }
+            ? "\(namesake.name) is already in the list below. Choose them there, or use a name that tells them apart, like \(namesake.name) L."
+            : "\(namesake.name) already has an invite. Use a name that tells them apart, like \(namesake.name) L."
+    }
+
     var body: some View {
         if let result {
-            InviteResultView(item: result)
+            InviteResultView(result: result, appName: app.name)
         } else {
             NavigationStack {
                 Form {
@@ -349,7 +421,7 @@ struct InviteComposer: View {
                         Section {
                             LabeledContent(person.name, value: person.devices)
                         } footer: {
-                            footer("The invite adds an iPhone for \(person.name): \(app.name) sees one person on all of them. It works once, on one iPhone, for 7 days.")
+                            footer("The invite adds a phone for \(person.name): \(app.name) sees one person on all of them. It works once, on one phone, for 7 days.")
                         }
                         .ovenlightRows()
                     } else {
@@ -366,7 +438,7 @@ struct InviteComposer: View {
                                     .disabled(working)
                                 }
                             } header: {
-                                Text("Someone You've Shared With")
+                                Text("Someone You’ve Shared With")
                             } footer: {
                                 Text("Choose someone here and your apps see them as one person, on every device.")
                             }
@@ -376,6 +448,8 @@ struct InviteComposer: View {
                 }
                 .ovenlightGroupedBackground()
                 .navigationTitle("Share \(app.name)")
+                .announcing(error)
+                .announcing(namesakeWarning)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
@@ -393,12 +467,16 @@ struct InviteComposer: View {
                 .onAppear { if case .anyone = target { focused = true } }
             }
             .presentationDetents(choices.isEmpty ? [.medium] : [.medium, .large])
+            // From the first tap, and while a Create that failed says why.
+            .holdingLinks(working || error != nil)
         }
     }
 
     private var newPerson: some View {
         Section {
             TextField("Their name, like Sam", text: $name)
+                // Once a name is typed, VoiceOver would read only the name.
+                .accessibilityLabel("Name")
                 .textContentType(.name)
                 .submitLabel(.done)
                 .focused($focused)
@@ -406,13 +484,11 @@ struct InviteComposer: View {
         } header: {
             Text("Someone New")
         } footer: {
-            if let namesake, error == nil {
-                Label(choices.contains { $0.id == namesake.id }
-                      ? "\(namesake.name) is already in the list below. Choose them there, or use a name that tells them apart, like \(namesake.name) L."
-                      : "\(namesake.name) already has an invite. Use a name that tells them apart, like \(namesake.name) L.", systemImage: "person.2.fill")
+            if let namesakeWarning {
+                Label(namesakeWarning, systemImage: "person.2.fill")
                     .labelStyle(.warning)
             } else {
-                footer("\(trimmed.isEmpty ? "They see" : "\(trimmed) sees") this name on the invite, and \(app.name) knows them by it. You send the invite yourself next, by message or QR code. It works once, on one iPhone, for 7 days.")
+                footer("\(trimmed.isEmpty ? "They see" : "\(trimmed) sees") this name on the invite, and \(app.name) knows them by it. You send the invite yourself next, by message or QR code. It works once, on one phone, for 7 days.")
             }
         }
     }
@@ -427,23 +503,31 @@ struct InviteComposer: View {
 
     /// Invites someone new by name, or, given a person, someone already shared with.
     private func create(_ person: GuestPerson? = nil) async {
+        error = nil
         let who = person?.name ?? trimmed
         guard !who.isEmpty, person != nil || namesake == nil, !working else { return }
+        // Not even Face ID while the phone's own connection is down: nothing could reach the
+        // computer. One that is up, retrying the computers that didn't answer, may reach it.
+        guard NodeManager.shared.owner.state == .ready || NodeManager.shared.owner.state.isRetrying else {
+            error = ConnectionCopy.notConnected
+            return
+        }
+        // From the first tap, so a second one during Face ID can't make a second invite.
+        working = true
+        defer { working = false }
         guard await OwnerAuth.confirm("Share \(app.name) with \(who)") else { return }
         guard let client = OwnerSharing.shared.client(for: machine) else {
             error = AdminError.unreachable.message
             return
         }
         defer { client.session.finishTasksAndInvalidate() }
-        working = true
-        defer { working = false }
         do {
             let shared = if let person {
                 try await client.createInvite(person: person.id, app: app.slug)
             } else {
                 try await client.createInvite(to: trimmed, app: app.slug)
             }
-            withAnimation { result = InviteResultItem(result: shared, appName: app.name) }
+            withAnimation { result = shared }
             Task { await OwnerSharing.shared.refresh(apps: registry.apps) }
         } catch let failure as AdminError {
             error = failure.message
@@ -453,19 +537,17 @@ struct InviteComposer: View {
     }
 }
 
-struct InviteResultItem: Identifiable {
-    let id = UUID()
-    var result: AdminShareResult
-    var appName: String
-}
-
-/// A fresh invite: its code for in person, and the link to send.
+/// A fresh invite: its code for in person, and the link to send. This is the link's only
+/// showing, so until it's sent or copied, closing asks first and a swipe doesn't close.
 struct InviteResultView: View {
-    let item: InviteResultItem
+    let result: AdminShareResult
+    let appName: String
     @Environment(\.dismiss) private var dismiss
     @State private var copied = false
+    @State private var sent = false
+    @State private var confirmingClose = false
 
-    private var invite: AdminInvite { item.result.invite }
+    private var invite: AdminInvite { result.invite }
 
     var body: some View {
         NavigationStack {
@@ -474,12 +556,13 @@ struct InviteResultView: View {
                     VStack(spacing: 6) {
                         Text("Invite for \(invite.to)")
                             .font(.display(.title2))
+                            .accessibilityAddTraits(.isHeader)
                         Text("Works once. Expires \(invite.expiresIn), at \(invite.expires.formatted(date: .omitted, time: .shortened)).")
                             .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.secondaryText)
                     }
                     .multilineTextAlignment(.center)
-                    if let link = item.result.link, let code = QRCode.image(for: link) {
+                    if let link = result.link, let code = QRCode.image(for: link) {
                         Image(uiImage: code)
                             .interpolation(.none)
                             .resizable()
@@ -489,25 +572,27 @@ struct InviteResultView: View {
                             .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(Color.primary.opacity(0.08)))
                             .frame(maxWidth: 260)
                             .accessibilityLabel("Invite code")
-                        Text("In person: they scan this with their iPhone camera.")
+                        Text("In person: they scan this with their phone’s camera.")
                             .font(.footnote)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.secondaryText)
                             .multilineTextAlignment(.center)
                     }
                     VStack(spacing: 10) {
-                        ShareLink(item: item.result.message, subject: Text("\(item.appName) in Ovenlight")) {
+                        ShareLink(item: result.message, subject: Text("\(appName) in Ovenlight")) {
                             Label("Send Invite", systemImage: "square.and.arrow.up")
                                 .font(.headline)
                                 .frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(.borderedProminent)
+                        .simultaneousGesture(TapGesture().onEnded { sent = true })
+                        .buttonStyle(.ovenlightProminent)
                         .buttonBorderShape(.capsule)
                         .controlSize(.large)
                         Button {
                             // A live credential: this iPhone only, and gone once the invite expires.
-                            UIPasteboard.general.setItems([["public.utf8-plain-text": item.result.link ?? ""]],
+                            UIPasteboard.general.setItems([["public.utf8-plain-text": result.link ?? ""]],
                                                           options: [.localOnly: true, .expirationDate: invite.expires])
                             copied = true
+                            sent = true
                         } label: {
                             Label(copied ? "Copied" : "Copy Link", systemImage: copied ? "checkmark" : "doc.on.doc")
                                 .fontWeight(.semibold)
@@ -518,16 +603,29 @@ struct InviteResultView: View {
                         .controlSize(.large)
                         .sensoryFeedback(.success, trigger: copied)
                     }
-                    Text("\(invite.to) can join without your approval and reaches only \(item.appName). Until it's used, the link works like a key, so send it privately.")
+                    Text("\(invite.to) can join without your approval and reaches only \(appName). Until it’s used, the link works like a key, so send it privately.")
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.secondaryText)
                         .multilineTextAlignment(.center)
                 }
                 .padding(24)
             }
+            .ovenlightGroupedBackground()
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { if sent { dismiss() } else { confirmingClose = true } }
+                }
+            }
+            .alert("Close Without Sending?", isPresented: $confirmingClose) {
+                Button("Keep", role: .cancel) {}
+                Button("Close", role: .destructive) { dismiss() }
+            } message: {
+                Text("This link won’t show again. The invite stays open until it expires, and you can cancel it in People & Sharing.")
+            }
         }
+        .interactiveDismissDisabled(!sent)
+        .holdingLinks(!sent)
     }
 }
 
@@ -547,20 +645,44 @@ struct FeedbackInbox: View {
     /// One app's feedback only: its machine and slug.
     var only: (machineID: String, slug: String)?
 
+    @EnvironmentObject private var registry: AppRegistry
     @ObservedObject private var sharing = OwnerSharing.shared
     @StateObject private var shots = ScreenshotCache()
+    @AppStorage(FeedbackInbox.seenKey) private var seenUntil: Double = 0
+
+    /// The newest feedback an inbox has shown, as seconds since 1970: the counts show only
+    /// what came after it. The connector has no read marks to keep.
+    static let seenKey = "feedbackSeenUntil"
+
+    /// How many of `items` came after what an inbox last showed.
+    nonisolated static func unseen(_ items: [AdminFeedback], seenUntil: Double) -> Int {
+        items.filter { $0.at.timeIntervalSince1970 > seenUntil }.count
+    }
+
+    /// The mark once an inbox has shown `shown`: its newest item, unless feedback it leaves
+    /// out (other apps', in one app's inbox) from before that newest came after the mark,
+    /// which no one has seen yet. Newer feedback stays counted either way.
+    nonisolated static func seenUntil(_ seenUntil: Double, showing shown: [AdminFeedback], leavingOut others: [AdminFeedback]) -> Double {
+        guard let newest = shown.map(\.at.timeIntervalSince1970).max(), newest > seenUntil,
+              unseen(others.filter { $0.at.timeIntervalSince1970 <= newest }, seenUntil: seenUntil) == 0 else { return seenUntil }
+        return newest
+    }
+
+    private var all: [(OwnerSharing.Machine, AdminFeedback)] { sharing.machines.flatMap { m in m.feedback.map { (m, $0) } } }
+
+    private func isShown(_ entry: (OwnerSharing.Machine, AdminFeedback)) -> Bool {
+        only == nil || (entry.0.id == only?.machineID && entry.1.app == only?.slug)
+    }
 
     private var items: [(OwnerSharing.Machine, AdminFeedback)] {
-        sharing.machines.flatMap { m in m.feedback.map { (m, $0) } }
-            .filter { only == nil || ($0.0.id == only?.machineID && $0.1.app == only?.slug) }
-            .sorted { $0.1.at > $1.1.at }
+        all.filter(isShown).sorted { $0.1.at > $1.1.at }
     }
 
     var body: some View {
         List {
             if items.isEmpty {
                 ContentUnavailableView("No Feedback Yet", systemImage: "exclamationmark.bubble",
-                                       description: Text("People send it with Send Feedback in an open app's menu."))
+                                       description: Text("People send it with Send Feedback in an open app’s menu."))
                     .ovenlightRows()
             }
             ForEach(items, id: \.1.id) { machine, item in
@@ -572,10 +694,10 @@ struct FeedbackInbox: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(item.note.isEmpty ? "Screenshot only" : item.note)
                                 .lineLimit(3)
-                                .foregroundStyle(item.note.isEmpty ? .secondary : .primary)
+                                .foregroundStyle(item.note.isEmpty ? Color.secondaryText : .primary)
                             Text(meta(item, on: machine))
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Color.secondaryText)
                         }
                     }
                     .padding(.vertical, 2)
@@ -586,6 +708,11 @@ struct FeedbackInbox: View {
         .ovenlightGroupedBackground()
         .navigationTitle("Feedback")
         .navigationBarTitleDisplayMode(.inline)
+        .refreshable { await sharing.refresh(apps: registry.apps) }
+        .onChange(of: items.first?.1.at, initial: true) {
+            let mark = Self.seenUntil(seenUntil, showing: items.map(\.1), leavingOut: all.filter { !isShown($0) }.map(\.1))
+            if mark != seenUntil { seenUntil = mark }
+        }
     }
 
     @ViewBuilder
@@ -632,29 +759,40 @@ private struct FeedbackDetail: View {
                     }
                 }
                 .font(.footnote)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.secondaryText)
                 if item.hasScreenshot {
-                    if let image = shots.image(item.id, .screen) {
+                    if shots.failed(item.id, .screen) {
+                        Text("Couldn’t load the screenshot.")
+                            .font(.footnote)
+                            .foregroundStyle(Color.secondaryText)
+                    } else if let image = shots.image(item.id, .screen) ?? shots.image(item.id, .thumbnail) {
+                        // The list's thumbnail, the same shape, until the sharp one arrives.
                         Image(uiImage: image)
                             .resizable()
                             .scaledToFit()
                             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                             .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color.primary.opacity(0.08)))
+                            .accessibilityLabel("Screenshot")
                     } else {
                         ProgressView().frame(maxWidth: .infinity, minHeight: 200)
                     }
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(20)
         }
+        .ovenlightGroupedBackground()
         .navigationTitle(machine.apps.first { $0.slug == item.app }?.name ?? item.app)
         .navigationBarTitleDisplayMode(.inline)
         .task { await shots.load(item.id, .screen, from: machine) }
+        // Screen-sized images are big: only the open one is kept.
+        .onDisappear { shots.drop(item.id, .screen) }
     }
 }
 
 /// Screenshots fetched from the connectors, kept while the inbox is open: small for the
-/// list, screen-sized for the one open, never at full size.
+/// list, the most recent `maxThumbnails` of them, and screen-sized for the one open only,
+/// never at full size.
 @MainActor
 final class ScreenshotCache: ObservableObject {
     /// The most pixels on the long side: a row's thumbnail, and the largest screen, rounded up.
@@ -663,28 +801,60 @@ final class ScreenshotCache: ObservableObject {
         case screen = 3000
     }
 
+    /// A row whose thumbnail went fetches it again as it scrolls back into view.
+    static let maxThumbnails = 60
+
     private struct Key: Hashable {
         var id: String
         var size: Size
     }
 
     @Published private var images: [Key: UIImage] = [:]
+    /// The last try to fetch or decode each of these failed.
+    @Published private var failures: Set<Key> = []
+    /// Oldest first.
+    private var thumbnails: [Key] = []
     private var loading: Set<Key> = []
 
     func image(_ id: String, _ size: Size) -> UIImage? { images[Key(id: id, size: size)] }
 
+    func failed(_ id: String, _ size: Size) -> Bool { failures.contains(Key(id: id, size: size)) }
+
+    func drop(_ id: String, _ size: Size) {
+        images[Key(id: id, size: size)] = nil
+    }
+
     func load(_ id: String, _ size: Size, from machine: OwnerSharing.Machine) async {
         let key = Key(id: id, size: size)
-        guard images[key] == nil, !loading.contains(key), let client = OwnerSharing.shared.client(for: machine) else { return }
+        guard images[key] == nil, !loading.contains(key) else { return }
+        guard let client = OwnerSharing.shared.client(for: machine) else {
+            failures.insert(key)
+            return
+        }
         loading.insert(key)
+        failures.remove(key)
         defer {
             loading.remove(key)
             client.session.finishTasksAndInvalidate()
         }
-        guard let data = try? await client.screenshot(id) else { return }
-        if let image = await Task.detached(operation: { Screenshot.image(from: data, maxPixels: size.rawValue) }).value {
-            images[key] = image
+        let data = try? await client.screenshot(id)
+        guard let image = await Task.detached(operation: { data.flatMap { Screenshot.image(from: $0, maxPixels: size.rawValue) } }).value else {
+            failures.insert(key)
+            return
         }
+        store(image, for: key)
+    }
+
+    private func store(_ image: UIImage, for key: Key) {
+        switch key.size {
+        case .screen:
+            images = images.filter { $0.key.size != .screen }
+        case .thumbnail:
+            thumbnails.removeAll { $0 == key }
+            thumbnails.append(key)
+            if thumbnails.count > Self.maxThumbnails { images[thumbnails.removeFirst()] = nil }
+        }
+        images[key] = image
     }
 }
 

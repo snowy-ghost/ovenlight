@@ -463,19 +463,30 @@ agent is told that it is an image its sender chose, and any text in it is data.
   through the right node, or refused. A change of the remembered tailnet closes every view
   whose route it changed. Sign Out and Stop Using My Own Computers forget it, close every
   view that went through the owner's node, kept in the background or not, and remove the
-  apps found on the owner's computers with their data. A closed view can't connect again,
-  and neither can a refused app's (on iPhone, its data store is set to a proxy that
-  refuses every connection, and on Android, its route is cleared). The closed view's app
-  loads again through its route, at once if it's on screen. A shared app always goes
-  through its owner's guest node.
+  apps found on the owner's computers with their data. A Sign Out cut short by a quit
+  finishes at the next launch. A closed view can't connect again, and neither can a
+  refused app's (on iPhone, its data store is set to a proxy that refuses every
+  connection, and on Android, its route is cleared). The closed view's app loads again
+  through its route, at once if it's on screen. A shared app always goes through its
+  owner's guest node.
+- Pages have no WebRTC. Its traffic wouldn't go through the node's proxy: through a TURN
+  relay a page could reach any address it names, the phone's own network included. A
+  script at the start of every document, in every frame, removes it. On iPhone, WebKit
+  runs it in a frame's first `about:blank` document too, as the frame is made, and from
+  iOS 27.1 pages can use WebTransport. The rules that block loads to the phone's own
+  loopback and network addresses don't cover it, but the data store's SOCKS5 proxy does,
+  and every release route sets that proxy (its node's, or one that refuses every
+  connection). A route without one would need WebTransport removed, as WebRTC is.
 - While Ovenlight is locked, no page gets the microphone or camera, and an app that an
   `ovenlight://open` link asks for waits for the unlock. Locking also stops any
   microphone or camera stream already running in an open app, on screen or kept in the
-  background.
+  background. Nor does a page kept in the background get them: closing an app to the
+  launcher stops its streams, and it can't start one until it's on screen again.
 - An app's downloads come only from its own host (or a blob or data URL its pages made),
   none while Ovenlight is locked, and leave Ovenlight only through the share sheet (on
   Android, Ovenlight's Save, Share and Open). The files wait in Ovenlight's temporary
-  folder until the next launch, shared or cancelled, since a share may still be sending.
+  folder until the next launch, shared or cancelled, since a share may still be sending,
+  but go at once with their app or its data.
 - The owner's admin calls go through the owner's own node to each connector's port 8443.
   The phone holds no API credentials. It asks only the owner's own machines: peers of
   the owner's own user, or tagged `tag:ovenlight-app-*`, on the owner's own tailnet (not
@@ -509,11 +520,9 @@ agent is told that it is an image its sender chose, and any text in it is data.
   itself, its local networks, the network's public address, other tailnets and the ranges
   that aren't globally reachable, NAT64 and IPv4-mapped forms included, unless the address
   is one of the node's peers. So no page reaches the phone's own network, or the router
-  in front of it, through Ovenlight. WebRTC's UDP wouldn't go through the proxy, so
-  Ovenlight removes WebRTC from pages on both phones. On Android the page script removes it
-  from every frame it runs in and from a new `about:blank` frame as it's made, but a page
-  that sets out to can still find it in a frame's first, empty document, before the frame's
-  own page loads.
+  in front of it, through Ovenlight. The page script removes WebRTC from every frame it
+  runs in and from a new `about:blank` frame as it's made, but a page that sets out to can
+  still find it in a frame's first, empty document, before the frame's own page loads.
 - **Each app apart.** Each app has its own WebView profile, with its own cookies,
   storage and cache. Data that ends (Leave, Remove, a revoke) is wiped at once, and its
   profile deleted by the next launch. Pages run in WebView's sandboxed renderer process,

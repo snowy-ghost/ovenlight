@@ -1,4 +1,5 @@
 import Combine
+import os
 import UIKit
 
 /// Ovenlight's place in someone else's network: a guest device, one per owner whose invite
@@ -85,12 +86,16 @@ final class MembershipStore: ObservableObject {
     /// The file is there but couldn't be read or decoded. Nothing is saved over it, and
     /// nothing may clean up after the empty list, until a reload reads it.
     private(set) var loadFailed = false
+    /// Memberships another build saved that this one can't read (see `SavedJSON.List`).
+    private var unread: [Any] = []
+    /// Every saved membership was read, so cleaning up after the list deletes only what
+    /// it means to.
+    var readInFull: Bool { !loadFailed && unread.isEmpty }
     private let fileURL: URL
     private var reloadOnUnlock: AnyCancellable?
 
     init(directory: URL? = nil) {
-        let base = directory ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Ovenlight", isDirectory: true)
+        let base = directory ?? SavedJSON.directory
         try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
         fileURL = base.appendingPathComponent("memberships.json")
         load()
@@ -104,10 +109,14 @@ final class MembershipStore: ObservableObject {
 
     private func load() {
         do {
-            memberships = try SavedJSON.read([Membership].self, from: fileURL) ?? []
+            let list = try SavedJSON.read([Membership].self, from: fileURL) ?? .init()
+            memberships = list.elements
+            unread = list.unread
             loadFailed = false
+            if !unread.isEmpty { SavedJSON.log.error("memberships: kept \(self.unread.count) this version can't read") }
         } catch {
             loadFailed = true
+            SavedJSON.log.error("memberships: couldn't read: \(String(describing: error), privacy: .public)")
         }
     }
 
@@ -136,8 +145,13 @@ final class MembershipStore: ObservableObject {
     }
 
     private func save() {
-        guard !loadFailed, let data = try? JSONEncoder().encode(memberships) else { return }
-        try? data.write(to: fileURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        guard !loadFailed else { return }
+        do {
+            try SavedJSON.encode(memberships, keeping: unread)
+                .write(to: fileURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        } catch {
+            return SavedJSON.log.error("memberships: couldn't save: \(String(describing: error), privacy: .public)")
+        }
         // An atomic write replaces the file, and with it the flag.
         var url = fileURL
         url.excludeFromBackup()
@@ -148,9 +162,34 @@ final class MembershipStore: ObservableObject {
 /// be read (before the first unlock after a restart, say) or decoded throws, and must never
 /// be taken for an empty one: the next save would write that over it.
 enum SavedJSON {
-    static func read<Element: Decodable>(_: [Element].Type, from url: URL) throws -> [Element]? {
+    /// Where Ovenlight keeps its files: `Ovenlight` in Application Support.
+    static let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("Ovenlight", isDirectory: true)
+
+    static let log = Logger(subsystem: "com.snowyghost.ovenlight", category: "storage")
+
+    /// A saved list as read.
+    struct List<Element> {
+        var elements: [Element] = []
+        /// Entries this version can't read (another build wrote them), as they were. A save
+        /// writes them back, and while there are any, nothing that deletes what the list
+        /// doesn't name may run: it would delete what they name.
+        var unread: [Any] = []
+    }
+
+    static func read<Element: Decodable>(_: [Element].Type, from url: URL) throws -> List<Element>? {
         guard let data = try read(url) else { return nil }
-        return try JSONDecoder().decode(EachDecoded<Element>.self, from: data).elements
+        let decoded = try JSONDecoder().decode(EachDecoded<Element>.self, from: data)
+        guard !decoded.skipped.isEmpty else { return List(elements: decoded.elements) }
+        let raw = try JSONSerialization.jsonObject(with: data) as? [Any] ?? []
+        return List(elements: decoded.elements, unread: decoded.skipped.filter(raw.indices.contains).map { raw[$0] })
+    }
+
+    /// `elements`, then the `unread` entries as they were read.
+    static func encode<Element: Encodable>(_ elements: [Element], keeping unread: [Any]) throws -> Data {
+        let data = try JSONEncoder().encode(elements)
+        guard !unread.isEmpty else { return data }
+        return try JSONSerialization.data(withJSONObject: (JSONSerialization.jsonObject(with: data) as? [Any] ?? []) + unread)
     }
 
     static func read(_ url: URL) throws -> Data? {
@@ -173,14 +212,18 @@ enum SavedJSON {
 /// skipped rather than costing the rest. Anything but an array still fails.
 struct EachDecoded<Element: Decodable>: Decodable {
     var elements: [Element] = []
+    /// The positions of the entries skipped.
+    var skipped: [Int] = []
 
     init(from decoder: Decoder) throws {
         var container = try decoder.unkeyedContainer()
         while !container.isAtEnd {
+            let index = container.currentIndex
             if let element = try? container.decode(Element.self) {
                 elements.append(element)
             } else {
                 _ = try container.decode(Skipped.self)
+                skipped.append(index)
             }
         }
     }
@@ -219,12 +262,5 @@ enum GuestCleanup {
                 && notInvited.contains(Discovery.normalizedHost($0.host))
                 && !claiming.contains(Discovery.normalizedHost($0.host))
         }
-    }
-
-    /// Whether a guest node that lost its login means the owner removed this iPhone: only
-    /// once it had joined, since a first join passes through NeedsLogin briefly. The caller
-    /// asks only after the state held for a moment.
-    static func isRemoved(_ membership: Membership) -> Bool {
-        membership.joined
     }
 }
