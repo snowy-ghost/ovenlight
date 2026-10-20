@@ -79,7 +79,7 @@ class SettingsViewTests {
         show { SettingsState(version = "1.0.0 (12)", useMyOwnComputers = { used = true }) }
         inEveryLook {
             assertShows(
-                "Require screen lock", "After 1 minute", "How long Ovenlight can stay in the background before it locks.",
+                "Require screen lock", "After 1 minute", "How long Ovenlight can stay in the background before it locks, if at all.",
                 "Use my own computers", "Open apps that run on your own computers. You’ll sign in once to connect them.",
                 "Support", "Contact us", "Privacy policy", "Acknowledgements", "Version", "1.0.0 (12)",
             )
@@ -253,7 +253,7 @@ class SettingsViewTests {
         show { SettingsState(noScreenLock = true, setScreenLock = { opened = true }) }
         inEveryLook {
             assertShows("Require screen lock", "Ovenlight can’t lock until this phone has a screen lock.", "Set screen lock")
-            assertLacks("How long Ovenlight can stay in the background before it locks.")
+            assertLacks("How long Ovenlight can stay in the background before it locks, if at all.")
         }
         row("Set screen lock").performClick()
         assertTrue(opened)
@@ -264,7 +264,7 @@ class SettingsViewTests {
         var state by mutableStateOf(SettingsState())
         state = state.copy(setLockAfter = { state = state.copy(lockAfterSeconds = it) })
         show { state }
-        val choices = listOf("Immediately" to 0, "After 5 minutes" to 300, "After 15 minutes" to 900, "After 1 minute" to 60)
+        val choices = listOf("Immediately" to 0, "After 5 minutes" to 300, "After 15 minutes" to 900, "Off" to LockManager.OFF, "After 1 minute" to 60)
         inEveryLook {
             for ((label, seconds) in choices) {
                 row("Require screen lock").performClick()
@@ -280,6 +280,36 @@ class SettingsViewTests {
             inDialog("Cancel").performClick()
             assertEquals(60, state.lockAfterSeconds)
         }
+    }
+
+    @Test
+    fun testOffAsksFirst() {
+        val asked = mutableListOf<String>()
+        var confirmed = false
+        var state by mutableStateOf(SettingsState())
+        state = state.copy(setLockAfter = { state = state.copy(lockAfterSeconds = it) }, confirm = { asked += it; confirmed })
+        show { state }
+        fun choose(label: String) {
+            row("Require screen lock").performClick()
+            inDialog(label).performClick()
+            composeRule.onNode(isDialog()).assertDoesNotExist()
+        }
+
+        choose("Off")
+        assertEquals(listOf("Turn off Ovenlight’s lock"), asked)
+        assertEquals("a canceled prompt keeps the delay", 60, state.lockAfterSeconds)
+        assertShows("After 1 minute")
+
+        confirmed = true
+        choose("Off")
+        assertEquals(LockManager.OFF, state.lockAfterSeconds)
+        assertShows("Off")
+        choose("Off")
+        assertEquals("choosing it again asks nothing", 2, asked.size)
+
+        choose("After 5 minutes")
+        assertEquals("back to a delay asks nothing", 2, asked.size)
+        assertEquals(300, state.lockAfterSeconds)
     }
 
     @Test

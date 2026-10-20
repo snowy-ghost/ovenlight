@@ -91,6 +91,36 @@ class LockTimingTests {
     }
 
     @Test
+    fun testOffNeverLocks() {
+        val store = MemoryStore()
+        var now = 1_000_000L
+        var boot = 7
+        fun launch() = LockManager(store, hasSavedData = { true }, now = { now }, bootCount = { boot })
+        store.putInt(LockManager.LOCK_AFTER_KEY, LockManager.OFF)
+        val lock = launch()
+        assertFalse("a launch with nothing kept", lock.isLocked.value)
+
+        lock.didEnterBackground()
+        now += 30L * 24 * 60 * 60_000
+        assertFalse("a launch a month later", launch().isLocked.value)
+        lock.willBecomeActive()
+        assertFalse("a return a month later", lock.isLocked.value)
+
+        lock.didEnterBackground()
+        now -= 60_000
+        assertFalse("the clock behind, as on a phone that can't count its boots", lock.lockIsDue)
+        boot = 8
+        assertFalse("a reboot", launch().isLocked.value)
+
+        lock.lockAfterSeconds = 60
+        assertTrue("back to a delay, a reboot locks", launch().isLocked.value)
+        boot = 7
+        now += 2 * 60_000
+        lock.willBecomeActive()
+        assertTrue("and a return after it", lock.isLocked.value)
+    }
+
+    @Test
     fun testAnEmptyNodeFolderOrListIsNothingToLock() {
         val ovenlight = File(temp.root, "Ovenlight").apply { mkdirs() }
         val nodes = File(temp.root, "tailscale")

@@ -71,8 +71,8 @@ class LockManager(
             if (value == null) store.remove(BACKGROUNDED_AT_KEY) else store.putString(BACKGROUNDED_AT_KEY, "${bootCount()} $value")
         }
 
-    /** A launch locks unless Ovenlight went to the background unlocked within the timeout. */
-    private val locked = MutableStateFlow(hasSavedData() && (backgroundedAt == null || lockIsDue))
+    /** A launch locks unless the lock is off or Ovenlight went to the background unlocked within the timeout. */
+    private val locked = MutableStateFlow(hasSavedData() && lockAfterSeconds != OFF && (backgroundedAt == null || lockIsDue))
     val isLocked: StateFlow<Boolean> = locked
 
     private val authenticating = MutableStateFlow(false)
@@ -84,7 +84,7 @@ class LockManager(
     private val withoutScreenLock = MutableStateFlow(false)
     val noPasscode: StateFlow<Boolean> = withoutScreenLock
 
-    /** Seconds in the background before Ovenlight locks again. 0 locks every time. */
+    /** Seconds in the background before Ovenlight locks again. 0 locks every time, [OFF] never. */
     var lockAfterSeconds: Int
         get() = store.getInt(LOCK_AFTER_KEY, DEFAULT_LOCK_AFTER)
         set(value) = store.putInt(LOCK_AFTER_KEY, value)
@@ -105,7 +105,7 @@ class LockManager(
     val lockIsDue: Boolean
         get() {
             val since = backgroundedAt ?: return false
-            if (!hasSavedData()) return false
+            if (!hasSavedData() || lockAfterSeconds == OFF) return false
             val elapsed = now() - since
             return elapsed < 0 || elapsed >= lockAfterSeconds * 1000L
         }
@@ -174,5 +174,7 @@ class LockManager(
         const val LOCK_AFTER_KEY = "lockAfterSeconds"
         const val BACKGROUNDED_AT_KEY = "lockBackgroundedAt"
         const val DEFAULT_LOCK_AFTER = 60
+        /** Never locks. Read as a delay, it's the longest. */
+        const val OFF = Int.MAX_VALUE
     }
 }
