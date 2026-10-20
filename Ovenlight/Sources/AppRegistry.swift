@@ -269,7 +269,7 @@ final class AppRegistry: ObservableObject {
     func refreshMetadata(for id: UUID) async {
         guard let app = apps.first(where: { $0.id == id }), let session = session(app) else { return }
         if app.hasConnector, let url = URL(string: "https://\(app.host)\(OvenlightManifest.path)"),
-           let (data, _) = try? await session.data(from: url), let manifest = OvenlightManifest.parse(data),
+           let data = await Self.body(from: url, in: session), let manifest = OvenlightManifest.parse(data),
            let index = apps.firstIndex(where: { $0.id == id }) {
             var updated = apps[index]
             if updated.hasDefaultName { updated.name = manifest.name }
@@ -282,12 +282,11 @@ final class AppRegistry: ObservableObject {
             }
             return
         }
-        guard let (data, _) = try? await session.data(from: app.startURL) else { return }
+        guard let data = await Self.body(from: app.startURL, in: session) else { return }
         let html = String(decoding: data, as: UTF8.self)
         let links = ManifestParser.links(inHTML: html, baseURL: app.startURL)
         var meta = ManifestParser.Metadata(name: ManifestParser.title(inHTML: html))
-        if let manifestURL = links.manifest,
-           let (data, _) = try? await session.data(from: manifestURL) {
+        if let manifestURL = links.manifest, let data = await Self.body(from: manifestURL, in: session) {
             let fromManifest = ManifestParser.metadata(fromManifest: data, manifestURL: manifestURL)
             meta.name = fromManifest.name ?? meta.name
             meta.themeColorHex = fromManifest.themeColorHex
@@ -308,7 +307,7 @@ final class AppRegistry: ObservableObject {
 
     private func saveIcon(from url: URL, for id: UUID) async {
         guard let app = apps.first(where: { $0.id == id }), let session = session(app),
-              let (data, _) = try? await session.data(from: url),
+              let data = await Self.body(from: url, in: session),
               let image = await Task.detached(operation: { Self.iconImage(from: data) }).value, let png = image.pngData(),
               let index = apps.firstIndex(where: { $0.id == id }) else { return }
         let file = "\(id.uuidString).png"
@@ -319,6 +318,14 @@ final class AppRegistry: ObservableObject {
         icons[file] = image
         apps[index].iconFile = file
         save()
+    }
+
+    /// Only a 2xx answer counts. A redirect to an address comes back as itself, and its page,
+    /// like an error page, says nothing about the app.
+    private static func body(from url: URL, in session: URLSession) async -> Data? {
+        guard let (data, response) = try? await session.data(from: url),
+              let status = (response as? HTTPURLResponse)?.statusCode, (200..<300).contains(status) else { return nil }
+        return data
     }
 
     func refreshAllMissingIcons() async {

@@ -627,6 +627,29 @@ final class AppRegistryTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: file.path), "nothing saved")
         XCTAssertEqual(changes, 0, "nothing redrawn")
     }
+
+    /// A redirect to an address comes back as the 302 itself. Its page, like an error's, never
+    /// names an app, colors it or gives it an icon, and neither does a 302 for ovenlight.json.
+    func testOnlyA2xxAnswerFillsInAnApp() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let apps = ["moved", "moved-connector", "broken", "notes"].map { label in
+            let url = URL(string: "https://\(label).tailabc123.ts.net/")!
+            return WebApp(name: url.host!, startURL: url, discovered: label == "moved-connector")
+        }
+        try JSONEncoder().encode(apps).write(to: dir.appendingPathComponent("apps.json"))
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [StatusProtocol.self]
+        let session = URLSession(configuration: config)
+        defer { session.invalidateAndCancel() }
+        let registry = AppRegistry(directory: dir, session: { _ in session })
+
+        for app in apps { await registry.refreshMetadata(for: app.id) }
+        XCTAssertEqual(registry.apps.map(\.name), ["moved.tailabc123.ts.net", "moved-connector.tailabc123.ts.net", "Notes", "Notes App"])
+        XCTAssertEqual(registry.apps.map(\.themeColorHex), [nil, nil, nil, "#e05a00"])
+        XCTAssertEqual(registry.apps.map { $0.iconFile != nil }, [false, false, false, true])
+    }
 }
 
 @MainActor
@@ -1151,6 +1174,34 @@ private final class SlowHostProtocol: URLProtocol {
         client?.urlProtocol(self, didReceive: HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!,
                             cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: Data(#"{"name":"Coach","version":1}"#.utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
+}
+
+/// Serves an app's page, manifest, ovenlight.json and icon, each an answer that would fill the
+/// app in. On a `moved` host every answer is a 302, and on `broken` all but the page are a 404.
+private final class StatusProtocol: URLProtocol {
+    static let icon = UIGraphicsImageRenderer(size: CGSize(width: 8, height: 8)).pngData { context in
+        context.fill(CGRect(x: 0, y: 0, width: 8, height: 8))
+    }
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        guard let url = request.url, let host = url.host else { return }
+        let status = host.hasPrefix("moved") ? 302 : host.hasPrefix("broken") && url.path != "/" ? 404 : 200
+        let body = switch url.path {
+        case OvenlightManifest.path: Data(##"{"name":"Notes App","version":1,"themeColor":"#e05a00"}"##.utf8)
+        case "/manifest.json": Data(##"{"name":"Notes App","theme_color":"#e05a00"}"##.utf8)
+        case "/icon.png": Self.icon
+        default: Data(#"<title>Notes</title><link rel="manifest" href="/manifest.json"><link rel="apple-touch-icon" href="/icon.png">"#.utf8)
+        }
+        client?.urlProtocol(self, didReceive: HTTPURLResponse(url: url, statusCode: status, httpVersion: nil, headerFields: nil)!,
+                            cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: body)
         client?.urlProtocolDidFinishLoading(self)
     }
 
