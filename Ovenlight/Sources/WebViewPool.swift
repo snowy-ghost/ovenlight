@@ -1053,14 +1053,11 @@ struct PageDialogs {
     /// A page's text as its dialog shows it, cut at `maxText` without splitting a character.
     static func cut(_ text: String) -> String {
         guard text.utf16.count > maxText else { return text }
-        var end = text.startIndex
-        var units = 0
-        for character in text {
-            units += character.utf16.count
-            if units > maxText { break }
-            end = text.index(after: end)
-        }
-        return text[..<end] + "\u{2026}"
+        var room = maxText
+        return String(text.prefix { character in
+            room -= character.utf16.count
+            return room >= 0
+        }) + "\u{2026}"
     }
 }
 

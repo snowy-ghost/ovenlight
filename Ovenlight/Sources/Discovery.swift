@@ -117,7 +117,7 @@ enum Discovery {
 
     /// Fetches every candidate's manifest concurrently. `firstAnswer` runs as the first host
     /// answers, which proves the path, without waiting for a machine that drops the probe.
-    static func probe(hosts: [String], session: URLSession?, firstAnswer: @MainActor () -> Void = {}) async -> Outcome {
+    static func probe(hosts: [String], session: URLSession?, firstAnswer: @MainActor () -> Void) async -> Outcome {
         guard let session, !hosts.isEmpty else { return Outcome() }
         return await withTaskGroup(of: (String, Data?, Bool).self) { group in
             for host in hosts {

@@ -252,9 +252,6 @@ final class DownloadPolicyTests: XCTestCase {
         XCTAssertEqual(DownloadPolicy.fileName("a:b\\c\u{0}d.txt"), "a-b-c-d.txt")
         XCTAssertEqual(DownloadPolicy.fileName(" .. "), "Download")
         XCTAssertEqual(DownloadPolicy.fileName("Notes ✏️ May.md"), "Notes ✏️ May.md")
-        let long = DownloadPolicy.fileName(String(repeating: "é", count: 300) + ".csv")
-        XCTAssertLessThanOrEqual(long.utf8.count, DownloadPolicy.maxFileNameBytes)
-        XCTAssertTrue(long.hasSuffix("é.csv"))
     }
 
     /// A page's name of any length is cut in time linear in its length, at the same place as

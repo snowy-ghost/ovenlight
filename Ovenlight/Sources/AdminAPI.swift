@@ -442,6 +442,11 @@ enum AdminError: Error, Equatable {
         case .failed(let message): return message.prefix(1).uppercased() + message.dropFirst()
         }
     }
+
+    /// The connector's words, or that the computer didn't answer.
+    static func message(for failure: Error) -> String {
+        (failure as? AdminError)?.message ?? unreachable.message
+    }
 }
 
 /// Talks to one connector's admin API through the owner's own node.

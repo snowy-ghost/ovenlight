@@ -345,7 +345,7 @@ struct SharingAppView: View {
             let result = try await client.removeGuest(person, app: slug)
             error = result.errors?.first
         } catch {
-            show(error)
+            self.error = AdminError.message(for: error)
         }
         await sharing.refresh(apps: registry.apps)
     }
@@ -361,14 +361,9 @@ struct SharingAppView: View {
             _ = try await client.cancelInvite(invite.id)
             error = nil
         } catch {
-            show(error)
+            self.error = AdminError.message(for: error)
         }
         await sharing.refresh(apps: registry.apps)
-    }
-
-    /// As People shows it: the connector's words, or that the computer didn't answer.
-    private func show(_ failure: Error) {
-        error = (failure as? AdminError)?.message ?? AdminError.unreachable.message
     }
 }
 
@@ -529,10 +524,8 @@ struct InviteComposer: View {
             }
             withAnimation { result = shared }
             Task { await OwnerSharing.shared.refresh(apps: registry.apps) }
-        } catch let failure as AdminError {
-            error = failure.message
         } catch {
-            self.error = AdminError.unreachable.message
+            self.error = AdminError.message(for: error)
         }
     }
 }

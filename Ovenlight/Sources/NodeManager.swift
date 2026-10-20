@@ -729,7 +729,7 @@ enum GuestProbe {
     }
 
     /// `firstAnswer` as in `Discovery.probe`.
-    static func probe(hosts: [String], session: URLSession?, firstAnswer: @MainActor () -> Void = {}) async -> Outcome {
+    static func probe(hosts: [String], session: URLSession?, firstAnswer: @MainActor () -> Void) async -> Outcome {
         guard let session, !hosts.isEmpty else { return Outcome() }
         return await withTaskGroup(of: (String, Reach, String?).self) { group in
             for host in hosts {
