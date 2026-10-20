@@ -78,6 +78,15 @@ final class ManifestParserTests: XCTestCase {
             XCTAssertLessThan(ContinuousClock.now - start, .seconds(2), tag)
         }
     }
+
+    /// An icon whose address is thousands of `..` segments is skipped, as on Android, where
+    /// dropping them took seconds.
+    func testAnIconAddressOfEndlessDotSegmentsIsSkipped() {
+        let src = String(repeating: "a/", count: 120_000) + String(repeating: "../", count: 120_000) + "icon.png"
+        let manifest = #"{"icons":[{"src":"\#(src)","sizes":"512x512"},{"src":"ok.png","sizes":"192x192"}]}"#
+        let meta = ManifestParser.metadata(fromManifest: Data(manifest.utf8), manifestURL: base)
+        XCTAssertEqual(meta.iconURL?.absoluteString, "https://alex-mac.example.ts.net:8443/ok.png")
+    }
 }
 
 final class NavigationPolicyTests: XCTestCase {

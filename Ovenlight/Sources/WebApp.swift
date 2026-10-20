@@ -117,7 +117,7 @@ enum ManifestParser {
         for tag in matches(of: "<link\\b[^<>]*>", in: html) {
             guard let rel = attribute("rel", in: tag)?.lowercased(),
                   let href = attribute("href", in: tag),
-                  let url = URL(string: href, relativeTo: baseURL)?.absoluteURL, isOnHost(url, of: baseURL) else { continue }
+                  let url = resolve(href, against: baseURL), isOnHost(url, of: baseURL) else { continue }
             let rels = rel.split(separator: " ")
             if manifest == nil, rels.contains("manifest") { manifest = url }
             if touchIcon == nil, rels.contains("apple-touch-icon") { touchIcon = url }
@@ -145,7 +145,7 @@ enum ManifestParser {
         var best: (size: Int, url: URL)?
         for icon in (json["icons"] as? [[String: Any]]) ?? [] {
             guard let src = icon["src"] as? String,
-                  let url = URL(string: src, relativeTo: manifestURL)?.absoluteURL, isOnHost(url, of: manifestURL) else { continue }
+                  let url = resolve(src, against: manifestURL), isOnHost(url, of: manifestURL) else { continue }
             // UIImage can't decode SVG; skip it and anything declared as non-raster.
             if let type = icon["type"] as? String, type.contains("svg") { continue }
             if url.pathExtension.lowercased() == "svg" { continue }
@@ -155,6 +155,13 @@ enum ManifestParser {
             if best == nil || score > best!.size { best = (score, url) }
         }
         return Metadata(name: name, themeColorHex: theme, iconURL: best?.url)
+    }
+
+    /// A link resolved against `base`, or nil past 2 KB, which no icon's or manifest's address
+    /// reaches: as on Android, a page's endless run of `..` segments then costs nothing on any
+    /// iOS version.
+    static func resolve(_ reference: String, against base: URL) -> URL? {
+        reference.utf8.count <= 2048 ? URL(string: reference, relativeTo: base)?.absoluteURL : nil
     }
 
     private static func isOnHost(_ url: URL, of base: URL) -> Bool {

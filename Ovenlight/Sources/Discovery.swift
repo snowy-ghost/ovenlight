@@ -30,7 +30,7 @@ struct DiscoveredApp: Equatable {
 
     /// The icon, only when it stays on the app's own host (the node can only reach that).
     var iconURL: URL? {
-        guard let path = manifest.icon, let url = URL(string: path, relativeTo: startURL)?.absoluteURL,
+        guard let path = manifest.icon, let url = ManifestParser.resolve(path, against: startURL),
               url.host?.lowercased() == host else { return nil }
         return url
     }
