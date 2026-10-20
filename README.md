@@ -10,12 +10,9 @@
 </p>
 
 <p align="center">
-  <a href="https://apps.apple.com/app/id6817561066"><picture>
-    <source media="(prefers-color-scheme: dark)" srcset="site/images/app-store-badge-white.svg">
-    <img align="absmiddle" src="site/images/app-store-badge-black.svg" width="150" height="50" alt="Download on the App Store">
-  </picture></a>
+  <a href="https://apps.apple.com/app/id6817561066"><img align="absmiddle" src="site/images/app-store-badge-black.svg" width="150" height="50" alt="Download on the App Store"></a>
   <a href="https://play.google.com/store/apps/details?id=com.snowyghost.ovenlight"><img align="absmiddle" src="site/images/google-play-badge.png" width="194" height="75" alt="Get it on Google Play"></a><br>
-  <sub>Got an invite? Install Ovenlight, then open your link again. Here's
+  <sub>Got an invite? Once Ovenlight is on your phone, open your invite link again. Here's
   <a href="https://ovenlight.app/privacy#inviter">what the person who invited you sees</a>.</sub>
 </p>
 
@@ -81,8 +78,8 @@ Once your computer is [set up](#get-started) and your agent
   Face&nbsp;ID or your fingerprint, opens them all.
 - **Private, free and open source.** There's no Ovenlight account, no analytics and no
   ads. Phones reach your computer over a Tailscale connection built into Ovenlight, never
-  through servers of ours. No phone needs a VPN or the Tailscale app. Ovenlight, for
-  iPhone and Android, and the connector are free, under the Apache License 2.0. It's made
+  through servers of ours. No phone needs a VPN or the Tailscale app. The iPhone and
+  Android apps and the connector are free, under the Apache License 2.0. It's made
   by Dimitri Cole at [Snowy Ghost](https://snowyghost.com).
 
 ## Why not a VPN, a tunnel or the cloud?
@@ -131,7 +128,7 @@ When you share an app, your friend's phone joins your tailnet as a guest device.
   Windows 11 PC. A laptop must stay open, since closing its lid puts it to sleep, and
   Windows sleeps when idle until you
   [turn that off](docs/connector.md#what-the-computer-needs).
-- **An iPhone with iOS 18.1 or later, or an Android phone with Android 10 or later,** and
+- **An iPhone with iOS 18.1 or later, or a phone with Android 10 or later,** and
   Ovenlight from the [App Store](https://apps.apple.com/app/id6817561066) or
   [Google Play](https://play.google.com/store/apps/details?id=com.snowyghost.ovenlight), for
   you and for everyone you share with.
@@ -255,8 +252,8 @@ everyone can add to) and says how to run and publish it.
 
 ### 4. Open it on your phone
 
-In Ovenlight, choose Use My Own Computers, tap Connect and sign in with the same Tailscale
-account. If you've already joined someone else's app, Use My Own Computers is in Settings,
+In Ovenlight, choose Use my own computers, tap Connect and sign in with the same Tailscale
+account. If you've already joined someone else's app, Use my own computers is in Settings,
 under the More button. If your tailnet has device approval on, approve the phone and the
 app (listed as `recipe-box`) in the
 [admin console](https://console.tailscale.com/admin/machines). Your apps then appear on
@@ -334,7 +331,7 @@ Share.
 
 `ovenlight guests` lists who has access, when each guest last opened your apps, and the
 open invites. `ovenlight revoke Sam` removes Sam from every app at once. From inside the app, Sam can send you a note and a
-screenshot with Send Feedback, and `ovenlight feedback` lists what arrives.
+screenshot with Send feedback, and `ovenlight feedback` lists what arrives.
 [docs/connector.md](docs/connector.md#share-an-app) covers the rest, such as token expiry,
 removing someone from one app and unpublishing a shareable app, and
 [docs/security.md](docs/security.md#the-policy-change) explains the policy change.
@@ -401,8 +398,8 @@ what an app must do to stay safe.
 ## License
 
 Snowy Ghost LLC licenses Ovenlight, this version and every earlier one, under the [Apache
-License 2.0](LICENSE); see also [NOTICE](NOTICE). Ovenlight, for iPhone and Android, and
-the connector include third-party code under their own licenses, listed in each release's
+License 2.0](LICENSE); see also [NOTICE](NOTICE). The iPhone and Android apps
+and the connector include third-party code under their own licenses, listed in each release's
 `THIRD_PARTY_NOTICES.txt` and in the app under Settings, Acknowledgements.
 
 Snowy Ghost LLC also licenses two things under [MIT-0](https://spdx.org/licenses/MIT-0.html),
@@ -414,8 +411,7 @@ badge is Google's, used under Google's.
 
 Ovenlight and the Ovenlight icon are trademarks of Snowy Ghost LLC. The licenses above give
 no right to use them except to say where the software comes from, so a changed version you
-distribute needs its own name and icon. Ovenlight works with Tailscale and isn't
-affiliated with Tailscale Inc.
+distribute needs its own name and icon.
 
 ## Contributing
 
