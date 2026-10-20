@@ -1145,9 +1145,15 @@ enum DownloadPolicy {
             .trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: ".")))
         let ext = (name as NSString).pathExtension
         let keepsExtension = !ext.isEmpty && ext.utf8.count <= 16
-        while name.utf8.count > maxFileNameBytes {
+        if name.utf8.count > maxFileNameBytes {
+            let suffix = keepsExtension ? "." + ext : ""
             let stem = keepsExtension ? (name as NSString).deletingPathExtension : name
-            name = String(stem.dropLast()) + (keepsExtension ? "." + ext : "")
+            // Whole characters from the start, as many as fit: one pass, however long the name.
+            var room = maxFileNameBytes - suffix.utf8.count
+            name = String(stem.prefix { character in
+                room -= character.utf8.count
+                return room >= 0
+            }) + suffix
         }
         return name.isEmpty ? "Download" : name
     }

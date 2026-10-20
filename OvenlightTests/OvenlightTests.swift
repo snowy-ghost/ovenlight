@@ -248,6 +248,19 @@ final class DownloadPolicyTests: XCTestCase {
         XCTAssertTrue(long.hasSuffix("é.csv"))
     }
 
+    /// A page's name of any length is cut in time linear in its length, at the same place as
+    /// before: whole characters, the extension kept. Cut a character a pass, a name of 100,000
+    /// letters held the main actor for over a minute.
+    func testALongNameIsCutWithoutStalling() {
+        func letters(_ count: Int) -> String { String(repeating: "a", count: count) }
+        XCTAssertEqual(DownloadPolicy.fileName(String(repeating: "é", count: 300) + ".csv"), String(repeating: "é", count: 98) + ".csv")
+        XCTAssertEqual(DownloadPolicy.fileName(letters(184) + "🇬🇧🇬🇧.txt"), letters(184) + "🇬🇧.txt")
+        XCTAssertEqual(DownloadPolicy.fileName(letters(190) + "🇬🇧.txt"), letters(190) + ".txt")
+        let start = ContinuousClock.now
+        XCTAssertEqual(DownloadPolicy.fileName(letters(100_000) + ".txt"), letters(196) + ".txt")
+        XCTAssertLessThan(ContinuousClock.now - start, .seconds(2))
+    }
+
     func testAFailedDownloadIsNamedOnlyByARealFileName() {
         func notice(_ url: String) -> String { DownloadPolicy.failedNotice(DownloadPolicy.name(in: URL(string: url))) }
         XCTAssertEqual(notice("https://coach.example.com/exports/report.pdf"), "Couldn’t download report.pdf")
