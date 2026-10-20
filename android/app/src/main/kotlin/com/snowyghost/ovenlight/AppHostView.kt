@@ -167,7 +167,9 @@ private fun AppPageView(model: AppModel, page: AppPage, app: WebApp, origin: Tra
         gate == AppLoadGate.Unreachable -> Cover.CantReach(ConnectionCopy.cantReachDetail(app, refused = appNode == null, neverConnected = neverConnected))
         else -> Cover.Placeholder
     }
-    StatusBarIcons(band)
+    // Behind three-button navigation: the page's background, or the covers' until it shows.
+    val behindButtons = if (showing == Cover.None) color(look.background) ?: plain else plain
+    SystemBarIcons(band, behindButtons)
     Box(Modifier.backShrink(back, origin).fillMaxSize().background(color(look.background) ?: plain)) {
         // No page runs under the status bar or the handle, which lives in this band.
         Box(Modifier.fillMaxWidth().background(band).windowInsetsPadding(chromeTop).height(ChromeHandleHeight))
@@ -242,18 +244,23 @@ private sealed interface Cover {
     data class Node(val action: NodeActionOverlay.Action) : Cover
 }
 
-/** The status bar's icons over [band], the color Ovenlight paints behind them. */
+/** The status bar's icons over [band], and the navigation bar's over [behindButtons]: the colors behind them. */
 @Composable
-private fun StatusBarIcons(band: Color) {
+private fun SystemBarIcons(band: Color, behindButtons: Color) {
     val view = LocalView.current
     val dark = isSystemInDarkTheme()
     // enableEdgeToEdge sets the icons again on a configuration change, so they're set after it.
     val configuration = LocalConfiguration.current
     val light = band.isLight()
-    DisposableEffect(light, dark, configuration) {
+    val buttonsLight = behindButtons.isLight()
+    DisposableEffect(light, buttonsLight, dark, configuration) {
         val bars = view.context.componentActivity()?.window?.let { WindowCompat.getInsetsController(it, view) }
         bars?.isAppearanceLightStatusBars = light
-        onDispose { bars?.isAppearanceLightStatusBars = !dark }
+        bars?.isAppearanceLightNavigationBars = buttonsLight
+        onDispose {
+            bars?.isAppearanceLightStatusBars = !dark
+            bars?.isAppearanceLightNavigationBars = !dark
+        }
     }
 }
 

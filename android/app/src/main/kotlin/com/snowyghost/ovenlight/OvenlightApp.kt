@@ -131,6 +131,9 @@ class AppModel(context: Context) {
     val composer = MutableStateFlow<InviteComposer?>(null)
     /** The router's sheet showing in a Custom Tab, kept with the process so a recreated activity returns from it. */
     var openTab: RootSheet? = null
+
+    /** Last session's downloads and captures are gone, once a process (see MainActivity.onCreate). */
+    var shelfEmptied = false
     val lifecycle = AppLifecycle(
         scope, SystemClock::elapsedRealtime, setAway = {
             nodes.pollingPaused = it
@@ -141,6 +144,27 @@ class AppModel(context: Context) {
 
     /** Missing icons being fetched, each app's once its node is connected; the next return starts over. */
     private var iconRefresh: Job? = null
+
+    /** The last link that came while Send feedback held work it would lose (see [handleLink]). */
+    private var heldLink: URI? = null
+
+    /**
+     * A link from outside, which opens a screen or another app and so closes the open one: while
+     * its Send feedback has a send under way or a note (see [FeedbackDraft.holdsLinks]), the link
+     * waits until that closes, however it closes, as on iOS.
+     */
+    fun handleLink(url: URI) {
+        val feedback = router.openApp.value?.let { pool.feedback(it.id) }
+        if (feedback?.value?.holdsLinks != true) return router.handle(url, registry.apps)
+        if (heldLink == null) {
+            scope.launch {
+                feedback.first { it == null }
+                heldLink?.let { router.handle(it, registry.apps) }
+                heldLink = null
+            }
+        }
+        heldLink = url
+    }
 
     init {
         nodes.canHear = { TailnetCore.online.value && !lifecycle.inExcursion }

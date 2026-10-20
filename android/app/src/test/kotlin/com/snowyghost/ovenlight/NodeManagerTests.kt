@@ -324,6 +324,23 @@ class NodeManagerTests {
         assertEquals("and each minute after, while its tile is on the launcher", stopped + 2, asks("notes"))
     }
 
+    /** With nothing answering, as with the connector's Mac asleep and only a PC online, the owner's node looks once a minute, not at every poll. */
+    @Test
+    fun testALookThatFindsNothingWaitsAMinute() = runTest {
+        val clients = FakeClients()
+        val nodes = manager(clients)
+        val looks = mutableListOf<Long>()
+        clients.respond = { request -> if (request.url.host == "laptop.tailabc123.ts.net") looks += testScheduler.currentTime; null }
+        clients.status[Membership.ownerID] = status("Running", self = ownerSelf, peers = laptop)
+        nodes.enableOwner()
+        advanceTimeBy(30_000)
+        assertEquals(NodeState.Ready, nodes.owner.state.value)
+        val ready = looks.size
+        advanceTimeBy(180_000)
+        val gaps = looks.drop(ready - 1).zipWithNext { a, b -> b - a }
+        assertTrue("a look each minute while Ready: $gaps", gaps.size in 2..3 && gaps.all { it > 60_000 })
+    }
+
     /** A probe canceled under way, as when its app's screen closes, says nothing about the host. */
     @Test
     fun testACanceledProbeLeavesTheHostsAnswer() = runTest {

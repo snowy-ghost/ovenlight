@@ -77,6 +77,8 @@ class GuestManager(
         node.onLoginLost = {
             if (store[id]?.joined == true) {
                 log("$id: the owner removed this device")
+                // Its waiting invites' phases go with them, as in leave.
+                mutablePhases.value -= store[id]?.pendingClaims.orEmpty().map { it.invite.invite }.toSet()
                 store.update(id) { it.copy(pendingClaims = emptyList()) }
                 val apps = registry.apps.filter { it.membershipID == id }
                 if (apps.isEmpty()) scope.launch { nodes.removeGuest(id) } else accessEnded(apps)

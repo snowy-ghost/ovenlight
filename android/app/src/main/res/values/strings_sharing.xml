@@ -32,7 +32,7 @@
     <string name="sharing_open_invites">Open invites</string>
     <string name="sharing_invite_for">For %1$s</string>
     <string name="sharing_unused">Unused, expires %1$s</string>
-    <string name="sharing_review_unused">Review invite, unused, expires %1$s</string>
+    <string name="sharing_review_invite">Review invite, expires %1$s</string>
     <string name="sharing_cancel_invite">Cancel invite</string>
     <string name="sharing_remove_from_app_message">%1$s can’t open %2$s anymore, on any device. Each of their devices is also removed from your Tailscale network unless it has another of your apps.</string>
 

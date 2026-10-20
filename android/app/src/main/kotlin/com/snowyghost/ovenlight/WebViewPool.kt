@@ -45,8 +45,6 @@ class WebViewPool(
     private val maxLive = maxLive(context)
 
     init {
-        DownloadShelf.emptyAtLaunch(context)
-        CaptureFileProvider.emptyAtLaunch(context)
         nodes.onLoggingOut = { node -> discard { it.node === node } }
         nodes.onOwnerSuffixChanged = ::discardStaleRoutes
     }
@@ -103,6 +101,9 @@ class WebViewPool(
 
     /** Where opening the app got, while it has a page, for Report a Problem (see [MailDraft.opening]). */
     fun opening(id: UUID): String? = pages[id]?.let { MailDraft.opening(it.gate.value, it.loadFailure) }
+
+    /** [id]'s Send feedback, while its page is live. */
+    fun feedback(id: UUID): StateFlow<FeedbackDraft?>? = pages[id]?.feedback
 
     /** Every app but [open] is closed, so its Send feedback goes. */
     fun appClosed(open: UUID?) {

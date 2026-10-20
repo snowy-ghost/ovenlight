@@ -7,6 +7,7 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
@@ -168,7 +169,7 @@ class SharingViewTests {
         text("2 devices · opened today").assertIsDisplayed()
         text("1 device · opened yesterday").assertIsDisplayed()
         text("Unused, expires tomorrow").assertIsDisplayed()
-        text("Review invite, unused, expires ${machine.guests.invites[1].expiresIn}").assertIsDisplayed()
+        text("Review invite, expires ${machine.guests.invites[1].expiresIn}").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Sam options").performClick()
         composeRule.onNodeWithText("Add a device for Sam").assertIsDisplayed()
         composeRule.onNodeWithText("Remove Sam").performClick()
@@ -238,6 +239,7 @@ class SharingViewTests {
         composeRule.waitForIdle()
         assertEquals(listOf("Remove 2 people"), confirmed)
         assertEquals(setOf("DELETE /v1/guests/p1?by=person", "DELETE /v1/guests/p2?by=person"), requests.map { it.line() }.toSet())
+        assertEquals("listed again once, after both", 1, refreshes)
         composeRule.onNodeWithText("People").assertIsDisplayed()
     }
 
@@ -259,7 +261,10 @@ class SharingViewTests {
         assertEquals("the device that joined first", listOf("DELETE /v1/guests/n1"), requests.map { it.line() })
     }
 
-    /** Android's composer stays over the link's screen while it holds links (MainActivity.receive). */
+    /**
+     * Android's composer stays over the link's screen while it holds links (MainActivity.receive),
+     * and Send feedback with a send under way or a note keeps the link until it closes (AppModel.handleLink).
+     */
     @Test
     fun testALinkWaitsForUnsentWork() {
         val composer = InviteComposer(machine, club)
@@ -271,6 +276,17 @@ class SharingViewTests {
         assertTrue("its link shows only once", composer.holdsLinks)
         composer.linkUsed = true
         assertFalse("then the link goes on", composer.holdsLinks)
+
+        val draft = FeedbackDraft(screenshot = null, pageURL = null)
+        assertFalse("Send feedback with no note gives way", draft.holdsLinks)
+        draft.note.setTextAndPlaceCursorAtEnd("The chapter list stops scrolling.")
+        assertTrue("a note stays", draft.holdsLinks)
+        draft.result = FeedbackResult.Sent
+        assertFalse("sent, it gives way", draft.holdsLinks)
+        draft.note.setTextAndPlaceCursorAtEnd(" ")
+        draft.result = null
+        draft.sending = true
+        assertTrue("a send under way stays", draft.holdsLinks)
     }
 
     @Test
@@ -342,6 +358,22 @@ class SharingViewTests {
         composeRule.onNodeWithText("Share Book Club…").assertIsDisplayed()
         composeRule.runOnIdle { place.pages.removeAt(place.pages.lastIndex) }
         composeRule.onNodeWithText("Apps").assertIsDisplayed()
+    }
+
+    /** Android only: the lock takes the screen apart, and its page comes back scrolled as it was. */
+    @Test
+    @Config(qualifiers = "w411dp-h480dp")
+    fun testAPageComesBackScrolledAfterTheLock() {
+        val place = SharingPlace(SharingPage.App(machine.id, "book-club"))
+        var locked by mutableStateOf(false)
+        composeRule.setContent { OvenlightTheme { if (!locked) SharingScreen(state(), place, onClose = {}, scope = rememberCoroutineScope()) } }
+        val offset = { composeRule.onNode(hasScrollAction()).fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange].value() }
+        text("Review invite, expires ${machine.guests.invites[1].expiresIn}")
+        val scrolled = offset()
+        assertTrue(scrolled > 0f)
+        composeRule.runOnIdle { locked = true }
+        composeRule.runOnIdle { locked = false }
+        assertEquals(scrolled, offset())
     }
 
     /** The link shows only once, so closing a new invite before it's sent or copied asks first. */

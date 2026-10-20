@@ -146,7 +146,7 @@ object SharingList {
         return "Your shareable apps and your guests’ devices use $share in your Tailscale network. Tailscale’s plans include a set number and charge for more."
     }
 
-    /** How many of [feedback] are newer than [seen], the newest the full inbox showed when last opened: all of them before it ever was. */
+    /** How many of [feedback] are newer than [seen], the newest an inbox showed when last opened: all of them before it ever was. */
     fun newFeedback(feedback: List<AdminFeedback>, seen: Instant?): Int = feedback.count { seen == null || it.at > seen }
 
     /** Where [seen] is kept, iOS's name for it. */
@@ -172,7 +172,7 @@ data class SharingState(
     /** Goes up with each icon saved, so a refreshed icon redraws. */
     val iconRevisions: Map<UUID, Int> = emptyMap(),
     val icon: (WebApp) -> Bitmap? = { null },
-    /** The newest feedback the inbox showed when last opened (see [SharingList.newFeedback]). */
+    /** The newest feedback an inbox showed when last opened (see [SharingList.newFeedback]). */
     val feedbackSeen: Instant? = null,
     val seeFeedback: (Instant) -> Unit = {},
     val refresh: suspend () -> Unit = {},
@@ -185,16 +185,21 @@ data class SharingState(
     val openLink: (URI) -> Unit = {},
 ) {
     /**
-     * Asks [machine]'s connector for a change and lists again: the connector's first problem, or
-     * Couldn't reach when there's no connection to it, or null.
+     * Asks [machine]'s connector for a change: the connector's first problem, or Couldn't reach
+     * when there's no connection to it, or null.
      */
-    suspend fun change(machine: OwnerSharing.Machine?, call: suspend (AdminClient) -> List<String>?): String? {
+    suspend fun send(machine: OwnerSharing.Machine?, call: suspend (AdminClient) -> List<String>?): String? {
         val client = machine?.let(client)
-        val problem = try {
+        return try {
             if (client == null) AdminError.Unreachable.message else call(client)?.firstOrNull()
         } catch (failure: AdminError) {
             failure.message
         }
+    }
+
+    /** [send], then lists again. */
+    suspend fun change(machine: OwnerSharing.Machine?, call: suspend (AdminClient) -> List<String>?): String? {
+        val problem = send(machine, call)
         refresh()
         return problem
     }
@@ -258,15 +263,19 @@ sealed interface SharingPage {
 }
 
 /**
- * Where People & sharing is: its pages, from the list or one app's people, and the selection in
- * People. The router's sheet holds it, so the lock, which takes the screen apart, keeps it (as
- * [JoinRequest] keeps the join screen's invite).
+ * Where People & sharing is: its pages, from the list or one app's people, how far each is
+ * scrolled, and the selection in People. The router's sheet holds it, so the lock, which takes
+ * the screen apart, keeps it (as [JoinRequest] keeps the join screen's invite).
  */
 @Stable
 class SharingPlace(root: SharingPage) {
     val pages = mutableStateListOf(root)
     var selecting by mutableStateOf(false)
     internal val selection = mutableStateListOf<PersonRef>()
+
+    // Each page keeps its place while others open over it, as Settings does under Acknowledgements.
+    internal val scrolls = mutableMapOf<SharingPage, ScrollState>()
+    internal val lists = mutableMapOf<SharingPage, LazyListState>()
 }
 
 /** People & sharing from the model, at [place]. */
@@ -281,14 +290,11 @@ fun SharingView(model: AppModel, place: SharingPlace, onClose: () -> Unit) = Sha
 fun SharingScreen(state: SharingState, place: SharingPlace, onClose: () -> Unit, scope: CoroutineScope) {
     val pages = place.pages
     val shots = remember { ScreenshotCache() }
-    // Each page keeps its place while others open over it, as Settings does under Acknowledgements.
-    val scrolls = remember { mutableMapOf<SharingPage, ScrollState>() }
     // A quick second tap on the same row doesn't push its page twice.
     val open: (SharingPage) -> Unit = { if (pages.lastOrNull() != it) pages += it }
     val back = { if (pages.size > 1) pages.removeAt(pages.lastIndex) else onClose() }
-    val lists = remember { mutableMapOf<SharingPage, LazyListState>() }
     PageStack(pages) { page ->
-        val scroll = scrolls.getOrPut(page) { ScrollState(0) }
+        val scroll = place.scrolls.getOrPut(page) { ScrollState(0) }
         // Only while it's on top: a removal's round trip can end after the page was left.
         val leave = { if (pages.lastOrNull() == page) back() }
         when (page) {
@@ -296,7 +302,7 @@ fun SharingScreen(state: SharingState, place: SharingPlace, onClose: () -> Unit,
             is SharingPage.App -> SharingAppPage(state, page, scroll, open, leave, scope)
             SharingPage.People -> SharingPeopleList(state, place, scroll, open, leave, scope)
             is SharingPage.Person -> SharingPersonView(state, page, scroll, leave, scope)
-            is SharingPage.Feedback -> FeedbackInbox(state, page, lists.getOrPut(page) { LazyListState() }, shots, open, leave)
+            is SharingPage.Feedback -> FeedbackInbox(state, page, place.lists.getOrPut(page) { LazyListState() }, shots, open, leave)
             is SharingPage.FeedbackItem -> FeedbackDetail(state, page, scroll, shots, leave)
         }
     }
@@ -536,7 +542,7 @@ private fun SharingAppPage(state: SharingState, page: SharingPage.App, scroll: S
                                 val title = stringResource(R.string.sharing_invite_for, invite.to)
                                 SettingsRow(
                                     shape, title,
-                                    supporting = stringResource(if (invite.review == true) R.string.sharing_review_unused else R.string.sharing_unused, invite.expiresIn),
+                                    supporting = stringResource(if (invite.review == true) R.string.sharing_review_invite else R.string.sharing_unused, invite.expiresIn),
                                     trailing = {
                                         RowMenu(title) { close ->
                                             AppMenuItem(close, stringResource(R.string.sharing_cancel_invite), R.drawable.ic_close, destructive = true) {

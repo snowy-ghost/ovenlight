@@ -286,6 +286,32 @@ class GuestManagerTests {
         assertEquals("it joins again", JoinPhase.Joined(s.registry.apps.single().id), s.guests.phases.value[echoInvite.invite])
     }
 
+    /**
+     * The owner removing a joined device drops its invites still waiting, and how their joins
+     * went: one opened again asks to join, not Try Again with nothing left to try.
+     */
+    @Test
+    fun testALostLoginClearsItsJoinPhases() = runTest {
+        val s = setup()
+        val notesInvite = echoInvite.copy(app = "notes", invite = "8b2d4e6f1a", host = "notes.taildef456.ts.net", name = "Notes", key = "tskey-auth-" + "kGuest2-NotReal")
+        s.clients.anyStatus = guestRunning
+        s.clients.respond = { request ->
+            when (request.url.toString()) {
+                claimURL -> answer(200, "{}")
+                "https://notes.taildef456.ts.net/__ovenlight/claim" -> answer(503, "busy")
+                else -> null
+            }
+        }
+        s.guests.accept(echoInvite)
+        s.guests.accept(notesInvite)
+        assertEquals(JoinPhase.Failed(JoinError.Network), s.guests.phases.value[notesInvite.invite])
+
+        s.clients.anyStatus = status("NeedsLogin", suffix = "")
+        advanceTimeBy(30_000)
+        assertTrue("the owner removed this device", s.registry.apps.isEmpty())
+        assertNull(s.guests.phases.value[notesInvite.invite])
+    }
+
     /** A shared app's tile follows the name its connector gives it now, unless the guest renamed it. */
     @Test
     fun testASharedAppTakesItsNewName() = runTest {

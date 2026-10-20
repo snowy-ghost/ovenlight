@@ -83,7 +83,8 @@ internal fun SharingPeopleList(state: SharingState, place: SharingPlace, scroll:
         if (refs.isEmpty() || !state.confirm(reason)) return
         working = true
         val current = state.machines.value
-        error = refs.mapNotNull { ref -> state.change(current.firstOrNull { it.id == ref.machineID }) { it.removePerson(ref.person).errors } }.firstOrNull()
+        error = refs.mapNotNull { ref -> state.send(current.firstOrNull { it.id == ref.machineID }) { it.removePerson(ref.person).errors } }.firstOrNull()
+        state.refresh()
         working = false
         stopSelecting()
     }
@@ -134,7 +135,7 @@ internal fun SharingPeopleList(state: SharingState, place: SharingPlace, scroll:
                 SettingsGroup(header = if (groups.size > 1) machine.adminHost else null, footer = if (last) ({ Footer(footer) }) else null) {
                     for (person in people) {
                         val ref = PersonRef(machine.id, person.id)
-                        // Removing them would cancel App Review's unused invites: never in passing.
+                        // Removing them would cancel App Review's open review invites: never in passing.
                         val selectable = !machine.guests.hasOpenInvites(person.id, review = true)
                         val selected = ref in selection
                         row { shape ->

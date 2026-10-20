@@ -388,6 +388,32 @@ class OpenPageTests {
         }
     }
 
+    /**
+     * Android only: three-button navigation's icons read on the page behind them, as the status
+     * bar's do on the band: light ones on a dark page in light mode, dark ones on a white page in
+     * dark mode.
+     */
+    @Test
+    @SdkSuppress(minSdkVersion = 30)
+    fun testTheNavigationButtonsFollowThePage() {
+        lateinit var window: Window
+        scenario.onActivity { window = it.window }
+        val darkButtons = { onMain { WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightNavigationBars } }
+        val load = { color: String ->
+            onMain { page.view.loadDataWithBaseURL(app.startURL.toString(), html.replace("<title>", "<style>html{background:$color}</style><title>"), "text/html", "utf-8", null) }
+        }
+        load("#1e3fa8")
+        waitFor("light buttons on a dark page in light mode") { !darkButtons() }
+        try {
+            shell("cmd uimode night yes")
+            waitFor("night mode") { onMain { window.context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES } }
+            load("#ffffff")
+            waitFor("dark buttons on a white page in dark mode") { darkButtons() }
+        } finally {
+            shell("cmd uimode night no")
+        }
+    }
+
     // The lock
 
     /** The launcher under an open app takes none of its touches, and TalkBack doesn't reach it. */

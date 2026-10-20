@@ -1509,8 +1509,7 @@ EOF
   end_in_background
   back_through Recents
   # Back within the lock's minute: the time it went to the background outlives the process.
-  ! locked || fail "Recents brought Ovenlight back locked within the lock's time: $(screen_text | tr '\n' '|')"
-  await_text 60 Recipes Pantry || { shot conditions-failed; fail "no launcher after the restart: $(screen_text | tr '\n' '|')"; }
+  KEEP_LOCK=1 await_text 60 Recipes Pantry || { shot conditions-failed; fail "no launcher, or locked within the lock's time, after the restart: $(screen_text | tr '\n' '|')"; }
   ! screen_text | grep -xF "Recipe Box conditions" >/dev/null || fail "the page came back from the ended process"
   note "back from Recents unlocked, within the lock's time, to the launcher with no app open"
   tap_text Recipes
@@ -1613,7 +1612,8 @@ if [[ $SCENARIO == shortcuts ]]; then
   say "shortcuts: from the home screen, through the lock"
   a shell input keyevent KEYCODE_HOME; sleep 3
   shot shortcuts-home
-  tap_text Recipes || fail "no Recipes on the home screen: $(screen_text | tr '\n' '|')"
+  await_text 20 Recipes || fail "no Recipes on the home screen: $(screen_text | tr '\n' '|')"
+  tap_text Recipes
   sleep 3
   [[ $(front) == *$PKG* ]] || fail "the shortcut didn't open Ovenlight: $(front)"
   locked || fail "the shortcut opened Ovenlight without the lock: $(screen_text | tr '\n' '|')"
@@ -1624,7 +1624,8 @@ if [[ $SCENARIO == shortcuts ]]; then
 
   say "shortcuts: again after Android ends Ovenlight's process in the background, so the shortcut starts it"
   end_in_background
-  tap_text Recipes || fail "no Recipes on the home screen: $(screen_text | tr '\n' '|')"
+  await_text 20 Recipes || fail "no Recipes on the home screen: $(screen_text | tr '\n' '|')"
+  tap_text Recipes
   sleep 3
   locked || fail "the shortcut started Ovenlight without the lock: $(screen_text | tr '\n' '|')"
   unlock_now

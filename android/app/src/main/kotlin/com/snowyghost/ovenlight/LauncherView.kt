@@ -108,7 +108,6 @@ data class LauncherState(
     val memberships: List<Membership> = emptyList(),
     /** Invites being accepted this session, by invite ID. */
     val phases: Map<String, JoinPhase> = emptyMap(),
-    /** The apps whose computers aren't answering. */
     /** Apps whose tile says their computer is offline. */
     val offline: Set<UUID> = emptySet(),
     /** Goes up with each icon saved, so a refreshed icon redraws. */

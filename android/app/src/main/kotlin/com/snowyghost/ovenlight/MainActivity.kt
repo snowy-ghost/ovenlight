@@ -58,6 +58,13 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         if (givesWayToAnotherOvenlight()) return finishAndRemoveTask()
+        // As Ovenlight opens, not as its process starts: Android starts it to serve a file another
+        // app still reads from the shelf, too.
+        if (!model.shelfEmptied) {
+            DownloadShelf.emptyAtLaunch(this)
+            CaptureFileProvider.emptyAtLaunch(this)
+            model.shelfEmptied = true
+        }
         unlockPrompt = UnlockPrompt(
             this, confirmedAfterRestart = { lifecycleScope.launch { lock.unlock(screenLockEntered) } },
             confirmAnswered = { confirmed ->
@@ -251,7 +258,7 @@ class MainActivity : ComponentActivity() {
         // under it. One being made or not sent yet stays, since its link shows only once.
         val composer = model.composer
         composer.value?.let { if (!it.holdsLinks) composer.value = null }
-        model.router.handle(url, model.registry.apps)
+        model.handleLink(url)
     }
 
     private companion object {

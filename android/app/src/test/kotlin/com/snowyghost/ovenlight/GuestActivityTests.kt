@@ -5,6 +5,7 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
+import java.util.Locale
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -48,6 +49,22 @@ class GuestActivityTests {
         assertEquals(LocalDate.of(2026, 9, 29).atStartOfDay(zone).toInstant(), day)
         assertEquals("2 weeks ago", day?.let { GuestActivity.day(it, now, zone) })
         assertNull(AdminAPI.parseDay("yesterday"))
+    }
+
+    /** A connector's day reads the same on a phone set to another calendar, as Thailand's Buddhist one or Japan's eras: java.time reads it as ISO. */
+    @Test
+    fun testLastOpenedReadsOnAnyCalendar() {
+        val before = Locale.getDefault()
+        try {
+            for (locale in listOf("th-TH", "ja-JP-u-ca-japanese")) {
+                Locale.setDefault(Locale.forLanguageTag(locale))
+                val opened = AdminAPI.parseDay("2026-09-29", zone)
+                assertEquals(locale, LocalDate.of(2026, 9, 29).atStartOfDay(zone).toInstant(), opened)
+                assertEquals(locale, "opened 2 weeks ago", opened?.let { GuestActivity.Opened(it).phrase(now, zone) })
+            }
+        } finally {
+            Locale.setDefault(before)
+        }
     }
 
     @Test

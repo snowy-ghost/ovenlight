@@ -84,13 +84,7 @@ abstract class Acknowledgements : DefaultTask() {
         val names = Regex("<license>.*?<name>(.*?)</name>", RegexOption.DOT_MATCHES_ALL).findAll(text).map { it.groupValues[1].trim() }.toList()
         val urls = Regex("<license>.*?<url>(.*?)</url>", RegexOption.DOT_MATCHES_ALL).findAll(text).map { it.groupValues[1].trim() }.toList()
         val all = (names + urls).joinToString(" ").lowercase()
-        return when {
-            all.isEmpty() -> null
-            "apache" in all -> "Apache License 2.0"
-            "mit" in all.split(Regex("[^a-z]")) -> "MIT License"
-            "bsd" in all -> "BSD License"
-            else -> null
-        }
+        return if ("apache" in all) "Apache License 2.0" else null
     }
 
     // Modules whose POM leaves the license to a parent POM, each checked by hand.

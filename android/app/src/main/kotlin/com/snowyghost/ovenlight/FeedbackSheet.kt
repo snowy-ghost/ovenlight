@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -88,6 +89,9 @@ class FeedbackDraft(val screenshot: Bitmap?, val pageURL: URI?) {
     var includeScreenshot by mutableStateOf(true)
     var sending by mutableStateOf(false)
     var result by mutableStateOf<FeedbackResult?>(null)
+
+    /** A send under way, or a note closing would ask about: a link waits for the sheet to close (see [AppModel.handleLink]). */
+    val holdsLinks: Boolean get() = sending || (note.text.isNotBlank() && result != FeedbackResult.Sent)
 }
 
 /**
@@ -183,7 +187,7 @@ fun FeedbackSheet(
                 )
             },
         ) { bars ->
-            Box(Modifier.fillMaxSize().padding(bars)) {
+            Box(Modifier.fillMaxSize().padding(bars).consumeWindowInsets(bars)) {
                 FeedbackForm(app, screenshot, note, includeScreenshot, { draft.includeScreenshot = it }, result)
                 AnimatedVisibility(result == FeedbackResult.Sent, enter = fadeIn(), exit = fadeOut()) { FeedbackSent(app) }
             }

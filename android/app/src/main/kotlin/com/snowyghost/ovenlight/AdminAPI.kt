@@ -185,9 +185,9 @@ data class GuestPerson(val id: String, val name: String, val guests: List<AdminG
         }
 
         /**
-         * Those to offer for another invite: everyone but App Review while its review invite
-         * (made in the terminal) is unused. Once used, App Review is a guest like any other,
-         * until the review is over and it's revoked.
+         * Those to offer for another invite: everyone but App Review while a review invite (made
+         * in the terminal) is open. Once none is, App Review is a guest like any other, until the
+         * review is over and it's revoked.
          */
         fun invitable(list: AdminGuestList): List<GuestPerson> {
             val review = list.invites.filter { it.review == true }.map { it.person }.toSet()

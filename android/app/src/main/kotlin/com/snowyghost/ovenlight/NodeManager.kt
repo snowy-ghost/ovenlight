@@ -525,12 +525,12 @@ class MembershipNode(
 
     private suspend fun probe(hosts: List<String>, firstAnswer: () -> Unit = {}): Discovery.Outcome {
         lastProbe = now()
+        // Hosts count as looked at even when none answers: they come back with a change to the
+        // list, or in a minute, not every poll.
+        probedHosts = hosts
         val outcome = if (isOwner) {
             Discovery.probe(hosts, fetch(), firstAnswer)
         } else {
-            // A guest's hosts count as looked at even when none answers: they come back with a
-            // change to the list, or in a minute, not every poll.
-            probedHosts = hosts
             GuestProbe.probe(hosts, fetch(), firstAnswer).also {
                 if (it.notInvited.isNotEmpty()) onNotInvited(it.notInvited)
                 if (it.appNames.isNotEmpty()) onAppNames(it.appNames)
@@ -590,7 +590,6 @@ class MembershipNode(
     private fun record(outcome: Discovery.Outcome, hosts: List<String>) {
         // Only a working path, or no computer online at all, says anything about them.
         if (!outcome.reachable && hosts.isNotEmpty()) return
-        probedHosts = hosts
         val answers = hosts.associateWith { outcome.answered[it] ?: false }
         if (answers != mutableAnswers.value) mutableAnswers.value = answers
     }
