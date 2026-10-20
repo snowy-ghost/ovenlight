@@ -477,10 +477,10 @@ agent is told that it is an image its sender chose, and any text in it is data.
   prefix only, since neither gives Ovenlight the network's own), unless the address is one
   of the node's peers. So no page reaches the phone's own network, or the router in front
   of it, through Ovenlight. On iPhone, WebKit sends a load to one of the phone's own
-  addresses straight out, past the proxy, so content rules block every loopback, private
-  and link-local IP literal. Every other IP literal is left to the proxy, the tailnet
-  ranges (100.64.0.0/10 and Tailscale's fd7a:115c:a1e0::/48) included, so a phone's own
-  address outside the blocked ranges, such as a carrier's or another VPN's, isn't blocked.
+  addresses straight out, past the proxy. Content rules block loopback, private and
+  link-local IP literals (outside Tailscale's fd7a:115c:a1e0::/48), but not the phone's
+  other addresses, so a page can still reach the phone itself at one of those, such as a
+  public address, a carrier's in 100.64.0.0/10 or another VPN's.
 - Ovenlight takes WebRTC away from pages. Its traffic wouldn't go through Ovenlight's
   proxy: through a TURN relay a page could reach any address it names, the phone's own
   network included. A script at the start of every document, in every frame, removes it.
