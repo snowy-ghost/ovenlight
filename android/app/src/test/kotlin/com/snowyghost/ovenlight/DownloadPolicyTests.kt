@@ -1,6 +1,8 @@
 package com.snowyghost.ovenlight
 
 import java.net.URI
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.measureTime
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -57,6 +59,23 @@ class DownloadPolicyTests {
         assertTrue(long.endsWith("é.csv"))
         // Not in the Swift test: Foundation reads "final version" as no extension, so the end is cut.
         assertEquals("a".repeat(200), DownloadPolicy.fileName("a".repeat(250) + ".final version"))
+    }
+
+    /**
+     * A page's name of any length is cut in time linear in its length, at the same place as
+     * before: whole characters as people see them, the extension kept. Cut a character a pass,
+     * a name of 400,000 letters held the main thread for over two minutes as its download failed.
+     */
+    @Test
+    fun testALongNameIsCutWithoutStalling() {
+        assertEquals("é".repeat(98) + ".csv", DownloadPolicy.fileName("é".repeat(300) + ".csv"))
+        val flag = "\uD83C\uDDEC\uD83C\uDDE7"
+        assertEquals("a".repeat(184) + flag + ".txt", DownloadPolicy.fileName("a".repeat(184) + flag + flag + ".txt"))
+        assertEquals("a".repeat(190) + ".txt", DownloadPolicy.fileName("a".repeat(190) + flag + ".txt"))
+        val took = measureTime {
+            assertEquals("A".repeat(196) + ".txt", DownloadPolicy.fileName("A".repeat(100_000) + ".txt"))
+        }
+        assertTrue("took $took", took < 2.seconds)
     }
 
     /** Android only: breaks, spaces and blank letters a page could use to push the real extension out of sight. */
