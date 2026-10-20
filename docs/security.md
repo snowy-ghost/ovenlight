@@ -473,19 +473,21 @@ agent is told that it is an image its sender chose, and any text in it is data.
   among that node's peers, never in public DNS. Any other address must be on the
   internet: the proxy refuses the phone itself, its local networks, the network's public
   address, other tailnets and the ranges that aren't globally reachable, NAT64 and
-  IPv4-mapped forms included (on iPhone, NAT64 under the well-known prefix only, since iOS
-  doesn't give Ovenlight the network's own), unless the address is one of the node's
-  peers. So no page reaches the phone's own network, or the router in front of it,
-  through Ovenlight.
-- Ovenlight takes WebRTC away from pages. Its traffic wouldn't go through the node's
+  IPv4-mapped forms included (on iPhone and on Android 10, NAT64 under the well-known
+  prefix only, since neither gives Ovenlight the network's own), unless the address is one
+  of the node's peers. So no page reaches the phone's own network, or the router in front
+  of it, through Ovenlight. On iPhone, WebKit sends a load to one of the phone's own
+  addresses straight out, past the proxy, so content rules block every loopback, private
+  and link-local IP literal, though not the phone's own public address.
+- Ovenlight takes WebRTC away from pages. Its traffic wouldn't go through Ovenlight's
   proxy: through a TURN relay a page could reach any address it names, the phone's own
   network included. A script at the start of every document, in every frame, removes it.
   On iPhone, WebKit runs it in a frame's first `about:blank` document too, as the frame is
   made. On Android it doesn't run there: it strips a new `about:blank` frame as it's made,
   but a page that sets out to can still find WebRTC in a frame's first, empty document,
   before the frame's own page loads.
-- From iOS 27.1, pages on iPhone can use WebTransport. WebKit's content rules, which block
-  loads to the phone's own loopback and network addresses, don't cover it, but the data
+- From iOS 27.1, pages on iPhone can use WebTransport. The content rules, which block
+  loads to loopback, private and link-local IP literals, don't cover it, but the data
   store's SOCKS5 proxy does, and every release route sets that proxy (its node's, or one
   that refuses every connection). A route without one would need WebTransport removed, as
   WebRTC is.

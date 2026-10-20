@@ -516,7 +516,8 @@ folder, which `e2e.sh` makes, or else a throwaway one.
 - **One proxy.** Every page and every request of Ovenlight's own (probes, claims, the
   admin API, feedback, downloads, through OkHttp) goes through one password-protected
   proxy in the Go core (`android/core/proxy.go`, `TailnetCore.kt`), and each app has its
-  own WebView profile. [security.md](security.md#on-android) has the rules.
+  own WebView profile. [security.md](security.md#on-the-phone) says what it refuses, and
+  [On Android](security.md#on-android) how it's guarded.
 - **The lock** is Android's biometric prompt: a fingerprint or face, or the screen lock.
   Android 10's prompt can't fall back to the screen lock, so there a button opens the
   screen lock's own screen, at once when no fingerprint or face is enrolled
