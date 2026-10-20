@@ -86,7 +86,8 @@ final class InviteLinkTests: XCTestCase {
     }
 
     func testRefusesHostsThatArentNames() {
-        for host in ["10.0.0.1", "echo", "echo.ts.net%2Fpath", "echo.ts.net%3A8443", "-echo.ts.net", "ec%20ho.ts.net"] {
+        for host in ["10.0.0.1", "0x7f.0.0.1", "0xa9.0xfe.0.1", "echo", "echo.ts.net%2Fpath", "echo.ts.net%3A8443", "-echo.ts.net",
+                     "ec%20ho.ts.net"] {
             XCTAssertEqual(error(connectorLink.replacingOccurrences(of: "echo-board.taildef456.ts.net", with: host)),
                            .invalidField("host"), host)
         }
