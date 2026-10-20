@@ -47,9 +47,9 @@ type Fake struct {
 	// BeforeCreateKey, when set, runs before a key is minted, without Mu held, so it may
 	// block. Set it before the server gets requests.
 	BeforeCreateKey func()
-	// ForceReusable makes every minted key reusable, and DropKeyTags mints them
-	// untagged, as a misbehaving server would.
-	ForceReusable, DropKeyTags bool
+	// ForceReusable makes every minted key reusable, ForceSingleUse makes every one single
+	// use, and DropKeyTags mints them untagged, as a misbehaving server would.
+	ForceReusable, ForceSingleUse, DropKeyTags bool
 	// ListKeyIDsOnly makes the key list give only IDs, as older API versions do.
 	ListKeyIDsOnly bool
 
@@ -312,6 +312,9 @@ func (f *Fake) serve(w http.ResponseWriter, r *http.Request) {
 		c := req.Capabilities.Devices.Create
 		if f.ForceReusable {
 			c.Reusable = true
+		}
+		if f.ForceSingleUse {
+			c.Reusable = false
 		}
 		if f.DropKeyTags {
 			c.Tags = nil

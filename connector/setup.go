@@ -204,7 +204,7 @@ func (s *setupRun) apply(parent context.Context) (bool, error) {
 	// A mistyped owner would be refused on every app, and the real one with them.
 	if s.newOwner && !ownsADevice(devices, s.owner) {
 		return false, fmt.Errorf("no device in this tailnet belongs to %s, so nothing changed. Check the spelling, or, if that login has no device here yet, "+
-			"sign in with it to Ovenlight on the iPhone first (Use My Own Computers, then Connect) and run this again", s.owner)
+			"sign in with it to Ovenlight on your phone first (choose to use your own computers, then tap Connect) and run this again", s.owner)
 	}
 	cfg := policy.Config{Owner: s.owner, Apps: s.apps, Remove: s.remove}
 	proposed, diff, report, err := policy.Plan(pol.Body, policyDevices(devices), cfg)

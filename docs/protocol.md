@@ -56,7 +56,7 @@ text with the header only.
 | Code | Meaning |
 | --- | --- |
 | `not_invited` | a guest device with no claim on this app, or a claim with an unknown, expired, canceled or removed invite |
-| `used_elsewhere` | the invite was already used by another device |
+| `used_elsewhere` | the invite was already used by another device (a review invite, by 10) |
 | `other_person` | the device belongs to another guest |
 | `owner_only` | the admin API refused someone other than the owner; on port 443, a caller who is neither the owner nor a guest of this app |
 | `unknown_caller` | the node doesn't know the calling device yet; worth another try |
@@ -94,7 +94,7 @@ A guest device binds itself to an invite. Body: `{"key": "<the invite's auth key
 The connector matches the key's SHA-256 against its open invites, and the calling device
 must already carry the app's guest tag: either it joined with that key, or the owner
 added the tag to a device the person already has. Claiming again from the same device is
-harmless.
+harmless. A review invite admits up to 10 devices, and every other invite one.
 
 | Status | Code | Error text | Meaning |
 | --- | --- | --- | --- |
@@ -164,14 +164,15 @@ CORS preflight the API never grants.
 | --- | --- |
 | `GET /v1/apps` | this connector's apps: `slug`, `name`, `url`, `state`, `online`, `shareable`, `guests` |
 | `POST /v1/invites` | `{"to": "Sam", "app": "<slug>"}` for someone new; for someone already shared with, `{"person": "<ID>", "app": "<slug>"}`, or `{"to": "Sam", "existing": true, "app": "<slug>"}` by name |
-| `DELETE /v1/invites/{id}` | cancel an unused invite |
+| `DELETE /v1/invites/{id}` | cancel an open invite: an unused one, or a review invite with places left (devices that claimed it keep the app) |
 | `GET /v1/guests` | `guests` (removed ones too, with `removedAt`; `lastOpened`, the day the device last opened the app, as `2026-10-13` on the computer's calendar, from `openedSince` on), `invites`, `unclaimed`, `openedSince`, `taggedDevices` (`apps`, `guests` and every tagged device in the tailnet, `tailnet`, as of `lastSync`), `lastSync`, `syncError`; `ovenlight guests --json` prints the same |
-| `DELETE /v1/guests/{ref}` | a device ID or invite ID removes that one device; a person ID or name removes every device and open invite of that person. `?app=<slug>` limits it to one app; `?by=person` reads `ref` only as a person ID |
+| `DELETE /v1/guests/{ref}` | a device ID removes that one device; an invite ID removes the devices that claimed it (several, for a review invite) and cancels the invite if it is still open; a person ID or name removes every device and open invite of that person. `?app=<slug>` limits it to one app; `?by=person` reads `ref` only as a person ID |
 | `GET /v1/feedback` | the inbox, newest first; `?app=<slug>`, `?limit=<n>`. `ovenlight feedback --json`, the MCP server's `feedback_list` and `status --json` (`sharing.latestFeedback`) use the same view |
 | `GET /v1/feedback/{id}/screenshot` | the PNG |
 
-Open invites are the `invites` of `GET /v1/guests`. Any other route or method gets a
-JSON 404 `not_found`.
+Open invites are the `invites` of `GET /v1/guests`. A review invite stays among them,
+`state` `sent`, while it has places left, even once devices have claimed it. Any other
+route or method gets a JSON 404 `not_found`.
 
 `POST /v1/invites` answers `{"invite": {...}, "link", "appLink", "appName", "owner",
 "devices", "tagErrors", "message"}`: `link` is the universal link and `appLink`
@@ -180,7 +181,7 @@ in it, as `ovenlight share` prints it. All three carry the key and are shown onc
 `message` is the only invite wording the phone sends: it composes none of its own, and
 without `message` it sends just the link.
 `devices` names the person's devices that can now reach the app, and `tagErrors` those
-that couldn't be tagged yet. Invites for App Review can only be made in a terminal.
+that couldn't be tagged yet. Review invites can only be made in a terminal.
 
 ## The version header
 
@@ -202,7 +203,8 @@ ovenlight://join?v=1&control=&key=&owner=&app=&invite=&host=&name=&to=
 The first is the one to send. Its fields ride in the fragment, which browsers never send
 to a server, so the key never reaches the website. It opens Ovenlight when it's
 installed; otherwise the page offers Open in Ovenlight (the second form) and a way to
-get the app.
+get the app. `ovenlight share` prints only the first, since any app on the phone may
+claim the `ovenlight://` scheme. `POST /v1/invites` answers both.
 The fields are form-encoded (`+` is a space) and may come in any order: the connector
 sorts them by name.
 
@@ -210,7 +212,7 @@ sorts them by name.
 | --- | --- | --- |
 | `v` | yes | `1` |
 | `control` | yes | the owner's control server; must be `https` (debug builds also take `http` on loopback) |
-| `key` | yes | a single-use auth key tagged `tag:ovenlight-guest-<slug>`; ASCII, no whitespace, up to 256 characters |
+| `key` | yes | an auth key tagged `tag:ovenlight-guest-<slug>`, single use (reusable for a review invite); ASCII, no whitespace, up to 256 characters |
 | `app` | yes | the app's slug; letters, digits, `-` and `_`, up to 64 characters |
 | `invite` | yes | the invite's ID on the connector; letters, digits and `-`, up to 64 characters |
 | `host` | yes | the app node's MagicDNS name, a plain DNS name |
@@ -221,8 +223,8 @@ sorts them by name.
 The phone trims labels (`owner`, `name`, `to`), drops control characters, and keeps at
 most 64 characters.
 
-The key is a credential until it is used. It expires after 7 days (90 days for an App
-Review invite).
+The key is a credential until it is used up: by one device, or by 10 for a review
+invite. It expires after 7 days (90 days for a review invite).
 
 ## Joining, on the phone
 

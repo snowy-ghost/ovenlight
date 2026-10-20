@@ -82,6 +82,9 @@ func cmdNew(args []string) error {
 	if app.Slug == "" {
 		return fmt.Errorf("%q has no letters a to z or digits to make its hostname from; name it with some", app.Name)
 	}
+	if v := oldNode(); v != "" {
+		return fmt.Errorf("Node %s is too old: the starter needs Node 22.13 or later, from https://nodejs.org (a distribution's own package may be older)", v)
+	}
 	taken := map[int]bool{}
 	if cfg, err := LoadConfig(p.config); err == nil {
 		for _, a := range cfg.Apps {
@@ -130,6 +133,22 @@ func cmdNew(args []string) error {
 	}
 	fmt.Println("The guide to building apps for Ovenlight: ovenlight guide")
 	return nil
+}
+
+// oldNode is the version of the Node on PATH, such as 22.12.0, when it is older than the
+// 22.13 the starter needs (its package.json's engines), and "" when it is new enough,
+// isn't found or doesn't say.
+func oldNode() string {
+	out, err := exec.Command("node", "--version").Output()
+	if err != nil {
+		return ""
+	}
+	v := strings.TrimPrefix(strings.TrimSpace(string(out)), "v")
+	var major, minor int
+	if n, _ := fmt.Sscanf(v, "%d.%d", &major, &minor); n == 2 && (major < 22 || major == 22 && minor < 13) {
+		return v
+	}
+	return ""
 }
 
 func isDir(path string) bool {

@@ -273,9 +273,10 @@ func (st *sharingState) resolvePerson(ref guestRef) (person, name string, err er
 }
 
 // createInvite mints an invite a person asked for, in a terminal or in Ovenlight. A
-// review invite, for Apple's App Review, has the same single-use key for the app's guest
-// tag, but valid for reviewInviteTTL, because the reviewer may test weeks later. Only
-// `share --review` in a terminal asks for one.
+// review invite, for an app store's review, has a key for the same guest tag, but
+// reusable, for up to reviewInviteDevices devices of the reviewer, and valid for
+// reviewInviteTTL, because the review may come weeks later. Only `share --review` in a
+// terminal asks for one.
 func (d *daemon) createInvite(ref guestRef, slug, by string, review bool) (shareResult, error) {
 	if _, _, _, err := d.shareableApp(slug); err != nil {
 		return shareResult{}, err
@@ -289,8 +290,8 @@ func (d *daemon) createInvite(ref guestRef, slug, by string, review bool) (share
 	return d.mintInvite(Invite{ID: newID(), To: to, Person: person, App: slug, RequestedBy: by, Created: time.Now(), Review: review})
 }
 
-// mintInvite creates the invite's single-use guest key and records the invite. The key
-// is preauthorized whatever the tailnet's device approval setting; docs/security.md
+// mintInvite creates the invite's guest key and records the invite. The key is
+// preauthorized whatever the tailnet's device approval setting; docs/security.md
 // (Invites) says why.
 func (d *daemon) mintInvite(inv Invite) (shareResult, error) {
 	app, cfg, n, err := d.shareableApp(inv.App)
@@ -307,12 +308,12 @@ func (d *daemon) mintInvite(inv Invite) (shareResult, error) {
 	if inv.Review {
 		ttl, desc = reviewInviteTTL, "ovenlight review invite "+inv.ID
 	}
-	key, err := api.CreateAuthKey(ctx, tsapi.KeyRequest{Tags: []string{policy.GuestTag(app.Slug)}, Preauthorized: true, Expiry: ttl,
-		Description: desc})
+	key, err := api.CreateAuthKey(ctx, tsapi.KeyRequest{Tags: []string{policy.GuestTag(app.Slug)}, Reusable: inv.Review, Preauthorized: true,
+		Expiry: ttl, Description: desc})
 	if err != nil {
 		return shareResult{}, fmt.Errorf("couldn't create the invite key: %w", withAuthHint(err))
 	}
-	inv.State, inv.KeyID, inv.KeyHash = inviteSent, key.ID, hashKey(key.Key)
+	inv.State, inv.KeyID, inv.KeyHash, inv.Reusable = inviteSent, key.ID, hashKey(key.Key), key.Reusable
 	inv.Expires = key.Expires
 	if inv.Expires.IsZero() {
 		inv.Expires = time.Now().Add(ttl)
@@ -357,7 +358,8 @@ func (d *daemon) mintInvite(inv Invite) (shareResult, error) {
 
 var errNoInvite = errors.New("no unused invite")
 
-// cancelInvite withdraws an unused invite and deletes its key. The invite it returns
+// cancelInvite withdraws an open invite and deletes its key. Devices that claimed a
+// review invite before keep the app until they are revoked. The invite it returns
 // keeps its KeyID while the key couldn't be deleted: until the sync manages it, the key
 // can still join the tailnet, though the connector refuses its claim.
 func (d *daemon) cancelInvite(id string) (Invite, error) {
@@ -459,7 +461,8 @@ func (d *daemon) handleClaim(w http.ResponseWriter, r *http.Request, caller Iden
 	if fresh {
 		log.Printf("[%s] %s (%s, %s) claimed invite %s", app.Slug, guestCopy.Name, caller.DeviceName, caller.DeviceID, invCopy.ID)
 		// The key is spent if this device joined with it. If it joined with another
-		// one, deleting this key keeps it from adding a second device.
+		// one, deleting this key keeps it from adding a second device. A review
+		// invite's reusable key stays until its last device claims.
 		go func() {
 			api, err := d.api()
 			if err != nil {
@@ -467,7 +470,7 @@ func (d *daemon) handleClaim(w http.ResponseWriter, r *http.Request, caller Iden
 			}
 			ctx, cancel := apiContext()
 			defer cancel()
-			if invCopy.KeyID != "" {
+			if invCopy.KeyID != "" && invCopy.State == inviteClaimed {
 				d.deleteInviteKey(ctx, api, invCopy)
 			}
 			if retagNeeded {
@@ -516,13 +519,14 @@ type revokeResult struct {
 	Removed  []Guest  `json:"removed"`
 	Deleted  []string `json:"deletedDevices"`
 	Retagged []string `json:"retaggedDevices,omitempty"` // kept for another app, minus this app's tag
-	Canceled []Invite `json:"canceledInvites,omitempty"` // the person's open invites, when removed by person; keyId stays while the key couldn't be deleted
+	Canceled []Invite `json:"canceledInvites,omitempty"` // the person's open invites when removed by person, or the invite named by its ID; keyId stays while the key couldn't be deleted
 	Errors   []string `json:"errors,omitempty"`
 }
 
-// revoke removes guests as matchGuests finds them, and a person's open invites: the connector refuses them at
-// once and ends their open connections, then their devices are deleted from the tailnet,
-// or, if they still hold another of the owner's apps, lose only this app's tag.
+// revoke removes guests as matchGuests finds them, and a person's open invites, or the
+// open invite named by its ID: the connector refuses them at once and ends their open
+// connections, then their devices are deleted from the tailnet, or, if they still hold
+// another of the owner's apps, lose only this app's tag.
 func (d *daemon) revoke(ref, app string, byPerson bool) (revokeResult, error) {
 	var res revokeResult
 	d.sh.mu.Lock()
@@ -531,7 +535,13 @@ func (d *daemon) revoke(ref, app string, byPerson bool) (revokeResult, error) {
 		d.sh.mu.Unlock()
 		return res, err
 	}
-	if len(idx) == 0 && !slices.ContainsFunc(d.sh.st.Invites, func(inv Invite) bool {
+	// An invite named by its ID goes too, or a review invite would keep admitting devices,
+	// the removed ones among them once they join again.
+	named := d.sh.st.invite(ref)
+	if byPerson || person != "" || named == nil || !named.open() || (app != "" && named.App != app) {
+		named = nil
+	}
+	if len(idx) == 0 && named == nil && !slices.ContainsFunc(d.sh.st.Invites, func(inv Invite) bool {
 		return person != "" && inv.Person == person && inv.open() && (app == "" || inv.App == app)
 	}) {
 		d.sh.mu.Unlock()
@@ -542,9 +552,13 @@ func (d *daemon) revoke(ref, app string, byPerson bool) (revokeResult, error) {
 	var devices []string
 	if person != "" {
 		canceled = d.sh.st.cancelInvitesOf(person, app)
-		for _, inv := range canceled {
-			devices = append(devices, d.sh.st.reachOf(inv)...)
-		}
+	}
+	if named != nil {
+		named.State = inviteCanceled
+		canceled = append(canceled, *named)
+	}
+	for _, inv := range canceled {
+		devices = append(devices, d.sh.st.reachOf(inv)...)
 	}
 	for _, i := range idx {
 		devices = append(devices, d.sh.st.Guests[i].DeviceID)

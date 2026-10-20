@@ -29,13 +29,14 @@ const (
 )
 
 const (
-	inviteTTL       = 7 * 24 * time.Hour  // key lifetime
-	reviewInviteTTL = 90 * 24 * time.Hour // a review invite's key: App Review may test weeks later; Tailscale's maximum
-	claimGrace      = time.Hour           // a device that joined just before expiry may still claim
-	reconcileEvery  = 3 * time.Minute
-	appKeyTTL       = 10 * time.Minute
-	defaultControl  = "https://controlplane.tailscale.com"
-	sharingFileName = "sharing.json"
+	inviteTTL           = 7 * 24 * time.Hour  // key lifetime
+	reviewInviteTTL     = 90 * 24 * time.Hour // a review invite's key: a store's review may come weeks later; Tailscale's maximum
+	reviewInviteDevices = 10                  // how many devices a review invite admits: a store may review on several
+	claimGrace          = time.Hour           // a device that joined just before expiry may still claim
+	reconcileEvery      = 3 * time.Minute
+	appKeyTTL           = 10 * time.Minute
+	defaultControl      = "https://controlplane.tailscale.com"
+	sharingFileName     = "sharing.json"
 )
 
 // Invite is one offer to share one app with one person. The auth key itself is never
@@ -51,8 +52,14 @@ type Invite struct {
 	Expires     time.Time `json:"expires"`
 	KeyID       string    `json:"keyId,omitempty"` // cleared once the key is deleted in the tailnet (or found gone)
 	KeyHash     string    `json:"keyHash,omitempty"`
-	// Review marks an invite for Apple's App Review: its key lasts reviewInviteTTL.
-	Review    bool       `json:"review,omitempty"`
+	// Review marks an invite for an app store's review: its key lasts reviewInviteTTL.
+	Review bool `json:"review,omitempty"`
+	// Reusable is whether the key is, as review invites' keys are since 1.0.7: the invite
+	// then admits up to reviewInviteDevices devices of its person. 1.0.6 minted review
+	// invites with single-use keys, so those still close at their first claim.
+	Reusable bool `json:"reusable,omitempty"`
+	// ClaimedBy and ClaimedAt are the device and time of the claim that used the invite
+	// up: its only one, or a review invite's last. Each device's claim is in its Guest.
 	ClaimedBy string     `json:"claimedBy,omitempty"` // device ID
 	ClaimedAt *time.Time `json:"claimedAt,omitempty"`
 	// Devices are the person's devices in the tailnet for another app when the invite was
@@ -244,7 +251,9 @@ var (
 
 // claimInvite binds a guest device to the invite whose key it presents. Only the device
 // that joined with the single-use key can have that key, so the key's hash is the
-// proof. Claiming again from the same device is harmless; fresh reports a new claim.
+// proof. A reusable key (a review invite's) takes up to reviewInviteDevices devices
+// before it is used up. Claiming again from the same device is harmless; fresh reports
+// a new claim.
 func (st *sharingState) claimInvite(keyHash, app string, caller Identity, now time.Time) (inv *Invite, g *Guest, fresh bool, err error) {
 	if caller.DeviceID == "" || !caller.Tagged || !slices.Contains(caller.Tags, policy.GuestTag(app)) {
 		return nil, nil, false, errNotInvited
@@ -257,9 +266,14 @@ func (st *sharingState) claimInvite(keyHash, app string, caller Identity, now ti
 	if inv == nil || inv.App != app {
 		return nil, nil, false, errNotInvited
 	}
+	// A device that claimed this invite and still holds the app may claim again, however
+	// the invite ended since: a retry after an answer that never arrived.
+	if g := st.activeGuest(caller.DeviceID, app); g != nil && g.InviteID == inv.ID {
+		return inv, g, false, nil
+	}
 	switch inv.State {
 	case inviteClaimed:
-		if inv.ClaimedBy != caller.DeviceID {
+		if !slices.Contains(st.claimants(inv.ID), caller.DeviceID) {
 			return nil, nil, false, errInviteUsed
 		}
 		if g := st.activeGuest(caller.DeviceID, app); g != nil {
@@ -288,19 +302,33 @@ func (st *sharingState) claimInvite(keyHash, app string, caller Identity, now ti
 	if g = st.activeGuest(caller.DeviceID, app); g != nil {
 		return inv, g, false, nil
 	}
-	at := now
-	inv.State, inv.ClaimedBy, inv.ClaimedAt = inviteClaimed, caller.DeviceID, &at
 	st.Guests = append(st.Guests, Guest{DeviceID: caller.DeviceID, Person: cmp.Or(person, inv.Person), Name: inv.To, App: app,
 		DeviceName: caller.DeviceName, InviteID: inv.ID, ClaimedAt: now})
+	if !inv.Reusable || len(st.claimants(inv.ID)) >= reviewInviteDevices {
+		at := now
+		inv.State, inv.ClaimedBy, inv.ClaimedAt = inviteClaimed, caller.DeviceID, &at
+	}
 	return inv, &st.Guests[len(st.Guests)-1], true, nil
+}
+
+// claimants lists the devices that claimed the invite, removed ones too, so taking a
+// device off an app never frees its place on a review invite.
+func (st *sharingState) claimants(inviteID string) []string {
+	var out []string
+	for _, g := range st.Guests {
+		if g.InviteID == inviteID && !slices.Contains(out, g.DeviceID) {
+			out = append(out, g.DeviceID)
+		}
+	}
+	return out
 }
 
 // matchGuests finds active guest records, optionally for one app only: with byPerson,
 // every device of that person; otherwise by device ID or invite ID, else person, else
-// name (any case). An ID any device has had names only that device. A name that
-// belongs to more than one current person is an error rather than all of them. person
-// is who was named, unless it was one device; they may have only open invites, and no
-// records to return.
+// name (any case). An ID any device has had names only the devices that had it (several
+// for a review invite's). A name that belongs to more than one current person is an
+// error rather than all of them. person is who was named, unless it was one device; they
+// may have only open invites, and no records to return.
 func (st *sharingState) matchGuests(ref, app string, byPerson bool) (idx []int, person string, err error) {
 	find := func(match func(Guest) bool) []int {
 		var out []int

@@ -153,8 +153,9 @@ func TestShareClaimRevoke(t *testing.T) {
 	}
 }
 
-// A review invite is for App Review, which may test weeks later: same single-use guest
-// key, but valid for reviewInviteTTL, and marked so the owner sees it.
+// A review invite is for an app store's review, which may come weeks later and on
+// several devices: a reusable guest key, valid for reviewInviteTTL, that admits up to
+// reviewInviteDevices devices of the reviewer, and marked so the owner sees it.
 func TestReviewInvite(t *testing.T) {
 	d, f := testDaemon(t)
 
@@ -167,7 +168,7 @@ func TestReviewInvite(t *testing.T) {
 		t.Errorf("invite = %+v", inv)
 	}
 	k := f.Keys[0]
-	if k.Reusable || !k.Preauthorized || len(k.Tags) != 1 || k.Tags[0] != guestTag || k.Expires.Sub(k.Created) != reviewInviteTTL {
+	if !k.Reusable || !k.Preauthorized || len(k.Tags) != 1 || k.Tags[0] != guestTag || k.Expires.Sub(k.Created) != reviewInviteTTL {
 		t.Errorf("minted key = %+v", k)
 	}
 	if !inv.Expires.Equal(k.Expires) {
@@ -189,22 +190,141 @@ func TestReviewInvite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if code, out := claim(t, d, samDev, link.Key); code != 200 || out["name"] != "App Review" {
-		t.Fatalf("claim: %d %v", code, out)
+	// Each device also carries another app's guest tag, so after its claim the connector
+	// retags it, which it does after deleting a spent key: once the retag is seen, the
+	// claim's key decision is done.
+	var devices []Identity
+	for i := range reviewInviteDevices + 1 {
+		devices = append(devices, Identity{Tagged: true, Tags: []string{guestTag, policy.GuestTag("notes")}, DeviceID: fmt.Sprint("nReview", i),
+			DeviceName: fmt.Sprint("review-", i)})
 	}
-	if code, _ := claim(t, d, kimDev, link.Key); code != http.StatusForbidden {
-		t.Errorf("a second device claimed the review invite: %d", code)
+	deletes := func() int { return f.RequestCount("DELETE /api/v2/tailnet/-/keys/" + k.ID) }
+	// Each device claims in turn, and the key stays for the next until the last.
+	for i, dev := range devices[:reviewInviteDevices] {
+		if code, out := claim(t, d, dev, link.Key); code != 200 || out["name"] != "App Review" || out["userId"] != "guest:"+inv.Person {
+			t.Fatalf("claim %d: %d %v", i, code, out)
+		}
+		waitFor(t, func() bool { return f.RequestCount("POST /api/v2/device/"+dev.DeviceID+"/tags") == 1 }, "the claiming device's retag")
+		d.sh.mu.Lock()
+		state := d.sh.st.invite(inv.ID).State
+		d.sh.mu.Unlock()
+		want, wantDeletes := inviteSent, 0
+		if i == reviewInviteDevices-1 {
+			want, wantDeletes = inviteClaimed, 1
+		}
+		if state != want || deletes() != wantDeletes {
+			t.Fatalf("after claim %d the invite is %s and its key was deleted %d times", i, state, deletes())
+		}
+	}
+	if !keyDeleted(d, inv.ID) {
+		t.Error("the used-up key is still recorded")
+	}
+	// One more device is refused as for a used invite, and a device that claimed may
+	// claim again.
+	if code, out := claim(t, d, devices[reviewInviteDevices], link.Key); code != http.StatusForbidden || out["code"] != codeUsedElsewhere {
+		t.Errorf("device %d: %d %v", reviewInviteDevices+1, code, out)
+	}
+	if code, _ := claim(t, d, devices[0], link.Key); code != 200 {
+		t.Errorf("first device claiming again: %d", code)
 	}
 
 	// Revoking works as for anyone.
-	f.Devices = []tsapi.Device{{ID: "9", NodeID: "nSam", Tags: []string{guestTag}, Authorized: true}}
-	if rr, err := d.revoke("App Review", "", false); err != nil || len(rr.Removed) != 1 || len(rr.Deleted) != 1 {
+	if rr, err := d.revoke("App Review", "", false); err != nil || len(rr.Removed) != reviewInviteDevices || len(rr.Deleted) != reviewInviteDevices {
 		t.Fatalf("revoke: %+v %v", rr, err)
 	}
 
 	notes := reviewNotes(reply.Share)
-	if !strings.Contains(notes, reply.Share.Link) || !strings.Contains(notes, "Report a Problem") || strings.ContainsAny(notes, "\u2013\u2014") {
+	if !strings.Contains(notes, reply.Share.Link) || !strings.Contains(notes, "leave Alex's apps") || strings.ContainsAny(notes, "\u2013\u2014") {
 		t.Errorf("review notes:\n%s", notes)
+	}
+}
+
+// 1.0.6 minted review invites with single-use keys and saved them with no reusable
+// field. After the upgrade such an invite still closes at its first claim, while one
+// minted now admits reviewInviteDevices devices, after a restart too.
+func TestReviewInvitesMintedBefore107(t *testing.T) {
+	d, _ := testDaemon(t)
+	api, err := d.api()
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldKey, err := api.CreateAuthKey(t.Context(), tsapi.KeyRequest{Tags: []string{guestTag}, Preauthorized: true, Expiry: reviewInviteTTL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created := time.Now().UTC()
+	saved := fmt.Sprintf(`{"invites": [{"id": "0a1b2c3d4e", "to": "Apple Editorial", "person": "5e6f7a8b9c", "app": "coach", "state": "sent",
+		"requestedBy": "terminal", "created": %q, "expires": %q, "keyId": %q, "keyHash": %q, "review": true}], "guests": [], "feedback": []}`,
+		created.Format(time.RFC3339), created.Add(reviewInviteTTL).Format(time.RFC3339), oldKey.ID, hashKey(oldKey.Key))
+	if err := os.MkdirAll(d.stateDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(sharingPath(d.stateDir), []byte(saved), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if d.sh, err = openSharing(d.stateDir); err != nil {
+		t.Fatal(err)
+	}
+	res, err := d.createInvite(guestRef{To: "App Review"}, "coach", "terminal", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	link, err := parseInviteLink(res.Link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.sh, err = openSharing(d.stateDir); err != nil { // a restart
+		t.Fatal(err)
+	}
+	dev := func(name string, i int) Identity {
+		return Identity{Tagged: true, Tags: []string{guestTag}, DeviceID: fmt.Sprint("n", name, i), DeviceName: fmt.Sprint(name, "-", i)}
+	}
+	state := func(id string) string {
+		d.sh.mu.Lock()
+		defer d.sh.mu.Unlock()
+		return d.sh.st.invite(id).State
+	}
+
+	if code, out := claim(t, d, dev("editorial", 0), oldKey.Key); code != 200 || state("0a1b2c3d4e") != inviteClaimed {
+		t.Fatalf("the 1.0.6 invite's claim: %d %v, then %s", code, out, state("0a1b2c3d4e"))
+	}
+	waitFor(t, func() bool { return keyDeleted(d, "0a1b2c3d4e") }, "the 1.0.6 invite's spent key deleted")
+
+	for i := range reviewInviteDevices {
+		want := inviteSent
+		if i == reviewInviteDevices-1 {
+			want = inviteClaimed
+		}
+		if code, out := claim(t, d, dev("review", i), link.Key); code != 200 || state(res.Invite.ID) != want {
+			t.Fatalf("claim %d on the new invite: %d %v, then %s", i, code, out, state(res.Invite.ID))
+		}
+	}
+	waitFor(t, func() bool { return keyDeleted(d, res.Invite.ID) }, "the new invite's used-up key deleted")
+}
+
+// Revoking a review invite by its ID removes its devices and cancels it, so a removed
+// phone that joins again can't take a place that is left.
+func TestRevokeReviewInviteByID(t *testing.T) {
+	d, f := testDaemon(t)
+	res, err := d.createInvite(guestRef{To: "App Review"}, "coach", "terminal", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	link, err := parseInviteLink(res.Link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code, _ := claim(t, d, samDev, link.Key); code != 200 {
+		t.Fatalf("claim: %d", code)
+	}
+	rr, err := d.revoke(res.Invite.ID, "", false)
+	if err != nil || len(rr.Removed) != 1 || len(rr.Canceled) != 1 || rr.Canceled[0].ID != res.Invite.ID || rr.Canceled[0].KeyID != "" || !f.Keys[0].Deleted {
+		t.Fatalf("revoke: %+v %v", rr, err)
+	}
+	again := samDev
+	again.DeviceID = "nSam2"
+	if code, out := claim(t, d, again, link.Key); code != http.StatusForbidden || out["code"] != codeNotInvited {
+		t.Errorf("the phone joined again and claimed: %d %v", code, out)
 	}
 }
 
@@ -223,16 +343,30 @@ func TestReviewInviteExpiry(t *testing.T) {
 	if r := d.sh.st.reconcile(nil, []string{"coach"}, res.Invite.Expires.Add(claimGrace+time.Minute)); len(r.Expired) != 1 {
 		t.Fatalf("not expired after its lifetime: %+v", r)
 	}
-	// Canceling an unused review invite deletes its key, as for any invite.
+	// Canceling a review invite deletes its key, as for any invite. A device that
+	// claimed it keeps the app; no other one gets it.
 	res, err = d.createInvite(guestRef{To: "App Review"}, "coach", "terminal", true)
 	if err != nil {
 		t.Fatal(err)
+	}
+	link, err := parseInviteLink(res.Link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code, _ := claim(t, d, samDev, link.Key); code != 200 {
+		t.Fatalf("claim: %d", code)
 	}
 	if _, err := d.cancelInvite(res.Invite.ID); err != nil {
 		t.Fatal(err)
 	}
 	if !f.Keys[1].Deleted {
 		t.Error("canceling left the review key usable")
+	}
+	if d.sh.guestFor("nSam", "coach") == nil {
+		t.Error("canceling removed a device that had claimed")
+	}
+	if code, out := claim(t, d, kimDev, link.Key); code != http.StatusForbidden || out["code"] != codeNotInvited {
+		t.Errorf("claim after cancel: %d %v", code, out)
 	}
 }
 
@@ -243,11 +377,37 @@ func TestPlainInviteIsNotReview(t *testing.T) {
 		t.Fatal(err)
 	}
 	data, _ := json.Marshal(res.Invite)
-	if res.Invite.Review || strings.Contains(string(data), "review") || f.Keys[0].Expires.Sub(f.Keys[0].Created) != inviteTTL {
+	if res.Invite.Review || strings.Contains(string(data), "review") || f.Keys[0].Reusable || f.Keys[0].Expires.Sub(f.Keys[0].Created) != inviteTTL {
 		t.Errorf("plain invite = %s, key %+v", data, f.Keys[0])
 	}
 	if !strings.HasSuffix(res.Message, "within 7 days to join: "+res.Link) {
 		t.Errorf("message = %s", res.Message)
+	}
+}
+
+// share prints the link to send and points to the join page's button, never the
+// ovenlight:// form: any app on the phone may claim the scheme, and the link carries the key.
+func TestShareOutputHasNoAppLink(t *testing.T) {
+	d, _ := testDaemon(t)
+	for _, review := range []bool{false, true} {
+		res, err := d.createInvite(guestRef{To: fmt.Sprint("Sam ", review)}, "coach", "terminal", review)
+		if err != nil {
+			t.Fatal(err)
+		}
+		stdout := os.Stdout
+		f, _ := os.Create(filepath.Join(t.TempDir(), "out"))
+		os.Stdout = f
+		if review {
+			printReviewInvite(&res)
+		} else {
+			printInvite(&res)
+		}
+		os.Stdout = stdout
+		f.Close()
+		out, _ := os.ReadFile(f.Name())
+		if !strings.Contains(string(out), res.Link) || !strings.Contains(string(out), joinPageHint) || strings.Contains(string(out), "ovenlight://") {
+			t.Errorf("review %v printed:\n%s", review, out)
+		}
 	}
 }
 

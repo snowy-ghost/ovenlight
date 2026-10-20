@@ -26,7 +26,7 @@ import (
 const mcpProtocolVersion = "2025-06-18"
 
 // mcpInstructions is what an agent reads about this server before using it.
-const mcpInstructions = "This connector puts the owner's local web apps on their iPhone, in the Ovenlight app, " +
+const mcpInstructions = "This connector puts the owner's local web apps on their phone, in the Ovenlight app, " +
 	"each at its own HTTPS address in their tailnet. Before building or changing an app for Ovenlight, read the guide tool: " +
 	"it says what not to build (no login system, no cloud database), how to serve the app, who is calling, and how to make it feel native. " +
 	"You can publish an app, restart one the connector runs, check it, read its logs, and read the notes and screenshots people send from their phones. " +
@@ -34,7 +34,7 @@ const mcpInstructions = "This connector puts the owner's local web apps on their
 	"To have the connector start an app and keep it running, the person runs `ovenlight publish --slug <slug> --run '<command>'` in a terminal, from the app's folder, " +
 	"or you do through a shell where they approve the command. Scaffolding a new app is `ovenlight new` in a shell; no tool here does it. " +
 	"Sharing is the owner's, in a terminal (ovenlight share) or in Ovenlight. " +
-	"Some steps only the person can do, such as opening the login link publish prints, signing in on the iPhone, changing Tailscale admin console settings and sharing: " +
+	"Some steps only the person can do, such as opening the login link publish prints, signing in on the phone, changing Tailscale admin console settings and sharing: " +
 	"stop and ask them in plain words. " +
 	"If you can't edit files yourself, tell the person to build the app with a coding agent that can (Claude Code, for example) and publish it from there."
 

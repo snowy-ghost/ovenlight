@@ -1,6 +1,6 @@
 # {{name}}
 
-A small web app for Ovenlight, which opens it full screen on your iPhone and on the phones
+A small web app for Ovenlight, which opens it full screen on your phone and on the phones
 of people you share it with. It starts as a shared list: everyone adds things and sees
 who added each one, and only you, the owner, can clear it. Replace the list with your own
 app and keep what's around it: the comments in the code say why each part is the way it
