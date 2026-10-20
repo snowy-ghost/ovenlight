@@ -62,10 +62,14 @@ object WebViewSetup {
     private val mutableState = MutableStateFlow<State>(State.Starting)
     val state: StateFlow<State> = mutableState
 
+    /** Start found no WebView, so none is loaded, and Android won't restart Ovenlight once one is there. */
+    private var missing = false
+
     fun start(context: Context) {
         // No WebView at all (disabled, or none installed): starting one throws on the start-up
         // thread, past onError, so go straight to asking for it.
-        if (WebViewCompat.getCurrentWebViewPackage(context) == null) return afterStartUp(context)
+        missing = WebViewCompat.getCurrentWebViewPackage(context) == null
+        if (missing) return afterStartUp(context)
         val main = ContextCompat.getMainExecutor(context)
         val config = WebViewStartUpConfig.Builder(Executors.newSingleThreadExecutor()).build()
         WebViewCompat.startUpWebView(context, config, object : WebViewOutcomeReceiver<WebViewStartUpResult, WebViewStartupException> {
@@ -74,6 +78,11 @@ object WebViewSetup {
             // A start-up that fails in the background leaves WebView to start on first use.
             override fun onError(error: WebViewStartupException) = main.execute { afterStartUp(context) }
         })
+    }
+
+    /** Starts as at launch once the WebView that was missing then has been enabled or installed. */
+    fun startIfFound(context: Context) {
+        if (missing && WebViewCompat.getCurrentWebViewPackage(context) != null) start(context)
     }
 
     private fun afterStartUp(context: Context) {
