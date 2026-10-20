@@ -739,6 +739,40 @@ final class LockTimingTests: XCTestCase {
         XCTAssertTrue(launch().isLocked, "quit in front: no time in the background to go by")
     }
 
+    /// Off never locks: not on a return, however long Ovenlight was away, not at a launch,
+    /// not after a restart. Back to a delay, it locks again.
+    func testOffNeverLocks() {
+        let defaults = UserDefaults.throwaway(for: self)
+        var now = ContinuousClock.now
+        var boot: String? = "boot-1"
+        var saved = false
+        func launch() -> LockManager { LockManager(hasSavedData: { saved }, now: { now }, boot: { boot }, defaults: defaults) }
+        let lock = launch()
+        let previous = lock.lockAfterSeconds
+        defer { lock.lockAfterSeconds = previous }
+        lock.lockAfterSeconds = LockManager.off
+        saved = true
+        XCTAssertFalse(launch().isLocked, "never in the background yet")
+
+        lock.didEnterBackground()
+        now += .seconds(365 * 24 * 60 * 60)
+        XCTAssertFalse(lock.lockIsDue)
+        XCTAssertFalse(launch().isLocked, "quit in the background a year ago")
+        boot = "boot-2"
+        XCTAssertFalse(launch().isLocked, "the iPhone restarted")
+        boot = nil
+        XCTAssertFalse(launch().isLocked, "this boot can't be told")
+        lock.willBecomeActive()
+        XCTAssertFalse(lock.isLocked)
+
+        lock.lockAfterSeconds = 60
+        XCTAssertTrue(launch().isLocked)
+        lock.didEnterBackground()
+        now += .seconds(60)
+        lock.willBecomeActive()
+        XCTAssertTrue(lock.isLocked)
+    }
+
     func testAnEmptyNodeFolderOrListIsNothingToLock() throws {
         let base = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         defer { try? FileManager.default.removeItem(at: base) }

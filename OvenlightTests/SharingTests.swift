@@ -1315,6 +1315,22 @@ final class LockManagerTests: XCTestCase {
         lock.willBecomeActive()
         XCTAssertTrue(lock.isLocked)
     }
+
+    /// Turning the lock off asks first, and a cancel keeps the delay. A delay doesn't ask.
+    func testTurningTheLockOffAsksFirst() async {
+        let lock = LockManager(defaults: .throwaway(for: self))
+        let previous = lock.lockAfterSeconds
+        defer { lock.lockAfterSeconds = previous }
+        lock.lockAfterSeconds = 300
+        var asked: [String] = []
+        await lock.setLockAfter(LockManager.off) { asked.append($0); return false }
+        XCTAssertEqual(lock.lockAfterSeconds, 300, "canceled")
+        await lock.setLockAfter(LockManager.off) { asked.append($0); return true }
+        XCTAssertEqual(lock.lockAfterSeconds, LockManager.off)
+        XCTAssertEqual(asked, ["Turn off Ovenlight’s lock", "Turn off Ovenlight’s lock"])
+        await lock.setLockAfter(60) { _ in XCTFail("a delay doesn't ask"); return false }
+        XCTAssertEqual(lock.lockAfterSeconds, 60)
+    }
 }
 
 final class PageDialogTests: XCTestCase {

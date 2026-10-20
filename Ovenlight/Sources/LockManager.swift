@@ -13,6 +13,8 @@ final class LockManager: ObservableObject {
 
     static let lockAfterKey = "lockAfterSeconds"
     static let defaultLockAfter = 60
+    /// Off: no time in the background is that long, and a launch doesn't lock either.
+    static let off = Int.max
 
     /// Seconds in the background before Ovenlight locks again. 0 locks every time.
     @AppStorage(LockManager.lockAfterKey) var lockAfterSeconds = LockManager.defaultLockAfter
@@ -34,8 +36,8 @@ final class LockManager: ObservableObject {
     /// Whether there is anything to protect yet. A new install stays unlocked until there is.
     private let hasSavedData: () -> Bool
 
-    /// A launch locks unless Ovenlight was quit in the background within the lock delay,
-    /// since this iPhone last started.
+    /// A launch locks unless the lock is off, or Ovenlight was quit in the background within
+    /// the lock delay, since this iPhone last started.
     init(hasSavedData: @escaping () -> Bool = { true }, now: @escaping () -> ContinuousClock.Instant = { .now },
          boot: @escaping () -> String? = LockManager.bootSession, defaults: UserDefaults = .standard) {
         self.hasSavedData = hasSavedData
@@ -47,7 +49,7 @@ final class LockManager: ObservableObject {
            let backgrounded = try? JSONDecoder().decode(Backgrounded.self, from: saved), let boot = boot(), backgrounded.boot == boot {
             backgroundedAt = backgrounded.at
         }
-        if isLocked, backgroundedAt != nil, !lockIsDue { isLocked = false }
+        if isLocked, lockAfterSeconds == Self.off || backgroundedAt != nil && !lockIsDue { isLocked = false }
     }
 
     private struct Backgrounded: Codable {
@@ -102,6 +104,15 @@ final class LockManager: ObservableObject {
 
     func lock() {
         isLocked = true
+    }
+
+    /// Turning the lock off asks first, so someone handed the unlocked iPhone can't. An
+    /// iPhone with no passcode has nothing to ask for, and the confirmation passes.
+    func setLockAfter(_ seconds: Int, confirm: (String) async -> Bool = OwnerAuth.confirm) async {
+        if seconds == Self.off, lockAfterSeconds != Self.off {
+            guard await confirm("Turn off Ovenlight’s lock") else { return }
+        }
+        lockAfterSeconds = seconds
     }
 
     func didBecomeActive() async {

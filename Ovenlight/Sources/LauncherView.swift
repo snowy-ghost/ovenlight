@@ -492,7 +492,7 @@ struct SettingsView: View {
                     if lock.noPasscode {
                         Text("Ovenlight can’t lock until this \(ConnectionCopy.device) has a passcode. Set one in the Settings app.")
                     } else {
-                        Text("How long Ovenlight can stay in the background before it locks.")
+                        Text("How long Ovenlight can stay in the background before it locks, if at all.")
                     }
                 }
                 .ovenlightRows()
@@ -575,11 +575,12 @@ struct SettingsView: View {
     }
 
     private var lockAfterPicker: some View {
-        Picker(selection: $lockAfterSeconds) {
+        Picker(selection: Binding(get: { lockAfterSeconds }, set: { seconds in Task { await lock.setLockAfter(seconds) } })) {
             Text("Immediately").tag(0)
             Text("After 1 Minute").tag(60)
             Text("After 5 Minutes").tag(300)
             Text("After 15 Minutes").tag(900)
+            Text("Off").tag(LockManager.off)
         } label: {
             Label { Text("Require \(lock.biometry.name)") } icon: {
                 SettingsSymbol(systemName: lock.biometry.symbol, color: .green)
