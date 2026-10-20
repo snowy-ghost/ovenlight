@@ -335,8 +335,8 @@ ovenlight publish --slug recipe-box --shareable
 
 It asks you to confirm the owner, then shows the exact change it will make to your tailnet
 policy, and changes nothing until you type `yes`. Only one connector per tailnet can share
-apps, so it refuses while a node in the tailnet is tagged for an app this connector
-doesn't publish, and says what to do. [security.md](security.md#the-policy-change)
+apps, so it refuses while a node in the tailnet is tagged for an app and isn't one of
+this connector's own, and says what to do. [security.md](security.md#the-policy-change)
 explains what it changes and what it refuses to touch.
 
 Then, for each person:

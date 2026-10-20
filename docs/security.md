@@ -66,11 +66,13 @@ plan would now be different.
 
 Only one connector per tailnet can share apps. Each keeps its own guest records, while
 tags and a guest's phone reach across the tailnet, so two would mix up each other's
-guests. `publish --shareable` refuses while a device in the tailnet carries the app tag
-of an app this connector doesn't publish. The refusal names the device and says what to
-do: delete it in the admin console (Machines) if it's left from an app you unpublished,
-or make apps shareable on the connector it belongs to. The list of unclaimed phones
-shows only guest devices of this connector's apps.
+guests. `publish --shareable` refuses while a device in the tailnet carries an app tag
+and isn't one of this connector's own app nodes, which it knows by the node ID in its
+saved state. That includes another computer's node for an app with the same slug, and a
+node this computer left behind when its saved state was lost. The refusal names the
+device and says what to do: delete it in the admin console (Machines) if nothing runs it
+any more, or make apps shareable on the connector it belongs to. The list of unclaimed
+phones shows only guest devices of this connector's apps.
 
 ### What it adds
 
