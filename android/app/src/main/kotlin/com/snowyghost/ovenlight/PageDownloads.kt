@@ -206,7 +206,8 @@ class PageDownloads(
             val click = clicks.remove(url) ?: return later()
             started.remove(url)
             // A data URL has no origin of its own: only the app's page reporting the click counts.
-            val uri = URI("data", url.substringAfter(':').take(64), null)
+            // The page's text isn't parsed, since a page can write one java.net.URI refuses.
+            val uri = URI("data:,")
             if (!DownloadPolicy.allows(uri, from = click.fromHost, appHost = appHost, locked = isLocked())) return log("refused a data download")
             save(click.name) { DataURL.decode(url) }
         }

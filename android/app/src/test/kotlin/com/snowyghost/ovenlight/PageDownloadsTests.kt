@@ -100,6 +100,15 @@ class PageDownloadsTests {
     }
 
     @Test
+    fun testADataURLJavaCantParseStillDownloads() {
+        // WebView keeps this href as written; cut to 64 characters it ends inside the brackets.
+        val odd = "data://${"a".repeat(58)}@[::1]/,hi"
+        downloads.clicked(odd, "odd.txt", host)
+        start(odd)
+        assertEquals("odd.txt", shelf().single().name)
+    }
+
+    @Test
     fun testABlobArrivesWithItsBytesInEitherOrder() {
         val first = "blob:https://$host/6c1f0b2e-1d2a-4c8e-9a51-0b7a3e5d9f10"
         val second = "blob:https://$host/0b7a3e5d-9f10-4c8e-9a51-6c1f0b2e1d2a"
