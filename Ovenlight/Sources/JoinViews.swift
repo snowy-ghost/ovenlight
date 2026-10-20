@@ -1,3 +1,4 @@
+import AVFoundation
 import SwiftUI
 import VisionKit
 
@@ -33,9 +34,17 @@ struct JoinFlowView: View {
                 case nil:
                     InviteEntryView { request.invite = $0 }
                 case .failure(let error):
-                    JoinMessage(symbol: "link.badge.plus", title: "Can't Use This Invite", message: error.message) {
-                        Button("Try Another Invite") { request.invite = nil }
-                            .buttonStyle(.borderedProminent)
+                    ContentUnavailableView {
+                        Label {
+                            Text("Can’t Use This Invite").font(.display(.title2))
+                        } icon: {
+                            Image(systemName: "exclamationmark.circle")
+                        }
+                    } description: {
+                        Text(error.message)
+                    } actions: {
+                        Button { request.invite = nil } label: { Text("Try Another Invite").font(.headline) }
+                            .buttonStyle(.ovenlightProminent)
                             .buttonBorderShape(.capsule)
                             .controlSize(.large)
                     }
@@ -58,11 +67,13 @@ struct JoinFlowView: View {
 private struct InviteEntryView: View {
     let found: (Result<InviteLink, InviteLink.ParseError>) -> Void
 
+    @EnvironmentObject private var lock: LockManager
     @State private var text = ""
     @State private var error: String?
     @State private var scanning = false
 
-    private var canScan: Bool { DataScannerViewController.isSupported && DataScannerViewController.isAvailable }
+    /// Even with the camera refused: the scanner then says where to allow it.
+    private var canScan: Bool { DataScannerViewController.isSupported }
 
     var body: some View {
         Form {
@@ -78,7 +89,7 @@ private struct InviteEntryView: View {
                 Text(ConnectionCopy.invitePrompt)
                     .textCase(nil)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.secondaryText)
                     .padding(.bottom, 6)
             }
             Section {
@@ -120,6 +131,8 @@ private struct InviteEntryView: View {
                 scanning = false
             }
         }
+        // The camera stops when the lock comes: nothing runs under it.
+        .onChange(of: lock.isLocked) { _, locked in if locked { scanning = false } }
     }
 
     private func use(_ text: String) {
@@ -164,12 +177,25 @@ private struct JoinInviteView: View {
             ScrollView { layout(for: phase) }
         }
         .animation(.easeInOut(duration: 0.25), value: phase)
+        .onAppear { guests.shownJoins.insert(invite.invite) }
+        .onDisappear { guests.shownJoins.remove(invite.invite) }
+        .announcing(announcement(for: phase))
         .sensoryFeedback(trigger: phase) { _, new in
             switch new {
             case .joined: .success
             case .failed: .error
             default: nil
             }
+        }
+    }
+
+    /// What VoiceOver hears as joining moves on: the screen's title, and why it failed.
+    private func announcement(for phase: JoinPhase?) -> String? {
+        switch phase {
+        case .joining, .claiming: ConnectionCopy.joining(owner: invite.owner, app: invite.name)
+        case .joined: ConnectionCopy.joined(invite.name)
+        case .failed(let error): "\(error.title(owner: invite.owner, app: invite.name)). \(error.message(owner: invite.owner, app: invite.name))"
+        case nil: nil
         }
     }
 
@@ -212,7 +238,7 @@ private struct JoinInviteView: View {
             switch (phase, guests.preflight(invite)) {
             case (.joined, _), (nil, .alreadyAdded):
                 title(ConnectionCopy.joined(invite.name))
-                detail("It's with your apps now, shared by \(invite.owner).")
+                detail("It’s with your apps now, shared by \(invite.owner).")
             case (.failed(let error), _):
                 title(error.title(owner: invite.owner, app: invite.name))
                 detail(error.message(owner: invite.owner, app: invite.name))
@@ -241,11 +267,11 @@ private struct JoinInviteView: View {
     }
 
     private func title(_ text: String) -> some View {
-        Text(text).font(.display(.title2))
+        Text(text).font(.display(.title2)).accessibilityAddTraits(.isHeader)
     }
 
     private func detail(_ text: String) -> some View {
-        Text(text).foregroundStyle(.secondary)
+        Text(text).foregroundStyle(Color.secondaryText)
     }
 
     @ViewBuilder
@@ -257,17 +283,17 @@ private struct JoinInviteView: View {
             case (nil, .alreadyAdded(let app)):
                 primary("Open \(invite.name)") { open(app.id) }
                 // A new invite after the owner removed the app must reach its connector.
-                Button("Join Again") { Task { await guests.accept(invite) } }
+                Button { Task { await guests.accept(invite) } } label: { Text("Join Again").minimumHitArea() }
             case (.failed(let error), _) where error.isRetryable:
                 primary("Try Again") { Task { await guests.retry(invite.invite) } }
-                Button("Stop Joining", role: .destructive) { Task { await guests.cancel(invite.invite); close() } }
+                Button(role: .destructive) { Task { await guests.cancel(invite.invite); close() } } label: { Text("Stop Joining").minimumHitArea() }
             case (.failed, _), (nil, .ownApp):
                 primary("Done", action: close)
             case (.joining, _), (.claiming, _):
                 EmptyView()
             case (nil, .ready):
                 primary("Join") { Task { await guests.accept(invite) } }
-                Button("Not Now", action: close)
+                Button(action: close) { Text("Not Now").minimumHitArea() }
             }
         }
     }
@@ -276,7 +302,7 @@ private struct JoinInviteView: View {
         Button(action: action) {
             Text(title).font(.headline).frame(maxWidth: .infinity)
         }
-        .buttonStyle(.borderedProminent)
+        .buttonStyle(.ovenlightProminent)
         .buttonBorderShape(.capsule)
         .controlSize(.large)
     }
@@ -286,36 +312,40 @@ private struct JoinInviteView: View {
     }
 }
 
-/// A symbol, a title and a message, for the sheet's end states.
-private struct JoinMessage<Controls: View>: View {
-    let symbol: String
-    let title: String
-    let message: String
-    @ViewBuilder let controls: Controls
-
-    var body: some View {
-        ContentUnavailableView {
-            Label(title, systemImage: symbol)
-        } description: {
-            Text(message)
-        } actions: {
-            controls
-        }
-    }
-}
-
-/// Scans an invite's QR code with the camera.
+/// Scans an invite's QR code with the camera, or says where to allow it.
 struct InviteScannerView: View {
     let found: (URL) -> Void
     let cancel: () -> Void
 
+    @State private var refused = AVCaptureDevice.authorizationStatus(for: .video) == .denied
+
     var body: some View {
         ZStack(alignment: .top) {
-            ScannerRepresentable(found: found)
-                .ignoresSafeArea()
+            if refused {
+                VStack(spacing: 18) {
+                    Text("Ovenlight can’t use the camera. Allow it in Settings to scan the invite code.")
+                        .multilineTextAlignment(.center)
+                    Button {
+                        if let settings = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(settings) }
+                    } label: {
+                        Text("Open Settings").font(.headline)
+                    }
+                    .buttonStyle(.ovenlightProminent)
+                    .buttonBorderShape(.capsule)
+                    .controlSize(.large)
+                }
+                .padding(32)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color.groupedBackground)
+            } else {
+                ScannerRepresentable(found: found) { refused = true }
+                    .ignoresSafeArea()
+            }
             HStack {
-                Text("Point at the invite code")
-                    .font(.subheadline.weight(.semibold))
+                if !refused {
+                    Text("Point at the invite code")
+                        .font(.subheadline.weight(.semibold))
+                }
                 Spacer()
                 Button("Cancel", action: cancel)
                     .font(.subheadline.weight(.semibold))
@@ -330,13 +360,15 @@ struct InviteScannerView: View {
 
     private struct ScannerRepresentable: UIViewControllerRepresentable {
         let found: (URL) -> Void
+        /// The camera was refused, at its prompt or before.
+        let unavailable: () -> Void
 
         func makeUIViewController(context: Context) -> DataScannerViewController {
             let scanner = DataScannerViewController(recognizedDataTypes: [.barcode(symbologies: [.qr])],
                                                     qualityLevel: .balanced, recognizesMultipleItems: false,
                                                     isHighFrameRateTrackingEnabled: false, isHighlightingEnabled: true)
             scanner.delegate = context.coordinator
-            try? scanner.startScanning()
+            do { try scanner.startScanning() } catch { DispatchQueue.main.async(execute: unavailable) }
             return scanner
         }
 
@@ -346,13 +378,21 @@ struct InviteScannerView: View {
             controller.stopScanning()
         }
 
-        func makeCoordinator() -> Coordinator { Coordinator(found: found) }
+        func makeCoordinator() -> Coordinator { Coordinator(found: found, unavailable: unavailable) }
 
         final class Coordinator: NSObject, DataScannerViewControllerDelegate {
             let found: (URL) -> Void
+            let unavailable: () -> Void
             private var done = false
 
-            init(found: @escaping (URL) -> Void) { self.found = found }
+            init(found: @escaping (URL) -> Void, unavailable: @escaping () -> Void) {
+                self.found = found
+                self.unavailable = unavailable
+            }
+
+            func dataScanner(_ scanner: DataScannerViewController, becameUnavailableWithError error: DataScannerViewController.ScanningUnavailable) {
+                unavailable()
+            }
 
             func dataScanner(_ scanner: DataScannerViewController, didAdd items: [RecognizedItem], allItems: [RecognizedItem]) {
                 for case .barcode(let code) in items {
@@ -405,7 +445,7 @@ struct PendingInvitesBanner: View {
             AppIconView(app: WebApp(name: invite.name, startURL: invite.appURL), image: nil, size: 36)
             VStack(alignment: .leading, spacing: 2) {
                 Text(invite.name).font(.subheadline.weight(.semibold))
-                Text(status(invite)).font(.footnote).foregroundStyle(.secondary)
+                Text(status(invite)).font(.footnote).foregroundStyle(Color.secondaryText)
             }
             Spacer(minLength: 8)
             if case .failed = guests.phases[invite.invite] {
@@ -432,7 +472,6 @@ struct PendingInvitesBanner: View {
 /// machines: a friend who got an invite starts here too, and never sees a sign-in.
 struct LauncherWelcome: View {
     @EnvironmentObject private var node: NodeManager
-    @Environment(\.colorScheme) private var colorScheme
     let join: () -> Void
 
     static let title = "Welcome to Ovenlight"
@@ -449,26 +488,19 @@ struct LauncherWelcome: View {
 
     private var content: some View {
         VStack(spacing: 10) {
-            // The empty rack, in the light, waiting for apps.
-            OvenRack(width: 250)
-                .background {
-                    Ellipse()
-                        .fill(EllipticalGradient(colors: [Color.lampGlow.opacity(colorScheme == .dark ? 0.25 : 0.2), .clear]))
-                        .frame(width: 270, height: 64)
-                }
-                .padding(.bottom, 30)
             Text(Self.title)
                 .font(.display(.title2))
+                .accessibilityAddTraits(.isHeader)
             Text(Self.message)
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.secondaryText)
             VStack(spacing: 14) {
                 Button(ConnectionCopy.joinWithInvite, action: join)
                     .font(.headline)
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.ovenlightProminent)
                     .buttonBorderShape(.capsule)
                     .controlSize(.large)
-                Button("Use My Own Computers") { node.enableOwner() }
+                Button { node.enableOwner() } label: { Text("Use My Own Computers").minimumHitArea() }
             }
             .padding(.top, 14)
         }

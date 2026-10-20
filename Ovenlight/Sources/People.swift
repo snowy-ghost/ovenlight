@@ -9,7 +9,7 @@ struct GuestPersonRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(name)
-            Text(detail).font(.caption).foregroundStyle(.secondary)
+            Text(detail).font(.caption).foregroundStyle(Color.secondaryText)
         }
         .accessibilityElement(children: .combine)
     }
@@ -46,14 +46,19 @@ struct SharingPeopleList: View {
     var body: some View {
         let groups = groups
         List(selection: $selection) {
-            if let error {
-                Section { Label(error, systemImage: "exclamationmark.triangle.fill").labelStyle(.warning) }
+            // With no one to list, the problem shows in the list's place instead.
+            if let error = error ?? (groups.isEmpty && sharing.problem != nil ? nil : sharing.machines.lazy.compactMap(\.problem).first) {
+                Section { ProblemLabel(error) }
                     .ovenlightRows()
             }
             if groups.isEmpty {
-                ContentUnavailableView("No One Yet", systemImage: "person.2",
-                                       description: Text("People you share apps with appear here."))
-                    .ovenlightRows()
+                if let problem = sharing.problem {
+                    SharingProblemView(problem: problem)
+                } else {
+                    ContentUnavailableView("No One Yet", systemImage: "person.2",
+                                           description: Text("People you share apps with appear here."))
+                        .ovenlightRows()
+                }
             }
             ForEach(groups) { group in
                 Section {
@@ -90,6 +95,7 @@ struct SharingPeopleList: View {
         .environment(\.editMode, $editMode)
         .ovenlightGroupedBackground()
         .navigationTitle(editMode.isEditing && !selection.isEmpty ? "\(selection.count) Selected" : "People")
+        .announcing(error)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if !groups.isEmpty {
@@ -148,7 +154,7 @@ struct SharingPeopleList: View {
         let invited = removing.contains { ref in
             sharing.machines.contains { $0.id == ref.machineID && $0.guests.hasOpenInvites(ref.person) }
         }
-        return "\(who) can't open your apps anymore, on any device, and their devices are removed from your Tailscale network."
+        return "\(who) can’t open your apps anymore, on any device, and their devices are removed from your Tailscale network."
             + (invited ? " Their unused invites are canceled too." : "")
     }
 
@@ -213,8 +219,8 @@ struct SharingPersonView: View {
 
     var body: some View {
         List {
-            if let error {
-                Section { Label(error, systemImage: "exclamationmark.triangle.fill").labelStyle(.warning) }
+            if let error = error ?? machine?.problem {
+                Section { ProblemLabel(error) }
                     .ovenlightRows()
             }
             if let machine, let person {
@@ -246,7 +252,7 @@ struct SharingPersonView: View {
                     } header: {
                         Text("Devices")
                     } footer: {
-                        Text("Swipe to remove a device they no longer use, such as an old iPhone. It leaves your Tailscale network.")
+                        Text("Swipe to remove a device they no longer use, such as an old phone. It leaves your Tailscale network.")
                     }
                     .ovenlightRows()
                 }
@@ -258,6 +264,8 @@ struct SharingPersonView: View {
                     }
                 }
                 .ovenlightRows()
+            } else if let problem = sharing.problem {
+                SharingProblemView(problem: problem)
             } else if !working {
                 ContentUnavailableView("Not Shared Anymore", systemImage: "person.slash")
                     .ovenlightRows()
@@ -265,6 +273,7 @@ struct SharingPersonView: View {
         }
         .ovenlightGroupedBackground()
         .navigationTitle(person?.name ?? "")
+        .announcing(error)
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await sharing.refresh(apps: registry.apps) }
         .alert(removalTitle, isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } })) {
@@ -290,11 +299,11 @@ struct SharingPersonView: View {
     private var removalMessage: String {
         switch removing {
         case .app(let app):
-            "\(name) can't open \(app.name) anymore, on any device. Each of their devices is also removed from your Tailscale network unless it has another of your apps."
+            "\(name) can’t open \(app.name) anymore, on any device. Each of their devices is also removed from your Tailscale network unless it has another of your apps."
         case .device:
-            "\(name) can't open your apps on this device anymore, and it's removed from your Tailscale network."
+            "\(name) can’t open your apps on this device anymore, and it’s removed from your Tailscale network."
         case .everything, nil:
-            "\(name) can't open your apps anymore, on any device, and their devices are removed from your Tailscale network."
+            "\(name) can’t open your apps anymore, on any device, and their devices are removed from your Tailscale network."
                 + (machine?.guests.hasOpenInvites(personID) == true ? " Their unused invites are canceled too." : "")
         }
     }
@@ -303,10 +312,14 @@ struct SharingPersonView: View {
         guard let machine, let person else { return }
         let reason = switch removal {
         case .app(let app): "Remove \(person.name) from \(app.name)"
-        case .device: "Remove \(person.name)'s device"
+        case .device: "Remove \(person.name)’s device"
         case .everything: "Remove \(person.name)"
         }
-        guard await OwnerAuth.confirm(reason), let client = sharing.client(for: machine) else { return }
+        guard await OwnerAuth.confirm(reason) else { return }
+        guard let client = sharing.client(for: machine) else {
+            error = AdminError.unreachable.message
+            return
+        }
         defer { client.session.finishTasksAndInvalidate() }
         working = true
         do {

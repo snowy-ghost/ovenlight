@@ -14,14 +14,18 @@ struct AppMenuPlan: Equatable {
     /// People and how many have it, when the owner can share the app.
     var people: Int?
     var reportProblem = false
-    /// Whose apps a guest can leave.
+    /// Whose apps a guest can leave: only when they shared more than this one, since Remove
+    /// App does the same for one.
     var leaveOwner: String?
 
-    static let notShareableDetail = "Make it shareable on your computer first"
+    static func notShareableDetail(slug: String) -> String {
+        "Make it shareable first: on your computer, run ovenlight publish --slug \(slug) --shareable"
+    }
 
-    static func plan(for app: WebApp, admin: (app: AdminApp, guests: AdminGuestList)?) -> AppMenuPlan {
+    /// `ownersApps`: how many apps on this phone the app's owner shared.
+    static func plan(for app: WebApp, admin: (app: AdminApp, guests: AdminGuestList)?, ownersApps: Int = 1) -> AppMenuPlan {
         if app.isShared {
-            return AppMenuPlan(reportProblem: true, leaveOwner: app.sharedBy ?? "Its Owner")
+            return AppMenuPlan(reportProblem: true, leaveOwner: ownersApps > 1 ? app.sharedBy ?? "Its Owner" : nil)
         }
         guard let admin else { return AppMenuPlan() }
         guard admin.app.shareable else { return AppMenuPlan(share: .notShareable) }
@@ -50,7 +54,7 @@ struct AppPeopleSheet: View {
 /// Simulator screenshots of sharing without a connector: `-sharingFixture YES` fills in
 /// what a connector would report for Book Club (shareable, two guests, an open
 /// invite) and Budget (not shareable), and shows Echo Board as shared by Riley. Sam's
-/// first iPhone hasn't opened Book Club for two months, since a new one joined.
+/// first phone hasn't opened Book Club for two months, since a new one joined.
 enum SharingFixture {
     static var isOn: Bool { UserDefaults.standard.bool(forKey: "sharingFixture") }
 
@@ -73,11 +77,11 @@ enum SharingFixture {
         ])
         machine.guests = AdminGuestList(
             guests: [
-                AdminGuest(deviceId: "n1", person: "p1", name: "Sam", app: "book-club", deviceName: "ovenlight-4k2x9q", claimedAt: ago(days: 120),
+                AdminGuest(deviceId: "n1", person: "p1", name: "Sam", app: "book-club", claimedAt: ago(days: 120),
                            lastOpened: ago(days: 64)),
-                AdminGuest(deviceId: "n4", person: "p1", name: "Sam", app: "book-club", deviceName: "ovenlight-m7c1pw", claimedAt: ago(days: 63),
+                AdminGuest(deviceId: "n4", person: "p1", name: "Sam", app: "book-club", claimedAt: ago(days: 63),
                            lastOpened: ago(days: 0.1)),
-                AdminGuest(deviceId: "n2", person: "p2", name: "Kim", app: "book-club", deviceName: "ovenlight-r5j8de", claimedAt: ago(days: 30),
+                AdminGuest(deviceId: "n2", person: "p2", name: "Kim", app: "book-club", claimedAt: ago(days: 30),
                            lastOpened: ago(days: 1)),
             ],
             invites: [AdminInvite(id: "i3", to: "Lee", person: "p3", app: "book-club", state: AdminInvite.sent,

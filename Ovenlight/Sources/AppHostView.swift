@@ -1,8 +1,11 @@
 import SwiftUI
 import WebKit
 
-/// Full-screen host for one app: its web view edge to edge, with the tuck-away chrome from
-/// `AppChrome` as the only thing Ovenlight draws over it.
+/// Full-screen host for one app: a band at the top in the page's header color, behind the
+/// status bar and the chrome's handle, and its web view below, with the tuck-away chrome from
+/// `AppChrome` as the only thing Ovenlight draws over it. A page that asks for
+/// `viewport-fit=cover` runs to the bottom and side edges; one that doesn't stays inside the
+/// side safe areas.
 struct AppHostView: View {
     let app: WebApp
     let onClose: () -> Void
@@ -14,8 +17,9 @@ struct AppHostView: View {
 
     var body: some View {
         // An app removed while its cover closes (Leave, access ended) gets no new web view:
-        // the pool would make its data store again, and load it.
-        if registry.apps.contains(where: { $0.id == app.id }) {
+        // the pool would make its data store again, and load it. One renamed while open (a
+        // shared app's new name, or a discovered one's) shows its new name.
+        if let app = registry.apps.first(where: { $0.id == app.id }) {
             // The same live web view on every call, unless the app's route changed since it
             // was made: then a new one through the right node, and a new page around it.
             let (webView, coordinator) = pool.webView(for: app)
@@ -55,58 +59,78 @@ private struct AppPage: View {
 
     var body: some View {
         let icon = registry.icon(for: app)
+        // The page's header once it has loaded, and the one from its last load until then.
+        let band = (coordinator.hasLoadedOnce ? coordinator.headerColor.map(Color.init) : StatusBarTint.color(for: app, in: colorScheme))
+            ?? Color(.systemBackground)
         ZStack {
-            Color(.systemBackground)
+            Color(uiColor: coordinator.underPageColor ?? .systemBackground)
                 .ignoresSafeArea()
-            // Files that finished while the person was back in the launcher, once the page
-            // is in a window to present over (it isn't yet as the view appears). The page
-            // stays visible under the opaque placeholder, which fades out over it, and takes
-            // no touches until it has loaded.
-            WebViewContainer(webView: webView, onWindow: { coordinator.presentWaitingDownloads() })
-                .ignoresSafeArea()
-                .allowsHitTesting(coordinator.hasLoadedOnce)
-            // A zIndex keeps each of these over the page as it fades out: without one, SwiftUI
-            // draws a view leaving a ZStack behind its siblings.
-            if !coordinator.hasLoadedOnce && coordinator.loadError == nil {
-                if let appNode = coordinator.node, let action = NodeActionOverlay.action(for: appNode.state, app: app, ownerEnabled: node.ownerEnabled) {
-                    NodeActionOverlay(appName: app.name, action: action) {
-                        if case .needsLogin(let url) = node.state {
-                            sheet = .login(url)
-                        } else if node.state == .awaitingApproval {
-                            sheet = .approve
-                        } else if !node.ownerEnabled {
-                            node.enableOwner()
+            VStack(spacing: 0) {
+                // No page runs under the status bar or the handle, which lives in this band.
+                band
+                    .ignoresSafeArea(edges: [.top, .horizontal])
+                    .frame(height: AppChrome.handleHeight)
+                ZStack {
+                    // Files that finished while the person was back in the launcher, once the
+                    // page is in a window to present over (it isn't yet as the view appears).
+                    // And the keys of a hardware keyboard, which scroll it, without a tap first.
+                    // The page stays visible under the opaque placeholder, which fades out over
+                    // it, and takes no touches until it has loaded.
+                    WebViewContainer(webView: webView, onWindow: {
+                        coordinator.appeared()
+                        webView.becomeFirstResponder()
+                    })
+                        .ignoresSafeArea(edges: coordinator.fitsCover ? [.bottom, .horizontal] : .bottom)
+                        // Moves at once, under the placeholder, rather than with its fade.
+                        .transaction { $0.animation = nil }
+                        .allowsHitTesting(coordinator.hasLoadedOnce)
+                    // A zIndex keeps each of these over the page as it fades out: without one,
+                    // SwiftUI draws a view leaving a ZStack behind its siblings.
+                    if !coordinator.hasLoadedOnce && coordinator.loadError == nil {
+                        if let appNode = coordinator.node, let action = NodeActionOverlay.action(for: appNode.state, app: app, ownerEnabled: node.ownerEnabled) {
+                            NodeActionOverlay(appName: app.name, action: action) {
+                                if case .needsLogin(let url) = node.state {
+                                    sheet = .login(url)
+                                } else if node.state == .awaitingApproval {
+                                    sheet = .approve
+                                } else if !node.ownerEnabled {
+                                    node.enableOwner()
+                                }
+                            } retry: {
+                                Task { await appNode.restart() }
+                            } close: {
+                                onClose()
+                            }
+                            .zIndex(1)
+                        } else if let failure = gateFailure {
+                            LoadErrorView(title: failure.title, message: failure.message,
+                                          retry: coordinator.gate == .unreachable && isRefused ? nil : { coordinator.reload() },
+                                          close: onClose)
+                                .transition(.opacity)
+                                .zIndex(1)
+                        } else {
+                            LaunchPlaceholder(app: app, icon: icon)
+                                .transition(.opacity)
+                                .zIndex(1)
                         }
-                    } retry: {
-                        Task { await appNode.restart() }
                     }
-                    .zIndex(1)
-                } else if coordinator.gate == .unreachable {
-                    LoadErrorView(title: ConnectionCopy.cantReach(app.name), message: ConnectionCopy.cantReachDetail,
-                                  retry: { coordinator.reload() }, close: onClose)
-                        .transition(.opacity)
-                        .zIndex(1)
-                } else {
-                    LaunchPlaceholder(app: app, icon: icon, caption: ConnectionCopy.connecting)
-                        .transition(.opacity)
-                        .zIndex(1)
+                    if let error = coordinator.loadError {
+                        LoadErrorView(title: ConnectionCopy.cantOpen(app.name), message: error,
+                                      retry: { coordinator.reload() }, close: onClose)
+                            .transition(.opacity)
+                            .zIndex(1)
+                    }
                 }
-            }
-            if let error = coordinator.loadError {
-                LoadErrorView(title: "Can't Open \(app.name)", message: error,
-                              retry: { coordinator.reload() }, close: onClose)
-                    .transition(.opacity)
-                    .zIndex(1)
             }
             AppChrome(
                 app: app,
                 icon: icon,
                 webView: webView,
                 isLoaded: coordinator.hasLoadedOnce,
+                header: band,
                 actions: AppChromeActions(
                     home: onClose,
                     reload: { coordinator.reload() },
-                    openInSafari: coordinator.usesNode ? nil : { coordinator.openExternally(webView.url ?? app.startURL) },
                     share: shareAction,
                     sendFeedback: app.hasConnector && coordinator.hasLoadedOnce ? { Task { await captureFeedback() } } : nil,
                     reportProblem: { mail = .problemReport(for: app) },
@@ -115,14 +139,38 @@ private struct AppPage: View {
                 )
             )
             .zIndex(2)
+            // VoiceOver reaches the way home first, not after the whole page.
+            .accessibilitySortPriority(1)
+            if let notice = coordinator.notice {
+                VStack {
+                    Spacer()
+                    Text(notice)
+                        .font(.footnote.weight(.medium))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .frame(minHeight: 34)
+                        .ovenlightGlass(in: Capsule())
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 12)
+                        // Announced as it shows.
+                        .accessibilityHidden(true)
+                }
+                .allowsHitTesting(false)
+                .transition(.opacity)
+                .zIndex(3)
+            }
         }
+        .animation(.easeOut(duration: 0.25), value: coordinator.notice)
         .animation(.easeOut(duration: 0.25), value: coordinator.hasLoadedOnce)
         .animation(.easeOut(duration: 0.25), value: coordinator.loadError)
         .animation(.easeOut(duration: 0.25), value: coordinator.gate)
-        .onChange(of: coordinator.hasLoadedOnce, initial: true) { _, loaded in
-            if loaded { StatusBarTint.remember(webView.themeColor ?? webView.underPageBackgroundColor, for: app, in: colorScheme) }
+        .onChange(of: coordinator.hasLoadedOnce ? coordinator.headerColor : nil, initial: true) { _, header in
+            if let header { StatusBarTint.remember(header, for: app, in: colorScheme) }
         }
         .statusBarHidden(false)
+        .background(StatusBarTone(over: band))
+        .announcing(coverStatus)
         .sheet(item: $sheet) { sheet in
             switch sheet {
             case .login(let url):
@@ -136,9 +184,7 @@ private struct AppPage: View {
         }
         .onChange(of: node.state) { _, state in
             // As at the root: the sign-in page stays until the iPhone is approved.
-            if case .needsLogin = state { return }
-            if state == .awaitingApproval { return }
-            if case .login = sheet { sheet = nil }
+            if state.endsSignIn, case .login = sheet { sheet = nil }
         }
         .sheet(item: $feedback) { capture in
             FeedbackSheet(app: app, screenshot: capture.image, pageURL: capture.pageURL)
@@ -147,14 +193,40 @@ private struct AppPage: View {
         .leaveConfirmation($leaving, before: onClose)
         .onAppear {
             // Reopening an app that couldn't reach its computer, or couldn't load, tries again.
-            if !coordinator.hasLoadedOnce, coordinator.gate == .unreachable || coordinator.loadError != nil { coordinator.reload() }
+            if !coordinator.hasLoadedOnce, [.unreachable, .notConnected].contains(coordinator.gate) || coordinator.loadError != nil {
+                coordinator.reload()
+            }
         }
+        // Closed to the launcher, the page keeps running in the pool, but records nothing.
+        .onDisappear { WebViewPool.stopCapture(in: webView) }
         .task {
             // Whether Share applies comes from the owner's connector.
             if !app.isShared, app.discovered { await sharing.refreshIfStale(apps: registry.apps) }
         }
         // VoiceOver's two-finger scrub goes back to the launcher, like Back does elsewhere.
         .accessibilityAction(.escape, onClose)
+    }
+
+    /// Can't Reach or You're Offline, from the gate, before the page has loaded.
+    private var gateFailure: (title: String, message: String)? {
+        switch coordinator.gate {
+        case .unreachable:
+            (ConnectionCopy.cantReach(app.name),
+             isRefused ? ConnectionCopy.notOnThisAccount(app.name) : ConnectionCopy.cantReachDetail(sharedBy: app.sharedBy))
+        case .notConnected: (ConnectionCopy.cantReach(app.name), ConnectionCopy.notConnected)
+        case .offline: (ConnectionCopy.offline, ConnectionCopy.offlineDetail)
+        default: nil
+        }
+    }
+
+    /// One of the owner's apps on a tailnet the phone doesn't know: Try Again can't help.
+    private var isRefused: Bool { !app.isShared && node.route(for: app.startURL) == .refused }
+
+    /// What the cover over the page says, for VoiceOver as it appears.
+    private var coverStatus: String? {
+        if let error = coordinator.loadError { return "\(ConnectionCopy.cantOpen(app.name)). \(error)" }
+        guard !coordinator.hasLoadedOnce, let failure = gateFailure else { return nil }
+        return "\(failure.title). \(failure.message)"
     }
 
     /// Share, for the owner's own apps the connector says are shareable.
@@ -173,6 +245,29 @@ private struct AppPage: View {
     private func captureFeedback() async {
         let image = try? await webView.takeSnapshot(configuration: WKSnapshotConfiguration())
         feedback = FeedbackCapture(image: image, pageURL: webView.url)
+    }
+}
+
+/// The status bar's tone over the band, before iOS 26. iOS 26 reads what is under the bar
+/// itself, wherever the bar is (on the iPhone Duo, down a column beside the band, not over
+/// it), so there the style stays the default. Earlier versions follow light or dark mode,
+/// which would hide it on a dark band in light mode. The app's hosting controller asks this
+/// child controller for its style.
+private struct StatusBarTone: UIViewControllerRepresentable {
+    let over: Color
+
+    func makeUIViewController(context: Context) -> Controller { Controller() }
+
+    func updateUIViewController(_ controller: Controller, context: Context) {
+        guard #unavailable(iOS 26.0) else { return }
+        controller.style = over.isLight(in: context.environment) ? .darkContent : .lightContent
+    }
+
+    final class Controller: UIViewController {
+        var style = UIStatusBarStyle.default {
+            didSet { if style != oldValue { setNeedsStatusBarAppearanceUpdate() } }
+        }
+        override var preferredStatusBarStyle: UIStatusBarStyle { style }
     }
 }
 
@@ -228,6 +323,8 @@ struct NodeActionOverlay: View {
     let action: Action
     let connect: () -> Void
     let retry: () -> Void
+    /// The way home while the app hasn't loaded and its bar is tucked away.
+    let close: () -> Void
 
     static func action(for state: NodeState, app: WebApp, ownerEnabled: Bool) -> Action? {
         if app.isShared {
@@ -246,6 +343,14 @@ struct NodeActionOverlay: View {
     }
 
     var body: some View {
+        // Scrolls only when the largest text sizes don't fit.
+        ViewThatFits(in: .vertical) {
+            content
+            ScrollView { content }
+        }
+    }
+
+    private var content: some View {
         VStack(spacing: 14) {
             switch action {
             case .signIn:
@@ -253,7 +358,7 @@ struct NodeActionOverlay: View {
                 Text(ConnectionCopy.signIn(toOpen: appName))
                     .font(.headline)
                     .multilineTextAlignment(.center)
-                Button("Sign In", action: connect).buttonStyle(.borderedProminent)
+                primary("Sign In", action: connect)
             case .ownerApproval:
                 OwnerApprovalPrompt(approve: connect)
             case .failed(let message):
@@ -261,12 +366,21 @@ struct NodeActionOverlay: View {
                 Text(message)
                     .font(.subheadline)
                     .multilineTextAlignment(.center)
-                Button("Try Again", action: retry).buttonStyle(.borderedProminent)
+                primary("Try Again", action: retry)
             }
+            Button(action: close) { Text("Back to Apps").minimumHitArea() }
         }
         .padding(28)
         .ovenlightGlass(in: RoundedRectangle(cornerRadius: 24, style: .continuous))
         .padding(24)
+    }
+
+    /// As the approval card's button and every other large one.
+    private func primary(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) { Text(title).font(.headline).frame(maxWidth: .infinity) }
+            .buttonStyle(.ovenlightProminent)
+            .buttonBorderShape(.capsule)
+            .controlSize(.large)
     }
 
     private func symbol(_ name: String) -> some View {
@@ -278,25 +392,50 @@ struct NodeActionOverlay: View {
     }
 }
 
+/// Why an app couldn't open, in the join sheet's voice: a glyph, a display title, the detail,
+/// and Try Again when it can help.
 struct LoadErrorView: View {
     let title: String
     let message: String
-    let retry: () -> Void
+    let retry: (() -> Void)?
     let close: () -> Void
 
     var body: some View {
-        ContentUnavailableView {
-            Label(title, systemImage: "wifi.exclamationmark")
-        } description: {
-            Text(message)
-        } actions: {
-            Button("Try Again", action: retry)
-                .buttonStyle(.borderedProminent)
-                .buttonBorderShape(.capsule)
-                .controlSize(.large)
-            Button("Back to Apps", action: close)
+        // Scrolls only when the largest text sizes don't fit.
+        ViewThatFits(in: .vertical) {
+            content
+            ScrollView { content.padding(.vertical, 24) }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(.systemBackground))
+    }
+
+    private var content: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "wifi.exclamationmark")
+                .font(.system(size: 44))
+                .foregroundStyle(.secondary)
+                .padding(.bottom, 12)
+                .accessibilityHidden(true)
+            Text(title)
+                .font(.display(.title2))
+                .accessibilityAddTraits(.isHeader)
+            Text(message)
+                .foregroundStyle(Color.secondaryText)
+            VStack(spacing: 12) {
+                if let retry {
+                    Button(action: retry) {
+                        Text("Try Again").font(.headline).frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.ovenlightProminent)
+                    .buttonBorderShape(.capsule)
+                    .controlSize(.large)
+                }
+                Button(action: close) { Text("Back to Apps").minimumHitArea() }
+            }
+            .padding(.top, 22)
+        }
+        .multilineTextAlignment(.center)
+        .padding(.horizontal, 28)
     }
 }

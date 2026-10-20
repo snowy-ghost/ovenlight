@@ -57,10 +57,10 @@ enum JoinError: Error, Equatable {
         case .keyUsed: "This Invite Was Already Used"
         // A connector expires an invite's key once it's claimed, so "expired" also means used.
         case .expired: "This Invite No Longer Works"
-        case .keyRefused, .notInvited: "This Invite Didn't Work"
-        case .usedOnAnotherDevice: "This Invite Was Used on Another iPhone"
+        case .keyRefused, .notInvited: "This Invite Didn’t Work"
+        case .usedOnAnotherDevice: "This Invite Was Used on Another Phone"
         case .someoneElses: "This Invite Is for Someone Else"
-        case .network: "Can't Reach \(owner)'s \(app)"
+        case .network: "Can’t Reach \(owner)’s \(app)"
         case .canceled: "Joining Canceled"
         case .ownApp: "\(app) Is Already Yours"
         case .wrongNetwork: "This Invite Leads Somewhere Else"
@@ -72,11 +72,11 @@ enum JoinError: Error, Equatable {
         case .keyUsed, .usedOnAnotherDevice: "Each invite works once. Ask \(owner) for a new one."
         case .expired: "Invites expire, and each works only once. Ask \(owner) for a new one."
         case .keyRefused, .notInvited: "\(owner) may have canceled it. Ask \(owner) for a new one."
-        case .someoneElses: "This iPhone already joined \(owner)'s apps under another name. Ask \(owner) to invite that name instead."
-        case .network: "Check that you're online. \(owner)'s computer may also be asleep or offline. Try again in a moment."
+        case .someoneElses: "This \(ConnectionCopy.device) already joined \(owner)’s apps under another name. Ask \(owner) to invite that name instead."
+        case .network: "Check that you’re online. \(owner)’s computer may also be asleep or offline. Try again in a moment."
         case .canceled: "Nothing was added to Ovenlight."
         case .ownApp: "This invite is for one of your own apps. Open it from your apps instead."
-        case .wrongNetwork: "It didn't lead to \(owner)'s \(app), so Ovenlight disconnected and added nothing. Ask \(owner) for a new one."
+        case .wrongNetwork: "It didn’t lead to \(owner)’s \(app), so Ovenlight disconnected and added nothing. Ask \(owner) for a new one."
         }
     }
 }
@@ -110,6 +110,21 @@ enum Claim {
     }
 
     static let path = "/__ovenlight/claim"
+
+    /// How long a claim keeps trying, in all.
+    static let budget: Duration = .seconds(25)
+
+    /// One try's timeout: 8 s, or what's left of the budget, but never under 2 s.
+    static func tryTimeout(left: Duration) -> Duration {
+        max(min(left, .seconds(8)), .seconds(2))
+    }
+
+    /// The wait before the next try, doubling from half a second up to 4 s, and no longer
+    /// than what's left of the budget. Nil once it's spent.
+    static func wait(after attempt: Int, left: Duration) -> Duration? {
+        guard left > .zero else { return nil }
+        return min(.milliseconds(500) * (1 << min(attempt, 3)), left)
+    }
 
     enum Landing: Equatable {
         case inNetwork
@@ -152,14 +167,22 @@ enum Claim {
     }
 }
 
-/// Someone's apps stopped being shared with this iPhone.
-struct AccessEndedNotice: Identifiable, Equatable {
+/// What happened to a guest's apps out of sight, said once: someone's apps stopped being
+/// shared with this iPhone, or a join failed for good with its screen closed.
+struct GuestNotice: Identifiable, Equatable {
     let id = UUID()
-    var owner: String
-    var apps: [String]
+    var title: String
+    var message: String
 
-    var title: String { ConnectionCopy.noLongerSharedTitle }
-    var message: String { ConnectionCopy.noLongerShared(apps: apps, owner: owner) }
+    static func accessEnded(owner: String, apps: [String]) -> GuestNotice {
+        GuestNotice(title: ConnectionCopy.noLongerSharedTitle, message: ConnectionCopy.noLongerShared(apps: apps, owner: owner))
+    }
+
+    /// Nil while the join's screen shows why.
+    static func joinFailed(_ error: JoinError, invite: InviteLink, screenShown: Bool) -> GuestNotice? {
+        guard !screenShown else { return nil }
+        return GuestNotice(title: error.title(owner: invite.owner, app: invite.name), message: error.message(owner: invite.owner, app: invite.name))
+    }
 }
 
 /// Guest memberships from invites: joining, claiming, resuming an interrupted join, and
@@ -174,7 +197,9 @@ final class GuestManager: ObservableObject {
 
     /// Invites being accepted this session, by invite ID.
     @Published private(set) var phases: [String: JoinPhase] = [:]
-    @Published var notice: AccessEndedNotice?
+    @Published var notice: GuestNotice?
+    /// Invites whose join screen shows, which says itself why a join failed.
+    var shownJoins: Set<String> = []
 
     private var inFlight: Set<String> = []
     /// The last join queued for each membership; each waits for the one before.
@@ -201,19 +226,23 @@ final class GuestManager: ObservableObject {
                 Task { await self.verifyAccess(to: app) }
             }
         }
+        node.onAppNames = { [weak self] names in self?.registry?.takeSharedNames(names, in: id) }
         // The connector can't say "not invited" through a path that's gone: the owner
         // stopped sharing an app with a guest who keeps another (see `GuestProbe.absentHosts`).
         node.onPeersGone = { [weak self] hosts in
             guard let self, let membership = store[id], let apps = registry?.apps else { return }
             let gone = GuestCleanup.revokedApps(in: membership, apps: apps, notInvited: hosts)
             guard !gone.isEmpty else { return }
-            log.info("\(id, privacy: .public): \(hosts.sorted().joined(separator: ", "), privacy: .public) left the peers")
+            log.notice("\(id, privacy: .public): \(hosts.sorted().joined(separator: ", "), privacy: .public) left the peers")
             accessEnded(for: gone)
         }
         node.onLoginLost = { [weak self] in
-            guard let self, let membership = store[id],
-                  GuestCleanup.isRemoved(membership) else { return }
-            log.info("\(id, privacy: .public): the owner removed this device")
+            // The owner removed this iPhone: only once it had joined, since a first join
+            // passes through NeedsLogin briefly. The node asks only after it held a moment.
+            guard let self, let membership = store[id], membership.joined else { return }
+            log.notice("\(id, privacy: .public): the owner removed this device")
+            // As Leave withdraws them: opened again, each asks to join, not to Try Again.
+            for claim in membership.pendingClaims { phases[claim.invite.invite] = nil }
             store.update(id) { $0.pendingClaims = [] }
             let apps = (registry?.apps ?? []).filter { $0.membershipID == id }
             Task {
@@ -326,6 +355,9 @@ final class GuestManager: ObservableObject {
             phases[inviteID] = nil
             return
         }
+        // Nothing to wait for with no network: the invite is kept for Try Again, and the next
+        // return to Ovenlight joins.
+        guard NetworkPath.shared.isSatisfied else { return await fail(inviteID, in: membershipID, .network, node: node) }
         // Put this invite's key first, and restart a node started with another.
         if store[membershipID]?.joined == false, store[membershipID]?.pendingClaims.first?.invite.invite != inviteID {
             store.update(membershipID) { membership in
@@ -336,7 +368,7 @@ final class GuestManager: ObservableObject {
             await node.stop() // after any start under way, which then closes its node
         }
 
-        log.info("joining \(invite.host, privacy: .public) (invite \(inviteID, privacy: .public), membership \(membershipID, privacy: .public))")
+        log.notice("joining \(invite.host, privacy: .public) (invite \(inviteID, privacy: .public), membership \(membershipID, privacy: .public))")
         let wasJoined = store[membershipID]?.joined == true
         var up: Result<Void, JoinError> = .failure(.canceled)
         // A foreground can replace a node whose listener iOS reclaimed, which ends this
@@ -388,7 +420,7 @@ final class GuestManager: ObservableObject {
                 $0.ownerName = owner
                 if !invite.to.isEmpty { $0.guestName = invite.to }
             }
-            log.info("claimed \(invite.host, privacy: .public)")
+            log.notice("claimed \(invite.host, privacy: .public)")
             if let app { phases[inviteID] = .joined(app.id) }
             await node.rediscover()
         case .failed(let error):
@@ -399,10 +431,11 @@ final class GuestManager: ObservableObject {
     }
 
     private func fail(_ inviteID: String, in membershipID: String, _ error: JoinError, node: MembershipNode) async {
-        log.info("invite \(inviteID, privacy: .public) failed: \(String(describing: error), privacy: .public)")
+        log.notice("invite \(inviteID, privacy: .public) failed: \(String(describing: error), privacy: .public)")
         // An invite for an app already here that couldn't be claimed again (an old link)
         // still leaves the app; say so rather than fail.
-        let host = pendingInvite(inviteID, in: membershipID).map { Discovery.normalizedHost($0.host) }
+        let invite = pendingInvite(inviteID, in: membershipID)
+        let host = invite.map { Discovery.normalizedHost($0.host) }
         let existing = error == .wrongNetwork ? nil
             : registry?.apps.first { $0.membershipID == membershipID && Discovery.normalizedHost($0.host) == host }
         phases[inviteID] = existing.map { .joined($0.id) } ?? .failed(error)
@@ -411,6 +444,10 @@ final class GuestManager: ObservableObject {
         if store[membershipID]?.joined == false { await node.stop() }
         if error.isRetryable && existing == nil { return }
         store.update(membershipID) { $0.pendingClaims.removeAll { $0.invite.invite == inviteID } }
+        // Its row in the launcher goes with it, so with its screen closed, a notice says why.
+        if existing == nil, let invite, let notice = GuestNotice.joinFailed(error, invite: invite, screenShown: shownJoins.contains(inviteID)) {
+            router?.afterClear { self.notice = notice }
+        }
         await collectOrphans()
     }
 
@@ -430,27 +467,31 @@ final class GuestManager: ObservableObject {
     }
 
     /// Posts the invite's key to the app's connector. Right after joining, the connector
-    /// may not know the device yet, so connection failures and "Unknown caller" retry,
-    /// for up to `claimTime` in all.
+    /// may not know the device yet, so connection failures and "Unknown caller" retry for up
+    /// to `Claim.budget` in all (docs/protocol.md), each try with a new session from the node,
+    /// which may have been replaced meanwhile. The budget is kept on a clock that stops while
+    /// the phone sleeps, and a try always follows a wait, so a suspension by itself doesn't
+    /// fail the claim.
     private func claim(_ invite: InviteLink, through node: MembershipNode) async -> Claim.Step {
-        guard let session = node.makeSession(timeout: 8) else { return .retry }
-        defer { session.invalidateAndCancel() }
-        let deadline = Date.now.addingTimeInterval(Self.claimTime)
-        var attempt = 0.0
-        while Date.now < deadline {
-            if let (data, response) = try? await session.data(for: Claim.request(for: invite)),
-               let http = response as? HTTPURLResponse {
-                let step = Claim.interpret(status: http.statusCode, header: http.value(forHTTPHeaderField: ConnectorError.header), body: data)
-                if step != .retry { return step }
-                log.info("claim answered \(http.statusCode), trying again")
+        let clock = SuspendingClock()
+        let deadline = clock.now.advanced(by: Claim.budget)
+        var attempt = 0
+        while true {
+            let timeout = Claim.tryTimeout(left: clock.now.duration(to: deadline)) / .seconds(1)
+            if let session = node.makeSession(timeout: timeout, resource: timeout) {
+                defer { session.invalidateAndCancel() }
+                if let (data, response) = try? await session.data(for: Claim.request(for: invite)),
+                   let http = response as? HTTPURLResponse {
+                    let step = Claim.interpret(status: http.statusCode, header: http.value(forHTTPHeaderField: ConnectorError.header), body: data)
+                    if step != .retry { return step }
+                    log.info("claim answered \(http.statusCode), trying again")
+                }
             }
-            try? await Task.sleep(for: .seconds(min(0.5 * pow(2, attempt), 4)))
+            guard let wait = Claim.wait(after: attempt, left: clock.now.duration(to: deadline)) else { return .retry }
+            try? await Task.sleep(for: wait, clock: clock)
             attempt += 1
         }
-        return .retry
     }
-
-    static let claimTime: TimeInterval = 25
 
     // MARK: Access ending
 
@@ -467,11 +508,11 @@ final class GuestManager: ObservableObject {
     func accessEnded(for apps: [WebApp]) {
         let apps = apps.filter { app in registry?.apps.contains { $0.id == app.id } == true }
         guard let first = apps.first else { return }
-        log.info("access ended for \(apps.map(\.host).joined(separator: ", "), privacy: .public)")
+        log.notice("access ended for \(apps.map(\.host).joined(separator: ", "), privacy: .public)")
         if let open = router?.openApp, apps.contains(where: { $0.id == open.id }) {
             router?.openApp = nil
         }
-        let notice = AccessEndedNotice(owner: first.sharedBy ?? "Its owner", apps: apps.map(\.name))
+        let notice = GuestNotice.accessEnded(owner: first.sharedBy ?? "Its owner", apps: apps.map(\.name))
         Task {
             for app in apps { await registry?.remove(app.id) }
             await collectOrphans()
@@ -480,26 +521,34 @@ final class GuestManager: ObservableObject {
         }
     }
 
-    /// Leaves someone's network on purpose: removes their apps and data, logs out.
+    /// Leaves someone's network on purpose: removes their apps and data, logs out. Its
+    /// invites still waiting are withdrawn, as Cancel withdraws one.
     func leave(_ membershipID: String) async {
+        for claim in store[membershipID]?.pendingClaims ?? [] { phases[claim.invite.invite] = nil }
         store.update(membershipID) { $0.pendingClaims = [] }
         for app in (registry?.apps ?? []) where app.membershipID == membershipID {
             await registry?.remove(app.id)
         }
         await nodes.removeGuest(membershipID)
+        await collectOrphans()
     }
 
     /// Memberships left with no app and no invite waiting log out and delete their state.
     func collectOrphans() async {
-        // With either list unread, everything would look orphaned.
-        guard let registry, !registry.loadFailed, !store.loadFailed else { return }
+        // With either list unread, or an entry of one, what it names would look orphaned.
+        guard let registry, registry.readInFull, store.readInFull else { return }
         // A shared app whose membership is gone can't be reached or checked any more.
         for app in registry.apps where app.isShared && app.membershipID.flatMap({ store[$0] }) == nil {
             await registry.remove(app.id)
         }
         let apps = registry.apps
+        // A join whose app is gone is over, however it went: its invite, opened again, asks
+        // to join again rather than saying the app is ready.
+        for (invite, phase) in phases {
+            if case .joined(let id) = phase, !apps.contains(where: { $0.id == id }) { phases[invite] = nil }
+        }
         for id in GuestCleanup.orphans(store.memberships, apps: apps) {
-            log.info("\(id, privacy: .public): no apps left, leaving")
+            log.notice("\(id, privacy: .public): no apps left, leaving")
             await nodes.removeGuest(id)
         }
     }

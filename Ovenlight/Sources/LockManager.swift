@@ -18,9 +18,14 @@ final class LockManager: ObservableObject {
     @AppStorage(LockManager.lockAfterKey) var lockAfterSeconds = LockManager.defaultLockAfter
 
     /// On a clock that keeps counting while the iPhone sleeps and ignores changes to the
-    /// time of day, so setting the clock back can't skip the lock.
+    /// time of day, so setting the clock back can't skip the lock. It starts over when the
+    /// iPhone restarts, so it's saved with the boot it was read in, and outlives Ovenlight
+    /// being quit in the background.
     private var backgroundedAt: ContinuousClock.Instant?
     private let now: () -> ContinuousClock.Instant
+    private let boot: () -> String?
+    private let defaults: UserDefaults
+    static let backgroundedKey = "backgroundedAt"
     /// Face ID starts by itself at launch and on each return from the background, never
     /// again after the person cancels it; the Face ID sheet itself makes Ovenlight briefly
     /// inactive, and coming back from that is no reason to ask again.
@@ -29,14 +34,52 @@ final class LockManager: ObservableObject {
     /// Whether there is anything to protect yet. A new install stays unlocked until there is.
     private let hasSavedData: () -> Bool
 
-    init(hasSavedData: @escaping () -> Bool = { true }, now: @escaping () -> ContinuousClock.Instant = { .now }) {
+    /// A launch locks unless Ovenlight was quit in the background within the lock delay,
+    /// since this iPhone last started.
+    init(hasSavedData: @escaping () -> Bool = { true }, now: @escaping () -> ContinuousClock.Instant = { .now },
+         boot: @escaping () -> String? = LockManager.bootSession, defaults: UserDefaults = .standard) {
         self.hasSavedData = hasSavedData
         self.now = now
+        self.boot = boot
+        self.defaults = defaults
         isLocked = hasSavedData()
+        if let saved = defaults.data(forKey: Self.backgroundedKey),
+           let backgrounded = try? JSONDecoder().decode(Backgrounded.self, from: saved), let boot = boot(), backgrounded.boot == boot {
+            backgroundedAt = backgrounded.at
+        }
+        if isLocked, backgroundedAt != nil, !lockIsDue { isLocked = false }
     }
 
+    private struct Backgrounded: Codable {
+        var boot: String
+        var at: ContinuousClock.Instant
+    }
+
+    /// This boot of the iPhone: the UUID the kernel makes at each start, or, where the sandbox
+    /// doesn't allow reading it, the boot time (which a clock change can move, locking sooner).
+    /// Nil if neither can be read, and then a launch locks.
+    nonisolated static func bootSession() -> String? {
+        var size = 0
+        if sysctlbyname("kern.bootsessionuuid", nil, &size, nil, 0) == 0, size > 1 {
+            var buffer = [CChar](repeating: 0, count: size)
+            if sysctlbyname("kern.bootsessionuuid", &buffer, &size, nil, 0) == 0 { return String(cString: buffer) }
+        }
+        var time = timeval()
+        size = MemoryLayout<timeval>.size
+        guard sysctlbyname("kern.boottime", &time, &size, nil, 0) == 0, time.tv_sec > 0 else { return nil }
+        return "boottime-\(time.tv_sec).\(time.tv_usec)"
+    }
+
+    /// The first time since Ovenlight was last in front counts, so a launch in the background
+    /// doesn't start the delay over.
     func didEnterBackground() {
-        if !isLocked { backgroundedAt = now() }
+        if !isLocked, backgroundedAt == nil {
+            let at = now()
+            backgroundedAt = at
+            if let boot = boot() {
+                defaults.set(try? JSONEncoder().encode(Backgrounded(boot: boot, at: at)), forKey: Self.backgroundedKey)
+            }
+        }
         promptsWhenActive = true
     }
 
@@ -54,6 +97,7 @@ final class LockManager: ObservableObject {
     func willBecomeActive() {
         if lockIsDue { isLocked = true }
         backgroundedAt = nil
+        defaults.removeObject(forKey: Self.backgroundedKey)
     }
 
     func lock() {
@@ -74,7 +118,7 @@ final class LockManager: ObservableObject {
         var error: NSError?
         guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
             if let error, Self.isPasscodeNotSet(error) { return openWithoutPasscode() }
-            lastError = error?.localizedDescription ?? "Ovenlight can't ask for your passcode right now."
+            lastError = error?.localizedDescription ?? "Ovenlight can’t ask for your passcode right now."
             return
         }
         do {

@@ -6,9 +6,6 @@ import WebKit
 struct AppChromeActions {
     var home: () -> Void
     var reload: () -> Void
-    /// Nil for apps reached through Ovenlight's own tailnet node: Safari can't reach those, and
-    /// opening one there would also skip Ovenlight's lock.
-    var openInSafari: (() -> Void)?
     /// The owner's own shareable apps only: invite someone to this app.
     var share: (() -> Void)?
     /// Apps served by an Ovenlight connector: a note and a screenshot to whoever runs it.
@@ -21,24 +18,39 @@ struct AppChromeActions {
 }
 
 /// The open app's only native chrome: a small glass capsule at the top with the way home
-/// and the app's menu. It shows while the app opens, then tucks up under the status bar,
-/// leaving a small handle just below it. Tapping the handle, scrolling up, or pulling
-/// down at the top of the page brings it back; scrolling down or touching the page hides it
-/// again. With VoiceOver on it stays put.
+/// and the app's menu. An app opens with it tucked up under the status bar, leaving a small
+/// handle in the band just below it. While its one-time tip about the handle is due, it
+/// shows with the tip until the tip is closed. Tapping the handle or pulling down at the top
+/// of the page brings it back; scrolling down or touching the page hides it again. With
+/// VoiceOver on it stays put.
 struct AppChrome: View {
+    /// The handle's height, which the band at the top of the open app holds below the status
+    /// bar (`AppPage`).
+    static let handleHeight: CGFloat = 20
+
     let app: WebApp
     let icon: UIImage?
     let webView: WKWebView
     let isLoaded: Bool
+    /// The color under the handle, which takes the tone that reads on it.
+    let header: Color
     let actions: AppChromeActions
 
     @Environment(\.accessibilityVoiceOverEnabled) private var voiceOver
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var isShown = true
-    /// Hide on its own after the app loads, until the user takes charge of the chrome.
+    /// Tucked away from the start. Only its tip brings it out on its own (see the tip's task).
+    @State private var isShown = false
+    /// Hide on its own once the app loads, until the user takes charge of the chrome.
     @State private var autoHides = true
-    @State private var tipShowing = false
+    // Known from the start, so a loaded app reopened while the tip is due doesn't hide first.
+    @State private var tipShowing = ChromeTip().shouldDisplay
+    /// The tip's popover is up. However it goes, by its close button or a tap outside, the
+    /// tip is closed for good: a popover tapped away would otherwise leave the tip due and the
+    /// pill out for the rest of the session.
+    @State private var tipPresented = false
     @State private var revealCount = 0
+    /// No status bar above the band: a phone on its side, or the iPhone Duo's cover.
+    @State private var noTopInset = false
     private let tip = ChromeTip()
 
     var body: some View {
@@ -55,27 +67,40 @@ struct AppChrome: View {
         .frame(maxWidth: .infinity)
         .overlay(alignment: .top) {
             if !isShown && !voiceOver {
-                ChromeHandle { reveal() }
+                ChromeHandle(header: header, reachesBelow: noTopInset) { reveal() }
                     .transition(.opacity)
             }
         }
+        .onGeometryChange(for: Bool.self) { $0.safeAreaInsets.top == 0 } action: { noTopInset = $0 }
         .background(
             WebViewObserver(webView: webView,
-                            onScroll: { up in up ? reveal(haptic: false) : hide() },
+                            onPull: { reveal(haptic: false) },
+                            onScrollDown: { hide() },
                             onTouch: { hide() })
         )
         .sensoryFeedback(.impact(weight: .light), trigger: revealCount)
-        .task(id: AutoHideKey(loaded: isLoaded, armed: autoHides, tip: tipShowing)) {
-            guard isLoaded, autoHides, !tipShowing else { return }
-            try? await Task.sleep(for: .seconds(2.5))
-            guard !Task.isCancelled else { return }
+        // Tucked away at once when the page has loaded and the tip is closed, so it never sits
+        // over the page on its own.
+        .onChange(of: isLoaded && autoHides && !tipShowing, initial: true) { _, due in
+            guard due else { return }
             autoHides = false
             hide()
         }
         .task {
             for await status in tip.statusUpdates {
-                if case .available = status { tipShowing = true } else { tipShowing = false }
+                if case .available = status {
+                    tipShowing = true
+                    // While the tip is due, the chrome shows, so the tip can point at it.
+                    if !isShown { withAnimation(.spring(duration: 0.35, bounce: 0.2)) { isShown = true } }
+                    tipPresented = true
+                } else {
+                    tipShowing = false
+                    tipPresented = false
+                }
             }
+        }
+        .onChange(of: tipPresented) { _, presented in
+            if !presented, tipShowing { tip.invalidate(reason: .tipClosed) }
         }
     }
 
@@ -88,16 +113,13 @@ struct AppChrome: View {
                     .contentShape(Rectangle())
             }
             .accessibilityLabel("All Apps")
+            .accessibilityShowsLargeContentViewer { Label("All Apps", systemImage: "square.grid.2x2") }
 
             Divider().frame(height: 18)
 
             Menu {
-                Button(action: actions.home) { Label("All Apps", systemImage: "square.grid.2x2") }
                 Section {
                     Button(action: actions.reload) { Label("Reload", systemImage: "arrow.clockwise") }
-                    if let openInSafari = actions.openInSafari {
-                        Button(action: openInSafari) { Label("Open in Safari", systemImage: "safari") }
-                    }
                 }
                 Section {
                     if let share = actions.share {
@@ -144,7 +166,15 @@ struct AppChrome: View {
         // Stops growing where the system's bars do. The tip, outside the cap, keeps the
         // reader's size.
         .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
-        .popoverTip(tip, arrowEdge: .top)
+        .popover(isPresented: $tipPresented, arrowEdge: .top) {
+            // A popover doesn't scroll: at the largest sizes the tip would lose its last lines.
+            ViewThatFits(in: .vertical) {
+                TipView(tip).tipBackground(.clear)
+                ScrollView { TipView(tip).tipBackground(.clear) }
+            }
+            .frame(idealWidth: 360)
+            .presentationCompactAdaptation(.popover)
+        }
         .frame(maxWidth: 320)
     }
 
@@ -162,46 +192,75 @@ struct AppChrome: View {
         withAnimation(.spring(duration: 0.3, bounce: 0)) { isShown = false }
         autoHides = false
     }
-
-    private struct AutoHideKey: Equatable {
-        let loaded: Bool
-        let armed: Bool
-        let tip: Bool
-    }
 }
 
 /// Teaches, once, where the chrome goes when it hides.
 struct ChromeTip: Tip {
     var title: Text { Text("Your Apps Are Up Here") }
-    var message: Text? { Text("This bar tucks away while you use an app. Tap the handle at the top of the screen, or scroll up, to bring it back.") }
+    // With VoiceOver on, the bar stays put, so there's no handle to tell about.
+    var message: Text? {
+        UIAccessibility.isVoiceOverRunning ? nil
+            : Text("This bar tucks away while you use an app. Tap the handle at the top of the screen, or pull down at the top of the page, to bring it back.")
+    }
     var image: Image? { Image(systemName: "hand.tap") }
 }
 
-/// What stays of the chrome while it's tucked away: a small handle at the top center, just
-/// below the top safe area, since the status bar takes the taps inside that area (to
-/// scroll the page to the top). It works on any page, however the page scrolls. A phone on
-/// its side has no top safe area, so there the handle sits on the page's top edge.
+/// What stays of the chrome while it's tucked away: a small handle at the top center, in the
+/// band just below the top safe area, the band's whole width taking the tap, since the status
+/// bar takes the taps inside that area (to scroll the page to the top). It works on any page,
+/// however the page scrolls. A phone on its side has no top safe area, so there the band is
+/// the handle's alone.
 private struct ChromeHandle: View {
+    let header: Color
+    /// With no top safe area the band is the screen's top edge, where taps may not reach
+    /// Ovenlight (on the iPhone Duo's cover they don't), so the handle also takes them a little
+    /// way into the page: 44 points from the top, 120 wide, leaving the rest of the page's top
+    /// row its own.
+    let reachesBelow: Bool
     let reveal: () -> Void
+
+    @Environment(\.self) private var environment
 
     var body: some View {
         Button(action: reveal) {
-            Capsule()
-                .fill(Color.primary.opacity(0.3))
-                .frame(width: 36, height: 5)
-                .frame(width: 120, height: 20)
-                .contentShape(Rectangle())
+            VStack(spacing: 0) {
+                // 3:1 or more against any band, at its worst a mid grey: the threshold where
+                // dark and light marks contrast equally.
+                Capsule()
+                    .fill((header.isLight(in: environment) ? Color.black : .white).opacity(0.7))
+                    .frame(width: 36, height: 5)
+                    // The band's whole width takes the tap.
+                    .frame(maxWidth: .infinity)
+                    .frame(height: AppChrome.handleHeight)
+                    .contentShape(Rectangle())
+                if reachesBelow {
+                    Color.clear
+                        .frame(width: 120, height: 44 - AppChrome.handleHeight)
+                        .contentShape(Rectangle())
+                }
+            }
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Show App Menu")
     }
 }
 
-/// Watches the web view without taking it over: scroll direction through key-value
-/// observation, and touches through a recognizer that never claims them.
+extension Color {
+    /// Whether dark marks read better than light ones on the color: lighter than where black
+    /// and white contrast with it equally.
+    func isLight(in environment: EnvironmentValues) -> Bool {
+        let c = resolve(in: environment)
+        return 0.2126 * c.linearRed + 0.7152 * c.linearGreen + 0.0722 * c.linearBlue > 0.179
+    }
+}
+
+/// Watches the web view without taking it over: scrolling through key-value observation,
+/// and touches through a recognizer that never claims them. Scrolling up leaves the chrome
+/// as it is.
 private struct WebViewObserver: UIViewRepresentable {
     let webView: WKWebView
-    let onScroll: (_ up: Bool) -> Void
+    let onPull: () -> Void
+    let onScrollDown: () -> Void
     let onTouch: () -> Void
 
     func makeUIView(context: Context) -> UIView {
@@ -212,7 +271,8 @@ private struct WebViewObserver: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: UIView, context: Context) {
-        context.coordinator.onScroll = onScroll
+        context.coordinator.onPull = onPull
+        context.coordinator.onScrollDown = onScrollDown
         context.coordinator.onTouch = onTouch
     }
 
@@ -221,26 +281,27 @@ private struct WebViewObserver: UIViewRepresentable {
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onScroll: onScroll, onTouch: onTouch)
+        Coordinator(onPull: onPull, onScrollDown: onScrollDown, onTouch: onTouch)
     }
 
     @MainActor
     final class Coordinator: NSObject, UIGestureRecognizerDelegate {
-        var onScroll: (Bool) -> Void
+        var onPull: () -> Void
+        var onScrollDown: () -> Void
         var onTouch: () -> Void
         private weak var webView: WKWebView?
         private var observation: NSKeyValueObservation?
         private var recognizer: UITapGestureRecognizer?
         private var travel: CGFloat = 0
 
-        /// Points of steady scrolling before the chrome follows.
+        /// Points of steady scrolling down before the chrome hides.
         private let downThreshold: CGFloat = 12
-        private let upThreshold: CGFloat = 60
         /// Points of pulling down past the top of the page that bring the chrome back.
         private let pullThreshold: CGFloat = 40
 
-        init(onScroll: @escaping (Bool) -> Void, onTouch: @escaping () -> Void) {
-            self.onScroll = onScroll
+        init(onPull: @escaping () -> Void, onScrollDown: @escaping () -> Void, onTouch: @escaping () -> Void) {
+            self.onPull = onPull
+            self.onScrollDown = onScrollDown
             self.onTouch = onTouch
         }
 
@@ -269,20 +330,17 @@ private struct WebViewObserver: UIViewRepresentable {
             // Only the user's own scrolling counts, and not the rubber band past either end.
             guard scrollView.isTracking || scrollView.isDecelerating else { travel = 0; return }
             if scrollView.isTracking, new < -pullThreshold, old >= -pullThreshold {
-                onScroll(true)
+                onPull()
                 travel = 0
                 return
             }
             let maxY = scrollView.contentSize.height - scrollView.bounds.height
             guard new > 0, new < maxY else { return }
             let delta = new - old
-            if (delta > 0) != (travel > 0) { travel = 0 }
-            travel += delta
+            // Scrolling up starts the count again.
+            travel = delta > 0 ? travel + delta : 0
             if travel > downThreshold {
-                onScroll(false)
-                travel = 0
-            } else if travel < -upThreshold {
-                onScroll(true)
+                onScrollDown()
                 travel = 0
             }
         }

@@ -28,27 +28,48 @@ struct MailDraft: Identifiable, Equatable {
         return parts.url
     }
 
-    static func contactUs(version: String) -> MailDraft {
-        MailDraft(subject: "Ovenlight", body: "\n\nOvenlight \(version)")
+    /// Contact Us: room to write, then the lines Report a Problem gives about this phone,
+    /// with the owner's computers when they use them.
+    static func contactUs(version: String, iOS: String, computers: String?) -> MailDraft {
+        var lines = ["", "", "", "Ovenlight: \(version)", "iOS: \(iOS)"]
+        if let computers { lines.append("Your Computers: \(computers)") }
+        return MailDraft(subject: "Ovenlight", body: lines.joined(separator: "\n"))
+    }
+
+    @MainActor
+    static func contactUs() -> MailDraft {
+        let node = NodeManager.shared
+        return contactUs(version: Bundle.main.versionString, iOS: UIDevice.current.systemVersion,
+                         computers: node.ownerEnabled ? connection(node.state, listedOffline: false) : nil)
     }
 
     /// Report a Problem for one app: what it is and where it comes from, how its connection
-    /// is doing (none for an app loaded directly), with room at the top for what went
-    /// wrong. Nothing else is attached.
+    /// is doing (whether it was refused, for an app with no node) and where opening it got,
+    /// with room at the top for what went wrong. Nothing else is attached.
     static func problemReport(appName: String, host: String, sharedBy: String?, connection: String?,
-                              version: String, iOS: String) -> MailDraft {
+                              opening: String? = nil, version: String, iOS: String) -> MailDraft {
         var lines = ["What happened:", "", "", "", "App: \(appName)", "Address: \(host)"]
         if let sharedBy { lines.append("Shared by: \(sharedBy)") }
         if let connection { lines.append("Connection: \(connection)") }
+        if let opening { lines.append("Opening: \(opening)") }
         lines += ["Ovenlight: \(version)", "iOS: \(iOS)"]
         return MailDraft(subject: "Ovenlight report: \(appName)", body: lines.joined(separator: "\n"))
     }
 
     @MainActor
     static func problemReport(for app: WebApp) -> MailDraft {
-        problemReport(appName: app.name, host: app.host, sharedBy: app.sharedBy,
-                      connection: NodeManager.shared.node(for: app)?.state.summary,
-                      version: Bundle.main.versionString, iOS: UIDevice.current.systemVersion)
+        let refused = !app.isShared && NodeManager.shared.route(for: app.startURL) == .refused
+        return problemReport(appName: app.name, host: app.host, sharedBy: app.sharedBy,
+                             connection: refused ? "Refused (on no known tailnet)"
+                                 : NodeManager.shared.node(for: app).map { connection($0.state, listedOffline: $0.isListedOffline(app.host)) },
+                             opening: WebViewPool.shared.opening(of: app.id),
+                             version: Bundle.main.versionString, iOS: UIDevice.current.systemVersion)
+    }
+
+    /// The state as shown, then in detail as the log has it (no sign-in link), and whether
+    /// the network lists the app's computer as offline.
+    static func connection(_ state: NodeState, listedOffline: Bool) -> String {
+        "\(state.summary) (\(state.logDescription)\(listedOffline ? ", computer listed offline" : ""))"
     }
 }
 
@@ -133,16 +154,44 @@ struct AcknowledgementsView: View {
         .flatMap { try? String(contentsOf: $0.appending(path: "TailscaleKit.framework/THIRD_PARTY_NOTICES.txt"), encoding: .utf8) }
 
     // One Text per paragraph, laid out lazily: the whole text is thousands of lines.
-    private let paragraphs = (notices ?? "The licenses are missing from this build.")
+    private let paragraphs: [(isHeading: Bool, text: String)] = (notices ?? "The licenses are missing from this build.")
         .components(separatedBy: "\n\n")
         .map { $0.trimmingCharacters(in: .newlines) }
         .filter { !$0.isEmpty }
+        .map { paragraph in
+            AcknowledgementsView.heading(paragraph).map { (true, $0) } ?? (false, AcknowledgementsView.reflow(paragraph))
+        }
+
+    /// A title underlined with `=`, the heading of one module's licenses.
+    static func heading(_ paragraph: String) -> String? {
+        let lines = paragraph.components(separatedBy: "\n")
+        guard lines.count == 2, !lines[1].isEmpty, lines[1].allSatisfy({ $0 == "=" }) else { return nil }
+        return lines[0]
+    }
+
+    /// A paragraph wrapped for 80 columns, rejoined so it wraps to the screen: each line runs
+    /// on from the one before, except a rule of dashes and a list item's first line.
+    static func reflow(_ paragraph: String) -> String {
+        paragraph.components(separatedBy: "\n").reduce(into: "") { text, line in
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            let breaks = text.isEmpty || trimmed.allSatisfy { $0 == "-" }
+                || trimmed.hasPrefix("* ") || trimmed.hasPrefix("- ") || trimmed.range(of: #"^\(?(\d+|[a-z])[.)] "#, options: .regularExpression) != nil
+            text += (text.isEmpty ? "" : breaks ? "\n" : " ") + trimmed
+        }
+    }
 
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 12) {
                 ForEach(paragraphs.indices, id: \.self) { i in
-                    Text(verbatim: paragraphs[i])
+                    if paragraphs[i].isHeading {
+                        Text(verbatim: paragraphs[i].text)
+                            .font(.subheadline.weight(.semibold))
+                            .accessibilityAddTraits(.isHeader)
+                            .padding(.top, 12)
+                    } else {
+                        Text(verbatim: paragraphs[i].text)
+                    }
                 }
             }
             .font(.caption.monospaced())
@@ -150,6 +199,7 @@ struct AcknowledgementsView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding()
         }
+        .ovenlightGroupedBackground()
         .navigationTitle("Acknowledgements")
         .navigationBarTitleDisplayMode(.inline)
     }

@@ -1,4 +1,4 @@
-import Foundation
+import UIKit
 
 /// When an app reached through Ovenlight's node may load its page. Opening the app shows its
 /// placeholder at once; the first navigation waits until the node is ready and a probe
@@ -13,22 +13,69 @@ enum AppLoadGate: Equatable {
     case ready
     /// The host didn't answer in time.
     case unreachable
+    /// Ovenlight's own connection never became ready in time: the phone's side, not the
+    /// computer's.
+    case notConnected
+    /// The phone has no network at all: nothing was tried, and it opens once there is one.
+    case offline
 
     enum Event: Equatable {
         case nodeReady
         case nodeNotReady
         case reached
         case gaveUp
+        /// The node never became ready in time.
+        case nodeGaveUp
         /// Try Again, or Reload from the app menu.
         case retry
         /// The first navigation failed at the connection level; check the path again.
         case loadFailed
+        /// The app's computer, listed offline when the gate gave up, answered a quiet retry.
+        case woke
+        /// The phone lost every network path, and got one back.
+        case offline
+        case online
     }
 
     /// How long the app's host may take to answer once the node is ready.
     static let reachTimeout: TimeInterval = 10
     /// How long to wait for the node itself before giving up on this app.
     static let nodeTimeout: TimeInterval = 30
+    /// When an app waiting on a node that isn't ready gives up: `nodeTimeout` after the node
+    /// turned busy (starting, connecting, retrying), counted again after each wait for the
+    /// owner at sign-in or approval and after the node was off or failed, so a slow sign-in
+    /// or a late Try Again doesn't end on Can't Reach. A moment of ready between retries
+    /// doesn't start it over.
+    static func nodeDeadline(busySince: inout Date?, state: NodeState, now: Date) -> Date? {
+        switch state {
+        case .needsLogin, .awaitingApproval, .idle, .failed:
+            busySince = nil
+            return nil
+        default:
+            guard state.isBusy else { return nil }
+        }
+        let since = busySince ?? now
+        busySince = since
+        return since.addingTimeInterval(nodeTimeout)
+    }
+
+    /// Giving up on a node that wasn't ready by its deadline. One still retrying is up and
+    /// only no computer answered, so the app is unreachable, not the phone unconnected.
+    static func nodeGiveUp(_ state: NodeState) -> Event { state.isRetrying ? .gaveUp : .nodeGaveUp }
+
+    /// Between quiet retries of an app whose computer is listed offline.
+    static let quietRetryInterval: TimeInterval = 3
+
+    /// The connector answered for the app, but the app itself isn't running on its computer:
+    /// every released connector sends a plain-text 502 with the code `unavailable`. The
+    /// probe can't tell, since the connector answers it.
+    static func appIsDown(status: Int?, header: String?) -> Bool {
+        status == 502 && ConnectorError(header: header, body: Data()) == .unavailable
+    }
+
+    /// Seconds before each new try of a first page whose app is down; then Ovenlight says
+    /// so itself, rather than showing the connector's text.
+    static let appDownRetries: [Double] = [1, 2, 4]
 
     func next(_ event: Event) -> AppLoadGate {
         switch (self, event) {
@@ -36,7 +83,13 @@ enum AppLoadGate: Equatable {
             return .waiting
         case (.ready, .loadFailed):
             return .waiting
-        case (.ready, _), (.unreachable, _):
+        case (.unreachable, .woke):
+            return .ready
+        case (.offline, .online):
+            return .waiting
+        case (.waiting, .offline), (.probing, .offline):
+            return .offline
+        case (.ready, _), (.unreachable, _), (.notConnected, _), (.offline, _):
             // A loaded page stays put through node restarts; a gate that gave up waits for Retry.
             return self
         case (.waiting, .nodeReady):
@@ -47,63 +100,88 @@ enum AppLoadGate: Equatable {
             return .ready
         case (.waiting, .gaveUp), (.probing, .gaveUp):
             return .unreachable
+        case (.waiting, .nodeGaveUp):
+            return .notConnected
         default:
             return self
         }
     }
 }
 
-/// Words for connection states that anyone may see. None of them names Tailscale or the
-/// tailnet, so a guest, who never signs in, can be shown every one. Copy that asks the
-/// owner to act on their Tailscale account lives only in the sign-in card, Settings and the
+/// Words for connection states. None of them names Tailscale or the tailnet, so a guest, who
+/// never signs in, can be shown any of them; those for the owner's own apps (`sharedBy` nil,
+/// and `notOnThisAccount`) say what to do on their computers or account. Copy that asks the
+/// owner to act in their Tailscale account lives only in the sign-in card, Settings and the
 /// approval prompt over the owner's apps.
 enum ConnectionCopy {
+    /// "iPhone", or "iPad" where Ovenlight runs on one, for copy that says "this iPhone".
+    static let device = UIDevice.current.model
     static let connecting = "Connecting…"
     static let stopped = "Ovenlight lost its connection."
-    static let couldNotStart = "Ovenlight couldn't connect."
+    static let couldNotStart = "Ovenlight couldn’t connect."
+    /// Ovenlight's own connection never came up: the phone's network, not the computer.
+    static let notConnected = "Ovenlight couldn’t connect. Check that you’re online, then try again."
 
     static func connecting(to app: String) -> String { "Connecting to \(app)…" }
-    static func cantReach(_ app: String) -> String { "Can't Reach \(app)" }
-    static let cantReachDetail = "Its computer may be asleep or offline. Try again in a moment."
+    static func cantReach(_ app: String) -> String { "Can’t Reach \(app)" }
+    /// The owner's own app says what to do on their computer; one someone shared names them,
+    /// since only they can wake its computer.
+    static func cantReachDetail(sharedBy owner: String?) -> String {
+        guard let owner else { return "Your computer may be asleep or offline. Wake it, or run ovenlight doctor on it, then try again." }
+        return "\(owner)’s computer may be asleep or offline. Try again in a moment, or let \(owner) know."
+    }
+    static func notResponding(_ app: String, sharedBy owner: String?) -> String {
+        guard let owner else { return "\(app) isn’t running on your computer. Run ovenlight doctor there, then try again." }
+        return "\(app) isn’t responding on \(owner)’s computer right now. Try again in a moment, or let \(owner) know."
+    }
+    /// An app of the owner's on a tailnet the phone doesn't know (`Routing.Route.refused`).
+    static func notOnThisAccount(_ app: String) -> String {
+        "\(app) isn’t on the account you’re signed in to. Sign in with the account it’s on, or remove it."
+    }
     static func signIn(toOpen app: String) -> String { "Sign In to Open \(app)" }
+    static func cantOpen(_ app: String) -> String { "Can’t Open \(app)" }
+    static let offline = "You’re Offline"
+    static let offlineDetail = "Connect to Wi-Fi or mobile data, and Ovenlight tries again."
+    static let pageFailed = "This page couldn’t load. Try again in a moment."
 
     // Apps someone shared, and joining them. Guests see all of these.
 
     static func sharedBy(_ owner: String) -> String { "from \(owner)" }
-    static func joinTitle(owner: String, app: String) -> String { "Join \(owner)'s \(app)?" }
+    static func joinTitle(owner: String, app: String) -> String { "Join \(owner)’s \(app)?" }
     static func joinDetail(owner: String, app: String, to guest: String) -> String {
         let who = guest.isEmpty ? "\(owner) invited you." : "\(owner) invited you as \(guest)."
-        return "\(who) \(app) runs on \(owner)'s computer. You don't need an account."
+        return "\(who) \(app) runs on \(owner)’s computer. You don’t need an account."
     }
     static func appAddress(_ host: String) -> String { "Address: \(host)" }
     static func privateServer(_ server: String, owner: String) -> String {
         "This invite uses \(server), a connection server \(owner) chose. Join only if you know this invite came from \(owner)."
     }
-    static func joining(owner: String, app: String) -> String { "Joining \(owner)'s \(app)…" }
+    static func joining(owner: String, app: String) -> String { "Joining \(owner)’s \(app)…" }
     static let joiningDetail = "This can take up to a minute."
     static func joined(_ app: String) -> String { "\(app) Is Ready" }
     static let noLongerSharedTitle = "No Longer Shared with You"
     static func noLongerShared(apps: [String], owner: String) -> String {
         let names = ListFormatter.localizedString(byJoining: apps)
         let them = apps.count == 1 ? "it and everything it" : "them and everything they"
-        return "\(owner) stopped sharing \(names) with you, so Ovenlight removed \(them) stored on this iPhone."
+        return "\(owner) stopped sharing \(names) with you, so Ovenlight removed \(them) stored on this \(device)."
     }
     static let joinWithInvite = "Join with Invite"
     static let invitePrompt = "Paste the invite link you were sent, or scan its code."
     static let feedbackSent = "Feedback Sent"
     static func feedbackSentDetail(to owner: String?) -> String {
-        owner.map { "\($0) will see it." } ?? "It's in your feedback in People & Sharing."
+        owner.map { "\($0) will see it." } ?? "It’s in your feedback in People & Sharing."
     }
-    static let feedbackFailed = "Couldn't Send Feedback"
-    static let feedbackTooMany = "That's a lot of feedback for one hour. Try again later."
-    static let feedbackNetwork = "Ovenlight couldn't reach the app's computer. Try again in a moment."
+    static let feedbackFailed = "Couldn’t Send Feedback"
+    static let feedbackTooMany = "That’s a lot of feedback for one hour. Try again later."
+    static let feedbackNetwork = "Ovenlight couldn’t reach the app’s computer. Try again in a moment."
+    static let feedbackOffline = "You’re offline. Your note is kept, so send it again once you’re connected."
     static let reportProblem = "Report a Problem"
-    static func leaveApps(_ owner: String) -> String { "Leave \(owner)'s Apps" }
-    static func leaveTitle(_ owner: String) -> String { "Leave \(owner)'s apps?" }
+    static func leaveApps(_ owner: String) -> String { "Leave \(owner)’s Apps" }
+    static func leaveTitle(_ owner: String) -> String { "Leave \(owner)’s Apps?" }
     static func leaveDetail(_ owner: String) -> String {
-        "\(owner)'s apps and everything they stored on this iPhone will be removed. You'll need a new invite from \(owner) to open them again."
+        "\(owner)’s apps and everything they stored on this \(device) will be removed. You’ll need a new invite from \(owner) to open them again."
     }
     static func removeSharedDetail(_ owner: String) -> String {
-        "This removes the app and everything it stored on this iPhone. You'll need a new invite from \(owner) to open it again."
+        "This removes the app and everything it stored on this \(device). You’ll need a new invite from \(owner) to open it again."
     }
 }

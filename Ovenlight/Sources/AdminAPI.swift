@@ -77,7 +77,6 @@ struct AdminGuest: Decodable, Equatable, Identifiable {
     var person: String
     var name: String
     var app: String
-    var deviceName: String
     var claimedAt: Date
     var removedAt: Date?
     /// The day this device last used the app, if it has since the list's `openedSince`: the
@@ -96,12 +95,11 @@ extension AdminGuest {
         app = try c.decode(String.self, forKey: .app)
         claimedAt = try c.decode(Date.self, forKey: .claimedAt)
         name = (try? c.decodeIfPresent(String.self, forKey: .name)) ?? ""
-        deviceName = (try? c.decodeIfPresent(String.self, forKey: .deviceName)) ?? ""
         removedAt = try? c.decodeIfPresent(Date.self, forKey: .removedAt)
         lastOpened = (try? c.decodeIfPresent(String.self, forKey: .lastOpened)).flatMap { AdminAPI.parseDay($0) }
     }
 
-    private enum CodingKeys: String, CodingKey { case deviceId, person, name, app, deviceName, claimedAt, removedAt, lastOpened }
+    private enum CodingKeys: String, CodingKey { case deviceId, person, name, app, claimedAt, removedAt, lastOpened }
 }
 
 /// One person's active devices, for listing and removing guests together.
@@ -134,15 +132,14 @@ struct GuestPerson: Identifiable, Equatable {
         return out
     }
 
-    /// Those to offer for another invite: everyone but App Review while its review invite
-    /// (made in the terminal) is unused. Once used, App Review is a guest like any other,
-    /// until the review is over and it's revoked.
+    /// Those to offer for another invite: everyone but App Review while a review invite (made
+    /// in the terminal) is open.
     static func invitable(in list: AdminGuestList) -> [GuestPerson] {
         let review = Set(list.invites.filter { $0.review == true }.map(\.person))
         return everyone(in: list).filter { !review.contains($0.id) }
     }
 
-    /// How many devices, each counted once whatever apps it has: "2 devices". Guest iPhones
+    /// How many devices, each counted once whatever apps it has: "2 devices". Guest phones
     /// join under random names, which would tell the owner nothing.
     var devices: String {
         let count = Set(guests.map(\.deviceId)).count
@@ -267,12 +264,10 @@ struct AdminGuestList: Decodable, Equatable {
 struct AdminShareResult: Decodable, Equatable {
     var invite: AdminInvite
     var link: String?
-    var appName: String?
-    var owner: String?
     /// The connector's wording of the message to send, as `ovenlight share` words it.
     var sentMessage: String?
 
-    private enum CodingKeys: String, CodingKey { case invite, link, appName, owner, sentMessage = "message" }
+    private enum CodingKeys: String, CodingKey { case invite, link, sentMessage = "message" }
 
     /// What the owner sends: the connector's message, or just the link without one.
     var message: String {
@@ -287,7 +282,7 @@ struct AdminRevokeResult: Decodable, Equatable {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         removed = (try? c.decodeIfPresent(EachDecoded<AdminGuest>.self, forKey: .removed))?.elements ?? []
-        errors = try? c.decodeIfPresent([String].self, forKey: .errors)
+        errors = (try? c.decodeIfPresent([String].self, forKey: .errors))?.map(AdminAPI.shown)
     }
 
     private enum CodingKeys: String, CodingKey { case removed, errors }
@@ -343,12 +338,15 @@ enum AdminAPI {
         return try? Date.ISO8601FormatStyle(includingFractionalSeconds: true).parse(trimmed)
     }
 
-    /// A day the connector names as 2026-10-13: its start on this iPhone's calendar, so it
-    /// reads as the same day whatever the time zones.
+    /// A day the connector names as 2026-10-13: its start in this iPhone's time zone, so it
+    /// reads as the same day whatever the time zones. The day is Gregorian, whatever calendar
+    /// the iPhone uses.
     static func parseDay(_ text: String, calendar: Calendar = .current) -> Date? {
         let parts = text.split(separator: "-").compactMap { Int($0) }
         guard parts.count == 3 else { return nil }
-        return calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2]))
+        var gregorian = Calendar(identifier: .gregorian)
+        gregorian.timeZone = calendar.timeZone
+        return gregorian.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2]))
     }
 
     static var decoder: JSONDecoder {
@@ -389,7 +387,13 @@ enum AdminAPI {
 
     /// The `{"error": "...", "code": "..."}` the connector answers with.
     static func errorMessage(_ data: Data) -> String? {
-        (try? JSONDecoder().decode(ErrorBody.self, from: data))?.error
+        (try? JSONDecoder().decode(ErrorBody.self, from: data))?.error.map(shown)
+    }
+
+    /// A connector's message as the phone shows it, read through here: a connector marks
+    /// commands with backticks, which the phone would show as they are.
+    static func shown(_ message: String) -> String {
+        message.replacingOccurrences(of: "`", with: "")
     }
 
     fileprivate struct ErrorBody: Decodable {
@@ -411,6 +415,7 @@ enum ConnectorError: String {
     case badRequest = "bad_request"
     case rateLimited = "rate_limited"
     case tooLarge = "too_large"
+    case unavailable
 
     static let header = "Ovenlight-Error"
 
@@ -432,9 +437,9 @@ enum AdminError: Error, Equatable {
 
     var message: String {
         switch self {
-        case .notOwner: "The Ovenlight connector on this computer is set up for another owner. To make it yours, run ovenlight setup-sharing --owner with your login there."
-        case .unreachable: "Couldn't reach the computer. It may be asleep or offline."
-        case .failed(let message): message.prefix(1).uppercased() + message.dropFirst()
+        case .notOwner: return "The Ovenlight connector on this computer is set up for another owner. To make it yours, run ovenlight setup-sharing --owner with your login there."
+        case .unreachable: return "Couldn’t reach the computer. It may be asleep or offline."
+        case .failed(let message): return message.prefix(1).uppercased() + message.dropFirst()
         }
     }
 }
@@ -453,7 +458,7 @@ struct AdminClient {
         do {
             return try AdminAPI.decoder.decode(T.self, from: data)
         } catch {
-            throw AdminError.failed("The Ovenlight connector on this computer sent a reply this version of the app doesn't understand. Update both to the latest version.")
+            throw AdminError.failed("The Ovenlight connector on this computer sent a reply this version of the app doesn’t understand. Update both to the latest version.")
         }
     }
 
@@ -528,6 +533,8 @@ final class OwnerSharing: ObservableObject {
         var apps: [AdminApp]
         var guests = AdminGuestList()
         var feedback: [AdminFeedback] = []
+        /// Why the last refresh couldn't read this machine, which then shows as it was before.
+        var problem: String?
         var id: String { adminHost }
     }
 
@@ -545,7 +552,7 @@ final class OwnerSharing: ObservableObject {
     var isAvailable: Bool { NodeManager.shared.ownerIsConnected }
 
     func client(for machine: Machine) -> AdminClient? {
-        NodeManager.shared.ownerSession(timeout: 30).map { AdminClient(host: machine.adminHost, session: $0) }
+        NodeManager.shared.owner.makeSession(timeout: 30).map { AdminClient(host: machine.adminHost, session: $0) }
     }
 
     /// The connector's view of one of the owner's apps, by host.
@@ -619,17 +626,17 @@ final class OwnerSharing: ObservableObject {
     /// those a machine that didn't answer had listed last time.
     private func load(_ apps: [WebApp]) async {
         let nodes = NodeManager.shared
-        guard let session = nodes.ownerSession(timeout: 15) else { return }
+        guard let session = nodes.owner.makeSession(timeout: 15) else { return }
         defer { session.finishTasksAndInvalidate() }
         let owners = nodes.ownersHosts
         let candidates = Self.candidateHosts(apps, discovered: nodes.discovered, ownersHosts: nodes.ownersOnlineHosts)
         var found: [Machine] = []
         var covered = Set<String>()
         var asked = Set<String>()
-        var failures: [String] = []
+        var failedHosts: [String: AdminError] = [:]
         func failed(_ host: String, _ error: AdminError) {
             log.info("admin \(host, privacy: .public): \(String(describing: error), privacy: .public)")
-            failures.append(error.message)
+            failedHosts[host] = error
         }
         var round = Self.firstRound(candidates, known: machines)
         while !round.isEmpty {
@@ -665,10 +672,31 @@ final class OwnerSharing: ObservableObject {
             }
             round = candidates.filter { !covered.contains($0) && !asked.contains($0) }
         }
-        machines = found
+        // A computer asleep is listed offline, so it was asked nothing: it couldn't be reached.
+        machines = Self.keepingFailed(found, failed: failedHosts, previous: machines, asleep: owners.subtracting(nodes.ownersOnlineHosts))
         // A pass that only failed doesn't count as fresh: the next menu asks again.
-        if !found.isEmpty || failures.isEmpty { lastRefresh = .now }
-        problem = found.isEmpty ? failures.first : nil
+        if !found.isEmpty || failedHosts.isEmpty { lastRefresh = .now }
+        problem = found.isEmpty ? failedHosts.min { $0.key < $1.key }?.value.message : nil
+    }
+
+    /// This pass's machines, then each machine from before whose host failed this time, or is
+    /// `asleep` (the owner's, listed offline), and no answer covers, as it was, with why: a
+    /// computer that didn't answer once keeps its apps and people rather than showing none.
+    /// Its apps show offline only when the computer couldn't be reached.
+    nonisolated static func keepingFailed(_ found: [Machine], failed: [String: AdminError], previous: [Machine],
+                                          asleep: Set<String>) -> [Machine] {
+        let covered = Set(found.flatMap { [$0.adminHost] + $0.apps.compactMap(\.host) })
+        return found + previous.compactMap { machine in
+            // Asleep counts only when no answer covers any of its apps: one app node can stay
+            // offline after its app is unpublished while the computer answers on another.
+            let isAsleep = asleep.contains(machine.adminHost) && covered.isDisjoint(with: machine.apps.compactMap(\.host))
+            guard let error = failed[machine.adminHost] ?? (isAsleep ? .unreachable : nil),
+                  !covered.contains(machine.adminHost) else { return nil }
+            var kept = machine
+            kept.problem = error.message
+            if error == .unreachable { kept.apps = kept.apps.map { var app = $0; app.online = false; return app } }
+            return kept
+        }
     }
 
     /// Sends one request to each host at once.

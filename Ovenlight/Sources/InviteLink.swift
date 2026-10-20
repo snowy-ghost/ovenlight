@@ -76,26 +76,6 @@ struct InviteLink: Codable, Equatable, Hashable {
     /// (Associated Domains); otherwise the page offers Ovenlight.
     static let joinPage = URL(string: "https://ovenlight.app/join")!
 
-    /// The fields in the connector's order, form-encoded: the query of `ovenlight://join`
-    /// and the fragment of the universal link.
-    private var encodedFields: String {
-        [("v", Self.version), ("control", control.absoluteString), ("key", key), ("owner", owner),
-         ("app", app), ("invite", invite), ("host", host), ("name", name), ("to", to)]
-            .map { "\($0.0)=\(Self.formEncode($0.1))" }.joined(separator: "&")
-    }
-
-    /// The link to send: the universal link, which opens Ovenlight when it's installed.
-    var universalURL: URL { URL(string: Self.joinPage.absoluteString + "#" + encodedFields)! }
-
-    /// The same invite as `ovenlight://join?...`, for when the universal link opens the page.
-    var url: URL {
-        var c = URLComponents()
-        c.scheme = Self.scheme
-        c.host = "join"
-        c.percentEncodedQuery = encodedFields
-        return c.url!
-    }
-
     /// Whether a link is an invite, in any form Ovenlight accepts, before checking its fields.
     static func isInvite(_ url: URL) -> Bool { encodedFields(of: url) != nil }
 
@@ -137,7 +117,8 @@ struct InviteLink: Codable, Equatable, Hashable {
             }
             return text
         }
-        guard value("v") == version else { throw .unsupportedVersion }
+        // The connector writes v last, so a link cut short loses it first: incomplete, not newer.
+        guard try required("v") == version else { throw .unsupportedVersion }
 
         let controlText = try required("control")
         guard let control = URL(string: controlText), let controlHost = control.host, !controlHost.isEmpty,
@@ -176,9 +157,19 @@ struct InviteLink: Codable, Equatable, Hashable {
     /// A display label: trimmed, without control characters, at most 64 characters.
     static func label(_ text: String?) -> String? {
         guard let text else { return nil }
-        let cleaned = String(text.unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) })
+        let cleaned = String(text.unicodeScalars.filter { !isHidden($0) })
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return cleaned.isEmpty ? nil : String(cleaned.prefix(maxLabel))
+    }
+
+    /// Control and invisible format characters, bidi overrides among them, which can make a
+    /// label read as something else. Not the joiners that emoji sequences and scripts such as
+    /// Persian and Hindi need (U+200C, U+200D), nor the tags in flags like England's.
+    private static func isHidden(_ scalar: Unicode.Scalar) -> Bool {
+        switch scalar.value {
+        case 0x200C, 0x200D, 0xE0020...0xE007F: return false
+        default: return CharacterSet.controlCharacters.contains(scalar)
+        }
     }
 
     /// A multi-label DNS name: letters, digits and hyphens, no IP address, no port.
@@ -189,12 +180,6 @@ struct InviteLink: Codable, Equatable, Hashable {
             !label.isEmpty && label.count <= 63 && !label.hasPrefix("-") && !label.hasSuffix("-")
                 && label.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-") }
         }
-    }
-
-    private static func formEncode(_ text: String) -> String {
-        var allowed = CharacterSet.alphanumerics
-        allowed.insert(charactersIn: "-._~")
-        return (text.addingPercentEncoding(withAllowedCharacters: allowed) ?? text).replacingOccurrences(of: "%20", with: "+")
     }
 
     static var isDebugBuild: Bool {
@@ -210,9 +195,9 @@ extension InviteLink.ParseError {
     /// What Ovenlight says about a link it can't use. Neutral: anyone can see it.
     var message: String {
         switch self {
-        case .notAnInvite: "This isn't an Ovenlight invite. Ask for the link again and copy the whole link."
+        case .notAnInvite: "This isn’t an Ovenlight invite. Ask for the link again and copy the whole link."
         case .unsupportedVersion: "This invite needs a newer Ovenlight. Update Ovenlight, then open the invite again."
-        case .insecureControl: "This invite isn't secure, so Ovenlight won't use it. Ask for a new one."
+        case .insecureControl: "This invite isn’t secure, so Ovenlight won’t use it. Ask for a new one."
         case .missingField, .invalidField: "This link is incomplete. Ask for it again and copy the whole link."
         }
     }

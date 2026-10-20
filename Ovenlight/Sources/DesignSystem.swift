@@ -20,31 +20,11 @@ extension Font {
     }
 }
 
-/// Whether an app's machine is reachable, for its launcher tile.
-enum AppReachability: Equatable {
-    case offline
-
-    /// Tiles only speak up when something is wrong: an app reached through Ovenlight's node
-    /// whose machine didn't answer the last probe, or wasn't online to be probed. Nothing
-    /// before the node is ready (the launcher shows that) or before the first probe.
-    static func forTile(host: String, route: Routing.Route, nodeState: NodeState,
-                        answers: [String: Bool]?) -> AppReachability? {
-        guard route == .tailnetNode, nodeState == .ready, let answers else { return nil }
-        return answers[Discovery.normalizedHost(host)] == true ? nil : .offline
-    }
-
-    var label: String { "Offline" }
-
-    var color: Color { Color(.systemGray) }
-}
-
-/// A small dot that sits on an icon's corner, ringed so it reads on any icon.
-struct ReachabilityBadge: View {
-    let status: AppReachability
-
+/// A small dot that sits on an offline app's icon corner, ringed so it reads on any icon.
+struct OfflineBadge: View {
     var body: some View {
         Circle()
-            .fill(status.color)
+            .fill(Color(.systemGray))
             .frame(width: 11, height: 11)
             .padding(2.5)
             .background(Circle().fill(Color(.systemBackground)))
@@ -90,13 +70,16 @@ struct AppIconView: View {
 /// iOS doesn't say where the island is, but the island, like the notch before it, sits at
 /// the center of the top edge. The light starts there and is soft at its source, so it
 /// needs no island measurements, and screenshots, which leave the island out, show only
-/// warm light.
+/// warm light. A screen whose status bar runs down one side instead (the iPhone Duo's cover)
+/// takes the light from that side.
 struct LampLight: View {
     /// 0 is off, 1 is the lock screen asking for Face ID.
     var level: Double
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var source = LightSource.current
+    /// The side a status bar runs down, if it does.
+    @State private var statusBarSide: LightSource?
 
     var body: some View {
         // Drawn on a square as long as the screen, so turning the phone never changes the
@@ -104,13 +87,14 @@ struct LampLight: View {
         // the old shape, a hard edge of light, until the turn ends.
         GeometryReader { geo in
             let side = max(geo.size.width, geo.size.height)
-            LightCone(level: level, source: source, visible: geo.size)
+            LightCone(level: level, source: statusBarSide ?? source, visible: geo.size)
                 .frame(width: side, height: side)
         }
-        // The square hangs off the screen's right or bottom edge; right to left, it would hang
-        // off the left instead and take the light with it.
-        .environment(\.layoutDirection, .leftToRight)
         .ignoresSafeArea()
+        .onGeometryChange(for: LightSource?.self) { LightSource.statusBarSide($0.safeAreaInsets) } action: { statusBarSide = $0 }
+        // The square hangs off the screen's right or bottom edge; right to left, it would hang
+        // off the left instead and take the light with it, and the insets' sides would swap.
+        .environment(\.layoutDirection, .leftToRight)
         // Follows the phone as it turns. A half turn between the two landscapes keeps the
         // screen's size, so only the scene's orientation shows it.
         .onReceive(LightSource.changes) { source = $0 }
@@ -140,6 +124,12 @@ enum LightSource {
     }
 
     @MainActor static var current: LightSource { LightSource(scene?.effectiveGeometry.interfaceOrientation) }
+
+    /// With no top inset and a wider one at one side, the status bar runs down that side.
+    static func statusBarSide(_ insets: EdgeInsets) -> LightSource? {
+        guard insets.top == 0, insets.leading != insets.trailing else { return nil }
+        return insets.trailing > insets.leading ? .right : .left
+    }
 
     /// The scene's geometry is observable, and changes as soon as the interface turns.
     @MainActor static var changes: AnyPublisher<LightSource, Never> {
@@ -215,21 +205,20 @@ private struct LightCone: View, Animatable {
     }
 }
 
-/// The oven rack: a thin ember line the light falls on, under the wordmark and the welcome.
-struct OvenRack: View {
-    var width: CGFloat
-
-    @Environment(\.colorScheme) private var colorScheme
-
-    var body: some View {
-        Capsule()
-            .fill(Color.ember.opacity(colorScheme == .dark ? 0.6 : 0.45))
-            .frame(width: width, height: 3)
-            .accessibilityHidden(true)
-    }
-}
-
 extension View {
+    /// At least 44 points tall, all of it taking the tap: for a plain text button's label.
+    func minimumHitArea() -> some View {
+        frame(minHeight: 44).contentShape(Rectangle())
+    }
+
+    /// Says a status to VoiceOver as it appears or changes, since VoiceOver otherwise reads
+    /// only what has focus. Nil says nothing.
+    func announcing(_ status: String?) -> some View {
+        onChange(of: status) { _, status in
+            if let status { AccessibilityNotification.Announcement(status).post() }
+        }
+    }
+
     /// Fades the lamp's light in once per launch, like an oven light coming on over the
     /// plain launch screen. Every glow shares that one fade, so the privacy cover, lock
     /// screen and launcher can swap without the light dimming.
@@ -293,9 +282,11 @@ extension View {
 }
 
 extension View {
-    /// Grouped lists and forms on `Color.groupedBackground`.
+    /// Grouped lists and forms on `Color.groupedBackground`, their rows' values in
+    /// `Color.secondaryText`.
     func ovenlightGroupedBackground() -> some View {
         scrollContentBackground(.hidden).background(Color.groupedBackground)
+            .labeledContentStyle(SecondaryValueStyle())
     }
 
     /// The rows to match, for each section (or loose row) of a list that uses
@@ -303,6 +294,38 @@ extension View {
     func ovenlightRows() -> some View {
         listRowBackground(Color.groupedRow)
     }
+}
+
+/// A row's label and its value, the value in `Color.secondaryText`: the system's style
+/// fades it below 4.5:1 on the warm rows. Beside the label while it fits, under it after.
+private struct SecondaryValueStyle: LabeledContentStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .firstTextBaseline) {
+                configuration.label
+                Spacer(minLength: 12)
+                configuration.content.foregroundStyle(Color.secondaryText)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                configuration.label
+                configuration.content.foregroundStyle(Color.secondaryText)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// `.borderedProminent`, its label in `onEmber`.
+struct OvenlightProminentButtonStyle: PrimitiveButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        Button(configuration)
+            .buttonStyle(.borderedProminent)
+            .foregroundStyle(Color.onEmber)
+    }
+}
+
+extension PrimitiveButtonStyle where Self == OvenlightProminentButtonStyle {
+    static var ovenlightProminent: OvenlightProminentButtonStyle { OvenlightProminentButtonStyle() }
 }
 
 /// A warning: the symbol in orange, the words in secondary text, since orange text is too

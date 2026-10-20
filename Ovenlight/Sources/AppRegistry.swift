@@ -1,5 +1,6 @@
 import Combine
 import ImageIO
+import os
 import SwiftUI
 import WebKit
 
@@ -13,6 +14,10 @@ final class AppRegistry: ObservableObject {
     /// or decoded. Nothing is saved over it and no data store is swept, until a reload
     /// reads it.
     private(set) var loadFailed = false
+    /// Apps another build saved that this one can't read (see `SavedJSON.List`).
+    private var unread: [Any] = []
+    /// Every saved app was read, so cleaning up after the list deletes only what it means to.
+    var readInFull: Bool { !loadFailed && unread.isEmpty }
     private var reloadOnUnlock: AnyCancellable?
 
     private let directory: URL
@@ -20,12 +25,11 @@ final class AppRegistry: ObservableObject {
     private var dismissedURL: URL { directory.appendingPathComponent("dismissed-hosts.json") }
     var iconsDirectory: URL { directory.appendingPathComponent("icons", isDirectory: true) }
     /// The session to fetch an app's page and icon with: through the app's node (nil
-    /// while it isn't up), directly for apps outside any tailnet.
+    /// while it isn't up, and for a refused app; see `NodeManager.session(for:)`).
     private let session: @MainActor (WebApp) -> URLSession?
 
     init(directory: URL? = nil, session: (@MainActor (WebApp) -> URLSession?)? = nil) {
-        let base = directory ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Ovenlight", isDirectory: true)
+        let base = directory ?? SavedJSON.directory
         self.directory = base
         self.session = session ?? { NodeManager.shared.session(for: $0) }
         try? FileManager.default.createDirectory(at: iconsDirectory, withIntermediateDirectories: true)
@@ -40,22 +44,31 @@ final class AppRegistry: ObservableObject {
 
     private func load() {
         do {
-            let loaded = try SavedJSON.read([WebApp].self, from: fileURL) ?? []
-            dismissedHosts = Set(try SavedJSON.read([String].self, from: dismissedURL) ?? [])
-            apps = loaded
+            let loaded = try SavedJSON.read([WebApp].self, from: fileURL) ?? .init()
+            dismissedHosts = Set(try SavedJSON.read([String].self, from: dismissedURL)?.elements ?? [])
+            apps = loaded.elements
+            unread = loaded.unread
             loadFailed = false
+            if !unread.isEmpty { SavedJSON.log.error("apps: kept \(self.unread.count) this version can't read") }
         } catch {
             loadFailed = true
+            SavedJSON.log.error("apps: couldn't read: \(String(describing: error), privacy: .public)")
         }
     }
 
     private func save() {
         guard !loadFailed else { return }
-        if let data = try? JSONEncoder().encode(apps) {
-            try? data.write(to: fileURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        do {
+            try SavedJSON.encode(apps, keeping: unread)
+                .write(to: fileURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        } catch {
+            SavedJSON.log.error("apps: couldn't save: \(String(describing: error), privacy: .public)")
         }
-        if let data = try? JSONEncoder().encode(dismissedHosts) {
-            try? data.write(to: dismissedURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        do {
+            try JSONEncoder().encode(dismissedHosts)
+                .write(to: dismissedURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        } catch {
+            SavedJSON.log.error("dismissed hosts: couldn't save: \(String(describing: error), privacy: .public)")
         }
     }
 
@@ -82,8 +95,11 @@ final class AppRegistry: ObservableObject {
         return Screenshot.image(from: data, maxPixels: 288)
     }
 
+    /// Adds an app by its address, or returns the owner's own app already listed for that host.
     @discardableResult
     func add(url: URL) -> WebApp {
+        let host = Discovery.normalizedHost(url.host ?? "")
+        if let listed = apps.first(where: { !$0.isShared && Discovery.normalizedHost($0.host) == host }) { return listed }
         let app = WebApp(name: url.host ?? url.absoluteString, startURL: url)
         dismissedHosts.remove(Discovery.normalizedHost(app.host))
         apps.append(app)
@@ -122,6 +138,19 @@ final class AppRegistry: ObservableObject {
         return app
     }
 
+    /// A shared app's tile takes the name its connector gives it now (by host), unless the
+    /// guest renamed it, as the owner's own apps do from discovery.
+    func takeSharedNames(_ names: [String: String], in membershipID: String) {
+        var changed = false
+        for index in apps.indices where apps[index].membershipID == membershipID {
+            guard let name = names[Discovery.normalizedHost(apps[index].host)], name != apps[index].manifestName else { continue }
+            if apps[index].hasDefaultName { apps[index].name = name }
+            apps[index].manifestName = name
+            changed = true
+        }
+        if changed { save() }
+    }
+
     /// The app was opened: its tile loses the new dot, for good.
     func markOpened(_ id: UUID) {
         guard let index = apps.firstIndex(where: { $0.id == id }), apps[index].isNew else { return }
@@ -137,42 +166,57 @@ final class AppRegistry: ObservableObject {
         save()
     }
 
-    /// Removes the app and deletes everything it stored (cookies, storage, caches).
+    /// Removes the app and deletes everything it stored (cookies, storage, caches, and files
+    /// waiting to be saved).
     /// Discovery won't add one of the owner's own apps back.
     func remove(_ id: UUID) async {
         guard let app = apps.first(where: { $0.id == id }) else { return }
-        apps.removeAll { $0.id == id }
         if !app.isShared { dismissedHosts.insert(Discovery.normalizedHost(app.host)) }
-        save()
-        WebViewPool.shared.discard(app.id)
-        if let file = app.iconFile {
-            icons[file] = nil
-            try? FileManager.default.removeItem(at: iconsDirectory.appendingPathComponent(file))
+        await remove([app])
+    }
+
+    /// Removes the apps found on the owner's computers, and everything they stored, as the
+    /// owner signs out. The tailnet is forgotten, so its dismissals go too: signing in again
+    /// finds them all.
+    func removeDiscovered() async {
+        if !dismissedHosts.isEmpty {
+            dismissedHosts = []
+            save()
         }
-        StatusBarTint.forget(app)
-        await Self.removeDataStore(app.dataStoreID)
+        await remove(apps.filter { $0.discovered && !$0.isShared })
+    }
+
+    private func remove(_ gone: [WebApp]) async {
+        guard !gone.isEmpty else { return }
+        let ids = Set(gone.map(\.id))
+        apps.removeAll { ids.contains($0.id) }
+        save()
+        for app in gone {
+            WebViewPool.shared.discard(app.id)
+            WebViewPool.shared.dropWaitingDownloads(of: app.id)
+            if let file = app.iconFile {
+                icons[file] = nil
+                try? FileManager.default.removeItem(at: iconsDirectory.appendingPathComponent(file))
+            }
+            StatusBarTint.forget(app)
+            await Self.removeDataStore(app.dataStoreID)
+        }
     }
 
     /// Deletes a data store's cookies, storage and caches. Always go through
     /// here: touching the default store first starts WebKit, and removing a store before
-    /// anything else has used it crashes the app when the removal completes (it did at
-    /// launch in build 3, when a store was removed before any web view existed).
+    /// anything else has used it crashes the app when the removal completes.
     ///
     /// A web view that is still closing keeps its store in use, and removing a store in
     /// use fails. So the data is cleared at once, and the store itself is removed once
     /// it's free: retried here, and swept at the next launch.
     private static func removeDataStore(_ id: UUID) async {
         _ = WKWebsiteDataStore.default()
-        await clearData(inStore: id)
+        await WKWebsiteDataStore(forIdentifier: id).removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast)
         for delay in [0.0, 1, 2, 4, 8] {
             try? await Task.sleep(for: .seconds(delay))
             if (try? await WKWebsiteDataStore.remove(forIdentifier: id)) != nil { return }
         }
-    }
-
-    private static func clearData(inStore id: UUID) async {
-        let store = WKWebsiteDataStore(forIdentifier: id)
-        await store.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast)
     }
 
     /// Removes data stores no app uses: ones a removal couldn't delete while a web view
@@ -187,9 +231,9 @@ final class AppRegistry: ObservableObject {
         }
     }
 
-    /// None while the apps couldn't be read: every store would look unused.
+    /// None while any app couldn't be read: its store would look unused.
     func unusedDataStores(among all: [UUID]) -> [UUID] {
-        guard !loadFailed else { return [] }
+        guard readInFull else { return [] }
         let used = Set(apps.map(\.dataStoreID))
         return all.filter { !used.contains($0) }
     }
@@ -199,6 +243,7 @@ final class AppRegistry: ObservableObject {
         guard let index = apps.firstIndex(where: { $0.id == id }) else { return }
         let old = apps[index].dataStoreID
         WebViewPool.shared.discard(id)
+        WebViewPool.shared.dropWaitingDownloads(of: id)
         apps[index].dataStoreID = UUID()
         save()
         await Self.removeDataStore(old)
@@ -219,23 +264,26 @@ final class AppRegistry: ObservableObject {
     }
 
     /// Fetches the app's page and manifest to fill in its name, theme color and icon. A
-    /// connector's ovenlight.json comes first when the app has one.
+    /// connector's ovenlight.json comes first when the app has one, and is all it needs: the
+    /// connector already looked in the page for an icon. Saves only a change.
     func refreshMetadata(for id: UUID) async {
         guard let app = apps.first(where: { $0.id == id }), let session = session(app) else { return }
         if app.hasConnector, let url = URL(string: "https://\(app.host)\(OvenlightManifest.path)"),
            let (data, _) = try? await session.data(from: url), let manifest = OvenlightManifest.parse(data),
            let index = apps.firstIndex(where: { $0.id == id }) {
-            if apps[index].hasDefaultName { apps[index].name = manifest.name }
-            apps[index].manifestName = manifest.name
-            if let theme = manifest.themeColor { apps[index].themeColorHex = theme }
-            if apps[index].slug == nil { apps[index].slug = manifest.slug }
-            save()
+            var updated = apps[index]
+            if updated.hasDefaultName { updated.name = manifest.name }
+            updated.manifestName = manifest.name
+            if let theme = manifest.themeColor { updated.themeColorHex = theme }
+            if updated.slug == nil { updated.slug = manifest.slug }
+            if updated != apps[index] { apps[index] = updated; save() }
             if let iconURL = DiscoveredApp(host: Discovery.normalizedHost(app.host), manifest: manifest).iconURL {
                 await saveIcon(from: iconURL, for: id)
-                return
             }
+            return
         }
-        guard let (html, _) = try? await fetchString(app.startURL, session: session) else { return }
+        guard let (data, _) = try? await session.data(from: app.startURL) else { return }
+        let html = String(decoding: data, as: UTF8.self)
         let links = ManifestParser.links(inHTML: html, baseURL: app.startURL)
         var meta = ManifestParser.Metadata(name: ManifestParser.title(inHTML: html))
         if let manifestURL = links.manifest,
@@ -246,12 +294,13 @@ final class AppRegistry: ObservableObject {
             meta.iconURL = fromManifest.iconURL
         }
         guard let index = apps.firstIndex(where: { $0.id == id }) else { return }
+        var updated = apps[index]
         // Keep a name the user typed; only replace the placeholder host name.
-        if let name = meta.name, apps[index].hasDefaultName, !apps[index].hasConnector {
-            apps[index].name = name
+        if let name = InviteLink.label(meta.name), updated.hasDefaultName, !updated.hasConnector {
+            updated.name = name
         }
-        if let theme = meta.themeColorHex { apps[index].themeColorHex = theme }
-        save()
+        if let theme = meta.themeColorHex { updated.themeColorHex = theme }
+        if updated != apps[index] { apps[index] = updated; save() }
         if let iconURL = meta.iconURL ?? links.touchIcon {
             await saveIcon(from: iconURL, for: id)
         }
@@ -263,7 +312,8 @@ final class AppRegistry: ObservableObject {
               let image = await Task.detached(operation: { Self.iconImage(from: data) }).value, let png = image.pngData(),
               let index = apps.firstIndex(where: { $0.id == id }) else { return }
         let file = "\(id.uuidString).png"
-        try? png.write(to: iconsDirectory.appendingPathComponent(file), options: .atomic)
+        // A write that fails leaves the icon as it was: an app with none tries again later.
+        guard (try? png.write(to: iconsDirectory.appendingPathComponent(file), options: .atomic)) != nil else { return }
         // A refreshed icon keeps its file name, so `apps` may not change; say so anyway.
         objectWillChange.send()
         icons[file] = image
@@ -275,11 +325,6 @@ final class AppRegistry: ObservableObject {
         for app in apps where app.iconFile == nil {
             await refreshMetadata(for: app.id)
         }
-    }
-
-    private func fetchString(_ url: URL, session: URLSession) async throws -> (String, URLResponse) {
-        let (data, response) = try await session.data(from: url)
-        return (String(decoding: data, as: UTF8.self), response)
     }
 }
 

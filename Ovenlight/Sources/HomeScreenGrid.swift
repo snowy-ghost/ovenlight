@@ -9,6 +9,8 @@ struct HomeGridLayout: Equatable {
     let iconSize: CGFloat
     /// An icon with its label (one line, or two at accessibility sizes).
     let tileHeight: CGFloat
+    /// Between neighboring tiles: wider with large text, whose two-line labels would run together.
+    let tileGap: CGFloat
 
     static let labelGap: CGFloat = 6
     static let rowGap: CGFloat = 24
@@ -22,6 +24,7 @@ struct HomeGridLayout: Equatable {
         columns = largeText ? max(3, Int(usable / 140)) : max(4, Int(usable / 92))
         iconSize = largeText ? 72 : (width >= 400 ? 64 : 60)
         tileHeight = iconSize + Self.labelGap + labelHeight
+        tileGap = largeText ? 12 : 4
     }
 
     static func sideMargin(_ width: CGFloat) -> CGFloat { (width * 0.064).rounded() }
@@ -29,7 +32,7 @@ struct HomeGridLayout: Equatable {
     var columnWidth: CGFloat { (width - 2 * sideMargin) / CGFloat(columns) }
     var rowPitch: CGFloat { tileHeight + Self.rowGap }
     /// As wide as its column, so labels get the room the Home Screen gives them.
-    var tileSize: CGSize { CGSize(width: max(columnWidth - 4, iconSize), height: tileHeight) }
+    var tileSize: CGSize { CGSize(width: max(columnWidth - tileGap, iconSize), height: tileHeight) }
 
     func tileCenter(of index: Int) -> CGPoint {
         CGPoint(x: sideMargin + columnWidth * (CGFloat(index % columns) + 0.5),
@@ -60,13 +63,13 @@ enum HomeReorder {
 /// The apps as one scrolling grid of icons, like the Home Screen. Long-press an icon for
 /// its menu or long-press empty space to edit. While editing, icons jiggle, show a remove
 /// badge and can be dragged to a new place among the ones on screen.
-struct HomeScreenGrid<Menu: View, Preview: View>: View {
+struct HomeScreenGrid<Menu: View, Preview: View, Header: View>: View {
     let apps: [WebApp]
     /// Set up for the owner's own machines: the empty grid invites their apps. A guest's
     /// stays blank while the first invite joins.
     let ownerEnabled: Bool
     @Binding var isEditing: Bool
-    let reachability: (WebApp) -> AppReachability?
+    let isOffline: (WebApp) -> Bool
     let open: (WebApp) -> Void
     /// Moves an app to an index in the list, and saves the order.
     let move: (UUID, Int) -> Void
@@ -74,6 +77,9 @@ struct HomeScreenGrid<Menu: View, Preview: View>: View {
     let addApp: () -> Void
     @ViewBuilder let menu: (WebApp) -> Menu
     @ViewBuilder let preview: (WebApp) -> Preview
+    /// Above the icons, scrolling with them, so a card that grows with the text keeps every
+    /// control in reach.
+    @ViewBuilder let header: Header
 
     @EnvironmentObject private var registry: AppRegistry
     @Environment(\.launchNamespace) private var launchNamespace
@@ -84,7 +90,6 @@ struct HomeScreenGrid<Menu: View, Preview: View>: View {
     @ScaledMetric(relativeTo: .caption2) private var sharedByLine: CGFloat = 14
 
     @State private var drag: IconDrag?
-    @GestureState private var dragActive = false
     @State private var retarget: Task<Void, Never>?
     @State private var pendingSlot: Int?
     @State private var pickups = 0
@@ -93,6 +98,12 @@ struct HomeScreenGrid<Menu: View, Preview: View>: View {
     @State private var layout: HomeGridLayout?
 
     private static var space: String { "home" }
+
+    private static var emptyFooter: AttributedString {
+        var text = try! AttributedString(markdown: "Apps you publish with the [Ovenlight connector](https://ovenlight.app/support#own-computer) on your computers show up here. If one doesn’t, run ovenlight doctor on its computer.")
+        for run in text.runs where run.link != nil { text[run.range].underlineStyle = .single }
+        return text
+    }
 
     /// An icon being dragged: where the finger is, where on the tile it grabbed it, and
     /// the slot it would drop into. Scrolling stops meanwhile, so grid coordinates hold.
@@ -109,40 +120,43 @@ struct HomeScreenGrid<Menu: View, Preview: View>: View {
             let layout = layout(width: geo.size.width)
             ScrollView {
                 let order = displayed
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 0), count: layout.columns),
-                          spacing: HomeGridLayout.rowGap) {
-                    if apps.isEmpty && ownerEnabled {
-                        EmptyHomeSlot(size: layout.iconSize, action: addApp)
-                            .frame(width: layout.tileSize.width, height: layout.tileSize.height, alignment: .top)
+                VStack(spacing: 0) {
+                    header
+                    VStack(alignment: .leading, spacing: 14) {
+                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 0), count: layout.columns),
+                                  spacing: HomeGridLayout.rowGap) {
+                            if apps.isEmpty && ownerEnabled {
+                                EmptyHomeSlot(size: layout.iconSize, action: addApp)
+                                    .frame(width: layout.tileSize.width, height: layout.tileSize.height, alignment: .top)
+                            }
+                            ForEach(Array(order.enumerated()), id: \.element.id) { index, app in
+                                tile(app, index: index, in: order, layout: layout)
+                            }
+                        }
+                        // Under the Add App slot it describes, from the slot's edge. In the tile
+                        // labels' color, which stays legible where the light is brightest, its
+                        // link too, underlined.
+                        if apps.isEmpty && ownerEnabled {
+                            Text(Self.emptyFooter)
+                                .font(.footnote)
+                                .foregroundStyle(.primary)
+                                .tint(.primary)
+                                .padding(.horizontal, (layout.columnWidth - layout.iconSize) / 2)
+                        }
                     }
-                    ForEach(Array(order.enumerated()), id: \.element.id) { index, app in
-                        tile(app, index: index, in: order, layout: layout)
-                    }
+                    .padding(.horizontal, layout.sideMargin)
+                    .padding(.top, HomeGridLayout.topMargin)
+                    .padding(.bottom, HomeGridLayout.rowGap)
+                    .animation(.spring(response: 0.38, dampingFraction: 0.82), value: order.map(\.id))
+                    .overlay(alignment: .topLeading) { lifted(layout) }
+                    .coordinateSpace(.named(Self.space))
                 }
-                .padding(.horizontal, layout.sideMargin)
-                .padding(.top, HomeGridLayout.topMargin)
-                .padding(.bottom, HomeGridLayout.rowGap)
-                .animation(.spring(response: 0.38, dampingFraction: 0.82), value: order.map(\.id))
                 .frame(maxWidth: .infinity, minHeight: geo.size.height, alignment: .top)
                 .background { background }
-                .overlay {
-                    if apps.isEmpty && ownerEnabled {
-                        Text("Apps you publish with the [Ovenlight connector](https://ovenlight.app/support#own-computer) on your computers show up here.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 2 * layout.sideMargin)
-                    }
-                }
-                .overlay(alignment: .topLeading) { lifted(layout) }
-                .coordinateSpace(.named(Self.space))
             }
             .scrollDisabled(drag != nil)
             .scrollBounceBehavior(.basedOnSize)
             .onChange(of: layout, initial: true) { _, new in self.layout = new }
-        }
-        .onChange(of: dragActive) { _, active in
-            if !active, drag != nil { endDrag() }
         }
         .onChange(of: isEditing) { _, editing in
             if !editing { drag = nil }
@@ -177,7 +191,7 @@ struct HomeScreenGrid<Menu: View, Preview: View>: View {
 
     @ViewBuilder
     private func tile(_ app: WebApp, index: Int, in order: [WebApp], layout: HomeGridLayout) -> some View {
-        let content = AppTile(app: app, namespace: launchNamespace, reachability: reachability(app),
+        let content = AppTile(app: app, namespace: launchNamespace, isOffline: isOffline(app),
                               isEditing: isEditing, iconSize: layout.iconSize)
             .frame(width: layout.tileSize.width, height: layout.tileSize.height, alignment: .top)
         Group {
@@ -193,7 +207,7 @@ struct HomeScreenGrid<Menu: View, Preview: View>: View {
                     .modifier(Jiggle(seed: app.id.hashValue, active: !reduceMotion && drag?.id != app.id))
                     .opacity(drag?.id == app.id ? 0.001 : 1)
                     .contentShape(Rectangle())
-                    .highPriorityGesture(dragGesture(app, index: index, layout: layout))
+                    .gesture(dragGesture(app, index: index, layout: layout))
                     .transition(.identity)
             } else {
                 Button { open(app) } label: { content }
@@ -225,23 +239,21 @@ struct HomeScreenGrid<Menu: View, Preview: View>: View {
 
     // MARK: Dragging
 
-    private func dragGesture(_ app: WebApp, index: Int, layout: HomeGridLayout) -> some Gesture {
-        DragGesture(minimumDistance: 2, coordinateSpace: .named(Self.space))
-            .updating($dragActive) { _, active, _ in active = true }
-            .onChanged { value in
-                if drag == nil {
-                    let center = layout.tileCenter(of: index)
-                    drag = IconDrag(id: app.id, location: value.location,
-                                    grab: CGSize(width: value.startLocation.x - center.x,
-                                                 height: value.startLocation.y - center.y),
-                                    target: index)
-                    pickups += 1
-                } else if drag?.dropping == false {
-                    drag?.location = value.location
-                }
-                retargetSoon(layout)
+    /// Picks an icon up after a short hold (see `HoldToDrag`).
+    private func dragGesture(_ app: WebApp, index: Int, layout: HomeGridLayout) -> HoldToDrag {
+        HoldToDrag(space: Self.space) { location in
+            if drag == nil {
+                let center = layout.tileCenter(of: index)
+                drag = IconDrag(id: app.id, location: location,
+                                grab: CGSize(width: location.x - center.x, height: location.y - center.y), target: index)
+                pickups += 1
+            } else if drag?.dropping == false {
+                drag?.location = location
             }
-            .onEnded { _ in endDrag() }
+            retargetSoon(layout)
+        } ended: {
+            endDrag()
+        }
     }
 
     /// Icons make way once the dragged one rests over a slot for a moment, so passing over
@@ -309,5 +321,29 @@ struct HomeScreenGrid<Menu: View, Preview: View>: View {
     private func accessibleMove(_ app: WebApp, to index: Int) {
         move(app.id, index)
         AccessibilityNotification.Announcement("\(app.name) moved to position \(index + 1) of \(apps.count)").post()
+    }
+}
+
+/// A hold that then follows the finger, in a named coordinate space. UIKit's long press, since
+/// any SwiftUI drag on a tile keeps the grid from scrolling at all: this one fails when the
+/// finger moves before the hold ends, and the scroll view takes the swipe.
+struct HoldToDrag: UIGestureRecognizerRepresentable {
+    let space: String
+    let moved: (CGPoint) -> Void
+    /// Let go, or cancelled.
+    let ended: () -> Void
+
+    func makeUIGestureRecognizer(context: Context) -> UILongPressGestureRecognizer {
+        let recognizer = UILongPressGestureRecognizer()
+        recognizer.minimumPressDuration = 0.2
+        return recognizer
+    }
+
+    func handleUIGestureRecognizerAction(_ recognizer: UILongPressGestureRecognizer, context: Context) {
+        switch recognizer.state {
+        case .began, .changed: moved(context.converter.location(in: .named(space)))
+        case .ended, .cancelled: ended()
+        default: break
+        }
     }
 }

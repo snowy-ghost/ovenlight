@@ -62,9 +62,11 @@ enum FeedbackResult: Equatable {
 enum FeedbackSender {
     @MainActor
     static func send(_ payload: FeedbackPayload, about app: WebApp) async -> FeedbackResult {
+        // Read as it fails: the phone may have gone offline while it tried.
+        let network = { FeedbackResult.failed(NetworkPath.shared.isSatisfied ? ConnectionCopy.feedbackNetwork : ConnectionCopy.feedbackOffline) }
         guard let session = NodeManager.shared.uploadSession(for: app, timeout: 30),
               let url = URL(string: "https://\(app.host)/__ovenlight/feedback") else {
-            return .failed(ConnectionCopy.feedbackNetwork)
+            return network()
         }
         defer { session.finishTasksAndInvalidate() }
         var request = URLRequest(url: url)
@@ -73,7 +75,7 @@ enum FeedbackSender {
         request.httpBody = try? JSONEncoder().encode(payload)
         guard let (data, response) = try? await session.data(for: request),
               let status = (response as? HTTPURLResponse)?.statusCode else {
-            return .failed(ConnectionCopy.feedbackNetwork)
+            return network()
         }
         if status == 403, app.isShared { await GuestManager.shared.verifyAccess(to: app) }
         return FeedbackResult.interpret(status: status, body: data)
@@ -91,17 +93,26 @@ struct FeedbackSheet: View {
     @State private var includeScreenshot = true
     @State private var sending = false
     @State private var result: FeedbackResult?
+    @State private var confirmingDiscard = false
     @FocusState private var focused: Bool
 
+    /// A note that Cancel or a swipe down would lose.
+    private var hasDraft: Bool {
+        result != .sent && !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// Not while Feedback Sent shows, which a second Send would hide by sending it again.
     private var canSend: Bool {
-        !sending && (!note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (includeScreenshot && screenshot != nil))
+        !sending && result != .sent && (!note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (includeScreenshot && screenshot != nil))
     }
 
     var body: some View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("What's working, or what isn't?", text: $note, axis: .vertical)
+                    TextField("What’s working, or what isn’t?", text: $note, axis: .vertical)
+                        // Once a note is typed, VoiceOver would read only the note.
+                        .accessibilityLabel("Note")
                         .lineLimit(4...10)
                         .focused($focused)
                 } footer: {
@@ -136,7 +147,9 @@ struct FeedbackSheet: View {
             .navigationTitle("Send Feedback")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { if hasDraft { confirmingDiscard = true } else { dismiss() } }
+                }
                 ToolbarItem(placement: .confirmationAction) {
                     if sending {
                         ProgressView()
@@ -161,7 +174,13 @@ struct FeedbackSheet: View {
                     .transition(.opacity)
                 }
             }
-            .interactiveDismissDisabled(sending)
+            .interactiveDismissDisabled(sending || hasDraft)
+            .holdingLinks(sending || hasDraft)
+            .background(DismissAttempt { if hasDraft, !sending { confirmingDiscard = true } })
+            .alert("Discard Feedback?", isPresented: $confirmingDiscard) {
+                Button("Keep Editing", role: .cancel) {}
+                Button("Discard", role: .destructive) { dismiss() }
+            }
             .onAppear { if screenshot == nil { focused = true } }
         }
         .sensoryFeedback(trigger: result) { _, new in
@@ -171,6 +190,15 @@ struct FeedbackSheet: View {
             case nil: nil
             }
         }
+        .announcing(announcement)
+    }
+
+    private var announcement: String? {
+        switch result {
+        case .sent: "\(ConnectionCopy.feedbackSent). \(ConnectionCopy.feedbackSentDetail(to: app.sharedBy))"
+        case .failed(let message): message
+        case nil: nil
+        }
     }
 
     private func send() async {
@@ -179,7 +207,7 @@ struct FeedbackSheet: View {
         do {
             payload = try FeedbackPayload.make(note: note, pageURL: pageURL, png: png)
         } catch .noteTooLong {
-            result = .failed("Keep the note under \(FeedbackPayload.maxNote) characters.")
+            result = .failed("Keep the note under \(FeedbackPayload.maxNote.formatted()) characters.")
             return
         } catch {
             result = .failed(ConnectionCopy.feedbackFailed)
@@ -193,6 +221,55 @@ struct FeedbackSheet: View {
         if outcome == .sent {
             try? await Task.sleep(for: .seconds(1.4))
             dismiss()
+        }
+    }
+}
+
+/// Runs `attempt` when a swipe tries to close the sheet it's in while
+/// `interactiveDismissDisabled` holds it, so the sheet can ask first: SwiftUI only blocks the
+/// swipe. It answers the sheet's presentation as SwiftUI's own delegate, which still gets
+/// everything.
+struct DismissAttempt: UIViewControllerRepresentable {
+    let attempt: () -> Void
+
+    func makeUIViewController(context: Context) -> Hook { Hook() }
+
+    func updateUIViewController(_ hook: Hook, context: Context) {
+        hook.attempt = attempt
+        hook.install()
+    }
+
+    final class Hook: UIViewController, UIAdaptivePresentationControllerDelegate {
+        var attempt: () -> Void = {}
+        private weak var swiftUI: UIAdaptivePresentationControllerDelegate?
+
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            install()
+        }
+
+        /// On the presented controller this sits in, again whenever SwiftUI sets its own.
+        func install() {
+            var sheet: UIViewController? = self
+            while let candidate = sheet, candidate.presentingViewController?.presentedViewController !== candidate {
+                sheet = candidate.parent
+            }
+            guard let controller = sheet?.presentationController, controller.delegate !== self else { return }
+            swiftUI = controller.delegate
+            controller.delegate = self
+        }
+
+        func presentationControllerDidAttemptToDismiss(_ controller: UIPresentationController) {
+            swiftUI?.presentationControllerDidAttemptToDismiss?(controller)
+            attempt()
+        }
+
+        override func responds(to selector: Selector!) -> Bool {
+            super.responds(to: selector) || swiftUI?.responds(to: selector) == true
+        }
+
+        override func forwardingTarget(for selector: Selector!) -> Any? {
+            swiftUI?.responds(to: selector) == true ? swiftUI : super.forwardingTarget(for: selector)
         }
     }
 }

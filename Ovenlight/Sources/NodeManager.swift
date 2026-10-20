@@ -26,6 +26,24 @@ enum NodeState: Equatable {
         }
     }
 
+    /// Up, with no computer answering yet: their side, not the phone's connection.
+    var isRetrying: Bool {
+        if case .retrying = self { return true }
+        return false
+    }
+
+    /// Whether the sign-in sheet closes: the iPhone is approved, or the node failed. A tailnet
+    /// that approves each new device keeps it open through the start between the sign-in and
+    /// the approval, and the wait for approval, so the owner can carry on in Tailscale's pages.
+    /// Idle doesn't close it either: coming back from an authenticator app can restart a node
+    /// whose listener died, which passes through idle.
+    var endsSignIn: Bool {
+        switch self {
+        case .ready, .failed: return true
+        default: return false
+        }
+    }
+
     var summary: String {
         switch self {
         case .idle: return "Off"
@@ -34,6 +52,16 @@ enum NodeState: Equatable {
         case .awaitingApproval: return "Waiting for approval"
         case .ready: return "Connected"
         case .failed(let message): return message
+        }
+    }
+
+    /// For the log, which is public: the sign-in link is left out, since whoever opens it
+    /// first can sign the node in to their own account. A failure's message is the summary.
+    var logDescription: String {
+        switch self {
+        case .needsLogin: return "needsLogin"
+        case .failed: return "failed"
+        default: return String(describing: self)
         }
     }
 }
@@ -155,7 +183,9 @@ struct TailnetStatus: Decodable, Equatable {
         backendState = try c.decodeIfPresent(String.self, forKey: .backendState) ?? "NoState"
         authURL = try c.decodeIfPresent(String.self, forKey: .authURL) ?? ""
         selfNode = try c.decodeIfPresent(Peer.self, forKey: .selfNode)
-        peers = try c.decodeIfPresent([String: Peer].self, forKey: .peers).map { Array($0.values) } ?? []
+        // In key order: a dictionary's order differs from one decode to the next, and the same
+        // status must compare equal, or every poll would redraw.
+        peers = try c.decodeIfPresent([String: Peer].self, forKey: .peers).map { $0.sorted { $0.key < $1.key }.map(\.value) } ?? []
         users = try c.decodeIfPresent([String: User].self, forKey: .users) ?? [:]
         tailnet = try c.decodeIfPresent(Tailnet.self, forKey: .tailnet)
     }
@@ -216,10 +246,15 @@ final class MembershipNode: ObservableObject {
     var guestHosts: () -> [String] = { [] }
     /// For a guest: hosts whose connector said "not invited" in a probe.
     var onNotInvited: (Set<String>) -> Void = { _ in }
+    /// For a guest: the names the app hosts that answered give their apps now.
+    var onAppNames: ([String: String]) -> Void = { _ in }
     /// For a guest: the backend has needed a login for a few polls in a row.
     var onLoginLost: () -> Void = {}
     /// For a guest: app hosts gone from the node's peers for a few minutes (see `PeerAbsence`).
     var onPeersGone: (Set<String>) -> Void = { _ in }
+    /// For the owner: the launcher's apps, whose discovered tiles count as found (see
+    /// `Discovery.watchedHosts`).
+    var launcherApps: () -> [WebApp] = { [] }
 
     /// Nil once the membership is gone, so a late start can't bring back a node for it.
     private let settings: () -> Settings?
@@ -235,8 +270,13 @@ final class MembershipNode: ObservableObject {
     private var isCheckingHealth = false
     private var probedHosts: [String]?
     private var lastProbe: Date?
+    /// The last look had a host that didn't answer.
+    private var lastProbeMissed = false
+    /// Every host this node has looked at.
+    private var seenHosts: Set<String> = []
     private var loginLostPolls = 0
     private var absence = PeerAbsence()
+    private var silence = GuestSilence()
     /// Bumped on every start and stop so work from an older node can't touch the new one.
     private var generation = 0
     private let log: Logger
@@ -261,7 +301,7 @@ final class MembershipNode: ObservableObject {
             let alive = await loopbackIsAlive()
             isCheckingHealth = false
             if alive { return }
-            log.info("loopback \(self.loopback?.address ?? "?", privacy: .public) is dead, restarting the node")
+            log.notice("loopback \(self.loopback?.address ?? "?", privacy: .public) is dead, restarting the node")
             await stop()
         }
         await start()
@@ -356,7 +396,7 @@ final class MembershipNode: ObservableObject {
             absence = PeerAbsence()
             // Live data stores pick up the new proxy without recreating their web views.
             for store in stores.values { store.proxyConfigurations = [proxy] }
-            log.info("\(self.id, privacy: .public): node started, loopback \(loopback.address, privacy: .public), proxy applied to \(self.stores.count) stores")
+            log.notice("\(self.id, privacy: .public): node started, loopback \(loopback.address, privacy: .public), proxy applied to \(self.stores.count) stores")
             pollTask = Task { [weak self] in await self?.poll(generation: current) }
         } catch {
             log.error("\(self.id, privacy: .public): node start failed: \(String(describing: error), privacy: .public)")
@@ -394,9 +434,8 @@ final class MembershipNode: ObservableObject {
     }
 
     /// The MagicDNS suffix of the owner's tailnet: from the node's status, or as last seen,
-    /// so an app opened before the node reports still routes through it. It outlives Sign
-    /// Out (the next sign-in replaces it) and goes with Stop Using My Own Computers. Nil for
-    /// a guest.
+    /// so an app opened before the node reports still routes through it. It goes with Sign
+    /// Out and Stop Using My Own Computers. Nil for a guest.
     var magicDNSSuffixSeen: String? {
         guard isOwner else { return nil }
         if let suffix = status?.tailnet?.magicDNSSuffix, !suffix.isEmpty { return suffix }
@@ -429,15 +468,18 @@ final class MembershipNode: ObservableObject {
         }
         await stop()
         try? FileManager.default.removeItem(at: NodeManager.stateDirectory(for: id))
+        UserDefaults.standard.removeObject(forKey: onlineReportedKey)
         answers = nil
         discovered = []
+        seenHosts = []
     }
 
     // MARK: Status and reachability
 
     private func poll(generation current: Int) async {
         while !Task.isCancelled, current == generation, let node {
-            if let data = try? await node.statusJSON(), let status = TailnetStatus.decode(data), current == generation {
+            if let data = try? await node.statusJSON(),
+               let status = await Task.detached(operation: { TailnetStatus.decode(data) }).value, current == generation {
                 // Polls repeat while nothing changes; only a change should redraw.
                 if status != self.status {
                     self.status = status
@@ -451,21 +493,24 @@ final class MembershipNode: ObservableObject {
                 } else {
                     watchLogin(status.backendState)
                     watchPeers(status)
+                    if !onlineReported, GuestProbe.reportsOnline(status) { UserDefaults.standard.set(true, forKey: onlineReportedKey) }
                 }
-                if state == .connecting || { if case .retrying = state { return true } else { return false } }() {
+                if state == .connecting || state.isRetrying {
                     await checkReachability(generation: current)
                     continue
                 }
-                if state == .ready {
-                    // Look again when a machine comes online or goes away (the owner's new apps
-                    // and tiles), and once a minute regardless: a host that missed one look, as a
-                    // newly published app's first answer can, would otherwise wait for the next change.
-                    let hostsChanged = isOwner && Discovery.candidateHosts(in: status) != probedHosts
-                    if hostsChanged || lastProbe.map({ Date.now.timeIntervalSince($0) > 60 }) == true { await rediscover() }
+                if state == .ready, Discovery.lookAgain(hostsChanged: probeHosts != probedHosts, lastLook: lastProbe,
+                                                        missed: lastProbeMissed, now: .now) {
+                    await rediscover()
                 }
             }
-            let interval: Double = state == .ready ? 10 : 1
-            try? await Task.sleep(for: .seconds(interval))
+            // Quick while the node comes up, so an app opened at launch waits no longer than it
+            // must, but not while the phone has no network to come up on. A wait for a login keeps
+            // its once a second, which the login watches count in.
+            let quick = (state == .starting || state == .connecting) && status?.backendState != "NeedsLogin"
+                && NetworkPath.shared.isSatisfied
+            let interval: Duration = state == .ready ? .seconds(10) : quick ? .milliseconds(250) : .seconds(1)
+            try? await Task.sleep(for: interval)
         }
     }
 
@@ -483,7 +528,7 @@ final class MembershipNode: ObservableObject {
         let noPage = status.backendState == "NeedsLogin" && status.authURL.isEmpty
         loginLostPolls = noPage ? loginLostPolls + 1 : 0
         guard loginLostPolls == 10, let request = localAPIRequest("login-interactive", method: "POST", timeout: 5) else { return }
-        log.info("owner: needs a login and has no sign-in page, asking for one")
+        log.notice("owner: needs a login and has no sign-in page, asking for one")
         Task { _ = try? await URLSession.shared.data(for: request) }
     }
 
@@ -500,15 +545,43 @@ final class MembershipNode: ObservableObject {
     }
 
     private var probeHosts: [String] {
-        isOwner ? Discovery.candidateHosts(in: status) : Array(Set(guestHosts().map(Discovery.normalizedHost))).sorted()
+        isOwner ? Discovery.candidateHosts(in: status) : GuestProbe.hostsToProbe(guestHosts(), in: status, onlineReported: onlineReported)
     }
 
-    private func probe(_ hosts: [String]) async -> Discovery.Outcome {
+    /// The network lists this app's computer as offline. It may still answer (a peer can be
+    /// listed offline for a moment while it works), so this never stops a probe.
+    func isListedOffline(_ host: String) -> Bool {
+        onlineReported && !Discovery.offlineHosts([host], in: status).isEmpty
+    }
+
+    /// Whether a peer's Online in the status can be believed: always for the owner, whose
+    /// discovery has always read it, and for a guest once its network has listed a peer
+    /// online (see `GuestProbe.reportsOnline`), remembered across launches.
+    private var onlineReported: Bool { isOwner || UserDefaults.standard.bool(forKey: onlineReportedKey) }
+    private var onlineReportedKey: String { "onlineReported.\(id)" }
+
+    private func probe(_ hosts: [String], firstAnswer: @MainActor () -> Void = {}) async -> Discovery.Outcome {
         lastProbe = .now
-        if isOwner { return await Discovery.probe(hosts: hosts, session: session()) }
-        let outcome = await GuestProbe.probe(hosts: hosts, session: session())
-        if !outcome.notInvited.isEmpty { onNotInvited(outcome.notInvited) }
-        return outcome.base
+        // The hosts count as looked at even when none answers: they come back with a change
+        // to the list, or in a minute, not every poll.
+        probedHosts = hosts
+        let outcome: Discovery.Outcome
+        if isOwner {
+            outcome = await Discovery.probe(hosts: hosts, session: session(), firstAnswer: firstAnswer)
+        } else {
+            let guest = await GuestProbe.probe(hosts: hosts, session: session(), firstAnswer: firstAnswer)
+            if !guest.notInvited.isEmpty { onNotInvited(guest.notInvited) }
+            if !guest.appNames.isEmpty { onAppNames(guest.appNames) }
+            outcome = guest.base
+        }
+        // An owner's laptop or TV without a connector never answers: only app hosts count.
+        let watched = isOwner
+            ? Discovery.watchedHosts(hosts, in: status, found: Set(discovered.map(\.host)), apps: launcherApps(), seenBefore: seenHosts)
+            : Set(hosts)
+        // Seen only by a look whose path worked: one that failed outright says nothing of them.
+        if isOwner, outcome.reachable { seenHosts.formUnion(hosts) }
+        lastProbeMissed = watched.contains { outcome.answered[$0] != true }
+        return outcome
     }
 
     /// Once the node is up, probe the machines that might serve its apps. Any HTTP answer
@@ -516,7 +589,8 @@ final class MembershipNode: ObservableObject {
     /// the SOCKS proxy, timeouts) count as "not yet" and are retried with backoff.
     private func checkReachability(generation current: Int) async {
         let hosts = probeHosts
-        let outcome = await probe(hosts)
+        // The first answer proves the path: apps may load while the rest are still asked.
+        let outcome = await probe(hosts) { [self] in if current == generation { send(.reachable) } }
         guard current == generation else { return }
         record(outcome, probed: hosts)
         if outcome.reachable || hosts.isEmpty {
@@ -536,16 +610,21 @@ final class MembershipNode: ObservableObject {
     /// whether its apps still answer and still admit it.
     func rediscover() async {
         guard state == .ready else { return }
+        let current = generation
         let hosts = probeHosts
         let outcome = await probe(hosts)
+        guard current == generation else { return }
         record(outcome, probed: hosts)
         if outcome.reachable, isOwner, discovered != outcome.apps { discovered = outcome.apps }
+        // A phone with no network at all hears nothing from anyone: that look says nothing.
+        guard !isOwner, NetworkPath.shared.isSatisfied, silence.record(probed: hosts, reachable: outcome.reachable) else { return }
+        log.notice("\(self.id, privacy: .public): no app has answered for a while, restarting the node")
+        Task { await restart() }
     }
 
     private func record(_ outcome: Discovery.Outcome, probed hosts: [String]) {
         // Only a working path, or no machine online at all, says anything about them.
         guard outcome.reachable || hosts.isEmpty else { return }
-        probedHosts = hosts
         let answers = Dictionary(uniqueKeysWithValues: hosts.map { ($0, outcome.answered[$0] ?? false) })
         if answers != self.answers { self.answers = answers }
     }
@@ -561,16 +640,20 @@ final class MembershipNode: ObservableObject {
             guard let url = URL(string: OvenlightManifest.path, relativeTo: app.startURL)?.absoluteURL else { return .unreachable }
             reach = (try? await session.data(from: url)) != nil ? .reached : .unreachable
         } else {
-            reach = await GuestProbe.whoami(host: host, session: session)
+            reach = await GuestProbe.whoami(host: host, session: session).reach
         }
+        // A probe cut short says nothing about the host.
+        guard !Task.isCancelled else { return .unreachable }
         answers?[host] = reach != .unreachable
+        // Look again in a minute, as after any look that missed a host.
+        if reach == .unreachable { lastProbeMissed = true }
         return reach
     }
 
     private func send(_ event: NodeEvent) {
         let next = NodeMachine.next(state, event)
         if next != state {
-            log.info("\(self.id, privacy: .public): state \(String(describing: self.state), privacy: .public) -> \(String(describing: next), privacy: .public)")
+            log.notice("\(self.id, privacy: .public): state \(self.state.logDescription, privacy: .public) -> \(next.logDescription, privacy: .public)")
             state = next
         }
     }
@@ -620,30 +703,63 @@ enum GuestProbe {
     struct Outcome {
         var base = Discovery.Outcome()
         var notInvited: Set<String> = []
+        /// The app's name as each host that admitted the guest gives it now.
+        var appNames: [String: String] = [:]
     }
 
-    static func probe(hosts: [String], session: URLSession?) async -> Outcome {
+    /// `firstAnswer` as in `Discovery.probe`.
+    static func probe(hosts: [String], session: URLSession?, firstAnswer: @MainActor () -> Void = {}) async -> Outcome {
         guard let session, !hosts.isEmpty else { return Outcome() }
-        return await withTaskGroup(of: (String, Reach).self) { group in
+        return await withTaskGroup(of: (String, Reach, String?).self) { group in
             for host in hosts {
-                group.addTask { (host, await whoami(host: host, session: session)) }
+                group.addTask {
+                    let answer = await whoami(host: host, session: session)
+                    return (host, answer.reach, answer.appName)
+                }
             }
             var outcome = Outcome()
-            for await (host, reach) in group {
+            for await (host, reach, appName) in group {
                 let answered = reach != .unreachable
+                if answered, !outcome.base.reachable { await firstAnswer() }
                 outcome.base.reachable = outcome.base.reachable || answered
                 outcome.base.answered[host] = answered
                 if reach == .notInvited { outcome.notInvited.insert(host) }
+                if let appName { outcome.appNames[host] = appName }
             }
             return outcome
         }
     }
 
-    static func whoami(host: String, session: URLSession) async -> Reach {
+    /// The app hosts worth probing: not those whose computer the network lists as offline,
+    /// which can't answer, once the network is known to report Online (`onlineReported`).
+    /// Like the owner's offline machines, they are then missing from the answers, so their
+    /// tiles show Offline at once.
+    static func hostsToProbe(_ hosts: [String], in status: TailnetStatus?, onlineReported: Bool) -> [String] {
+        let hosts = Set(hosts.map(Discovery.normalizedHost))
+        guard onlineReported else { return hosts.sorted() }
+        return hosts.subtracting(Discovery.offlineHosts(hosts, in: status)).sorted()
+    }
+
+    /// Whether the network tells this node its peers' Online state. A control server leaves
+    /// it out for a node it doesn't tell, and the status then says offline for every peer,
+    /// so a guest believes it only once it has listed a peer online.
+    static func reportsOnline(_ status: TailnetStatus) -> Bool {
+        status.peers.contains(where: \.online)
+    }
+
+    /// The answer, and the app's name when the connector admitted the guest: it says it as
+    /// its claim does, so a tile can follow a rename.
+    static func whoami(host: String, session: URLSession) async -> (reach: Reach, appName: String?) {
         guard let url = URL(string: "https://\(host)/__ovenlight/whoami"),
               let (data, response) = try? await session.data(from: url),
-              let http = response as? HTTPURLResponse else { return .unreachable }
-        return classify(status: http.statusCode, header: http.value(forHTTPHeaderField: ConnectorError.header), body: data)
+              let http = response as? HTTPURLResponse else { return (.unreachable, nil) }
+        let name = http.statusCode == 200 ? appName(from: data) : nil
+        return (classify(status: http.statusCode, header: http.value(forHTTPHeaderField: ConnectorError.header), body: data), name)
+    }
+
+    /// whoami's `appName`, cleaned like a claim's.
+    static func appName(from body: Data) -> String? {
+        InviteLink.label((try? JSONDecoder().decode(ClaimResponse.self, from: body))?.appName)
     }
 
     /// 403 `not_invited` ends the share for an unclaimed or removed guest; any other answer,
@@ -662,6 +778,33 @@ enum GuestProbe {
         guard status.backendState == "Running" else { return nil }
         let absent = hosts.subtracting(status.peers.map { Discovery.normalizedHost($0.dnsName) })
         return absent.count < hosts.count ? absent : nil
+    }
+}
+
+/// Looks in a row at a guest's apps, about a minute apart, in which none answered though the
+/// network listed some online. A running node never learns that the owner deleted its device
+/// (control's refusals only back it off), but a restarted one finds it needs a login, which
+/// ends the share (`onLoginLost`). So after a few silent looks the node restarts, then waits
+/// twice as long before the next, up to an hour; any answer starts over.
+struct GuestSilence {
+    static let firstRestart = 3
+    static let maxGap = 60
+    private var looks = 0
+    private var gap = firstRestart
+
+    /// Records one look; true when the node should restart.
+    mutating func record(probed hosts: [String], reachable: Bool) -> Bool {
+        guard !reachable else {
+            self = GuestSilence()
+            return false
+        }
+        // Nothing listed online says nothing: the computers are asleep.
+        guard !hosts.isEmpty else { return false }
+        looks += 1
+        guard looks >= gap else { return false }
+        looks = 0
+        gap = min(gap * 2, Self.maxGap)
+        return true
     }
 }
 
@@ -748,17 +891,44 @@ final class NodeManager: ObservableObject {
     func enableOwner() {
         ownerEnabled = true
         UserDefaults.standard.set(true, forKey: Self.ownerEnabledKey)
+        UserDefaults.standard.removeObject(forKey: Self.signOutPendingKey)
         Task { await owner.ensureRunning() }
     }
 
-    /// Undoes `enableOwner` while no account is signed in: the owner's node logs out and is
-    /// forgotten with its tailnet, and the launcher goes back to its welcome when nothing
-    /// else is saved.
+    /// The owner's node is forgotten: the apps found on the owner's computers go too (the
+    /// app sets this).
+    var onOwnerForgotten: () async -> Void = {}
+
+    /// Undoes `enableOwner`: Sign Out, and Stop Using My Own Computers before a sign-in. The
+    /// owner's node logs out and is forgotten with its tailnet, the apps found on the owner's
+    /// computers go with their data, and the launcher goes back to its welcome when nothing
+    /// else is saved. Guest nodes are untouched.
     func disableOwner() async {
         ownerEnabled = false
+        UserDefaults.standard.set(true, forKey: Self.signOutPendingKey)
         UserDefaults.standard.removeObject(forKey: Self.ownerEnabledKey)
         await owner.logOutAndForget()
+        // Once the node has stopped, so no discovery from before can bring them back.
+        await forgetOwner()
+    }
+
+    private func forgetOwner() async {
         MembershipNode.rememberOwnerSuffix(nil)
+        await onOwnerForgotten()
+        UserDefaults.standard.removeObject(forKey: Self.signOutPendingKey)
+    }
+
+    /// Set from the start of a Sign Out to its end. Apps found before an earlier version's
+    /// Sign Out, which kept them, have no such mark and stay.
+    static let signOutPendingKey = "ownerSignOutPending"
+
+    /// Finishes a Sign Out that Ovenlight quit during, at launch: the owner's node state and
+    /// the apps found on the owner's computers go. Before the first unlock the mark reads as
+    /// unset, and the next launch finishes it.
+    func finishSignOut() async {
+        guard !ownerEnabled, UserDefaults.standard.bool(forKey: Self.signOutPendingKey) else { return }
+        try? FileManager.default.removeItem(at: Self.stateDirectory(for: Membership.ownerID))
+        await forgetOwner()
     }
 
     // MARK: Lifecycle
@@ -780,21 +950,13 @@ final class NodeManager: ObservableObject {
         }
     }
 
-    /// Tries the owner's node again after a failure.
-    func restart() async {
-        await owner.restart()
-    }
-
-    /// Signs this iPhone out of the owner's tailnet and forgets its node, then starts
-    /// over at login. Guest nodes are untouched.
-    func signOut() async {
-        await owner.logOutAndForget()
-        await owner.start()
-    }
-
     func rediscover() async {
-        await owner.rediscover()
-        for node in guests.values { await node.rediscover() }
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { await self.owner.rediscover() }
+            for node in guests.values {
+                group.addTask { await node.rediscover() }
+            }
+        }
     }
 
     // MARK: Guest nodes
@@ -818,22 +980,31 @@ final class NodeManager: ObservableObject {
         }
     }
 
+    /// Removals under way, so a second caller (Leave and the orphan sweep) waits for the first.
+    private var removals: [String: Task<Void, Never>] = [:]
+
     /// Logs a guest node out, deletes its state and forgets the membership.
     func removeGuest(_ membershipID: String) async {
-        if let node = guests[membershipID] {
-            await node.logOutAndForget()
-        } else {
-            try? FileManager.default.removeItem(at: Self.stateDirectory(for: membershipID))
+        if let removal = removals[membershipID] { return await removal.value }
+        let removal = Task {
+            if let node = guests[membershipID] {
+                await node.logOutAndForget()
+            } else {
+                try? FileManager.default.removeItem(at: Self.stateDirectory(for: membershipID))
+            }
+            guests[membershipID] = nil
+            observers[membershipID] = nil
+            memberships.delete(membershipID)
+            removals[membershipID] = nil
         }
-        guests[membershipID] = nil
-        observers[membershipID] = nil
-        memberships.delete(membershipID)
+        removals[membershipID] = removal
+        await removal.value
     }
 
     // MARK: Routing
 
     /// The node an app goes through: its guest membership's, the owner's for hosts on the
-    /// owner's own tailnet, or none (loaded directly).
+    /// owner's own tailnet, or none (refused, or localhost in a debug build).
     func node(for app: WebApp) -> MembershipNode? {
         Routing.node(for: app, owner: owner, ownerSuffix: owner.magicDNSSuffixSeen, guest: guestNode)
     }
@@ -843,27 +1014,25 @@ final class NodeManager: ObservableObject {
     }
 
     /// A session for fetching the app's pages: through its node (nil until the node is
-    /// up), otherwise the shared session.
+    /// up), the shared session for localhost in a debug build, and nil for a refused app.
     func session(for app: WebApp) -> URLSession? {
         if app.isShared { return node(for: app)?.session() }
-        return route(for: app.startURL) == .tailnetNode ? owner.session() : URLSession.shared
+        switch route(for: app.startURL) {
+        case .tailnetNode: return owner.session()
+        case .direct: return URLSession.shared
+        case .refused: return nil
+        }
     }
 
     /// A session for posting to an app (feedback), with its own timeouts, through the
-    /// app's node, or directly for an app of your own; nil for a shared app whose node is
-    /// gone. The caller invalidates it.
+    /// app's node, or directly for localhost in a debug build; nil for a shared app whose
+    /// node is gone and for a refused app. The caller invalidates it.
     func uploadSession(for app: WebApp, timeout: TimeInterval) -> URLSession? {
         if let node = node(for: app) { return node.makeSession(timeout: timeout) }
-        if app.isShared { return nil }
+        guard !app.isShared, route(for: app.startURL) == .direct else { return nil }
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = timeout
         return URLSession(configuration: config)
-    }
-
-    /// A session for the owner's admin API and uploads, with its own timeouts; the
-    /// caller invalidates it. Nil while the owner's node isn't up.
-    func ownerSession(timeout: TimeInterval) -> URLSession? {
-        owner.makeSession(timeout: timeout)
     }
 
     func detach(_ appID: UUID) {
@@ -871,24 +1040,36 @@ final class NodeManager: ObservableObject {
         for node in guests.values { node.detach(appID) }
     }
 
-    /// What an app's launcher tile shows about its machine.
-    func reachability(of app: WebApp) -> AppReachability? {
-        guard let node = node(for: app) else { return nil }
-        return AppReachability.forTile(host: app.host, route: .tailnetNode, nodeState: node.state, answers: node.answers)
+    /// Whether an app's tile shows its machine offline.
+    func isOffline(_ app: WebApp) -> Bool {
+        guard let node = node(for: app) else { return false }
+        return Self.isOffline(host: app.host, nodeState: node.state, answers: node.answers)
+    }
+
+    /// Tiles only speak up when something is wrong: a machine that didn't answer the last
+    /// probe, or wasn't online to be probed. Nothing before the node is ready (the launcher
+    /// shows that) or before the first probe.
+    nonisolated static func isOffline(host: String, nodeState: NodeState, answers: [String: Bool]?) -> Bool {
+        guard nodeState == .ready, let answers else { return false }
+        return answers[Discovery.normalizedHost(host)] != true
     }
 
     // MARK: Configuration
 
     static func stateDirectory(for membershipID: String) -> URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Ovenlight/tailscale/\(membershipID)", isDirectory: true)
+        SavedJSON.directory.appendingPathComponent("tailscale/\(membershipID)", isDirectory: true)
     }
 
     /// Creates the node's state directory and keeps all of `tailscale/` out of backups:
-    /// node keys belong to this iPhone and must not come back on another.
+    /// node keys belong to this iPhone and must not come back on another. tsnet keeps its
+    /// backend log files empty, but builds before 1.0.2 left lines in them, sign-in links
+    /// included, so they go before the node starts.
     static func makeStateDirectory(for membershipID: String) throws -> URL {
         let directory = stateDirectory(for: membershipID)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        for name in ["tailscaled.log1.txt", "tailscaled.log2.txt"] {
+            try? FileManager.default.removeItem(at: directory.appendingPathComponent(name))
+        }
         var parent = directory.deletingLastPathComponent()
         parent.excludeFromBackup()
         return directory
@@ -926,6 +1107,38 @@ final class NodeManager: ObservableObject {
         return nil
         #endif
     }
+}
+
+/// Whether the phone has any network path, as NWPathMonitor reports it. Without one an app
+/// gives up opening at once (You're Offline) and tries again when one comes back, and a
+/// guest's silent looks don't count.
+@MainActor
+final class NetworkPath: ObservableObject {
+    static let shared = NetworkPath()
+
+    /// True until the monitor's first report, which comes a moment after it starts.
+    @Published private(set) var isSatisfied = true
+    private let monitor = NWPathMonitor()
+
+    private init() {
+        monitor.pathUpdateHandler = { path in
+            let satisfied = path.status == .satisfied
+            MainActor.assumeIsolated {
+                if NetworkPath.shared.isSatisfied != satisfied { NetworkPath.shared.isSatisfied = satisfied }
+            }
+        }
+        monitor.start(queue: .main)
+    }
+
+    /// Returns once there is a path, or the task is cancelled.
+    func satisfied() async {
+        for await satisfied in $isSatisfied.values where satisfied { return }
+    }
+
+    #if DEBUG
+    /// For tests: as if the monitor said so.
+    func pretend(satisfied: Bool) { isSatisfied = satisfied }
+    #endif
 }
 
 /// The first of several racing results; later offers are ignored.

@@ -156,13 +156,15 @@ needed only after editing `project.yml`: then run `xcodegen generate`.
 `scripts/build-tailscalekit.sh` builds `Frameworks/TailscaleKit.xcframework` from
 `tailscale/libtailscale` at a pinned commit. Run it once before building in Xcode. The
 output is gitignored and cached; `--force` rebuilds. It needs Go, and fetches the
-`go1.26.9` toolchain itself. On top of upstream it:
+`go1.27.2` toolchain itself. On top of upstream it:
 
 - builds with the `ts_omit_debug` tag, which drops the node's debug LocalAPI, pprof and
-  debug HTTP handlers;
+  debug HTTP handlers, `ts_omit_peerapiserver` and `ts_omit_cachenetmap` (the script says
+  why), and `ts_omit_webclient`, which leaves out Tailscale's web client and the font and
+  JavaScript bundle it embeds;
 - turns off log upload to `log.tailscale.com` from a Go `init`, for every node the app
   runs, guests' included;
-- raises a few `golang.org/x` modules for security fixes;
+- raises `golang.org/x` modules past libtailscale's own when they have security fixes;
 - adds a privacy manifest to the framework, which Apple requires of a framework that
   calls a required-reason API.
 
@@ -187,7 +189,8 @@ Debug builds take these as launch arguments:
 - `-sharingFixture YES` fills in sample sharing data for screenshots.
 
 Debug builds also accept an `http` control server on loopback in invites; release builds
-only `https`.
+only `https`. Only debug builds load an app at `localhost` directly, so a seeded launcher
+can open a local demo app for screenshots (loopback IP literals stay blocked).
 
 ## Local Headscale
 
@@ -223,13 +226,15 @@ Sign Ovenlight in to the first with `-authKey`, and open the second owner's invi
   app waiting there can be approved too. An "Approve This iPhone" card names this iPhone as
   the tailnet lists it and opens that page again, and an app opened meanwhile shows the same
   card. Settings shows the account
-  and has Sign Out, which logs the node out and deletes its state; your apps stay, and
-  ask you to sign in again. While no account is signed in, before the first sign-in or
-  after Sign Out, Settings has Stop Using My Own Computers, which undoes the choice: the
-  node logs out, its state and the remembered tailnet are forgotten, and the launcher
-  goes back to its welcome when nothing else is saved. Both close every app view that
-  went through the owner's node, kept in the background included
-  (`WebViewPool.discard(attachedTo:)`).
+  and has Sign Out; while no account is signed in, it has Stop Using My Own Computers in
+  its place. Both undo the choice (`NodeManager.disableOwner`): the node logs out, its
+  state and the remembered tailnet are forgotten, the apps found on the owner's computers
+  go with their data (`AppRegistry.removeDiscovered`), and the launcher goes back to its
+  welcome when nothing else is saved. Apps added by hand and shared ones stay, and
+  signing in again finds the owner's apps. Sign Out asks first, and so does Stop Using My
+  Own Computers when it has apps to remove. A Sign Out cut short by a quit finishes at the
+  next launch. Both close every app view that went through the owner's node, kept in the
+  background included (`WebViewPool.discard(attachedTo:)`).
 - **Memberships.** One embedded node per network: the owner's own tailnet (state in
   `Application Support/Ovenlight/tailscale/owner`) and one guest node per owner whose
   invite this iPhone accepted (`tailscale/<membership ID>`, listed in
@@ -246,11 +251,28 @@ Sign Ovenlight in to the first with `-authKey`, and open the second owner's invi
 - **Opening an app** shows its icon and "Connecting…" at once, but the page loads only
   after the node is ready and the app's host answers a probe through the current proxy
   (`AppLoadGate`). After about 10 seconds the app shows "Can't Reach \<App>" with Try
-  Again. Launcher tiles dim with a badge while their machine isn't answering.
-- **The open app** has one piece of native chrome: a small capsule at the top with the
-  way home and the app's menu, which tucks up under the status bar. Tapping its handle,
-  scrolling up or pulling down at the top of the page brings it back. Tapping the status
-  bar scrolls the page to the top, as iOS does, and leaves the chrome alone.
+  Again. When the network lists the app's computer as offline (believed by a guest's node
+  only once its network has listed a peer online), it shows that at once,
+  keeps trying quietly while it's on screen, and opens as soon as the computer answers.
+  Launcher tiles dim with a badge while their computer isn't answering, or is listed
+  offline, which is never probed. When the connector answers but the app itself isn't
+  running (a 502 with the code `unavailable`), the first page is tried a few more times,
+  then Ovenlight says the app isn't responding rather than showing the connector's text.
+- **The open app** starts below a band at the top, the status bar's height plus the
+  handle's 20 points (`AppChrome.handleHeight`), painted in the page's header color: its
+  `theme-color`, else its background, and before the first load the one remembered from
+  the last (`StatusBarTint`). The status bar's text takes the tone that reads on what is
+  under it: iOS 26 and later choose it, and before that `StatusBarTone` sets it from the
+  band. A page with `viewport-fit=cover` runs to the bottom and side edges; any other
+  stays inside the side safe areas. The one piece of native chrome is a small capsule at
+  the top with the way home and the app's menu. It starts tucked up under the status bar,
+  leaving its handle in the band (the first time, it shows with a one-time tip about the
+  handle until the tip is closed). Before the app has loaded, its sign-in, approval and
+  error screens each have Back to Apps. Tapping the band or pulling down at the top of the
+  page brings it back; with no status bar above the band (a phone on its side, the iPhone
+  Duo's cover), the handle's tap reaches 44 points down at its middle. Tapping the status
+  bar scrolls the page to the top, as iOS does, and leaves the chrome alone. Ovenlight
+  removes WebRTC from every frame of every page (`WebViewPool.noWebRTC`).
 - **Lock.** What locking holds back is in [security.md](security.md#on-the-iphone);
   `WebViewPool.stopCapture` ends the microphone and camera streams already running.
 - **Permissions.** Besides the camera (scanning invite codes, and pages when allowed) and
@@ -269,10 +291,12 @@ Sign Ovenlight in to the first with `-authKey`, and open the second owner's invi
   Add App also takes an address, but only one on the owner's own tailnet (`AppAddress`,
   with `Routing.isOnOwnersTailnet`). Before the owner has signed in it says to sign in
   first, and any other address gets a refusal that points to publishing the app or asking
-  its owner for an invite. An app saved by another address before this rule keeps its
-  tile and loads directly. One tile per host either way, and a removed app stays
-  removed. Discovery only adds: an app unpublished on its computer keeps its tile until
-  the owner removes it.
+  its owner for an invite. Once the owner's tailnet is known, an app of your own off it,
+  such as one from a tailnet the owner was signed in to before, keeps its tile but is
+  refused (`Routing.route`): it shows Can't Reach and nothing goes out. Until then a
+  `*.ts.net` app waits behind Sign In, and any other address is refused. One tile per
+  host either way, and a removed app stays removed until Sign Out. Discovery only adds:
+  an app unpublished on its computer keeps its tile until the owner removes it.
 - **Copy.** Everything a guest can see (connection states, joining, errors,
   "No Longer Shared with You", feedback) is in `ConnectionCopy` and never says Tailscale
   or tailnet; a unit test checks. Only the owner's sign-in card, status pill and Settings
@@ -302,11 +326,12 @@ Sign Ovenlight in to the first with `-authKey`, and open the second owner's invi
   Again rather than claiming on its own, and a membership's saved names change only when
   a claim succeeds.
 - **Failures** say what happened without naming the network: key already used, no longer
-  valid, invite canceled, used on another iPhone, or the owner's computer not answering
+  valid, invite canceled, used on another phone, or the owner's computer not answering
   (the invite is kept for Try Again).
 - **Report a Problem** (every app's menu, and a guest's long-press menu) opens a mail to
-  team@snowyghost.com with the app, its address, who shared it, its connection state and
-  the Ovenlight and iOS versions. Settings, Support has Contact Us, the privacy policy
+  team@snowyghost.com with the app, its address, who shared it, its connection state (in
+  detail, without the sign-in link), how far opening it got, and the Ovenlight and iOS
+  versions. Settings, Support has Contact Us, the privacy policy
   (`AppLinks` in `Support.swift`) and Acknowledgements, the licenses
   `scripts/build-tailscalekit.sh` puts in the framework.
 - **Leaving.** Settings, Shared with You, Leave (or Leave in a shared app's menu) removes

@@ -448,28 +448,39 @@ agent is told that it is an image its sender chose, and any text in it is data.
 - Add App takes only an address on the owner's own tailnet, and none before the owner
   has signed in, so a new app comes from the owner's own computers or from an invite.
   An app of your own goes through the owner's node only when its host is on the owner's
-  own tailnet (its MagicDNS suffix, remembered from the node's status); any other
-  address, which only an app saved before that rule can have, loads directly, outside
-  the tailnet. The owner's node only ever carries names
-  on that known tailnet. Until the tailnet is known, a `*.ts.net` app is routed to the
-  owner's node and waits behind Sign In, loading nothing, rather than looking the name up
-  in public DNS; after sign-in, a name outside the owner's tailnet loads directly. The
-  route is checked before every probe and load, and a view whose route changed is made
-  again through the right node. The remembered tailnet survives Sign Out and is forgotten
-  by Stop Using My Own Computers. A change of it closes every view whose route it
-  changed, and Sign Out and Stop Using My Own Computers close every view that went
-  through the owner's node, kept in the background or not. A closed view's data store is
-  set to a proxy that refuses every connection, and the app loads again through its
+  own tailnet (its MagicDNS suffix, remembered from the node's status). Any other
+  address, such as an app from a tailnet the owner was signed in to before, is refused:
+  it shows Can't Reach and sends nothing, not even a probe, and Ovenlight never looks
+  its name up in public DNS or loads it outside the tailnet. Only debug builds load an app
+  at `localhost` directly, for screenshots of a local demo. The owner's node only ever
+  carries names on that known tailnet. Until the tailnet is known, a `*.ts.net` app is
+  routed to the owner's node and waits behind Sign In, loading nothing. The route is
+  checked before every probe and load, and a view whose route changed is made again
+  through the right node, or refused. A change of the remembered tailnet closes every
+  view whose route it changed. Sign Out and Stop Using My Own Computers forget it, close
+  every view that went through the owner's node, kept in the background or not, and
+  remove the apps found on the owner's computers with their data. A Sign Out cut short by
+  a quit finishes at the next launch. A closed view's data store is set to a proxy that
+  refuses every connection, as is a refused app's, and the app loads again through its
   route, at once if it's on screen. A shared app always goes through its owner's guest
   node.
+- Pages have no WebRTC. Its traffic wouldn't go through the node's proxy: through a TURN
+  relay a page could reach any address it names, the phone's own network included. A
+  script at the start of every document, in every frame, removes it, and WebKit runs it in
+  a frame's first `about:blank` document too, as the frame is made. From iOS 27.1, pages
+  can use WebTransport. The rules that block loads to the phone's own loopback and network
+  addresses don't cover it, but the data store's SOCKS5 proxy does, and every release
+  route sets that proxy (its node's, or one that refuses every connection). A route
+  without one would need WebTransport removed, as WebRTC is.
 - While Ovenlight is locked, no page gets the microphone or camera, and an app that an
   `ovenlight://open` link asks for waits for the unlock. Locking also stops any
   microphone or camera stream already running in an open app, on screen or kept in the
-  background.
+  background. Nor does a page kept in the background get them: closing an app to the
+  launcher stops its streams, and it can't start one until it's on screen again.
 - An app's downloads come only from its own host (or a blob or data URL its pages made),
   none while Ovenlight is locked, and leave Ovenlight only through the share sheet. The
   files wait in Ovenlight's temporary folder until the next launch, shared or cancelled,
-  since AirDrop may still be sending.
+  since AirDrop may still be sending, but go at once with their app or its data.
 - The owner's admin calls go through the owner's own node to each connector's port 8443.
   The phone holds no API credentials. It asks only the owner's own machines: peers of
   the owner's own user, or tagged `tag:ovenlight-app-*`, on the owner's own tailnet (not
@@ -478,8 +489,8 @@ agent is told that it is an image its sender chose, and any text in it is data.
 - Each network the phone joins gets its own node, state and random device name
   (`ovenlight-` and six random characters), so no name or key ties its guest devices
   together. Two owners comparing notes could still match them: each sees when Ovenlight
-  is open on the phone (its guest node comes online and checks in with their apps every
-  minute), and its public IP address and iOS version.
+  is open on the phone (its guest node comes online and checks in with their apps), and
+  its public IP address and iOS version.
 - Node state and the membership list are excluded from backups, so node keys never come
   back on another phone.
 

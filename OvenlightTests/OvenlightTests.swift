@@ -1,3 +1,4 @@
+import AVFoundation
 import SwiftUI
 import WebKit
 import XCTest
@@ -75,6 +76,13 @@ final class NavigationPolicyTests: XCTestCase {
         XCTAssertEqual(decide("about:blank"), .allow)
     }
 
+    func testThePageShowsOnlyTheAppsOwnBlobs() {
+        XCTAssertEqual(decide("blob:https://Alex-Mac.example.ts.net:8443/6f1c"), .allow)
+        XCTAssertEqual(decide("blob:https://evil.example.com/6f1c"), .refuse, "a frame of another site made it")
+        XCTAssertEqual(decide("blob:null/6f1c"), .refuse)
+        XCTAssertEqual(decide("blob:https://evil.example.com/6f1c", mainFrame: false), .allow, "a frame shows its own")
+    }
+
     func testPagesNeverOpenOvenlightsOwnLinks() throws {
         for link in ["ovenlight://join?v=1&key=k", "Ovenlight://join?v=1", "ovenlight://open?app=Coach"] {
             XCTAssertEqual(decide(link, tapped: true), .refuse, link)
@@ -101,14 +109,16 @@ final class MediaCapturePolicyTests: XCTestCase {
         var shared = app
         shared.membershipID = "m1"
         func decide(_ type: WKMediaCaptureType, in app: WebApp, from origin: String = "https://Coach.tailabc123.ts.net",
-                    locked: Bool = false) -> WKPermissionDecision {
+                    locked: Bool = false, onScreen: Bool = true) -> WKPermissionDecision {
             let url = URL(string: origin)!
             return MediaCapturePolicy.decide(type: type, scheme: url.scheme!, host: url.host!, app: app,
-                                             ownersHosts: ["coach.tailabc123.ts.net"], locked: locked)
+                                             ownersHosts: ["coach.tailabc123.ts.net"], locked: locked, onScreen: onScreen)
         }
         XCTAssertEqual(decide(.microphone, in: app), .grant)
         XCTAssertEqual(decide(.microphone, in: app, locked: true), .deny, "nothing records under the lock screen")
         XCTAssertEqual(decide(.camera, in: app, locked: true), .deny)
+        XCTAssertEqual(decide(.microphone, in: app, onScreen: false), .deny, "nor a page kept in the background")
+        XCTAssertEqual(decide(.camera, in: shared, onScreen: false), .deny)
         XCTAssertEqual(decide(.camera, in: app), .prompt)
         XCTAssertEqual(decide(.cameraAndMicrophone, in: app), .prompt)
         XCTAssertEqual(decide(.microphone, in: shared), .prompt, "someone else's app asks")
@@ -122,6 +132,20 @@ final class MediaCapturePolicyTests: XCTestCase {
                        "nor is someone's public Funnel address")
         let found = WebApp(name: "Found", startURL: URL(string: "https://notes.tailabc123.ts.net/")!, discovered: true)
         XCTAssertEqual(decide(.microphone, in: found, from: "https://notes.tailabc123.ts.net"), .grant, "discovered on the owner's machines")
+    }
+
+    /// A camera or microphone refused in Settings would fail the page's request without a
+    /// word: Ovenlight names the one to allow, the camera first.
+    func testARefusedCameraOrMicrophoneSaysWhereToAllowIt() {
+        func refused(_ type: WKMediaCaptureType, _ denied: Set<AVMediaType>) -> String? {
+            MediaCapturePolicy.refusedDevice(for: type) { denied.contains($0) ? .denied : .notDetermined }
+        }
+        XCTAssertEqual(refused(.microphone, [.audio]), "Microphone")
+        XCTAssertEqual(refused(.camera, [.video, .audio]), "Camera")
+        XCTAssertEqual(refused(.cameraAndMicrophone, [.audio]), "Microphone")
+        XCTAssertEqual(refused(.cameraAndMicrophone, [.video, .audio]), "Camera")
+        XCTAssertNil(refused(.microphone, [.video]), "the camera isn't asked for")
+        XCTAssertNil(refused(.cameraAndMicrophone, []), "iOS still asks")
     }
 }
 
@@ -181,6 +205,15 @@ final class DownloadPolicyTests: XCTestCase {
         XCTAssertTrue(long.hasSuffix("é.csv"))
     }
 
+    func testAFailedDownloadIsNamedOnlyByARealFileName() {
+        func notice(_ url: String) -> String { DownloadPolicy.failedNotice(DownloadPolicy.name(in: URL(string: url))) }
+        XCTAssertEqual(notice("https://coach.example.com/exports/report.pdf"), "Couldn’t download report.pdf")
+        XCTAssertEqual(notice("https://coach.example.com/"), "Couldn’t download the file", "no path")
+        XCTAssertEqual(notice("https://coach.example.com"), "Couldn’t download the file")
+        XCTAssertEqual(notice("blob:https://coach.example.com/6f1c2b3a-0d4e-4f5a-9b8c-7d6e5f4a3b2c"), "Couldn’t download the file")
+        XCTAssertEqual(notice("data:text/csv;base64,YSxi"), "Couldn’t download the file")
+    }
+
     /// The share sheet closes once, a turn after it leaves the screen or is let go, kept
     /// until then, and hands over what waited and whether it ever showed.
     @MainActor
@@ -208,7 +241,7 @@ final class DownloadPolicyTests: XCTestCase {
         XCTAssertNotNil(kept, "kept until it has closed")
         _ = sheet("covered", appear: true)
         _ = sheet("refused", appear: false)
-        try await Task.sleep(for: .milliseconds(100))
+        for _ in 0..<100 where log.values.joined().count < 8 { try await Task.sleep(for: .milliseconds(10)) }
         XCTAssertEqual(log, ["dismissed": ["closed", "waited"], "unseen": ["unseen", "waited"],
                              "covered": ["closed", "waited"], "refused": ["unseen", "waited"]])
     }
@@ -226,7 +259,7 @@ final class DownloadPolicyTests: XCTestCase {
         XCTAssertTrue(WebCoordinator.sheet === sheet)
         sheet.viewDidAppear(false)
         sheet.viewDidDisappear(false)
-        try await Task.sleep(for: .milliseconds(100))
+        for _ in 0..<100 where WebCoordinator.sheet != nil { try await Task.sleep(for: .milliseconds(10)) }
         XCTAssertNil(WebCoordinator.sheet)
         XCTAssertEqual(WebViewPool.shared.waitingDownloads[id], [later])
     }
@@ -251,6 +284,36 @@ final class UserAgentTests: XCTestCase {
         XCTAssertTrue(agent.hasPrefix("Mozilla/5.0 (iPhone;"), agent)
         let ending = #" Mobile/\S+ Ovenlight/"# + NSRegularExpression.escapedPattern(for: version) + "$"
         XCTAssertNotNil(agent.range(of: ending, options: .regularExpression), agent)
+    }
+}
+
+final class NoWebRTCTests: XCTestCase {
+    /// As Ovenlight's views are configured: no WebRTC in the page, in a fresh about:blank
+    /// frame (the usual way back to an interface a page took away), or in a srcdoc frame,
+    /// and page script can't put it back.
+    @MainActor
+    func testPagesAndTheirFramesHaveNoWebRTC() async throws {
+        let config = WKWebViewConfiguration()
+        WebViewPool.configure(config)
+        let view = WKWebView(frame: .zero, configuration: config)
+        view.loadHTMLString("<iframe id=doc srcdoc='<p>hi</p>'></iframe>", baseURL: URL(string: "https://example.com/"))
+        for _ in 0..<50 where try await view.evaluateJavaScript("document.readyState == 'complete' && !!document.getElementById('doc')") as? Bool != true {
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        let result = try await view.callAsyncJavaScript("""
+            const blank = document.body.appendChild(document.createElement("iframe")).contentWindow;
+            const frames = [window, blank, window[window.length - 1], document.getElementById("doc").contentWindow];
+            const seen = frames.map(w => [typeof w.RTCPeerConnection, typeof w.RTCDataChannel, typeof w.RTCSessionDescription,
+                                          typeof w.RTCIceCandidate, typeof w.webkitRTCPeerConnection].join());
+            delete window.RTCPeerConnection;
+            try { window.RTCPeerConnection = Object; } catch {}
+            try { Object.defineProperty(window, "RTCPeerConnection", { value: Object }); } catch {}
+            seen.push(typeof RTCPeerConnection);
+            seen.push(Object.getOwnPropertyNames(window).filter(n => /RTC/.test(n) && window[n] !== undefined).join());
+            return seen;
+            """, contentWorld: .page)
+        let gone = Array(repeating: "undefined", count: 5).joined(separator: ",")
+        XCTAssertEqual(result as? [String], [gone, gone, gone, gone, "undefined", ""])
     }
 }
 
@@ -280,6 +343,18 @@ final class AppAddressTests: XCTestCase {
         XCTAssertNil(AppAddress.url(from: "coach.tailabc123.ts.net", ownerSuffix: nil), "not signed in to their own computers yet")
         XCTAssertNil(AppAddress.url(from: "coach.tailabc123.ts.net", ownerSuffix: ""))
     }
+
+    /// Re-adding a removed app takes just its name: the owner's tailnet completes it, for
+    /// Add as for the button that enables it.
+    func testAddAppCompletesABareName() {
+        let own = "TailABC123.ts.net."
+        XCTAssertEqual(AppAddress.url(from: " notes ", ownerSuffix: own)?.absoluteString, "https://notes.tailabc123.ts.net")
+        XCTAssertEqual(AppAddress.url(from: "notes:8443/app", ownerSuffix: own)?.absoluteString, "https://notes.tailabc123.ts.net:8443/app")
+        XCTAssertEqual(AppAddress.url(from: "notes", completingWith: own)?.host, "notes.tailabc123.ts.net")
+        XCTAssertNil(AppAddress.url(from: "notes", ownerSuffix: nil), "no tailnet known yet")
+        XCTAssertNil(AppAddress.url(from: "notes"))
+        XCTAssertEqual(AppAddress.url(from: "notes.example.com", completingWith: own)?.host, "notes.example.com", "a full name stays")
+    }
 }
 
 @MainActor
@@ -302,6 +377,21 @@ final class AppRegistryTests: XCTestCase {
         XCTAssertEqual(second.apps[0].dataStoreID, app.dataStoreID)
     }
 
+    /// Add App with an address already listed gives back the owner's app there, which then
+    /// opens, rather than a second tile with its own empty storage. A shared app on that
+    /// host is someone else's and doesn't count.
+    func testAddingAnAppAlreadyListedOpensIt() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let registry = makeRegistry(dir)
+        registry.addShared(name: "Notes", host: "notes.tailabc123.ts.net", slug: "notes", membershipID: "m1", sharedBy: "Riley")
+        let first = registry.add(url: URL(string: "https://notes.tailabc123.ts.net/")!)
+        XCTAssertEqual(registry.apps.count, 2, "a shared app on the host isn't the owner's")
+        let again = registry.add(url: URL(string: "https://Notes.TailABC123.ts.net/today")!)
+        XCTAssertEqual(again.id, first.id)
+        XCTAssertEqual(registry.apps.count, 2)
+    }
+
     func testDiscoveredAppsPersistAndRemovedOnesStayRemoved() async throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -321,6 +411,79 @@ final class AppRegistryTests: XCTestCase {
         XCTAssertEqual(reopened.apps, [], "a removed app must not come back after relaunch")
         reopened.add(url: URL(string: "https://interview-coach.tailabc123.ts.net/")!)
         XCTAssertEqual(reopened.apps.count, 1, "adding it by hand brings it back")
+    }
+
+    func testRemovedHostsAreSavedEvenWhenTheAppsCantBe() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let registry = makeRegistry(dir)
+        let app = registry.add(url: URL(string: "https://notes.tailabc123.ts.net/")!)
+        let file = dir.appendingPathComponent("apps.json")
+        try FileManager.default.removeItem(at: file)
+        try FileManager.default.createDirectory(at: file, withIntermediateDirectories: false) // nothing can be written there
+
+        await registry.remove(app.id)
+        let dismissed = try JSONDecoder().decode([String].self, from: Data(contentsOf: dir.appendingPathComponent("dismissed-hosts.json")))
+        XCTAssertEqual(dismissed, ["notes.tailabc123.ts.net"])
+    }
+
+    func testSigningOutRemovesTheAppsFoundOnYourComputers() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let defaults = UserDefaults.standard
+        let keys = ["ownTailnetEnabled", MembershipNode.ownerSuffixKey, NodeManager.signOutPendingKey]
+        let saved = keys.map { defaults.object(forKey: $0) }
+        defer { for (key, value) in zip(keys, saved) { defaults.set(value, forKey: key) } }
+        let nodes = NodeManager.shared
+        let registry = makeRegistry(dir)
+        let hook = nodes.onOwnerForgotten
+        nodes.onOwnerForgotten = { await registry.removeDiscovered() }
+        defer { nodes.onOwnerForgotten = hook }
+        // Signing out deletes the owner's node state: the test host's own waits aside.
+        let state = NodeManager.stateDirectory(for: Membership.ownerID)
+        let aside = dir.appendingPathComponent("owner")
+        try? FileManager.default.moveItem(at: state, to: aside)
+        defer { try? FileManager.default.moveItem(at: aside, to: state) }
+
+        let coach = DiscoveredApp(host: "interview-coach.tailabc123.ts.net",
+                                  manifest: OvenlightManifest(name: "Interview Coach", version: 1))
+        let recipes = DiscoveredApp(host: "recipe-box.tailabc123.ts.net", manifest: OvenlightManifest(name: "Recipe Box", version: 1))
+        await registry.mergeDiscovered([coach, recipes])
+        await registry.remove(try XCTUnwrap(registry.apps.first { $0.name == "Recipe Box" }).id)
+        let handAdded = registry.add(url: URL(string: "https://notes.tailabc123.ts.net/")!)
+        let shared = registry.addShared(name: "Echo Board", host: "echo-board.taildef456.ts.net", slug: "echo-board",
+                                        membershipID: "m1", sharedBy: "Riley")
+        let found = try XCTUnwrap(registry.apps.first(where: \.discovered))
+        let cookie = try XCTUnwrap(HTTPCookie(properties: [.domain: coach.host, .path: "/", .name: "session", .value: "1"]))
+        await WKWebsiteDataStore(forIdentifier: found.dataStoreID).httpCookieStore.setCookie(cookie)
+        func stores() async -> [UUID] {
+            await withCheckedContinuation { continuation in
+                WKWebsiteDataStore.fetchAllDataStoreIdentifiers { continuation.resume(returning: $0) }
+            }
+        }
+        let before = await stores()
+        XCTAssertTrue(before.contains(found.dataStoreID))
+
+        await nodes.disableOwner()
+        XCTAssertEqual(registry.apps.map(\.id), [handAdded.id, shared.id])
+        XCTAssertEqual(nodes.discovered, [], "what the node found goes with it, so nothing merges it back")
+        let after = await stores()
+        XCTAssertFalse(after.contains(found.dataStoreID), "its data store is deleted")
+
+        await registry.mergeDiscovered([coach, recipes])
+        XCTAssertEqual(registry.apps.filter(\.discovered).map(\.name), ["Interview Coach", "Recipe Box"],
+                       "signing in again finds them all")
+
+        // Apps found before an earlier version's Sign Out, which kept them, stay at launch.
+        try FileManager.default.createDirectory(at: state, withIntermediateDirectories: true)
+        await nodes.finishSignOut()
+        XCTAssertEqual(registry.apps.filter(\.discovered).count, 2)
+
+        // Ovenlight quit during a Sign Out: launch finishes it.
+        UserDefaults.standard.set(true, forKey: NodeManager.signOutPendingKey)
+        await nodes.finishSignOut()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: state.path), "its login doesn't come back")
+        XCTAssertEqual(registry.apps.map(\.id), [handAdded.id, shared.id])
     }
 
     func testAMissingFileIsEmptyAndSaves() throws {
@@ -373,6 +536,18 @@ final class AppRegistryTests: XCTestCase {
         XCTAssertEqual(registry.apps.map(\.name), ["Coach"])
         XCTAssertNil(registry.apps[0].themeColorHex)
         XCTAssertFalse(registry.apps[0].discovered || registry.apps[0].isNew)
+
+        // What it couldn't read may be another build's app, with a data store of its own.
+        XCTAssertFalse(registry.readInFull)
+        XCTAssertEqual(registry.unusedDataStores(among: [UUID()]), [], "no store is swept")
+        registry.add(url: URL(string: "https://notes.example.com/")!)
+        let saved = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: dir.appendingPathComponent("apps.json"))) as? [Any])
+        XCTAssertEqual(saved.count, 4, "the two it read, then the two it didn't, as they were")
+        XCTAssertEqual((saved[2] as? [String: String])?["name"], "No ID")
+        XCTAssertEqual(saved[3] as? String, "not an app")
+        let reopened = makeRegistry(dir)
+        XCTAssertEqual(reopened.apps.map(\.name), ["Coach", "notes.example.com"])
+        XCTAssertFalse(reopened.readInFull)
     }
 
     func testIconsAreDecodedSmall() throws {
@@ -401,6 +576,31 @@ final class AppRegistryTests: XCTestCase {
         try png.write(to: registry.iconsDirectory.appendingPathComponent("coach.png"))
         XCTAssertEqual(registry.icon(for: app)?.cgImage.map { [$0.width, $0.height] }, [288, 144])
     }
+
+    /// Each return to Ovenlight refreshes the apps without an icon. One whose connector
+    /// names none asks for its manifest only, and with nothing new saves and redraws nothing.
+    func testARefreshThatChangesNothingSavesNothing() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [SlowHostProtocol.self]
+        let session = URLSession(configuration: config)
+        defer { session.invalidateAndCancel() }
+        let registry = AppRegistry(directory: dir, session: { _ in session })
+        await registry.mergeDiscovered([DiscoveredApp(host: "coach.tailabc123.ts.net",
+                                                      manifest: OvenlightManifest(name: "Coach", version: 1))])
+        let file = dir.appendingPathComponent("apps.json")
+        try FileManager.default.removeItem(at: file)
+        SlowHostProtocol.paths = []
+        var changes = 0
+        let watch = registry.objectWillChange.sink { changes += 1 }
+        defer { watch.cancel() }
+
+        await registry.refreshAllMissingIcons()
+        XCTAssertEqual(SlowHostProtocol.paths, [OvenlightManifest.path], "not the start page")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: file.path), "nothing saved")
+        XCTAssertEqual(changes, 0, "nothing redrawn")
+    }
 }
 
 @MainActor
@@ -425,6 +625,28 @@ final class MembershipStoreLoadTests: XCTestCase {
         XCTAssertFalse(fresh.loadFailed, "no file is simply no memberships")
         fresh.upsert(Membership(invite: invite))
         XCTAssertEqual(MembershipStore(directory: dir).memberships.count, 1)
+        XCTAssertTrue(fresh.readInFull)
+    }
+
+    func testAMembershipItCantReadIsKeptAndHoldsBackCleanup() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let file = dir.appendingPathComponent("memberships.json")
+        try Data(#"[{"id":"future","controlURL":"https://c.example","networkDomain":"tail1.ts.net","joined":"yes","hostName":"ovenlight-x"}]"#.utf8)
+            .write(to: file)
+
+        let store = MembershipStore(directory: dir)
+        XCTAssertFalse(store.loadFailed)
+        XCTAssertEqual(store.memberships, [])
+        XCTAssertFalse(store.readInFull, "its apps would look orphaned")
+        let invite = InviteLink(control: URL(string: "https://controlplane.tailscale.com")!, key: "tskey-1", owner: "Riley",
+                                app: "echo-board", invite: "inv1", host: "echo-board.taildef456.ts.net", name: "Echo Board", to: "Sam")
+        store.upsert(Membership(invite: invite))
+        let saved = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [[String: Any]])
+        XCTAssertEqual(saved.map { $0["id"] as? String }.last, "future", "written back as it was")
+        XCTAssertEqual(saved.first?["joined"] as? Bool, false)
+        XCTAssertEqual(MembershipStore(directory: dir).memberships, store.memberships, "what it read reads back the same")
     }
 }
 
@@ -433,7 +655,7 @@ final class LockTimingTests: XCTestCase {
     func testLocksByTimeInTheBackgroundNotTheClock() {
         var now = ContinuousClock.now
         var saved = false
-        let lock = LockManager(hasSavedData: { saved }, now: { now })
+        let lock = LockManager(hasSavedData: { saved }, now: { now }, defaults: .throwaway(for: self))
         let previous = lock.lockAfterSeconds
         defer { lock.lockAfterSeconds = previous }
         saved = true
@@ -454,7 +676,7 @@ final class LockTimingTests: XCTestCase {
     func testLockIsDueByTheSameRule() {
         var now = ContinuousClock.now
         var saved = false
-        let lock = LockManager(hasSavedData: { saved }, now: { now })
+        let lock = LockManager(hasSavedData: { saved }, now: { now }, defaults: .throwaway(for: self))
         let previous = lock.lockAfterSeconds
         defer { lock.lockAfterSeconds = previous }
         lock.lockAfterSeconds = 60
@@ -475,6 +697,46 @@ final class LockTimingTests: XCTestCase {
         lock.willBecomeActive()
         XCTAssertTrue(lock.isLocked)
         XCTAssertFalse(lock.lockIsDue, "back in front")
+    }
+
+    /// Quit in the background (by iOS, to free memory, or by the person), Ovenlight launches
+    /// unlocked only within the delay, on the same boot, and never set to Immediately.
+    func testALaunchLocksUnlessQuitInTheBackgroundWithinTheDelay() {
+        let defaults = UserDefaults.throwaway(for: self)
+        var now = ContinuousClock.now
+        var boot: String? = "boot-1"
+        var saved = false
+        func launch() -> LockManager { LockManager(hasSavedData: { saved }, now: { now }, boot: { boot }, defaults: defaults) }
+        let first = launch()
+        let previous = first.lockAfterSeconds
+        defer { first.lockAfterSeconds = previous }
+        first.lockAfterSeconds = 60
+        saved = true
+        XCTAssertTrue(launch().isLocked, "never in the background yet")
+
+        first.didEnterBackground()
+        now += .seconds(30)
+        let inBackground = launch()
+        XCTAssertFalse(inBackground.isLocked, "quit 30 seconds after it left the front")
+        inBackground.didEnterBackground()
+        now += .seconds(30)
+        XCTAssertTrue(launch().isLocked, "a launch in the background doesn't start the delay over")
+
+        now -= .seconds(30)
+        boot = "boot-2"
+        XCTAssertTrue(launch().isLocked, "the iPhone restarted")
+        boot = nil
+        XCTAssertTrue(launch().isLocked, "this boot can't be told")
+        XCTAssertNotNil(UUID(uuidString: LockManager.bootSession() ?? ""), "the kernel's boot session reads")
+        boot = "boot-1"
+        first.lockAfterSeconds = 0
+        XCTAssertTrue(launch().isLocked, "Immediately")
+        first.lockAfterSeconds = 60
+
+        let relaunched = launch()
+        XCTAssertFalse(relaunched.isLocked)
+        relaunched.willBecomeActive()
+        XCTAssertTrue(launch().isLocked, "quit in front: no time in the background to go by")
     }
 
     func testAnEmptyNodeFolderOrListIsNothingToLock() throws {
@@ -547,6 +809,26 @@ final class NodeMachineTests: XCTestCase {
         XCTAssertEqual(run([.reachable], from: .needsLogin(login)), .needsLogin(login), "a stray probe result can't skip login")
     }
 
+    func testTheLogNeverCarriesTheSignInLink() {
+        XCTAssertEqual(NodeState.needsLogin(login).logDescription, "needsLogin")
+        XCTAssertEqual(NodeState.retrying(attempt: 2).logDescription, "retrying(attempt: 2)")
+        XCTAssertEqual(NodeState.failed("boom").logDescription, "failed", "the message is the summary beside it")
+    }
+
+    /// On a tailnet that approves each new device, the start after the sign-in doesn't close
+    /// the sign-in sheet.
+    func testSignInStaysOpenUntilApproved() {
+        var states: [NodeState] = [.needsLogin(login)]
+        for event: NodeEvent in [.backend(state: "Starting", authURL: nil), .backend(state: "NeedsMachineAuth", authURL: nil),
+                                 .backend(state: "Running", authURL: nil), .reachable] {
+            states.append(NodeMachine.next(states.last!, event))
+        }
+        XCTAssertEqual(states, [.needsLogin(login), .connecting, .awaitingApproval, .connecting, .ready])
+        XCTAssertEqual(states.map(\.endsSignIn), [false, false, false, false, true])
+        XCTAssertTrue(NodeState.failed("boom").endsSignIn)
+        XCTAssertFalse(NodeState.idle.endsSignIn, "a restart on coming back passes through idle")
+    }
+
     func testStatusDecoding() throws {
         let json = """
         {"BackendState":"Running","AuthURL":"","Self":{"HostName":"ovenlight-abc123","DNSName":"ovenlight-abc123.tailabc123.ts.net.","OS":"iOS","Online":true,"UserID":42},
@@ -567,6 +849,17 @@ final class NodeMachineTests: XCTestCase {
         XCTAssertEqual(needsLogin.event, .backend(state: "NeedsLogin", authURL: login))
         XCTAssertEqual(needsLogin.peers, [])
     }
+
+    /// Polls repeat the same status while nothing changes, and only a change redraws: the
+    /// peers must come out in the same order every time.
+    func testTheSameStatusTwiceIsEqual() throws {
+        let peers = (1...20).map { #""nodekey:\#($0)":{"HostName":"computer-\#($0)","DNSName":"computer-\#($0).tailabc123.ts.net.","Online":true}"# }
+        let json = Data(#"{"BackendState":"Running","Peer":{\#(peers.joined(separator: ","))}}"#.utf8)
+        let first = try XCTUnwrap(TailnetStatus.decode(json))
+        for _ in 0..<5 {
+            XCTAssertEqual(TailnetStatus.decode(json), first)
+        }
+    }
 }
 
 final class DiscoveryTests: XCTestCase {
@@ -580,6 +873,11 @@ final class DiscoveryTests: XCTestCase {
         XCTAssertEqual(app.iconURL?.absoluteString, "https://interview-coach.tailabc123.ts.net/icon-512.png")
 
         XCTAssertNil(OvenlightManifest.parse(Data(#"{"name":"","version":1}"#.utf8)), "needs a name")
+        XCTAssertNil(OvenlightManifest.parse(Data(#"{"name":" \u0007\n","version":1}"#.utf8)), "and not just spaces and control characters")
+        let spoof = try XCTUnwrap(OvenlightManifest.parse(Data(#"{"name":" Bank‮\u0000 Login \n","version":1}"#.utf8)))
+        XCTAssertEqual(spoof.name, "Bank Login", "cleaned like an invite's names")
+        let long = try XCTUnwrap(OvenlightManifest.parse(Data(#"{"name":"\#(String(repeating: "x", count: 100))","version":1}"#.utf8)))
+        XCTAssertEqual(long.name.count, InviteLink.maxLabel)
         XCTAssertNil(OvenlightManifest.parse(Data(#"{"name":"X","version":0}"#.utf8)), "needs a version")
         XCTAssertNil(OvenlightManifest.parse(Data("<html>".utf8)))
         let offHost = DiscoveredApp(host: "a.tailabc123.ts.net",
@@ -659,40 +957,102 @@ final class DiscoveryTests: XCTestCase {
         XCTAssertEqual(OwnerSharing.candidateHosts(apps, discovered: found, ownersHosts: owners), ["coach.tailabc123.ts.net"])
     }
 
+    /// A computer that drops the probe (a firewall, or just asleep) mustn't hold up apps on
+    /// the others.
+    @MainActor
+    func testTheFirstAnswerCountsWithoutWaitingForTheSlowest() async {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [SlowHostProtocol.self]
+        let session = URLSession(configuration: config)
+        defer { session.invalidateAndCancel() }
+        let start = Date.now
+        var answeredAfter: TimeInterval?
+        let outcome = await Discovery.probe(hosts: ["coach.tailabc123.ts.net", SlowHostProtocol.host], session: session) {
+            XCTAssertNil(answeredAfter, "once")
+            answeredAfter = Date.now.timeIntervalSince(start)
+        }
+        XCTAssertLessThan(try XCTUnwrap(answeredAfter), SlowHostProtocol.delay / 2)
+        XCTAssertGreaterThanOrEqual(Date.now.timeIntervalSince(start), SlowHostProtocol.delay, "discovery still hears from every host")
+        XCTAssertEqual(outcome.answered, ["coach.tailabc123.ts.net": true, SlowHostProtocol.host: false])
+        XCTAssertEqual(outcome.apps.map(\.manifest.name), ["Coach"])
+
+        var called = false
+        _ = await Discovery.probe(hosts: [SlowHostProtocol.host], session: session) { called = true }
+        XCTAssertFalse(called, "nothing answered")
+    }
+
+    /// A ready node looks again when machines come or go, and a minute after a look that
+    /// missed a host; not on a timer otherwise, which would keep every app node's
+    /// connection out of idle.
+    func testLooksAgainOnlyOnAChangeOrAfterAMiss() {
+        let t0 = Date(timeIntervalSince1970: 1_790_000_000)
+        XCTAssertTrue(Discovery.lookAgain(hostsChanged: true, lastLook: t0, missed: false, now: t0))
+        XCTAssertFalse(Discovery.lookAgain(hostsChanged: false, lastLook: t0, missed: false, now: t0.addingTimeInterval(600)),
+                       "every host answered: no timer")
+        XCTAssertFalse(Discovery.lookAgain(hostsChanged: false, lastLook: t0, missed: true, now: t0.addingTimeInterval(30)))
+        XCTAssertTrue(Discovery.lookAgain(hostsChanged: false, lastLook: t0, missed: true, now: t0.addingTimeInterval(61)))
+    }
+
     func testRoutesOnlyTheOwnersTailnetThroughTheOwnersNode() {
         let own = "tailabc123.ts.net"
         XCTAssertEqual(Routing.route(host: "interview-coach.tailabc123.ts.net", ownerSuffix: own), .tailnetNode)
         XCTAssertEqual(Routing.route(host: "Interview-Coach.TAILABC123.ts.net.", ownerSuffix: "TailABC123.ts.net."), .tailnetNode)
-        XCTAssertEqual(Routing.route(host: "recorder.tail0000.ts.net", ownerSuffix: own), .direct, "another tailnet's Funnel name")
-        XCTAssertEqual(Routing.route(host: "eviltailabc123.ts.net", ownerSuffix: own), .direct)
-        XCTAssertEqual(Routing.route(host: "example.com", ownerSuffix: own), .direct)
-        XCTAssertEqual(Routing.route(host: "tailabc123.ts.net.example.com", ownerSuffix: own), .direct)
+        XCTAssertEqual(Routing.route(host: "recorder.tail0000.ts.net", ownerSuffix: own), .refused, "another tailnet's Funnel name")
+        XCTAssertFalse(Routing.isOnOwnersTailnet(host: "interview-coach.tailabc123.ts.net", ownerSuffix: nil),
+                       "no tailnet known: the owner's node carries nothing yet")
+        XCTAssertEqual(Routing.route(host: "eviltailabc123.ts.net", ownerSuffix: own), .refused)
+        XCTAssertEqual(Routing.route(host: "example.com", ownerSuffix: own), .refused)
+        XCTAssertEqual(Routing.route(host: "tailabc123.ts.net.example.com", ownerSuffix: own), .refused)
+        XCTAssertEqual(Routing.route(host: "localhost", ownerSuffix: own), .direct, "in a debug build only")
+        XCTAssertEqual(Routing.route(host: "127.0.0.1", ownerSuffix: own), .refused, "loopback literals stay blocked")
 
         // Until the owner's tailnet is known (never signed in, or not yet reported), every
         // MagicDNS name goes through the owner's node rather than to public DNS.
         for unknown in [nil, ""] as [String?] {
             XCTAssertEqual(Routing.route(host: "interview-coach.tailabc123.ts.net", ownerSuffix: unknown), .tailnetNode)
             XCTAssertEqual(Routing.route(host: "Recorder.Tail0000.TS.NET.", ownerSuffix: unknown), .tailnetNode)
-            XCTAssertEqual(Routing.route(host: "example.com", ownerSuffix: unknown), .direct)
-            XCTAssertEqual(Routing.route(host: "ts.net.example.com", ownerSuffix: unknown), .direct)
+            XCTAssertEqual(Routing.route(host: "example.com", ownerSuffix: unknown), .refused)
+            XCTAssertEqual(Routing.route(host: "ts.net.example.com", ownerSuffix: unknown), .refused)
+            XCTAssertEqual(Routing.route(host: "localhost", ownerSuffix: unknown), .direct)
         }
     }
 }
 
+/// Serves every host a connector's manifest (with no icon) at once, except `host`, which fails
+/// after `delay`.
+private final class SlowHostProtocol: URLProtocol {
+    static let host = "slow.tailabc123.ts.net"
+    static let delay: TimeInterval = 1
+    /// The paths asked for, in order: set from the loading thread, read once the fetches end.
+    static var paths: [String] = []
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        guard let url = request.url else { return }
+        Self.paths.append(url.path)
+        if url.host == Self.host {
+            DispatchQueue.global().asyncAfter(deadline: .now() + Self.delay) { [self] in
+                client?.urlProtocol(self, didFailWithError: URLError(.timedOut))
+            }
+            return
+        }
+        client?.urlProtocol(self, didReceive: HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!,
+                            cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data(#"{"name":"Coach","version":1}"#.utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
+}
+
 /// A public Funnel name added before the owner ever signed in routes to the owner's node;
 /// signing in shows it isn't on the owner's tailnet. The view made for the owner's node
-/// must never load, through the owner's node or at all.
+/// must never load, through the owner's node or at all, and its new one is refused.
 @MainActor
 final class StaleRouteTests: XCTestCase {
     private let funnel = WebApp(name: "Cool", startURL: URL(string: "https://cool.attacker.ts.net/")!)
-
-    func testTheOwnersNodeCarriesOnlyItsKnownTailnet() {
-        XCTAssertFalse(Routing.isOnOwnersTailnet(host: "cool.attacker.ts.net", ownerSuffix: nil),
-                       "an unknown tailnet carries nothing, though the route waits on the owner's node")
-        XCTAssertFalse(Routing.isOnOwnersTailnet(host: "cool.attacker.ts.net", ownerSuffix: "tailabc123.ts.net"))
-        XCTAssertTrue(Routing.isOnOwnersTailnet(host: "Coach.tailabc123.ts.net.", ownerSuffix: "tailabc123.ts.net"))
-        XCTAssertFalse(Routing.isOnOwnersTailnet(host: "tailabc123.ts.net.example.com", ownerSuffix: "tailabc123.ts.net"))
-    }
 
     func testAViewIsStaleOnceTheRouteNamesAnotherNode() {
         let owner = MembershipNode(id: Membership.ownerID) { nil }
@@ -705,7 +1065,7 @@ final class StaleRouteTests: XCTestCase {
         XCTAssertTrue(Routing.mayLoad(built: built, current: node(for: funnel, ownerSuffix: nil)))
 
         let signedIn = node(for: funnel, ownerSuffix: "tailabc123.ts.net")
-        XCTAssertNil(signedIn, "another tailnet's name loads directly")
+        XCTAssertNil(signedIn, "another tailnet's name has no node")
         XCTAssertFalse(Routing.mayLoad(built: built, current: signedIn), "the owner's node is no longer its route")
         XCTAssertFalse(Routing.mayLoad(built: nil, current: owner), "nor the other way round")
         XCTAssertTrue(Routing.mayLoad(built: nil, current: nil))
@@ -743,7 +1103,7 @@ final class StaleRouteTests: XCTestCase {
         let (fresh, current) = pool.webView(for: funnel)
         XCTAssertFalse(fresh === view)
         XCTAssertFalse(current === stale)
-        XCTAssertNil(current.node, "made again to load directly")
+        XCTAssertNil(current.node, "made again, refused")
     }
 
     /// Remembers `suffix` as the owner's tailnet for one test.
@@ -762,10 +1122,10 @@ final class StaleRouteTests: XCTestCase {
         let pool = WebViewPool.shared
         let owner = NodeManager.shared.owner
         let own = WebApp(name: "Foo", startURL: URL(string: "https://foo.taila.ts.net/")!)
-        let direct = WebApp(name: "Site", startURL: URL(string: "https://site.example.invalid/")!)
-        defer { pool.discard(own.id); pool.discard(direct.id) }
+        let refused = WebApp(name: "Site", startURL: URL(string: "https://site.example.invalid/")!)
+        defer { pool.discard(own.id); pool.discard(refused.id) }
         let (ownView, _) = pool.webView(for: own)
-        let (directView, _) = pool.webView(for: direct)
+        let (refusedView, _) = pool.webView(for: refused)
         XCTAssertNotNil(owner.stores[own.id])
 
         var changed = false
@@ -776,10 +1136,10 @@ final class StaleRouteTests: XCTestCase {
         XCTAssertTrue(changed, "an app on screen fetches a new view")
         XCTAssertNil(owner.stores[own.id], "the node's next start routes nothing of the old tailnet")
         XCTAssertFalse(pool.webView(for: own).0 === ownView)
-        XCTAssertTrue(pool.webView(for: direct).0 === directView, "views on other routes stay")
+        XCTAssertTrue(pool.webView(for: refused).0 === refusedView, "views on other routes stay")
     }
 
-    func testANewOwnerTailnetDropsViewsOfTheOldOne() {
+    func testANewOwnerTailnetRefusesTheOldOnesApps() async throws {
         rememberOwnerSuffix("taila.ts.net")
         let pool = WebViewPool.shared
         let owner = NodeManager.shared.owner
@@ -790,10 +1150,18 @@ final class StaleRouteTests: XCTestCase {
 
         MembershipNode.rememberOwnerSuffix("tailb.ts.net")
 
+        XCTAssertNil(NodeManager.shared.session(for: own), "no page or icon fetch goes to public DNS")
+        XCTAssertNil(NodeManager.shared.uploadSession(for: own, timeout: 1), "nor feedback")
+        XCTAssertTrue(MailDraft.problemReport(for: own).body.contains("Connection: Refused (on no known tailnet)"))
         XCTAssertNil(owner.stores[own.id], "dropped at once, not at the next probe or open")
         let (fresh, coordinator) = pool.webView(for: own)
         XCTAssertFalse(fresh === view)
-        XCTAssertNil(coordinator.node, "another tailnet's name loads directly")
+        XCTAssertNil(coordinator.node, "the old tailnet's name has no node")
+        XCTAssertEqual(fresh.configuration.websiteDataStore.proxyConfigurations.map(\.debugDescription),
+                       [MembershipNode.closedProxy.debugDescription], "its store refuses every connection")
+        for _ in 0..<100 where coordinator.gate != .unreachable { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(coordinator.gate, .unreachable, "Can't Reach, with no probe")
+        XCTAssertNil(fresh.url, "nothing loaded")
     }
 }
 
@@ -840,6 +1208,29 @@ final class AppHostViewTests: XCTestCase {
 }
 
 final class AppLoadGateTests: XCTestCase {
+    /// Only busy time counts toward giving up: a slow sign-in or approval, which waits for the
+    /// owner, or a late Try Again on a failed node, doesn't end on Can't Reach once the node
+    /// starts again.
+    func testTheNodeDeadlineCountsOnlyBusyTime() {
+        let t0 = Date(timeIntervalSince1970: 1_790_000_000)
+        var since: Date?
+        XCTAssertEqual(AppLoadGate.nodeDeadline(busySince: &since, state: .starting, now: t0), t0.addingTimeInterval(30))
+        XCTAssertEqual(AppLoadGate.nodeDeadline(busySince: &since, state: .connecting, now: t0.addingTimeInterval(10)),
+                       t0.addingTimeInterval(30), "still the same busy stretch")
+        XCTAssertNil(AppLoadGate.nodeDeadline(busySince: &since, state: .ready, now: t0.addingTimeInterval(12)))
+        XCTAssertEqual(AppLoadGate.nodeDeadline(busySince: &since, state: .retrying(attempt: 1), now: t0.addingTimeInterval(14)),
+                       t0.addingTimeInterval(30), "a moment of ready between retries doesn't start it over")
+        XCTAssertNil(AppLoadGate.nodeDeadline(busySince: &since, state: .needsLogin(URL(string: "https://login.example.com")!),
+                                              now: t0.addingTimeInterval(25)))
+        XCTAssertNil(AppLoadGate.nodeDeadline(busySince: &since, state: .awaitingApproval, now: t0.addingTimeInterval(90)))
+        XCTAssertEqual(AppLoadGate.nodeDeadline(busySince: &since, state: .connecting, now: t0.addingTimeInterval(120)),
+                       t0.addingTimeInterval(150), "a new busy stretch after the sign-in")
+        XCTAssertNil(AppLoadGate.nodeDeadline(busySince: &since, state: .failed(ConnectionCopy.couldNotStart),
+                                              now: t0.addingTimeInterval(130)))
+        XCTAssertEqual(AppLoadGate.nodeDeadline(busySince: &since, state: .starting, now: t0.addingTimeInterval(160)),
+                       t0.addingTimeInterval(190), "a new busy stretch after Try Again")
+    }
+
     private func run(_ events: [AppLoadGate.Event], from gate: AppLoadGate = .waiting) -> AppLoadGate {
         events.reduce(gate) { $0.next($1) }
     }
@@ -863,35 +1254,76 @@ final class AppLoadGateTests: XCTestCase {
         XCTAssertEqual(run([.nodeReady, .reached], from: gaveUp), gaveUp, "only Retry leaves it")
         XCTAssertEqual(run([.retry], from: gaveUp), .waiting)
     }
+
+    /// What every released connector, 1.0.0 to 1.0.6, sends for an app that isn't running.
+    func testTheConnectorsAppDownAnswer() {
+        XCTAssertTrue(AppLoadGate.appIsDown(status: 502, header: "unavailable"))
+        XCTAssertTrue(AppLoadGate.appIsDown(status: 502, header: " unavailable "))
+        XCTAssertFalse(AppLoadGate.appIsDown(status: 502, header: nil), "the app's own 502 is its page")
+        XCTAssertFalse(AppLoadGate.appIsDown(status: 503, header: "unavailable"))
+        XCTAssertFalse(AppLoadGate.appIsDown(status: 403, header: "not_invited"))
+        XCTAssertFalse(AppLoadGate.appIsDown(status: nil, header: nil))
+        CopyRules.assertNeutral(ConnectionCopy.notResponding("Coach", sharedBy: "Riley"))
+    }
+
+    func testAPhoneWithNoNetworkGivesUpAtOnceAndOpensOnceItHasOne() {
+        XCTAssertEqual(run([.offline]), .offline, "nothing to wait for or probe")
+        XCTAssertEqual(run([.nodeReady, .offline]), .offline)
+        XCTAssertEqual(run([.nodeReady, .reached, .gaveUp], from: .offline), .offline, "only a network, or Retry, leaves it")
+        XCTAssertEqual(run([.online], from: .offline), .waiting)
+        XCTAssertEqual(run([.retry], from: .offline), .waiting)
+        XCTAssertEqual(run([.offline], from: .ready), .ready, "a loaded page stays")
+        XCTAssertEqual(run([.offline], from: .unreachable), .unreachable)
+    }
+
+    /// When Ovenlight's own connection never came up, Can't Reach says to check the phone's
+    /// network, not the computer; an unanswered probe, or a node up and still retrying the
+    /// computers, still points at the computer.
+    func testCantReachSaysWhenThePhoneNeverConnected() {
+        let gaveUp = run([.nodeNotReady, .nodeGaveUp])
+        XCTAssertEqual(gaveUp, .notConnected)
+        XCTAssertEqual(run([.nodeReady, .reached], from: gaveUp), gaveUp, "only Retry leaves it")
+        XCTAssertEqual(run([.retry], from: gaveUp), .waiting)
+        XCTAssertEqual(run([.nodeReady, .gaveUp]), .unreachable)
+        // At the node's deadline.
+        XCTAssertEqual(run([.nodeNotReady, AppLoadGate.nodeGiveUp(.connecting)]), .notConnected)
+        XCTAssertEqual(run([.nodeNotReady, AppLoadGate.nodeGiveUp(.starting)]), .notConnected)
+        XCTAssertEqual(run([.nodeNotReady, AppLoadGate.nodeGiveUp(.retrying(attempt: 3))]), .unreachable)
+        XCTAssertEqual(ConnectionCopy.notConnected, "Ovenlight couldn’t connect. Check that you’re online, then try again.")
+        CopyRules.assertNeutral(ConnectionCopy.notConnected)
+    }
+
+    func testAComputerListedOfflineOpensTheAppWhenItAnswers() {
+        let gaveUp = run([.nodeReady, .gaveUp])
+        XCTAssertEqual(run([.woke], from: gaveUp), .ready, "a quiet retry answered")
+        XCTAssertEqual(run([.woke]), .waiting, "only after giving up")
+        XCTAssertEqual(run([.nodeReady, .woke]), .probing)
+    }
 }
 
 final class ConnectionStateTests: XCTestCase {
     func testTilesFlagOnlyTailnetAppsThatDidNotAnswer() {
         let coach = "interview-coach.tailabc123.ts.net"
-        func tile(_ host: String = coach, route: Routing.Route = .tailnetNode, node: NodeState = .ready,
-                  answers: [String: Bool]? = [coach: true]) -> AppReachability? {
-            AppReachability.forTile(host: host, route: route, nodeState: node, answers: answers)
+        func offline(_ host: String = coach, node: NodeState = .ready, answers: [String: Bool]? = [coach: true]) -> Bool {
+            NodeManager.isOffline(host: host, nodeState: node, answers: answers)
         }
-        XCTAssertNil(tile())
-        XCTAssertNil(tile("Interview-Coach.tailabc123.ts.net"), "hosts compare normalized")
-        XCTAssertEqual(tile(answers: [coach: false]), .offline)
-        XCTAssertEqual(tile(answers: ["other.tailabc123.ts.net": true]), .offline, "not probed: its machine is offline")
-        XCTAssertNil(tile(answers: nil), "nothing before the first probe")
-        XCTAssertNil(tile(node: .connecting, answers: [coach: false]), "the launcher shows the connection itself")
-        XCTAssertNil(tile("example.com", route: .direct, answers: [:]))
+        XCTAssertFalse(offline())
+        XCTAssertFalse(offline("Interview-Coach.tailabc123.ts.net"), "hosts compare normalized")
+        XCTAssertTrue(offline(answers: [coach: false]))
+        XCTAssertTrue(offline(answers: ["other.tailabc123.ts.net": true]), "not probed: its machine is offline")
+        XCTAssertTrue(offline(answers: [:]), "what a node records when nothing was left to probe")
+        XCTAssertFalse(offline(answers: nil), "nothing before the first probe")
+        XCTAssertFalse(offline(node: .connecting, answers: [coach: false]), "the launcher shows the connection itself")
     }
 
-    func testSharedCopyNeverNamesTailscale() {
-        let copy = [ConnectionCopy.connecting, ConnectionCopy.stopped, ConnectionCopy.couldNotStart,
-                    ConnectionCopy.connecting(to: "Coach"), ConnectionCopy.cantReach("Coach"),
-                    ConnectionCopy.cantReachDetail, ConnectionCopy.signIn(toOpen: "Coach"),
-                    NodeState.starting.summary, NodeMachine.next(.ready, .backend(state: "Stopped", authURL: nil)).summary,
-                    ConnectionCopy.reportProblem, ConnectionCopy.leaveApps("Riley"), ConnectionCopy.leaveTitle("Riley"),
-                    ConnectionCopy.leaveDetail("Riley"), LauncherWelcome.title, LauncherWelcome.message]
-        for text in copy {
-            XCTAssertFalse(text.localizedCaseInsensitiveContains("tailscale"), text)
-            XCTAssertFalse(text.localizedCaseInsensitiveContains("tailnet"), text)
-        }
+    /// A sign-in that ended (it expired, or the phone left the account) says so, rather than
+    /// showing the first-run card again.
+    func testAnEndedSignInSaysSo() {
+        let ended = TailnetBanner.signIn(before: true)
+        XCTAssertEqual(ended.title, "Sign In Again")
+        XCTAssertEqual(ended.message, "This \(ConnectionCopy.device)’s Tailscale sign-in ended. Sign in again to reach your computers.")
+        XCTAssertEqual(ended.button, "Sign In")
+        XCTAssertEqual(TailnetBanner.signIn(before: false).title, "Connect Your Computers")
     }
 }
 
@@ -901,5 +1333,105 @@ final class AcknowledgementsTests: XCTestCase {
         let notices = try XCTUnwrap(AcknowledgementsView.notices)
         XCTAssertTrue(notices.contains("Go standard library"))
         XCTAssertTrue(notices.contains("github.com/tailscale/libtailscale"))
+    }
+
+    /// A module's title underlined with `=` shows as a heading.
+    func testASectionTitleIsAHeading() {
+        XCTAssertEqual(AcknowledgementsView.heading("Go standard library\n==================="), "Go standard library")
+        XCTAssertNil(AcknowledgementsView.heading("Copyright 2009 The Go Authors."))
+        XCTAssertNil(AcknowledgementsView.heading("Source Serif\n------------"), "only = underlines a heading")
+    }
+}
+
+@MainActor
+final class NodeManagerTests: XCTestCase {
+    func testRemovingAGuestLogsOutAndForgetsItsRoute() async throws {
+        let nodes = NodeManager.shared
+        let invite = InviteLink(control: URL(string: "https://controlplane.tailscale.com")!, key: "tskey-1", owner: "Riley",
+                                app: "echo-board", invite: UUID().uuidString, host: "echo-board.taildef456.ts.net", name: "Echo Board", to: "Sam")
+        let membership = Membership(invite: invite)
+        nodes.memberships.upsert(membership)
+        XCTAssertNotNil(nodes.guests[membership.id])
+        let directory = NodeManager.stateDirectory(for: membership.id)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+
+        // Twice at once, as Leave and the orphan sweep can: one removal, so one deletion of the
+        // membership (each deletion publishes the list, removing something or not).
+        var deletions = 0
+        let watch = nodes.memberships.$memberships.dropFirst().sink { _ in deletions += 1 }
+        defer { watch.cancel() }
+        async let first: Void = nodes.removeGuest(membership.id)
+        async let second: Void = nodes.removeGuest(membership.id)
+        _ = await (first, second)
+        XCTAssertEqual(deletions, 1)
+        XCTAssertNil(nodes.guests[membership.id])
+        XCTAssertNil(nodes.memberships[membership.id])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: directory.path))
+    }
+}
+
+@MainActor
+final class LocalAddressRulesTests: XCTestCase {
+    /// What WebKit does with the rules: blocked if a block rule matches and no later
+    /// ignore-previous-rules rule does. url-filters are case-insensitive by default.
+    private func blocks(_ url: String, blockingLocalhost: Bool = false) -> Bool {
+        func matches(_ host: String) -> Bool {
+            url.range(of: LocalAddressRules.urlFilter(host: host), options: [.regularExpression, .caseInsensitive]) != nil
+        }
+        let blocked = LocalAddressRules.blockedHosts + (blockingLocalhost ? LocalAddressRules.localhostHosts : [])
+        return blocked.contains(where: matches) && !LocalAddressRules.allowedHosts.contains(where: matches)
+    }
+
+    func testBlocksLoopbackAndLocalAddressesOnly() {
+        for url in [
+            "http://127.0.0.1:8080/", "https://127.255.0.9/x", "ws://127.0.0.1:9/socket", "wss://127.0.0.1/",
+            "https://[::1]:8443/", "http://[::1]/", "http://[::]/", "https://user:pw@127.0.0.1/",
+            "https://[::ffff:7f00:1]/", "https://[::ffff:a00:1]:443/", "https://[::ffff:c0a8:4441]/",
+            "https://[::ffff:ac10:1]/", "https://[::ffff:a9fe:a9fe]/", "https://[::ffff:0:0]/",
+            "https://10.0.0.1/", "https://10.20.30.40:3000/", "https://172.16.0.1/", "https://172.31.255.254/",
+            "https://192.168.68.65:56596/", "https://169.254.169.254/latest", "http://0.0.0.0:80/",
+            "https://[fe80::1]/", "https://[febf::1]/", "https://[fd96:bdba:f856:4b19::1]/", "https://[fc00::1]/",
+        ] {
+            XCTAssertTrue(blocks(url), url)
+        }
+        for url in [
+            "https://100.64.0.1/ping", "https://100.101.102.103/", "https://[fd7a:115c:a1e0::5]/",
+            "https://recipe-box.e2e.example/", "https://example.com/", "https://8.8.8.8/", "https://172.15.0.1/",
+            "https://172.32.0.1/", "https://11.0.0.1/", "https://192.169.0.1/", "https://[2606:4700::1111]/",
+            "https://[::ffff:5db8:d70e]/", "https://[fec0::1]/", "https://[64:ff9b::7f00:1]/",
+            "https://example.com/127.0.0.1/", "https://example.com/?u=http://127.0.0.1/", "https://10.0.0.1.example.com/",
+            "https://127.0.0.1.nip.io/", "https://example.com/#[::1]",
+        ] {
+            XCTAssertFalse(blocks(url), url)
+        }
+        // localhost's names in release builds only: a debug build loads its local demo there.
+        for url in ["http://localhost:8080/", "https://localhost./", "https://app.localhost/", "wss://user@LOCALHOST/"] {
+            XCTAssertTrue(blocks(url, blockingLocalhost: true), url)
+            XCTAssertFalse(blocks(url), url)
+        }
+        for url in ["https://localhost.example.com/", "https://example.com/app.localhost/"] {
+            XCTAssertFalse(blocks(url, blockingLocalhost: true), url)
+        }
+    }
+
+    func testTheRulesCompile() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let store = try XCTUnwrap(WKContentRuleListStore(url: dir))
+        for localhost in [false, true] {
+            _ = try await store.compileContentRuleList(forIdentifier: "test",
+                                                       encodedContentRuleList: LocalAddressRules.json(blockingLocalhost: localhost))
+        }
+    }
+}
+
+extension UserDefaults {
+    /// A suite of the test's own, so what it saves stays out of the app's defaults; gone
+    /// when the test ends.
+    static func throwaway(for test: XCTestCase) -> UserDefaults {
+        let name = "test.\(UUID().uuidString)"
+        test.addTeardownBlock { UserDefaults().removePersistentDomain(forName: name) }
+        return UserDefaults(suiteName: name)!
     }
 }

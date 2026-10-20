@@ -11,10 +11,12 @@ struct OvenlightManifest: Decodable, Equatable {
 
     static let path = "/.well-known/ovenlight.json"
 
+    /// The name is cleaned like an invite's labels (see `InviteLink.label`): it names the
+    /// app on its tile, and a shared app's comes from someone else's computer.
     static func parse(_ data: Data) -> OvenlightManifest? {
-        guard let manifest = try? JSONDecoder().decode(OvenlightManifest.self, from: data),
-              manifest.version >= 1,
-              !manifest.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        guard var manifest = try? JSONDecoder().decode(OvenlightManifest.self, from: data),
+              manifest.version >= 1, let name = InviteLink.label(manifest.name) else { return nil }
+        manifest.name = name
         return manifest
     }
 }
@@ -61,6 +63,18 @@ enum Discovery {
         }
     }
 
+    /// Among an owner's probed hosts, those whose silence brings another look in a minute:
+    /// shareable app nodes (by their tag), hosts of apps already found (a private app's node
+    /// is untagged), and hosts this look sees for the first time. Found is the node's last
+    /// look or a launcher tile the owner's own discovery added, which a miss doesn't take
+    /// away. A laptop or TV without a connector misses once, and then no more.
+    static func watchedHosts(_ hosts: [String], in status: TailnetStatus?, found: Set<String>, apps: [WebApp],
+                             seenBefore: Set<String>) -> Set<String> {
+        let tagged = Set((status?.peers ?? []).filter { $0.tags.contains(where: OvenlightTag.isApp) }.map { normalizedHost($0.dnsName) })
+        let found = found.union(apps.filter { $0.discovered && !$0.isShared }.map { normalizedHost($0.host) })
+        return Set(hosts).filter { tagged.contains($0) || found.contains($0) || !seenBefore.contains($0) }
+    }
+
     /// The owner's online machines that could run a connector. Phones and tablets can't,
     /// so they aren't probed.
     static func candidateHosts(in status: TailnetStatus?) -> [String] {
@@ -69,6 +83,14 @@ enum Discovery {
             .map { normalizedHost($0.dnsName) }
             .filter { !$0.isEmpty }
         return Array(Set(hosts)).sorted()
+    }
+
+    /// The hosts among `hosts` whose node the network lists as offline: its computer is
+    /// asleep or off, most likely. A host it doesn't list isn't among them, since the node
+    /// may not have it among its peers yet.
+    static func offlineHosts(_ hosts: Set<String>, in status: TailnetStatus?) -> Set<String> {
+        let offline = Set((status?.peers ?? []).filter { !$0.online }.map { normalizedHost($0.dnsName) })
+        return hosts.filter { offline.contains(normalizedHost($0)) }
     }
 
     static func normalizedHost(_ host: String) -> String {
@@ -85,8 +107,17 @@ enum Discovery {
         var answered: [String: Bool] = [:]
     }
 
-    /// Fetches every candidate's manifest concurrently.
-    static func probe(hosts: [String], session: URLSession?) async -> Outcome {
+    /// Whether a ready node looks at its hosts again: when a machine comes online or goes
+    /// away (the owner's new apps, and tiles), and a minute after a look that missed a host,
+    /// as a newly published app's first answer can. Not otherwise: each look wakes every app
+    /// node's connection, and keeps it out of idle.
+    static func lookAgain(hostsChanged: Bool, lastLook: Date?, missed: Bool, now: Date) -> Bool {
+        hostsChanged || missed && lastLook.map { now.timeIntervalSince($0) > 60 } == true
+    }
+
+    /// Fetches every candidate's manifest concurrently. `firstAnswer` runs as the first host
+    /// answers, which proves the path, without waiting for a machine that drops the probe.
+    static func probe(hosts: [String], session: URLSession?, firstAnswer: @MainActor () -> Void = {}) async -> Outcome {
         guard let session, !hosts.isEmpty else { return Outcome() }
         return await withTaskGroup(of: (String, Data?, Bool).self) { group in
             for host in hosts {
@@ -103,6 +134,7 @@ enum Discovery {
             }
             var outcome = Outcome()
             for await (host, data, answered) in group {
+                if answered, !outcome.reachable { await firstAnswer() }
                 outcome.reachable = outcome.reachable || answered
                 outcome.answered[host] = answered
                 if let data, let manifest = OvenlightManifest.parse(data) {
@@ -118,22 +150,29 @@ enum Discovery {
 /// Which network path an app's traffic takes.
 enum Routing {
     enum Route: Equatable {
-        case direct
         /// Through Ovenlight's embedded node (its loopback SOCKS5 proxy).
         case tailnetNode
+        /// On no tailnet Ovenlight knows: nothing loads, not even a probe.
+        case refused
+        /// Debug builds only: an app at `localhost`, for screenshots of a local demo. Loopback
+        /// IP literals stay blocked (`LocalAddressRules`).
+        case direct
     }
 
     /// Through the owner's node for names on the owner's own tailnet (its MagicDNS
-    /// suffix); any other host, another tailnet's public Funnel name among them, loads
-    /// directly. Until that tailnet is known, every MagicDNS name goes through the owner's
-    /// node, where it waits for a sign-in rather than going to public DNS. Apps someone
-    /// shared always go through their membership's node instead.
+    /// suffix); any other host, an old tailnet's name or another tailnet's public Funnel
+    /// name among them, is refused, never looked up in public DNS. Until that tailnet is
+    /// known, every MagicDNS name goes through the owner's node, where it waits for a
+    /// sign-in. Apps someone shared always go through their membership's node instead.
     static func route(host: String, ownerSuffix: String?) -> Route {
         let host = Discovery.normalizedHost(host)
+        #if DEBUG
+        if host == "localhost" { return .direct }
+        #endif
         guard let suffix = ownerSuffix, !suffix.isEmpty else {
-            return host.hasSuffix(".ts.net") ? .tailnetNode : .direct
+            return host.hasSuffix(".ts.net") ? .tailnetNode : .refused
         }
-        return isOnOwnersTailnet(host: host, ownerSuffix: suffix) ? .tailnetNode : .direct
+        return isOnOwnersTailnet(host: host, ownerSuffix: suffix) ? .tailnetNode : .refused
     }
 
     /// Whether `host` is a name on the owner's tailnet. Only then may the owner's node
@@ -151,7 +190,7 @@ enum Routing {
         return route(host: app.startURL.host ?? "", ownerSuffix: ownerSuffix) == .tailnetNode ? owner : nil
     }
 
-    /// Whether a web view whose data store was attached to `built` (nil: direct) may load
+    /// Whether a web view whose data store was attached to `built` (nil: no node) may load
     /// now that the app's route names `current`. A route is fixed when the view is made, and
     /// it can change under it: signing in shows that a `*.ts.net` name routed to the
     /// owner's node isn't on the owner's tailnet. Such a view is stale and never loads; it
