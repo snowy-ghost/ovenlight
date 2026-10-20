@@ -24,7 +24,7 @@ import kotlinx.coroutines.launch
 /** Where people reach the team behind Ovenlight. */
 object AppLinks {
     const val supportEmail = "team@snowyghost.com"
-    val privacyPolicy = URI("https://ovenlight.app/privacy")
+    val privacyPolicy = URI("https://ovenlight.app/privacy/android")
 
     /** What Tailscale's plans include, tagged devices among them. */
     val tailscalePricing = URI("https://tailscale.com/pricing")
