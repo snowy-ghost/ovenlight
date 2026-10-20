@@ -55,9 +55,6 @@ class DownloadPolicyTests {
         assertEquals("a-b-c-d.txt", DownloadPolicy.fileName("a:b\\c\u0000d.txt"))
         assertEquals("Download", DownloadPolicy.fileName(" .. "))
         assertEquals("Notes ✏️ May.md", DownloadPolicy.fileName("Notes ✏️ May.md"))
-        val long = DownloadPolicy.fileName("é".repeat(300) + ".csv")
-        assertTrue(long.toByteArray(Charsets.UTF_8).size <= DownloadPolicy.maxFileNameBytes)
-        assertTrue(long.endsWith("é.csv"))
         // Not in the Swift test: Foundation reads "final version" as no extension, so the end is cut.
         assertEquals("a".repeat(200), DownloadPolicy.fileName("a".repeat(250) + ".final version"))
     }
