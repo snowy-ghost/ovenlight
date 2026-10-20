@@ -18,8 +18,8 @@ system to build.
   page: https://console.tailscale.com/admin/dns). Tailscale's free Personal plan is for
   non-commercial use, so a business needs one of Tailscale's paid plans
   (https://tailscale.com/pricing).
-- An iPhone with iOS 18.1 or later and Ovenlight from the App Store, or an Android phone
-  with Android 10 or later and Ovenlight from Google Play.
+- Ovenlight on their phone: an iPhone with iOS 18.1 or later, or a phone with Android 10
+  or later. https://ovenlight.app/ shows where to get it.
 - The connector. Download the archive for the computer:
   - Mac: https://downloads.ovenlight.app/connector/latest/ovenlight-connector-macos.tar.gz
   - Linux on amd64: https://downloads.ovenlight.app/connector/latest/ovenlight-connector-linux-amd64.tar.gz
@@ -36,6 +36,9 @@ system to build.
   `%LOCALAPPDATA%\ovenlight\bin\ovenlight.exe` on Windows, and keeps it running. If
   `install.sh` prints an `export PATH` line, the person adds it to their shell profile
   and opens a new terminal window, so `ovenlight` works by name.
+
+The people they share an app with need only Ovenlight on their own phone: no account,
+Tailscale or VPN.
 
 Signing in to Tailscale, connecting the phone and sharing an app are steps only the
 person can do. Ask them, in plain words, rather than working around them.
@@ -94,12 +97,10 @@ then:
 
 ## Links
 
-- [Ovenlight](https://ovenlight.app/): what it is and what it needs
+- [Ovenlight](https://ovenlight.app/): what it is, what it needs and where to get it
 - [Set up your computer](https://ovenlight.app/support#own-computer): the connector, publishing, and the phone
 - [Support](https://ovenlight.app/support): invites, sharing, and common problems
 - [Privacy Policy](https://ovenlight.app/privacy)
-- [Ovenlight on the App Store](https://apps.apple.com/app/id6817561066)
-- [Ovenlight on Google Play](https://play.google.com/store/apps/details?id=com.snowyghost.ovenlight)
 - [The connector](https://ovenlight.app/docs/connector.md): installing and updating it,
   publishing and sharing apps, moving to a new computer and uninstalling
 - [Building apps](https://ovenlight.app/docs/building-apps.md): the guide `ovenlight guide`
@@ -110,6 +111,6 @@ then:
   change, logging and privacy
 - [Protocol](https://ovenlight.app/docs/protocol.md): how Ovenlight and the connector
   talk
-- [Development](https://ovenlight.app/docs/development.md): building the iPhone and Android
-  apps, tests, local development, shipping and forking
+- [Development](https://ovenlight.app/docs/development.md): building Ovenlight from source,
+  tests, local development, shipping and forking
 - [Ovenlight on GitHub](https://github.com/snowy-ghost/ovenlight): the source code and docs

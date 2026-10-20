@@ -58,12 +58,4 @@
   // A phone gets its own store's badge, and anywhere else both show.
   document.getElementById("ask").hidden = onAndroid;
   document.getElementById("ask-play").hidden = onIPhone;
-
-  var testFlight = document.querySelector('meta[name="ovenlight-testflight"]').content.trim();
-  if (!onAndroid && /^https:\/\/testflight\.apple\.com\//.test(testFlight)) {
-    var button = document.getElementById("testflight");
-    button.href = testFlight;
-    button.hidden = false;
-    document.getElementById("ask").hidden = true;
-  }
 })();

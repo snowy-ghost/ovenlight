@@ -7,11 +7,8 @@
      to a server. This policy keeps it here: only join.js runs (named by URL, since 'self'
      would also allow scripts Cloudflare injects from /cdn-cgi/), and nothing may be
      fetched, beaconed or posted. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src https://ovenlight.app/join.js; style-src 'unsafe-inline'; img-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'; frame-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src https://ovenlight.app/join.js; style-src 'unsafe-inline' https://ovenlight.app/stores.css; img-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'; frame-src 'none'">
 <meta name="referrer" content="no-referrer">
-<!-- The public TestFlight link, offered in place of the App Store badge. Empty: the page
-     offers the App Store badge. -->
-<meta name="ovenlight-testflight" content="">
 <title>You're invited to an app on Ovenlight</title>
 <!-- An invite's page, not one to find in search. -->
 <meta name="robots" content="noindex">
@@ -34,9 +31,10 @@
 <meta name="theme-color" content="#19110d" media="(prefers-color-scheme: dark)">
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/icon-180.png">
+<link rel="stylesheet" href="/stores.css">
 <style>
-  /* The CSP allows inline styles only, so this page carries its own copy of the
-     site's tokens (style.css) rather than linking the shared stylesheet. */
+  /* The invite page loads as little as it can, so it carries its own copy of style.css's
+     tokens. */
   :root {
     color-scheme: light dark;
     --bg: #faf5ee; --paper: #fffcf7; --ink: #231711; --ink-body: #3b2c23; --ink-soft: #6b5a4e;
@@ -124,13 +122,13 @@
   }
   .primary:active, .store:active { transform: translateY(1px); }
   .secondary { background: var(--bg); color: var(--ink); border: 1px solid var(--line); margin-top: 0.6rem; }
-  /* Apple's and Google's official badges, unmodified (Apple's black on light, white on dark).
-     Google's image carries its clear space, a quarter of the badge's height on each side, and
-     is sized so the badge stands as tall as Apple's. */
-  .store { display: block; width: max-content; margin: 1.75rem auto 0; border-radius: 0.75rem; line-height: 0; }
+  /* The official badges, unmodified, sized as in style.css (the Play image carries its own
+     clear space). --listed and --soon come from stores.css. */
+  .store { display: var(--listed, block); width: fit-content; max-width: 100%; margin: 1.75rem auto 0; border-radius: 0.75rem; line-height: 0; }
   .store img { width: 12rem; }
-  #ask-play { margin-top: 0.75rem; }
+  #ask-play .store { margin-top: 0.75rem; }
   #ask-play img { width: 15.5rem; }
+  .store-soon { display: var(--soon, none); justify-content: center; margin-top: 1.75rem; color: var(--ink); font-weight: 600; }
   .have { margin-top: 1.75rem; padding-top: 1.5rem; border-top: 1px solid var(--line); color: var(--ink); font-weight: 600; }
   .note { font-size: 0.9375rem; color: var(--ink-soft); margin-top: 1.25rem; }
   footer.site { border-top: 1px solid var(--line); color: var(--ink-soft); font-size: 0.875rem; }
@@ -157,26 +155,28 @@
       <img class="mark" src="/icon.svg" width="88" height="88" alt="">
       <h1 id="title">You're invited to an app on Ovenlight</h1>
       <p class="for" id="for" hidden></p>
-      <p class="about">Ovenlight opens web apps that friends run on their own computers, and keeps them behind your phone's lock.</p>
+      <p class="about">Ovenlight is a free app that opens web apps friends run on their own computers, behind your phone's lock. There's no account to create.</p>
       <p class="note" id="elsewhere" hidden>Ovenlight is for iPhone and Android phones. Open this invite link on your phone to join.</p>
       <p class="note" id="missing" hidden>This link is incomplete. Ask for it again and copy the whole link.</p>
 
-      <a class="store" id="ask" href="https://apps.apple.com/app/id6817561066">
-        <picture>
-          <source srcset="/images/app-store-badge-white.svg" media="(prefers-color-scheme: dark)">
+      <div class="app-store" id="ask">
+        <a class="store" href="https://apps.apple.com/app/id6817561066">
           <img src="/images/app-store-badge-black.svg" width="150" height="50" alt="Download on the App Store">
-        </picture>
-      </a>
-      <a class="store" id="ask-play" href="https://play.google.com/store/apps/details?id=com.snowyghost.ovenlight">
-        <img src="/images/google-play-badge.png" width="646" height="250" alt="Get it on Google Play">
-      </a>
-      <a class="btn primary" id="testflight" href="#" hidden>Get Ovenlight on TestFlight</a>
+        </a>
+        <p class="store-soon">Coming soon to the App Store</p>
+      </div>
+      <div class="google-play" id="ask-play">
+        <a class="store" href="https://play.google.com/store/apps/details?id=com.snowyghost.ovenlight">
+          <img src="/images/google-play-badge.png" width="646" height="250" alt="Get it on Google Play">
+        </a>
+        <p class="store-soon">Coming soon to Google Play</p>
+      </div>
 
       <div id="invite" hidden>
         <p class="note">Once Ovenlight is installed, open the invite link again.</p>
         <p class="have">Already have Ovenlight?</p>
         <a class="btn secondary" id="open" href="#">Open in Ovenlight</a>
-        <p class="note">The invite works once, on one phone, and expires, so open it soon. This page doesn't send your invite anywhere.</p>
+        <p class="note">The invite works once, on one phone, and expires, so open it as soon as you can. If it runs out, ask for a new one. This page doesn't send your invite anywhere.</p>
       </div>
     </div>
   </div>

@@ -1,6 +1,6 @@
 /* Ovenlight, "Pilot Light": warm cream, one ember accent, an oven light's glow.
    Shared by the home, support, privacy and docs pages. The join page carries its own
-   inline copy of these tokens because its CSP allows no external stylesheet. */
+   inline copy of these tokens. */
 
 :root {
   color-scheme: light dark;
@@ -280,13 +280,22 @@ a:hover { text-decoration-thickness: 2px; }
   line-height: 1.45;
 }
 
-/* Apple's and Google's official badges, unmodified (Apple's black on light pages, white on
-   dark). Google's image carries its clear space, a quarter of the badge's height on each side,
-   and is sized so the badge stands as tall as Apple's. */
+/* Apple's and Google's official badges, unmodified. Apple asks for its black badge wherever
+   another store's badge appears. Google's image carries its clear space, a quarter of the
+   badge's height on each side, and is sized so the badge stands as tall as Apple's. */
 .stores { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; margin-top: 2rem; }
-.store { display: inline-block; border-radius: 0.6rem; line-height: 0; }
+/* --listed and --soon come from stores.css. A "Coming soon" line stands as tall as a badge. */
+.store { display: var(--listed, block); border-radius: 0.6rem; line-height: 0; }
 .store img { width: 9.375rem; height: auto; }
-.store img.play { width: 12.125rem; }
+.google-play img { width: 12.125rem; }
+.store-soon {
+  display: var(--soon, none);
+  align-items: center;
+  min-height: 3.125rem;
+  padding-inline: 0.8rem;
+  color: var(--ink-soft);
+  font-size: var(--step--1);
+}
 .store-note { margin-top: 0.85rem; color: var(--ink-soft); font-size: var(--step--1); }
 
 .hero-shot {

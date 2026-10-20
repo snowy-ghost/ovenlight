@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Your own AI-built web apps, securely on your phone · Ovenlight</title>
-<meta name="description" content="Put the web apps you or your AI coding agent built on your phone, served from your own computer and locked with Face ID or your fingerprint. Share any one with a friend by link.">
+<meta name="description" content="Put the web apps you or your AI coding agent built on your iPhone or Android phone, served privately from your own computer. Share one with a friend by link.">
 <link rel="canonical" href="https://ovenlight.app/">
 <meta name="theme-color" content="#faf5ee" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#19110d" media="(prefers-color-scheme: dark)">
@@ -26,6 +26,7 @@
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/icon-180.png">
 <link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/stores.css">
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -67,18 +68,21 @@
       <h1 class="wordmark">Ovenlight</h1>
       <span class="rack" aria-hidden="true"></span>
       <p class="lead">You or your AI coding agent built a web&nbsp;app. It runs on your own computer, and Ovenlight opens it on your phone behind Face&nbsp;ID or your fingerprint. Share it with a friend by link. They install Ovenlight and tap Join.</p>
-      <p class="stores">
-        <a class="store" href="https://apps.apple.com/app/id6817561066">
-          <picture>
-            <source srcset="/images/app-store-badge-white.svg" media="(prefers-color-scheme: dark)">
+      <div class="stores">
+        <div class="app-store">
+          <a class="store" href="https://apps.apple.com/app/id6817561066">
             <img src="/images/app-store-badge-black.svg" width="150" height="50" alt="Download on the App Store">
-          </picture>
-        </a>
-        <a class="store" href="https://play.google.com/store/apps/details?id=com.snowyghost.ovenlight">
-          <img class="play" src="/images/google-play-badge.png" width="646" height="250" alt="Get it on Google Play">
-        </a>
-      </p>
-      <p class="store-note">Got an invite? Install Ovenlight, then open your link again.</p>
+          </a>
+          <p class="store-soon">Coming soon to the App Store</p>
+        </div>
+        <div class="google-play">
+          <a class="store" href="https://play.google.com/store/apps/details?id=com.snowyghost.ovenlight">
+            <img src="/images/google-play-badge.png" width="646" height="250" alt="Get it on Google Play">
+          </a>
+          <p class="store-soon">Coming soon to Google Play</p>
+        </div>
+      </div>
+      <p class="store-note">Got an invite? Once Ovenlight is on your phone, open your invite link again.</p>
       <div class="hero-shot">
         <figure class="phone">
           <picture>
@@ -161,7 +165,7 @@
           <div class="feature">
             <span class="tile" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8.5V6.5a2.5 2.5 0 0 1 2.5-2.5h2M15.5 4h2A2.5 2.5 0 0 1 20 6.5v2M20 15.5v2a2.5 2.5 0 0 1-2.5 2.5h-2M8.5 20h-2A2.5 2.5 0 0 1 4 17.5v-2"/><path d="M9 9.5v1.2M15 9.5v1.2M12.2 9.5v3.6h-.9M9.6 15.6a3.6 3.6 0 0 0 4.8 0"/></svg></span>
             <h3>One unlock</h3>
-            <p>Face&nbsp;ID, a fingerprint or your passcode opens all your apps at once. While Ovenlight is locked, no app can use the camera or microphone.</p>
+            <p>Unlock Ovenlight the way you unlock your phone, and all your apps open at once. While Ovenlight is locked, no app can use the camera or microphone.</p>
           </div>
           <div class="feature">
             <span class="tile" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5v11M8.2 7.2L12 3.5l3.8 3.7"/><path d="M8.5 10.5h-1A2.5 2.5 0 0 0 5 13v5a2.5 2.5 0 0 0 2.5 2.5h9A2.5 2.5 0 0 0 19 18v-5a2.5 2.5 0 0 0-2.5-2.5h-1"/></svg></span>
@@ -187,7 +191,7 @@
         <ol class="steps">
           <li><p>You make an app shareable once, on the computer that runs it.</p></li>
           <li><p>You send an invite from Ovenlight or from that computer: a link or a QR code that works once and expires after 7 days.</p></li>
-          <li><p>Your friend opens it on their phone and taps Join, with no account to create and nothing to sign in to.</p></li>
+          <li><p>Your friend opens it on their iPhone or Android phone and taps Join, with no account to create and nothing to sign in to.</p></li>
           <li><p>The app shows up in their Ovenlight marked with your name, and they can send you feedback from inside it. Your coding agent can read that feedback, screenshot included, and fix the app.</p></li>
         </ol>
         <p class="share-after">You can stop sharing at any time. Their access ends at once, and the app and everything it stored are removed from their phone the next time Ovenlight connects.</p>
@@ -225,7 +229,7 @@
       <div class="needs">
         <p class="need">
           <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="9" y="3" width="14" height="26" rx="3.5"/><path d="M14 6.6h4"/></svg>
-          <span>An iPhone with iOS 18.1 or later, or an Android phone with Android 10 or later.</span>
+          <span>An iPhone with iOS 18.1 or later, or a phone with Android 10 or later.</span>
         </p>
         <p class="need">
           <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="26" height="17" rx="2.5"/><path d="M12.5 27.5h7M16 22v5.5"/></svg>
@@ -240,17 +244,20 @@
     <div class="container">
       <h2 class="closing-title" id="closing">Your apps are already running. Put them on your phone.</h2>
       <img class="closing-icon" src="/icon.svg" width="88" height="88" alt="" loading="lazy">
-      <p class="stores">
-        <a class="store" href="https://apps.apple.com/app/id6817561066">
-          <picture>
-            <source srcset="/images/app-store-badge-white.svg" media="(prefers-color-scheme: dark)">
+      <div class="stores">
+        <div class="app-store">
+          <a class="store" href="https://apps.apple.com/app/id6817561066">
             <img src="/images/app-store-badge-black.svg" width="150" height="50" alt="Download on the App Store">
-          </picture>
-        </a>
-        <a class="store" href="https://play.google.com/store/apps/details?id=com.snowyghost.ovenlight">
-          <img class="play" src="/images/google-play-badge.png" width="646" height="250" alt="Get it on Google Play">
-        </a>
-      </p>
+          </a>
+          <p class="store-soon">Coming soon to the App Store</p>
+        </div>
+        <div class="google-play">
+          <a class="store" href="https://play.google.com/store/apps/details?id=com.snowyghost.ovenlight">
+            <img src="/images/google-play-badge.png" width="646" height="250" alt="Get it on Google Play">
+          </a>
+          <p class="store-soon">Coming soon to Google Play</p>
+        </div>
+      </div>
     </div>
   </section>
 </main>
