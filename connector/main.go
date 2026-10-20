@@ -785,11 +785,10 @@ func cmdUnpublish(args []string) error {
 }
 
 // forgetAppNode deletes an unpublished shareable app's node from the tailnet, and its
-// state here, and says what became of it. Its guests and invites are retired already,
-// and only this connector's nodes carry the app's tag (see oneConnector); left there,
-// the node would keep publish --shareable from making another app shareable.
+// state here, and says what became of it. Its guests and invites are retired already;
+// left there, the node would keep publish --shareable from making another app shareable.
 func forgetAppNode(p *paths, slug string) string {
-	if err := deleteAppNodes(p.config, slug); err != nil {
+	if err := deleteAppNode(p, slug); err != nil {
 		return fmt.Sprintf("Its node stays in your tailnet, offline, as Ovenlight couldn't delete it (%v): delete it in the Tailscale admin console (Machines), "+
 			"since no other app can be made shareable while it's there.", err)
 	}
@@ -799,9 +798,15 @@ func forgetAppNode(p *paths, slug string) string {
 	return "Its node is deleted from your tailnet; publishing it again logs in a new one."
 }
 
-// deleteAppNodes deletes the devices tagged as the app's node, with the stored API credential.
-func deleteAppNodes(configPath, slug string) error {
-	creds, err := tsapi.LoadCredentials(credentialsPath(configPath))
+// deleteAppNode deletes the devices the app's node here has logged in as (see nodeIDs),
+// with the stored API credential. Not every device with the app's tag: another
+// connector's node for an app of the same slug carries it too.
+func deleteAppNode(p *paths, slug string) error {
+	ids := nodeIDs(p.state, slug)
+	if len(ids) == 0 {
+		return nil // it never logged in
+	}
+	creds, err := tsapi.LoadCredentials(credentialsPath(p.config))
 	if err != nil {
 		return err
 	}
@@ -811,15 +816,12 @@ func deleteAppNodes(configPath, slug string) error {
 	}
 	ctx, cancel := apiContext()
 	defer cancel()
-	devices, err := client.Devices(ctx)
-	if err != nil {
-		return err
-	}
-	for _, d := range devices {
-		if d.HasTag(policy.AppTag(slug)) {
-			if err := client.DeleteDevice(ctx, d.NodeID); err != nil && !tsapi.IsNotFound(err) {
-				return err
-			}
+	for _, id := range ids {
+		if id == "" { // a profile that names no device
+			continue
+		}
+		if err := client.DeleteDevice(ctx, id); err != nil && !tsapi.IsNotFound(err) {
+			return err
 		}
 	}
 	return nil

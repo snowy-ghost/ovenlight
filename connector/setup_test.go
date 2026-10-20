@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"os"
@@ -634,6 +635,7 @@ func TestPublishShareableRefusesASecondConnector(t *testing.T) {
 		t.Error("the policy changed")
 	}
 	run.apps, run.known = []string{"coach", "notes"}, []string{"coach", "notes"}
+	writeNodeID(t, run.stateDir, "notes", "nNotes")
 	if _, err := run.apply(t.Context()); err != nil || len(f.PolicyWrites) != 1 {
 		t.Errorf("with notes published here: %v, %d writes", err, len(f.PolicyWrites))
 	}
@@ -676,12 +678,10 @@ func TestUnpublishShareableDeletesItsNode(t *testing.T) {
 	}
 	dir := t.TempDir()
 	p := &paths{config: filepath.Join(dir, "config", "config.json"), state: filepath.Join(dir, "state")}
-	if err := os.MkdirAll(nodeDir(p.state, "coach"), 0o700); err != nil {
-		t.Fatal(err)
-	}
+	writeNodeID(t, p.state, "coach", "nCoach")
 	devices := func() []tsapi.Device { f.Mu.Lock(); defer f.Mu.Unlock(); return slices.Clone(f.Devices) }
-	refusal := func() error { return oneConnector(devices(), []string{"notes"}) }
-	if err := refusal(); err == nil || !strings.Contains(err.Error(), "isn't in this connector's config") || strings.Contains(err.Error(), "another connector shares apps here") {
+	refusal := func() error { return oneConnector(devices(), []string{"notes"}, p.state) }
+	if err := refusal(); err == nil || !strings.Contains(err.Error(), "coach in your tailnet is a node for coach") || !strings.Contains(err.Error(), "you unpublished coach") {
 		t.Fatalf("with coach's node left: %v", err)
 	}
 
@@ -709,5 +709,70 @@ func TestUnpublishShareableDeletesItsNode(t *testing.T) {
 	}
 	if _, err := os.Stat(nodeDir(p.state, "coach")); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("the deleted node's state: %v", err)
+	}
+}
+
+// writeNodeID saves app node state for slug that has logged in as the device id, as tsnet
+// keeps it.
+func writeNodeID(t *testing.T, stateDir, slug, id string) {
+	t.Helper()
+	data, err := json.Marshal(map[string][]byte{"_profiles": []byte(`{"a1b2":{"ID":"a1b2","NodeID":"` + id + `"}}`)})
+	if err == nil {
+		err = os.MkdirAll(nodeDir(stateDir, slug), 0o700)
+	}
+	if err == nil {
+		err = os.WriteFile(filepath.Join(nodeDir(stateDir, slug), "tailscaled.state"), data, 0o600)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Another connector's node for an app of the same slug carries the same tag but isn't
+// this connector's: publish --shareable refuses while it's there, and unpublishing the
+// app here deletes only this connector's own node, known by its ID whatever name it came
+// up under, and none for an app whose node never logged in.
+func TestSameSlugOnAnotherConnector(t *testing.T) {
+	f, run, _ := setupFixture(t, "yes\n")
+	tag := policy.AppTag("notes")
+	f.Devices = append(f.Devices,
+		tsapi.Device{ID: "4", NodeID: "nNotesThere", Name: "notes.tail1.ts.net", Hostname: "notes", Tags: []string{tag}},
+		tsapi.Device{ID: "5", NodeID: "nNotesHere", Name: "notes-1.tail1.ts.net", Hostname: "notes", Tags: []string{tag}},
+		tsapi.Device{ID: "6", NodeID: "nPlantsThere", Name: "plants.tail1.ts.net", Hostname: "plants", Tags: []string{policy.AppTag("plants")}})
+	writeNodeID(t, run.stateDir, "notes", "nNotesHere")
+	if err := os.MkdirAll(nodeDir(run.stateDir, "plants"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	run.apps, run.known = []string{"notes", "plants"}, []string{"coach", "notes", "plants"}
+	if _, err := run.apply(t.Context()); err == nil || !strings.Contains(err.Error(), "notes.tail1.ts.net in your tailnet") {
+		t.Fatalf("with another connector's notes: %v", err)
+	}
+	if len(f.PolicyWrites) != 0 {
+		t.Fatal("the policy changed")
+	}
+
+	p := &paths{config: filepath.Join(t.TempDir(), "config.json"), state: run.stateDir}
+	if err := tsapi.SaveCredentials(credentialsPath(p.config), f.TokenCredentials()); err != nil {
+		t.Fatal(err)
+	}
+	for _, slug := range []string{"notes", "plants"} {
+		if msg := forgetAppNode(p, slug); !strings.Contains(msg, "deleted from your tailnet") {
+			t.Errorf("unpublishing %s: %s", slug, msg)
+		}
+	}
+	var left []string
+	for _, d := range f.Devices {
+		left = append(left, d.NodeID)
+	}
+	if !slices.Equal(left, []string{"nMBP", "nPhone", "nCoach", "nNotesThere", "nPlantsThere"}) {
+		t.Errorf("devices left: %v", left)
+	}
+
+	// With only its own node tagged, renamed notes-1, the change goes ahead.
+	writeNodeID(t, run.stateDir, "notes", "nNotesHere")
+	f.Devices = append(f.Devices[:3], tsapi.Device{ID: "5", NodeID: "nNotesHere", Name: "notes-1.tail1.ts.net", Hostname: "notes", Tags: []string{tag}})
+	run.apps, run.known = []string{"notes"}, []string{"coach", "notes"}
+	if _, err := run.apply(t.Context()); err != nil {
+		t.Errorf("with only this connector's notes: %v", err)
 	}
 }

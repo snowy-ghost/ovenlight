@@ -124,11 +124,23 @@ func clearNodeState(dir string) error {
 
 // nodeLoggedIn reports whether the app's node has logged in: its state holds a login
 // profile, which tsnet saves once the node has one, not before.
-func nodeLoggedIn(stateDir, slug string) bool {
+func nodeLoggedIn(stateDir, slug string) bool { return len(nodeIDs(stateDir, slug)) > 0 }
+
+// nodeIDs lists the stable IDs of the devices the app's node has logged in as, from the
+// login profiles in its state. They tell this computer's node from another connector's
+// node for an app of the same slug, which carries the same tag.
+func nodeIDs(stateDir, slug string) []string {
 	data, err := jsonfile.ReadFile(filepath.Join(nodeDir(stateDir, slug), "tailscaled.state"))
 	var state map[string][]byte
-	var profiles map[string]json.RawMessage
-	return err == nil && json.Unmarshal(data, &state) == nil && json.Unmarshal(state["_profiles"], &profiles) == nil && len(profiles) > 0
+	var profiles map[string]struct{ NodeID string }
+	if err != nil || json.Unmarshal(data, &state) != nil || json.Unmarshal(state["_profiles"], &profiles) != nil {
+		return nil
+	}
+	var ids []string
+	for _, p := range profiles {
+		ids = append(ids, p.NodeID)
+	}
+	return ids
 }
 
 func newAppNode(app App, stateDir string, dev devOptions, host *daemon) *appNode {
