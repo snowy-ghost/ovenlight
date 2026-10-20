@@ -173,7 +173,10 @@ object ManifestParser {
     fun links(inHTML: String, baseURL: URI): Links {
         var manifest: URI? = null
         var touchIcon: URI? = null
-        for (tag in linkTag.findAll(inHTML).map { it.value }) {
+        // One Matcher: on Android, each of findAll's matches copies the whole page again.
+        val tags = linkTag.toPattern().matcher(inHTML)
+        while (tags.find()) {
+            val tag = tags.group()
             val rel = attribute("rel", tag)?.lowercase() ?: continue
             val url = attribute("href", tag)?.let(baseURL::resolving) ?: continue
             val rels = rel.split(' ').filter { it.isNotEmpty() }
