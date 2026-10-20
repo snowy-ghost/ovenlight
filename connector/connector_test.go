@@ -29,6 +29,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/snowy-ghost/ovenlight/connector/internal/jsonfile"
+	"github.com/snowy-ghost/ovenlight/connector/internal/tsapi"
+	"github.com/snowy-ghost/ovenlight/connector/internal/tsapi/tsapitest"
 	"tailscale.com/health"
 	"tailscale.com/ipn/ipnstate"
 )
@@ -711,7 +713,7 @@ func TestShareableNodeLoginIsRepublish(t *testing.T) {
 // device" and "another guest" say why a claim failed, "owner only" that the connector is
 // someone else's. Builds after 2 read the codes instead. Change neither without the app.
 func TestPhoneMatchesErrorText(t *testing.T) {
-	d, _ := testDaemon(t)
+	d, f := testDaemon(t)
 	n := d.nodes["coach"]
 	n.setOwner(d.cfg.Owner)
 	refused := func(who Identity, path, words, code string) {
@@ -741,6 +743,7 @@ func TestPhoneMatchesErrorText(t *testing.T) {
 	for i := range d.sh.st.Invites {
 		d.sh.st.Invites[i].Expires = time.Now().Add(time.Hour)
 	}
+	f.Keys = []tsapitest.FakeKey{{Key: tsapi.Key{ID: "ki1"}}} // Sam's key, which the claim deletes
 	claimRefused := func(who Identity, key, words, code string) {
 		t.Helper()
 		if status, out := claim(t, d, who, key); status != http.StatusForbidden || !strings.Contains(out["error"], words) || out["code"] != code {

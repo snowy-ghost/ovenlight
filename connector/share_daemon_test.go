@@ -555,6 +555,79 @@ func TestSyncKeepsGuestsOfAppsMissingFromTheList(t *testing.T) {
 	}
 }
 
+// Only a shareable app's node, tagged, vouches for a tailnet, not notes, unshared, signed
+// in to the owner's other tailnet through the browser. That tailnet's credential is
+// refused, and stored anyway (as with the connector down), its 404s count no invite key
+// deleted. With no app shareable any more, an unshared node vouches, so the sync still
+// deletes the device of a guest whose app was unpublished.
+func TestOnlyShareableAppsVouchForATailnet(t *testing.T) {
+	d, f := testDaemon(t)
+	for i, slug := range []string{"notes", "plants"} {
+		app := App{Name: slug, Slug: slug, Port: 4318 + i}
+		n := newAppNode(app, d.stateDir, devOptions{}, d)
+		n.backend, n.selfID = "Running", "n"+slug
+		d.cfg.Apps, d.nodes[slug] = append(d.cfg.Apps, app), n
+	}
+	d.loaded = true
+	sam, _ := d.createInvite(guestRef{To: "Sam"}, "coach", "terminal", false)
+	link, _ := parseInviteLink(sam.Link)
+	claim(t, d, samDev, link.Key)
+	waitFor(t, func() bool { return keyDeleted(d, sam.Invite.ID) }, "Sam's spent key to be deleted")
+	kim, _ := d.createInvite(guestRef{To: "Kim"}, "coach", "terminal", false)
+	other := tsapitest.New()
+	t.Cleanup(other.Close)
+	other.Devices = []tsapi.Device{{ID: "1", NodeID: "nWork", User: "alex@example.com", Authorized: true}, {ID: "2", NodeID: "nnotes", User: "alex@example.com"}}
+
+	state, err := os.MkdirTemp("", "ol") // a socket path has to be short
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(state) })
+	ln, err := listenControl(socketPath(state))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	go d.serveControl(ln)
+	if err := verifyCredentials(other.TokenCredentials(), state); err == nil || !strings.Contains(err.Error(), "another tailnet") {
+		t.Errorf("auth set: %v", err)
+	}
+	if err := tsapi.SaveCredentials(credentialsPath(d.configPath), other.TokenCredentials()); err != nil {
+		t.Fatal(err)
+	}
+	if inv, err := d.cancelInvite(kim.Invite.ID); err != nil || inv.KeyID == "" || !strings.Contains(keyFate(inv), "stays usable") {
+		t.Errorf("cancel: %+v %v says %q", inv, err, keyFate(inv))
+	}
+	if msg := d.syncOnce(); !strings.Contains(msg, "another tailnet") || keyDeleted(d, kim.Invite.ID) {
+		t.Errorf("sync: %s, Kim's key recorded deleted %v", msg, keyDeleted(d, kim.Invite.ID))
+	}
+
+	if err := tsapi.SaveCredentials(credentialsPath(d.configPath), f.TokenCredentials()); err != nil {
+		t.Fatal(err)
+	}
+	f.Mu.Lock()
+	f.Devices = []tsapi.Device{{ID: "c", NodeID: "ncoach", Tags: []string{policy.AppTag("coach")}}, {ID: "p", NodeID: "nplants"},
+		{ID: "9", NodeID: "nSam", Tags: []string{guestTag}, Authorized: true}}
+	f.Mu.Unlock()
+	d.syncOnce()
+	f.Mu.Lock()
+	if !f.Keys[1].Deleted || !keyDeleted(d, kim.Invite.ID) {
+		t.Errorf("Kim's key deleted %v, recorded %v", f.Keys[1].Deleted, keyDeleted(d, kim.Invite.ID))
+	}
+	f.Devices = f.Devices[1:]
+	f.Mu.Unlock()
+	d.mu.Lock()
+	d.cfg.Apps = d.cfg.Apps[1:]
+	delete(d.nodes, "coach")
+	d.mu.Unlock()
+	d.syncOnce()
+	f.Mu.Lock()
+	defer f.Mu.Unlock()
+	if len(f.Devices) != 1 || d.sh.guestFor("nSam", "coach") != nil {
+		t.Errorf("after coach was unpublished: %+v", f.Devices)
+	}
+}
+
 // whoIsAs makes the node's WhoIs report who for every caller.
 func whoIsAs(n *appNode, who Identity) {
 	n.whoIs = func(context.Context, string) (*apitype.WhoIsResponse, error) {

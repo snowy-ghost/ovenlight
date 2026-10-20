@@ -177,7 +177,8 @@ same. An OAuth client can only apply the tags it was given, and every shareable 
 two, so a token is simpler.
 
 The credential is checked against the API, and refused if its tailnet has none of the
-running connector's apps, then stored in `credentials.json` beside the app list,
+running connector's shareable apps (with none shareable, none of its apps), then stored
+in `credentials.json` beside the app list,
 readable only by you ([On the computer](#on-the-computer)); the connector
 refuses to use one anyone else can read. `auth status` shows its type (with the
 client ID for an OAuth client), a fingerprint, the tailnet and the API URL, never the
