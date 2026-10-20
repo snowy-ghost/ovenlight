@@ -63,6 +63,9 @@ object WebViewSetup {
     val state: StateFlow<State> = mutableState
 
     fun start(context: Context) {
+        // No WebView at all (disabled, or none installed): starting one throws on the start-up
+        // thread, past onError, so go straight to asking for it.
+        if (WebViewCompat.getCurrentWebViewPackage(context) == null) return afterStartUp(context)
         val main = ContextCompat.getMainExecutor(context)
         val config = WebViewStartUpConfig.Builder(Executors.newSingleThreadExecutor()).build()
         WebViewCompat.startUpWebView(context, config, object : WebViewOutcomeReceiver<WebViewStartUpResult, WebViewStartupException> {
