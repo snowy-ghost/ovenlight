@@ -37,7 +37,7 @@
   :root {
     color-scheme: light dark;
     --bg: #faf5ee; --paper: #fffcf7; --ink: #231711; --ink-body: #3b2c23; --ink-soft: #6b5a4e;
-    --line: #e7dacb; --ember: #a8400c; --link: #a8400c; --on-ember: #fff;
+    --line: #e7dacb; --ember: #a8400c; --link: #a8400c;
     --light-core: 255, 187, 119; --glow: 246, 150, 70; --glow-strength: 0.7;
     --shadow: 74, 34, 10;
     --serif: ui-serif, "New York", "Iowan Old Style", Georgia, serif;
@@ -46,7 +46,7 @@
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #19110d; --paper: #241913; --ink: #f8eee4; --ink-body: #e8dbcf; --ink-soft: #b9a596;
-      --line: #3b2b21; --ember: #dc6c28; --link: #ec9256; --on-ember: #1a0c04;
+      --line: #3b2b21; --ember: #dc6c28; --link: #ec9256;
       --light-core: 255, 227, 181; --glow: 232, 120, 44; --glow-strength: 0.8;
       --shadow: 0, 0, 0;
     }
@@ -115,11 +115,7 @@
     display: block; width: 100%; margin: 1.75rem 0 0; padding: 0.95rem 1.25rem; border-radius: 999px;
     font-weight: 600; font-size: 1.0625rem; text-decoration: none; text-align: center;
   }
-  .primary {
-    background: var(--ember); color: var(--on-ember);
-    box-shadow: 0 0.75rem 1.5rem -0.75rem rgba(var(--glow), 0.9);
-  }
-  .primary:active, .store:active { transform: translateY(1px); }
+  .store:active { transform: translateY(1px); }
   .secondary { background: var(--bg); color: var(--ink); border: 1px solid var(--line); margin-top: 0.6rem; }
   /* Apple's and Google's official badges, unmodified. Google's image carries its clear
      space, a quarter of the badge's height on each side, and is sized so the badge stands

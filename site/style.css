@@ -14,7 +14,6 @@
   --line: #e7dacb;
   --ember: #a8400c;
   --link: #a8400c;
-  --on-ember: #fff;
   --light-core: 255, 187, 119;
   --glow: 246, 150, 70;
   --glow-strength: 0.7;
@@ -49,7 +48,6 @@
     --line: #3b2b21;
     --ember: #dc6c28;
     --link: #ec9256;
-    --on-ember: #1a0c04;
     --light-core: 255, 227, 181;
     --glow: 232, 120, 44;
     --glow-strength: 0.8;
@@ -280,7 +278,7 @@ a:hover { text-decoration-thickness: 2px; }
   font-weight: 600;
   line-height: 1.35;
 }
-.lead-more { max-width: 40ch; margin: 1rem auto 0; text-wrap: balance; color: var(--ink-body); }
+.lead-more { max-width: 40ch; margin: 1rem auto 0; text-wrap: balance; }
 
 /* Apple's and Google's official badges, unmodified. Apple asks for its black badge wherever
    another store's badge appears. Google's image carries its clear space, a quarter of the
