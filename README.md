@@ -12,7 +12,7 @@
 <p align="center">
   <a href="https://apps.apple.com/app/id6817561066"><img align="absmiddle" src="site/images/app-store-badge-black.svg" width="150" height="50" alt="Download on the App Store"></a>
   <a href="https://play.google.com/store/apps/details?id=com.snowyghost.ovenlight"><img align="absmiddle" src="site/images/google-play-badge.png" width="194" height="75" alt="Get it on Google Play"></a><br>
-  <sub>Got an invite? Once Ovenlight is on your phone, open your invite link again. Here's
+  <sub>Got an invite? Install Ovenlight, then open your invite link again. Here's
   <a href="https://ovenlight.app/privacy#inviter">what the person who invited you sees</a>.</sub>
 </p>
 
