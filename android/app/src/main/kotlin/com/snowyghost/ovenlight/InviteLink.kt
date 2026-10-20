@@ -207,15 +207,21 @@ data class InviteLink(
             else -> Character.getType(codePoint).let { it == Character.CONTROL.toInt() || it == Character.FORMAT.toInt() }
         }
 
-        /** A multi-label DNS name: letters, digits and hyphens, no IP address, no port. */
+        /**
+         * A multi-label DNS name: letters, digits and hyphens, no port, and no IP address however
+         * it's written. A host whose last label is a number, decimal or hex, is an IPv4 address to
+         * URL parsers (0x7f.0.0.1, 127.1 and 0177.0.0.1 are all 127.0.0.1 in Chromium).
+         */
         fun isDNSName(host: String): Boolean {
             val labels = host.split('.')
-            if (labels.size < 2 || host.length > 253 || host.all { it.isAsciiDigit() || it == '.' }) return false
+            if (labels.size < 2 || host.length > 253 || numberLabel.matches(labels.last())) return false
             return labels.all { label ->
                 label.isNotEmpty() && label.length <= 63 && !label.startsWith("-") && !label.endsWith("-") &&
                     label.all { it.isAsciiLetterOrDigit() || it == '-' }
             }
         }
+
+        private val numberLabel = Regex("[0-9]*|0[xX][0-9a-fA-F]*")
     }
 }
 

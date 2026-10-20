@@ -120,9 +120,14 @@ class InviteLinkTests {
 
     @Test
     fun testRefusesHostsThatArentNames() {
-        for (host in listOf("10.0.0.1", "echo", "echo.ts.net%2Fpath", "echo.ts.net%3A8443", "-echo.ts.net", "ec%20ho.ts.net")) {
+        // An IPv4 address however it's written: hex, octal, short and mixed forms are all one to Chromium.
+        val addresses = listOf("10.0.0.1", "127.1", "0177.0.0.1", "0x7f.0.0.1", "0X7F.0.0.1", "0xa9.0xfe.0.1", "0x7f000001", "2130706433", "127.0.0.0x1", "127.0.0.1.")
+        for (host in addresses + listOf("echo", "echo.ts.net%2Fpath", "echo.ts.net%3A8443", "-echo.ts.net", "ec%20ho.ts.net")) {
             assertEquals(host, InviteLink.ParseError.InvalidField("host"), error(connectorLink.replace("echo-board.taildef456.ts.net", host)))
         }
+        // Numbers elsewhere in a name are fine.
+        assertTrue(InviteLink.isDNSName("0x7f.e2e.ts.net"))
+        assertTrue(InviteLink.isDNSName("app-1.tail0123.ts.net"))
         assertEquals(InviteLink.ParseError.InvalidField("app"), error(connectorLink.replace("app=echo-board", "app=..%2Fetc")))
     }
 
