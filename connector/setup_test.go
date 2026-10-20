@@ -592,7 +592,7 @@ func TestOwnerNeedsADevice(t *testing.T) {
 	run.owner = ""
 	p := &paths{config: filepath.Join(t.TempDir(), "config.json"), state: run.stateDir}
 	err := run.applyRecordingOwner(t.Context(), p, &Config{}, "alx@example.com", "", nil, false)
-	if err == nil || !strings.Contains(err.Error(), "no device in this tailnet belongs to alx@example.com") || !strings.Contains(err.Error(), "Use My Own Computers") {
+	if err == nil || !strings.Contains(err.Error(), "no device in this tailnet belongs to alx@example.com") || !strings.Contains(err.Error(), "choose to use your own computers") {
 		t.Fatalf("mistyped owner: err = %v", err)
 	}
 	if cfg, _ := LoadConfig(p.config); len(f.PolicyWrites) != 0 || cfg.Owner != "" {
