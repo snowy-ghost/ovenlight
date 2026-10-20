@@ -846,28 +846,27 @@ func (d *daemon) syncOnce() string {
 	d.mu.Lock()
 	cfg, loaded := d.cfg, d.loaded
 	d.mu.Unlock()
-	var apps []string
-	for _, app := range cfg.Apps {
-		apps = append(apps, app.Slug)
-	}
-	// A credential for another tailnet lists none of this computer's app nodes, and trusting
-	// its list would remove every guest. Until a node knows its ID the list can't be checked,
-	// so it's trusted only when a loaded config lists no apps, leaving no guest to remove.
-	known, listed := false, false
+	// The list speaks only for the apps whose node it holds (see reconcile). If it holds
+	// none, the credential may be another tailnet's, whose 404s would count spent invite
+	// keys as deleted, so the sync stops, unless a loaded config lists no apps to check.
+	known := false
+	var checked []string
 	for _, n := range d.snapshot() {
 		if id := n.deviceID(); id != "" {
 			known = true
-			listed = listed || slices.ContainsFunc(devices, func(dev tsapi.Device) bool { return dev.NodeID == id })
+			if slices.ContainsFunc(devices, func(dev tsapi.Device) bool { return dev.NodeID == id }) {
+				checked = append(checked, n.App().Slug)
+			}
 		}
 	}
-	if known && !listed {
+	if known && len(checked) == 0 {
 		return setErr(errors.New("the tailnet's device list has none of this computer's apps; is the Tailscale API credential for another tailnet?"))
 	}
-	if !known && (len(apps) > 0 || !loaded) {
+	if !known && (len(cfg.Apps) > 0 || !loaded) {
 		return setErr(errors.New("this computer's apps aren't connected yet; the guest sync waits for them"))
 	}
 	d.sh.mu.Lock()
-	res := d.sh.st.reconcile(devices, apps, fetched)
+	res := d.sh.st.reconcile(devices, checked, fetched)
 	d.sh.unclaimed, d.sh.tagged, d.sh.lastSync, d.sh.syncErr = res.Unclaimed, &res.Tagged, time.Now(), ""
 	var saveErr error
 	if res.changed() {

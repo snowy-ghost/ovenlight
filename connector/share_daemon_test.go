@@ -533,6 +533,28 @@ func TestSyncDistrustsAnotherTailnet(t *testing.T) {
 	}
 }
 
+// A list speaks only for the apps whose node it holds: one with notes's node, from another
+// tailnet, keeps coach's guests, whether or not coach's node knows its ID yet.
+func TestSyncKeepsGuestsOfAppsMissingFromTheList(t *testing.T) {
+	d, f := testDaemon(t)
+	addApp(d, App{Name: "Notes", Slug: "notes", Port: 4318, Shareable: true})
+	res, _ := d.createInvite(guestRef{To: "Sam"}, "coach", "terminal", false)
+	link, _ := parseInviteLink(res.Link)
+	claim(t, d, samDev, link.Key)
+	f.Mu.Lock()
+	f.Devices = []tsapi.Device{{ID: "1", NodeID: "nMBP", User: "alex@example.com", Authorized: true}, {ID: "n", NodeID: "nnotes"}}
+	f.Mu.Unlock()
+	n := d.node("coach")
+	for _, id := range []string{"ncoach", ""} {
+		n.mu.Lock()
+		n.selfID = id
+		n.mu.Unlock()
+		if msg := d.syncOnce(); !strings.Contains(msg, "0 guests removed") || d.sh.guestFor("nSam", "coach") == nil {
+			t.Errorf("coach's node ID %q: %s", id, msg)
+		}
+	}
+}
+
 // whoIsAs makes the node's WhoIs report who for every caller.
 func whoIsAs(n *appNode, who Identity) {
 	n.whoIs = func(context.Context, string) (*apitype.WhoIsResponse, error) {
