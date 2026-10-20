@@ -283,7 +283,7 @@ struct SharingAppView: View {
                             ForEach(invites) { invite in
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text("For \(invite.to)")
-                                    Text("\(invite.review == true ? "Review invite, unused" : "Unused"), expires \(invite.expiresIn)")
+                                    Text("\(invite.review == true ? "Review invite" : "Unused"), expires \(invite.expiresIn)")
                                         .font(.caption).foregroundStyle(Color.secondaryText)
                                 }
                                 .accessibilityElement(children: .combine)
@@ -335,7 +335,11 @@ struct SharingAppView: View {
     }
 
     private func remove(_ person: GuestPerson) async {
-        guard let machine, await OwnerAuth.confirm("Remove \(person.name)"), let client = sharing.client(for: machine) else { return }
+        guard let machine, await OwnerAuth.confirm("Remove \(person.name)") else { return }
+        guard let client = sharing.client(for: machine) else {
+            error = AdminError.unreachable.message
+            return
+        }
         defer { client.session.finishTasksAndInvalidate() }
         do {
             let result = try await client.removeGuest(person, app: slug)
@@ -347,7 +351,11 @@ struct SharingAppView: View {
     }
 
     private func cancel(_ invite: AdminInvite) async {
-        guard let machine, let client = sharing.client(for: machine) else { return }
+        guard let machine else { return }
+        guard let client = sharing.client(for: machine) else {
+            error = AdminError.unreachable.message
+            return
+        }
         defer { client.session.finishTasksAndInvalidate() }
         do {
             _ = try await client.cancelInvite(invite.id)
@@ -652,10 +660,11 @@ struct FeedbackInbox: View {
     }
 
     /// The mark once an inbox has shown `shown`: its newest item, unless feedback it leaves
-    /// out (other apps', in one app's inbox) came after the mark, which no one has seen yet.
+    /// out (other apps', in one app's inbox) from before that newest came after the mark,
+    /// which no one has seen yet. Newer feedback stays counted either way.
     nonisolated static func seenUntil(_ seenUntil: Double, showing shown: [AdminFeedback], leavingOut others: [AdminFeedback]) -> Double {
         guard let newest = shown.map(\.at.timeIntervalSince1970).max(), newest > seenUntil,
-              unseen(others, seenUntil: seenUntil) == 0 else { return seenUntil }
+              unseen(others.filter { $0.at.timeIntervalSince1970 <= newest }, seenUntil: seenUntil) == 0 else { return seenUntil }
         return newest
     }
 

@@ -315,7 +315,11 @@ struct SharingPersonView: View {
         case .device: "Remove \(person.name)’s device"
         case .everything: "Remove \(person.name)"
         }
-        guard await OwnerAuth.confirm(reason), let client = sharing.client(for: machine) else { return }
+        guard await OwnerAuth.confirm(reason) else { return }
+        guard let client = sharing.client(for: machine) else {
+            error = AdminError.unreachable.message
+            return
+        }
         defer { client.session.finishTasksAndInvalidate() }
         working = true
         do {

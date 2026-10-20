@@ -132,9 +132,8 @@ struct GuestPerson: Identifiable, Equatable {
         return out
     }
 
-    /// Those to offer for another invite: everyone but App Review while its review invite
-    /// (made in the terminal) is unused. Once used, App Review is a guest like any other,
-    /// until the review is over and it's revoked.
+    /// Those to offer for another invite: everyone but App Review while a review invite (made
+    /// in the terminal) is open.
     static func invitable(in list: AdminGuestList) -> [GuestPerson] {
         let review = Set(list.invites.filter { $0.review == true }.map(\.person))
         return everyone(in: list).filter { !review.contains($0.id) }
@@ -339,12 +338,15 @@ enum AdminAPI {
         return try? Date.ISO8601FormatStyle(includingFractionalSeconds: true).parse(trimmed)
     }
 
-    /// A day the connector names as 2026-10-13: its start on this iPhone's calendar, so it
-    /// reads as the same day whatever the time zones.
+    /// A day the connector names as 2026-10-13: its start in this iPhone's time zone, so it
+    /// reads as the same day whatever the time zones. The day is Gregorian, whatever calendar
+    /// the iPhone uses.
     static func parseDay(_ text: String, calendar: Calendar = .current) -> Date? {
         let parts = text.split(separator: "-").compactMap { Int($0) }
         guard parts.count == 3 else { return nil }
-        return calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2]))
+        var gregorian = Calendar(identifier: .gregorian)
+        gregorian.timeZone = calendar.timeZone
+        return gregorian.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2]))
     }
 
     static var decoder: JSONDecoder {

@@ -402,6 +402,26 @@ final class GuestCleanupTests: XCTestCase {
         XCTAssertNil(guests.membershipID(for: waiting.invite))
     }
 
+    /// A lost login drops the invites still waiting, as Leave does: opened again, each asks to
+    /// join, rather than offering a Try Again with no invite left to try.
+    @MainActor
+    func testALostLoginClearsItsJoinPhases() async throws {
+        let invite = InviteLink(control: URL(string: "http://127.0.0.1:9")!, key: "tskey-1", owner: "Riley", app: "notes",
+                                invite: UUID().uuidString, host: notes, name: "Notes", to: "Sam")
+        let guests = GuestManager.shared
+        NetworkPath.shared.pretend(satisfied: false)
+        defer { NetworkPath.shared.pretend(satisfied: true) }
+        await guests.accept(invite)
+        XCTAssertEqual(guests.phases[invite.invite], .failed(.network))
+        let membershipID = try XCTUnwrap(guests.membershipID(for: invite.invite))
+        // Joined before, with this invite failed for the network: then the owner removed the device.
+        NodeManager.shared.memberships.update(membershipID) { $0.joined = true }
+        try XCTUnwrap(NodeManager.shared.guestNode(membershipID)).onLoginLost()
+        XCTAssertNil(guests.phases[invite.invite])
+        XCTAssertNil(guests.membershipID(for: invite.invite))
+        await NodeManager.shared.removeGuest(membershipID)
+    }
+
     func testJoinErrorsFromTheControlServer() {
         XCTAssertEqual(JoinError(upMessage: "tsnet.Up: backend: authkey already used"), .keyUsed)
         XCTAssertEqual(JoinError(upMessage: "tsnet.Up: backend: authkey expired"), .expired)
@@ -597,12 +617,14 @@ final class FeedbackTests: XCTestCase {
         XCTAssertEqual(FeedbackInbox.unseen(items, seenUntil: t0.addingTimeInterval(120).timeIntervalSince1970), 0, "no number")
 
         // An inbox moves the mark to its newest item; one app's inbox only while no other
-        // app has feedback no one has seen.
+        // app has feedback from before that newest no one has seen.
         let newest = t0.addingTimeInterval(120).timeIntervalSince1970
         let notes = AdminFeedback(id: "n", at: t0.addingTimeInterval(30), app: "notes", from: "Kim", role: "guest", note: "hey")
         XCTAssertEqual(FeedbackInbox.seenUntil(0, showing: items + [notes], leavingOut: []), newest, "the full inbox")
         XCTAssertEqual(FeedbackInbox.seenUntil(0, showing: items, leavingOut: [notes]), 0, "Notes' is still new")
         XCTAssertEqual(FeedbackInbox.seenUntil(notes.at.timeIntervalSince1970, showing: items, leavingOut: [notes]), newest)
+        let later = AdminFeedback(id: "l", at: t0.addingTimeInterval(180), app: "notes", from: "Kim", role: "guest", note: "again")
+        XCTAssertEqual(FeedbackInbox.seenUntil(0, showing: items, leavingOut: [later]), newest, "Notes' newer one stays counted")
         XCTAssertEqual(FeedbackInbox.seenUntil(newest, showing: items, leavingOut: []), newest, "never back")
     }
 
@@ -1138,6 +1160,19 @@ final class GuestActivityTests: XCTestCase {
         XCTAssertEqual(day, calendar.date(from: DateComponents(year: 2026, month: 9, day: 29)))
         XCTAssertEqual(day.map { GuestActivity.day($0, now: now, calendar: calendar) }, "2 weeks ago")
         XCTAssertNil(AdminAPI.parseDay("yesterday"))
+    }
+
+    /// The connector's days are Gregorian, on an iPhone set to the Buddhist or Japanese
+    /// calendar too.
+    func testLastOpenedReadsOnAnyCalendar() {
+        for identifier in [Calendar.Identifier.buddhist, .japanese] {
+            var other = Calendar(identifier: identifier)
+            other.timeZone = calendar.timeZone
+            other.locale = calendar.locale
+            let day = AdminAPI.parseDay("2026-09-29", calendar: other)
+            XCTAssertEqual(day, calendar.date(from: DateComponents(year: 2026, month: 9, day: 29)), "\(identifier)")
+            XCTAssertEqual(day.map { GuestActivity.day($0, now: now, calendar: other) }, "2 weeks ago", "\(identifier)")
+        }
     }
 
     func testActivityFromTheRecords() {

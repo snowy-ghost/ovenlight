@@ -241,6 +241,8 @@ final class GuestManager: ObservableObject {
             // passes through NeedsLogin briefly. The node asks only after it held a moment.
             guard let self, let membership = store[id], membership.joined else { return }
             log.notice("\(id, privacy: .public): the owner removed this device")
+            // As Leave withdraws them: opened again, each asks to join, not to Try Again.
+            for claim in membership.pendingClaims { phases[claim.invite.invite] = nil }
             store.update(id) { $0.pendingClaims = [] }
             let apps = (registry?.apps ?? []).filter { $0.membershipID == id }
             Task {
