@@ -714,7 +714,8 @@ func (n *appNode) status() NodeStatus {
 	s := NodeStatus{appInfo: n.app.view(), Backend: n.backend, DNSName: n.dnsName, Owner: owner, NodeUser: n.owner, OwnerName: n.ownerName,
 		Tags: slices.Clone(n.tags), DeviceID: n.selfID, KeyExpiry: n.keyExpiry, Error: n.lastErr, Cert: n.cert, CertErr: n.certErr}
 	switch {
-	case n.serving:
+	// tsnet keeps serving when the node loses its login, though nobody can reach it then.
+	case n.serving && n.backend != "NeedsLogin" && n.backend != "NeedsMachineAuth":
 		s.State = "serving"
 	case n.backend == "NeedsLogin":
 		s.State = "needs-login"
@@ -731,7 +732,7 @@ func (n *appNode) status() NodeStatus {
 	default:
 		s.State = "starting"
 	}
-	if n.dnsName != "" && (n.serving || n.backend == "Running") {
+	if n.dnsName != "" && (s.State == "serving" || n.backend == "Running") {
 		s.URL = "https://" + n.dnsName + "/"
 	}
 	if n.dnsName != "" && n.adminUp {
