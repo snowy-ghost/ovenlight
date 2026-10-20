@@ -1460,6 +1460,20 @@ final class AppLoadGateTests: XCTestCase {
         XCTAssertEqual(run([.woke]), .waiting, "only after giving up")
         XCTAssertEqual(run([.nodeReady, .woke]), .probing)
     }
+
+    /// A node coming up changes twice in one turn, its status and then its state, while an
+    /// app opening waits on it: the wait ends at the first.
+    @MainActor
+    func testAWaitOnANodeEndsAtTheFirstOfTwoChanges() async throws {
+        let node = MembershipNode(id: "m1") { nil }
+        let wait = Task { await WebCoordinator.change(of: node, before: nil) }
+        try await Task.sleep(for: .milliseconds(100))
+        let start = ContinuousClock.now
+        node.objectWillChange.send()
+        node.objectWillChange.send()
+        await wait.value
+        XCTAssertLessThan(ContinuousClock.now - start, .milliseconds(500), "the change ended it, not the one-second cap")
+    }
 }
 
 final class ConnectionStateTests: XCTestCase {

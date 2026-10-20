@@ -383,11 +383,13 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
     /// Waits for the node to change (its state, or its status, which says what the owner's
     /// node carries), or the phone's network to drop, for a second at most, and never past
     /// `deadline`. The second catches a change made before the waits listened.
-    private static func change(of node: MembershipNode, before deadline: Date?) async {
+    static func change(of node: MembershipNode, before deadline: Date?) async {
         let wait = min(deadline.map { max($0.timeIntervalSinceNow, 0) } ?? 1, 1)
         await withTaskGroup(of: Void.self) { group in
             group.addTask { @MainActor in
-                for await _ in node.objectWillChange.values { return }
+                // Only the first: objectWillChange sends unasked, and a second change before this
+                // task runs again (a node coming up sets its status, then its state) would trap.
+                for await _ in node.objectWillChange.first().values { return }
             }
             group.addTask { @MainActor in
                 // Only a drop: the publisher starts with the path as it is now.
