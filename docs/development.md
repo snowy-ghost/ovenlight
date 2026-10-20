@@ -8,7 +8,7 @@
 - `project.yml`, `Ovenlight/`, `OvenlightTests/`: the iPhone app.
 - `android/`: the Android app. `scripts/build-android-core.sh` builds its Go core,
   `android/core/`, into the library the app links.
-- `scripts/build-tailscalekit.sh`: builds the embedded Tailscale library.
+- `scripts/build-tailscalekit.sh`: builds the iPhone app's embedded Tailscale library.
 - `scripts/release-connector.sh`: builds a connector release, and
   `scripts/publish-connector.sh` publishes it.
 - `design/icon/generate.py`: writes the iPhone and Android app icons, the Google Play
@@ -457,8 +457,9 @@ the licenses of what it links beside it for Acknowledgements. Gradle runs the sc
 before every build: for arm64-v8a only in a debug build, and for arm64-v8a, armeabi-v7a
 and x86_64 when a release or bundle task is asked for, so a debug build runs only on an
 arm64 phone or emulator (such as one on an Apple silicon computer). It builds with the
-`ts_omit_debug` and `ts_omit_cachenetmap` tags, links for 16 KB pages, and turns off log
-upload, and the log files tsnet would keep for it, for every node.
+`ts_omit_debug`, `ts_omit_peerapiserver` and `ts_omit_cachenetmap` tags, links for 16 KB
+pages, and turns off log upload, and the log files tsnet would keep for it, for every
+node.
 
 ### Android tests
 
