@@ -693,7 +693,25 @@ final class MembershipNode: ObservableObject {
         config.timeoutIntervalForRequest = timeout
         config.timeoutIntervalForResource = resource ?? timeout * 2
         config.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
-        return URLSession(configuration: config)
+        return URLSession(configuration: config, delegate: RedirectPolicy.shared, delegateQueue: nil)
+    }
+}
+
+/// iOS dials loopback, link-local and the phone's own addresses itself, past the node's proxy, so
+/// a node session follows no redirect to an IP literal, which no app host is: the 3xx is the answer.
+final class RedirectPolicy: NSObject, URLSessionTaskDelegate, Sendable {
+    static let shared = RedirectPolicy()
+
+    /// A name goes to the proxy. An address is refused however it's written: `127.1`,
+    /// `0x7f000001` and `::ffff:127.0.0.1` are loopback too.
+    static func follows(_ url: URL?) -> Bool {
+        let host = url?.host ?? ""
+        return IPv4Address(host) == nil && IPv6Address(host) == nil
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
+                    newRequest request: URLRequest, completionHandler: @escaping @Sendable (URLRequest?) -> Void) {
+        completionHandler(Self.follows(request.url) ? request : nil)
     }
 }
 

@@ -35,6 +35,31 @@ final class ManifestParserTests: XCTestCase {
         XCTAssertEqual(ManifestParser.title(inHTML: "<title>\n Coach </title>"), "Coach")
         XCTAssertNil(ManifestParser.title(inHTML: "<p>none</p>"))
     }
+
+    /// Without an ovenlight.json, Ovenlight fetches only what the app's own host serves: a
+    /// link or icon anywhere else, an IP address among them, counts as none.
+    func testSkipsLinksAndIconsOnOtherHosts() {
+        let html = """
+        <link rel="manifest" href="http://127.0.0.1:8080/m.json"><link rel="manifest" href="/app.webmanifest">
+        <link rel="apple-touch-icon" href="https://cdn.example.com/t.png"><link rel="apple-touch-icon" href="//[fe80::1]/t.png">
+        <link rel="apple-touch-icon" href="https://Alex-Mac.example.ts.net.:8443/touch.png">
+        """
+        let links = ManifestParser.links(inHTML: html, baseURL: base)
+        XCTAssertEqual(links.manifest?.absoluteString, "https://alex-mac.example.ts.net:8443/app.webmanifest")
+        XCTAssertEqual(links.touchIcon?.lastPathComponent, "touch.png")
+        let offHost = ManifestParser.links(inHTML: #"<link rel="manifest apple-touch-icon" href="http://169.254.1.1/x">"#, baseURL: base)
+        XCTAssertNil(offHost.manifest)
+        XCTAssertNil(offHost.touchIcon)
+
+        let manifest = """
+        {"icons":[{"src":"http://192.168.1.20/1024.png","sizes":"1024x1024"},{"src":"https://[::1]/512.png","sizes":"512x512"},
+          {"src":"icon-192.png","sizes":"192x192"}]}
+        """
+        let meta = ManifestParser.metadata(fromManifest: Data(manifest.utf8), manifestURL: base.appendingPathComponent("app.webmanifest"))
+        XCTAssertEqual(meta.iconURL?.absoluteString, "https://alex-mac.example.ts.net:8443/icon-192.png", "the best on the app's own host")
+        let elsewhere = #"{"icons":[{"src":"https://cdn.example.com/512.png","sizes":"512x512"}]}"#
+        XCTAssertNil(ManifestParser.metadata(fromManifest: Data(elsewhere.utf8), manifestURL: base).iconURL)
+    }
 }
 
 final class NavigationPolicyTests: XCTestCase {
@@ -1402,6 +1427,60 @@ final class NodeManagerTests: XCTestCase {
         XCTAssertNil(nodes.memberships[membership.id])
         XCTAssertFalse(FileManager.default.fileExists(atPath: directory.path))
     }
+}
+
+/// iOS dials loopback, link-local and the phone's own addresses past the node's proxy, so a node
+/// session's redirect to any IP address comes back as the 3xx and is never asked for; a name is followed.
+final class RedirectPolicyTests: XCTestCase {
+    func testRedirectsToAddressesComeBackAndNamesFollow() async throws {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [RedirectingProtocol.self]
+        let session = URLSession(configuration: config, delegate: RedirectPolicy.shared, delegateQueue: nil)
+        defer { session.invalidateAndCancel() }
+        RedirectingProtocol.hosts = []
+        for target in ["http://127.0.0.1:8080/", "http://169.254.1.1/", "http://[fe80::1]:8080/", "https://[::1]/",
+                       "http://192.168.1.20:3000/", "http://127.1/", "http://0x7f000001/", "http://[::ffff:127.0.0.1]/"] {
+            let (data, response) = try await session.data(from: RedirectingProtocol.url(to: target))
+            XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 302, target)
+            XCTAssertEqual(response.url?.host, RedirectingProtocol.host, target)
+            XCTAssertEqual(String(decoding: data, as: UTF8.self), "moved", target)
+        }
+        let (_, response) = try await session.data(from: RedirectingProtocol.url(to: "https://login.tailabc123.ts.net/"))
+        XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
+        XCTAssertEqual(RedirectingProtocol.hosts, Array(repeating: RedirectingProtocol.host, count: 9) + ["login.tailabc123.ts.net"])
+    }
+}
+
+/// `host` answers `/?to=<url>` with a 302 there; any other request gets a 200.
+private final class RedirectingProtocol: URLProtocol {
+    static let host = "app.tailabc123.ts.net"
+    /// The hosts asked for, in order: set from the loading thread, read once the fetches end.
+    static var hosts: [String] = []
+
+    static func url(to target: String) -> URL {
+        var parts = URLComponents(string: "https://\(host)/")!
+        parts.queryItems = [URLQueryItem(name: "to", value: target)]
+        return parts.url!
+    }
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        guard let url = request.url else { return }
+        Self.hosts.append(url.host ?? "")
+        let target = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "to" }?.value
+        let response = HTTPURLResponse(url: url, statusCode: target == nil ? 200 : 302, httpVersion: nil,
+                                       headerFields: target.map { ["Location": $0] })!
+        if let target, let next = URL(string: target) {
+            client?.urlProtocol(self, wasRedirectedTo: URLRequest(url: next), redirectResponse: response)
+        }
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data((target == nil ? "ok" : "moved").utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
 }
 
 @MainActor

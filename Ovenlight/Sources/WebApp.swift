@@ -108,14 +108,15 @@ enum ManifestParser {
         var iconURL: URL?
     }
 
-    /// Finds `<link rel="manifest">` and `<link rel="apple-touch-icon">` in an HTML page.
+    /// Finds `<link rel="manifest">` and `<link rel="apple-touch-icon">` in an HTML page. Only
+    /// links on the page's own host count, as for a connector's icon (`DiscoveredApp.iconURL`).
     static func links(inHTML html: String, baseURL: URL) -> (manifest: URL?, touchIcon: URL?) {
         var manifest: URL?
         var touchIcon: URL?
         for tag in matches(of: "<link\\b[^>]*>", in: html) {
             guard let rel = attribute("rel", in: tag)?.lowercased(),
                   let href = attribute("href", in: tag),
-                  let url = URL(string: href, relativeTo: baseURL)?.absoluteURL else { continue }
+                  let url = URL(string: href, relativeTo: baseURL)?.absoluteURL, isOnHost(url, of: baseURL) else { continue }
             let rels = rel.split(separator: " ")
             if manifest == nil, rels.contains("manifest") { manifest = url }
             if touchIcon == nil, rels.contains("apple-touch-icon") { touchIcon = url }
@@ -131,7 +132,8 @@ enum ManifestParser {
         return trimmed.isEmpty ? nil : trimmed
     }
 
-    /// Reads name, theme color and the best raster icon from a web manifest.
+    /// Reads name, theme color and the best raster icon from a web manifest, counting only
+    /// icons on its own host.
     static func metadata(fromManifest data: Data, manifestURL: URL) -> Metadata {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             return Metadata()
@@ -141,7 +143,7 @@ enum ManifestParser {
         var best: (size: Int, url: URL)?
         for icon in (json["icons"] as? [[String: Any]]) ?? [] {
             guard let src = icon["src"] as? String,
-                  let url = URL(string: src, relativeTo: manifestURL)?.absoluteURL else { continue }
+                  let url = URL(string: src, relativeTo: manifestURL)?.absoluteURL, isOnHost(url, of: manifestURL) else { continue }
             // UIImage can't decode SVG; skip it and anything declared as non-raster.
             if let type = icon["type"] as? String, type.contains("svg") { continue }
             if url.pathExtension.lowercased() == "svg" { continue }
@@ -151,6 +153,10 @@ enum ManifestParser {
             if best == nil || score > best!.size { best = (score, url) }
         }
         return Metadata(name: name, themeColorHex: theme, iconURL: best?.url)
+    }
+
+    private static func isOnHost(_ url: URL, of base: URL) -> Bool {
+        Discovery.normalizedHost(url.host ?? "") == Discovery.normalizedHost(base.host ?? "")
     }
 
     private static func largestSize(_ sizes: String?) -> Int {
