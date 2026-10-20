@@ -113,7 +113,8 @@ enum ManifestParser {
     static func links(inHTML html: String, baseURL: URL) -> (manifest: URL?, touchIcon: URL?) {
         var manifest: URL?
         var touchIcon: URL?
-        for tag in matches(of: "<link\\b[^>]*>", in: html) {
+        // A tag's run stops at the next `<`, so one that never closes costs its own run, not the rest of the page.
+        for tag in matches(of: "<link\\b[^<>]*>", in: html) {
             guard let rel = attribute("rel", in: tag)?.lowercased(),
                   let href = attribute("href", in: tag),
                   let url = URL(string: href, relativeTo: baseURL)?.absoluteURL, isOnHost(url, of: baseURL) else { continue }
@@ -125,7 +126,8 @@ enum ManifestParser {
     }
 
     static func title(inHTML html: String) -> String? {
-        guard let range = html.range(of: "<title[^>]*>([^<]*)</title>",
+        // The tag's run stops at the next `<`, as in `links`.
+        guard let range = html.range(of: "<title[^<>]*>([^<]*)</title>",
                                      options: [.regularExpression, .caseInsensitive]) else { return nil }
         let inner = html[range].replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
         let trimmed = inner.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -174,9 +176,13 @@ enum ManifestParser {
         return regex.matches(in: text, range: NSRange(location: 0, length: ns.length)).map { ns.substring(with: $0.range) }
     }
 
+    /// The attributes `links` reads, compiled once rather than for each of a page's tags.
+    private static let attributes = ["rel", "href"].reduce(into: [String: NSRegularExpression]()) { patterns, name in
+        patterns[name] = try? NSRegularExpression(pattern: "\\b\(name)\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s>]+))", options: .caseInsensitive)
+    }
+
     private static func attribute(_ name: String, in tag: String) -> String? {
-        let pattern = "\\b\(name)\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s>]+))"
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else { return nil }
+        guard let regex = attributes[name] else { return nil }
         let ns = tag as NSString
         guard let match = regex.firstMatch(in: tag, range: NSRange(location: 0, length: ns.length)) else { return nil }
         for group in 1...3 where match.range(at: group).location != NSNotFound {

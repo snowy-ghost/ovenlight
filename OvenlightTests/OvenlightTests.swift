@@ -61,6 +61,23 @@ final class ManifestParserTests: XCTestCase {
         let elsewhere = #"{"icons":[{"src":"https://cdn.example.com/512.png","sizes":"512x512"}]}"#
         XCTAssertNil(ManifestParser.metadata(fromManifest: Data(elsewhere.utf8), manifestURL: base).iconURL)
     }
+
+    /// A page whose tags never close reads in time linear in its length. Each `<title` or
+    /// `<link` scanned to the end of the page, so 300 KB of them held the main actor for minutes.
+    func testATagThatNeverClosesDoesntStallTheRead() {
+        let head = #"<title lang="en">Coach</title><link rel="manifest" href="m.json"><link rel="apple-touch-icon" href="t.png">"#
+        XCTAssertEqual(ManifestParser.title(inHTML: head), "Coach")
+        let links = ManifestParser.links(inHTML: head, baseURL: base)
+        XCTAssertEqual(links.manifest?.absoluteString, "https://alex-mac.example.ts.net:8443/m.json")
+        XCTAssertEqual(links.touchIcon?.absoluteString, "https://alex-mac.example.ts.net:8443/t.png")
+        for tag in ["<title", "<link "] {
+            let page = String(repeating: tag, count: 50_000)
+            let start = ContinuousClock.now
+            XCTAssertNil(ManifestParser.title(inHTML: page))
+            XCTAssertNil(ManifestParser.links(inHTML: page, baseURL: base).manifest)
+            XCTAssertLessThan(ContinuousClock.now - start, .seconds(2), tag)
+        }
+    }
 }
 
 final class NavigationPolicyTests: XCTestCase {

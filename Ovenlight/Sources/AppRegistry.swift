@@ -283,9 +283,12 @@ final class AppRegistry: ObservableObject {
             return
         }
         guard let data = await Self.body(from: app.startURL, in: session) else { return }
-        let html = String(decoding: data, as: UTF8.self)
-        let links = ManifestParser.links(inHTML: html, baseURL: app.startURL)
-        var meta = ManifestParser.Metadata(name: ManifestParser.title(inHTML: html))
+        // Off the main actor: a page can run to megabytes.
+        let (links, title) = await Task.detached { [startURL = app.startURL] in
+            let html = String(decoding: data, as: UTF8.self)
+            return (ManifestParser.links(inHTML: html, baseURL: startURL), ManifestParser.title(inHTML: html))
+        }.value
+        var meta = ManifestParser.Metadata(name: title)
         if let manifestURL = links.manifest, let data = await Self.body(from: manifestURL, in: session) {
             let fromManifest = ManifestParser.metadata(fromManifest: data, manifestURL: manifestURL)
             meta.name = fromManifest.name ?? meta.name
