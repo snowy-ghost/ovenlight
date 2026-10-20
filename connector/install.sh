@@ -152,6 +152,6 @@ else
 fi
 echo "next:"
 echo "  turn on MagicDNS and HTTPS certificates for your tailnet, if they aren't on: https://console.tailscale.com/admin/dns"
-echo "  $cmd new \"My App\""
+echo "  $cmd new \"My App\" --dir ~/src"
 echo "  $cmd publish --port <n> --name \"<App Name>\""
 echo "  $cmd status"

@@ -193,16 +193,24 @@ a node's key expires within 30 days.
 ## Invites
 
 - `share` mints a single-use key tagged `tag:ovenlight-guest-<slug>` that expires in 7
-  days, or 90 days for an App Review invite (`share --review`, terminal only;
-  [development.md](development.md#app-review-invites)). The key is preauthorized, whatever
-  the tailnet's device approval setting, so a guest's phone never waits for you.
+  days. The key is preauthorized, whatever the tailnet's device approval setting, so a
+  guest's phone never waits for you.
+- A review invite, for an app store's review (`share --review`, terminal only;
+  [development.md](development.md#app-review-invites)), has a reusable key instead, valid
+  for 90 days, and up to 10 devices can claim it. Its key is deleted once the tenth has,
+  so a leaked review link admits up to 10 devices to that app until it expires or you
+  cancel it. While the key works, any number of devices can join your tailnet with it,
+  but the connector refuses one that hasn't claimed, and `guests` lists it for you to
+  remove. Removing one of its devices doesn't keep that phone out while places remain:
+  it can join again and claim. To end it, revoke the person or the invite's ID.
 - The connector records the invite with the key's SHA-256, never the key.
 - The link carries the key in its fragment, so it never reaches the website that hosts
   the join page ([protocol.md](protocol.md#invite-links)).
 - A device belongs to one person. A device already admitted to any of your apps can only
   claim that person's invites; any other invite stays unused.
 - Making an invite with `share` takes a terminal. The MCP server can't share at all.
-- `share --cancel <id>` withdraws an unused invite and deletes its key. If the delete
+- `share --cancel <id>` withdraws an unused invite, or a review invite with places left
+  (devices that joined with it keep the app), and deletes its key. If the delete
   fails (an expired API token, say), the connector refuses the invite at once, retries
   the delete on each sync, and `--cancel` says the key still works until then.
 - When the person already has a phone in your tailnet for another of your apps

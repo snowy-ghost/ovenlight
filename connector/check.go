@@ -705,7 +705,7 @@ func redirectCheck(page, next, home *url.URL) *Check {
 		c.Message = fmt.Sprintf("GET %s redirects to %s, but the app's node serves only https://%s/", from, target, home.Host)
 		c.Fix = "Redirect to a relative path, such as /app, or trust X-Forwarded-Proto from 127.0.0.1 (in Express, app.set('trust proxy', 'loopback'))."
 	default:
-		c.Message = fmt.Sprintf("GET %s redirects to %s, another website, which Ovenlight opens in a Safari sheet that doesn't come back to the app", from, target)
+		c.Message = fmt.Sprintf("GET %s redirects to %s, another website, which Ovenlight opens in a browser that doesn't come back to the app", from, target)
 		c.Fix = "Keep / on the app. If this is a sign-in, drop it: the connector already says who is calling in the Ovenlight-User-Id header."
 	}
 	return c
@@ -833,7 +833,7 @@ func safeAreaCheck(body []byte, sheets []stylesheet) Check {
 			return c
 		}
 	}
-	c.Message = "neither the home page nor the stylesheets it links mention safe-area-inset, so its bottom and sides may sit under the home indicator and the screen's rounded corners"
+	c.Message = "neither the home page nor the stylesheets it links mention safe-area-inset, so its bottom and sides may sit under the system bar at the bottom of the screen and the screen's rounded corners"
 	c.Fix = "Pad the page's bottom and sides with env(safe-area-inset-bottom), -left and -right, for example on body. CSS that a script loads isn't read here; if it pads already, nothing needs to change."
 	return c
 }
@@ -941,7 +941,7 @@ func iconCheck(app App, host string, d *discovery, site SiteManifest) Check {
 		reason := "neither the web manifest nor an apple-touch-icon names one"
 		switch {
 		case d.manifest != nil && len(d.manifest.Icons) > 0 && d.manifest.bestIcon() == "":
-			reason = "the manifest lists only SVG icons, which iOS can't use"
+			reason = "the manifest lists only SVG icons, which Ovenlight can't use"
 		case d.manifest != nil && d.manifest.bestIcon() != "":
 			reason = "the manifest's icon " + clip(d.manifest.bestIcon(), 80) + " isn't a relative URL"
 		case d.page.TouchIcon != "":

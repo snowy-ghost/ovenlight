@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -134,6 +135,7 @@ func TestExpandHome(t *testing.T) {
 // after a folder that exists.
 func TestNewTakesTheNameAfterAFolder(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
+	fakeNode(t, "v22.13.0") // the oldest it takes
 	dir := t.TempDir()
 	paths := []string{"--config", filepath.Join(dir, "config.json"), "--state", filepath.Join(dir, "state")}
 	src := filepath.Join(dir, "src")
@@ -156,5 +158,45 @@ func TestNewTakesTheNameAfterAFolder(t *testing.T) {
 		if out, _ := os.ReadFile(f.Name()); !strings.Contains(string(out), ovenlightCommand()+" publish"+flags+"--port ") || !strings.Contains(string(out), ovenlightCommand()+" check"+flags+slug+"\n") {
 			t.Errorf("%q printed:\n%s", name, out)
 		}
+	}
+}
+
+// fakeNode puts a node on PATH, alone, that prints version for --version.
+func fakeNode(t *testing.T, version string) {
+	t.Helper()
+	dir := t.TempDir()
+	name, script := "node", "#!/bin/sh\necho "+version+"\n"
+	if runtime.GOOS == "windows" {
+		name, script = "node.bat", "@echo "+version+"\r\n"
+	}
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+}
+
+// The starter needs Node 22.13, so new refuses an older one and writes nothing.
+func TestNewRefusesAnOldNode(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	for version, want := range map[string]string{"v22.12.0": "22.12.0", "v20.19.5": "20.19.5", "v8.17.0": "8.17.0",
+		"v22.13.0": "", "v23.0.0": "", "v100.1.0": "", "not a version": ""} {
+		fakeNode(t, version)
+		if got := oldNode(); got != want {
+			t.Errorf("node %s: oldNode() = %q, want %q", version, got, want)
+		}
+	}
+	t.Setenv("PATH", t.TempDir()) // without one, new writes the app and says it needs Node
+	if got := oldNode(); got != "" {
+		t.Errorf("no node: oldNode() = %q", got)
+	}
+
+	dir := t.TempDir()
+	fakeNode(t, "v22.12.0")
+	err := cmdNew([]string{"Todo", "--config", filepath.Join(dir, "config.json"), "--state", filepath.Join(dir, "state"), "--dir", dir})
+	if err == nil || err.Error() != "Node 22.12.0 is too old: the starter needs Node 22.13 or later, from https://nodejs.org (a distribution's own package may be older)" {
+		t.Errorf("new with Node 22.12.0: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "todo")); err == nil {
+		t.Error("new with Node 22.12.0 wrote the app")
 	}
 }

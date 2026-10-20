@@ -1,5 +1,5 @@
 // Command ovenlight publishes local web apps to your own tailnet, one tailnet node per
-// app, so Ovenlight on your iPhone can open them over HTTPS with verified identity headers,
+// app, so Ovenlight on your phone can open them over HTTPS with verified identity headers,
 // and shares single apps with friends as guests.
 package main
 
@@ -24,7 +24,7 @@ import (
 	"github.com/snowy-ghost/ovenlight/connector/internal/tsapi"
 )
 
-const usage = `ovenlight publishes your local web apps to your tailnet, for the Ovenlight iPhone app.
+const usage = `ovenlight publishes your local web apps to your tailnet, for Ovenlight on your phone.
 
 Usage:
   ovenlight new "<App Name>" [--dir <parent>] [--port <n>]   a starter app to build on, and how to publish it
@@ -52,7 +52,7 @@ Sharing (one-time setup: auth set, then publish --slug <slug> --shareable, which
   ovenlight share <slug> --to "<Name>"            invite link and QR code
   ovenlight share <slug> --to "<Name>" --existing  another app or device for someone you share with
   ovenlight share <slug> --person <ID>            the same, by person ID (see guests)
-  ovenlight share <slug> --to "<Name>" --review   invite for Apple's App Review (90 days)
+  ovenlight share <slug> --to "<Name>" --review   invite for an app store's review (90 days, 10 devices)
   ovenlight share --cancel <id>                   withdraw an unused invite
   ovenlight guests [--all] [--sync] [--json]
   ovenlight revoke <name | device ID | invite ID> [--app <slug>]
@@ -665,6 +665,10 @@ func cmdPublish(args []string) error {
 			printChecks([]Check{*c}, true)
 		} else {
 			fmt.Printf("\nServing at %s\n", res.URL)
+			if !res.Replaced {
+				fmt.Println("Open it in Ovenlight on your phone, signed in with the same Tailscale account (the first time, choose to use your own computers, then tap Connect).")
+			}
+			fmt.Println("This address works only in your tailnet, so a browser on this computer can't open it unless Tailscale runs here too.")
 		}
 	default:
 		fmt.Println("\nThe node is still starting; run `ovenlight status` in a moment.")
@@ -844,7 +848,7 @@ type sharingSummary struct {
 	Credential     string         `json:"credential,omitempty"` // type and fingerprint, never the secret
 	Guests         int            `json:"guests"`
 	Invites        int            `json:"pendingInvites"`
-	ReviewInvites  int            `json:"reviewInvites"` // of the invites out, those for App Review
+	ReviewInvites  int            `json:"reviewInvites"` // of the invites out, those for a store's review
 	Feedback       int            `json:"feedback"`
 	LatestFeedback []feedbackView `json:"latestFeedback,omitempty"`
 	SyncError      string         `json:"syncError,omitempty"`  // the running connector's last guest sync
@@ -1037,7 +1041,7 @@ func cmdStatus(args []string) error {
 	} else {
 		fmt.Printf("Sharing: owner %s (%q), %d guests, %d invites out", s.Owner, s.OwnerLabel, s.Guests, s.Invites)
 		if s.ReviewInvites > 0 {
-			fmt.Printf(" (%d for App Review; revoke after the review)", s.ReviewInvites)
+			fmt.Printf(" (%d for an app store's review; revoke after the review)", s.ReviewInvites)
 		}
 		fmt.Println(".")
 		if s.Credential == "" {

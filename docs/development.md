@@ -354,16 +354,17 @@ Sign Ovenlight in to the first with `-authKey`, and open the second owner's invi
 App Review, for TestFlight and for the App Store, needs a way in. Make it an invite,
 using the app's slug: `ovenlight share <slug> --to "App Review" --review`.
 
-It is the same single-use `tag:ovenlight-guest-<slug>` key and claim step as any invite,
-but valid for 90 days, Tailscale's longest, since a review can take weeks. It runs only
-in a terminal, is marked `review` in `guests`, `status` and the admin API's `invites`, and
+It uses the same `tag:ovenlight-guest-<slug>` tag and claim step as any invite. Its key
+is reusable, so up to 10 of the reviewer's devices can claim it, and lasts 90 days,
+Tailscale's longest, since a review can take weeks. It runs only in a terminal, is
+marked `review` in `guests`, `status` and the admin API's `invites`, and
 prints the link and notes to paste into App Store Connect (App Review Information, Notes). The app's
 computer has to stay on and the connector running until the review is done. While a
 reviewer is still a guest or has an open invite, another review invite needs
 `--existing`.
 
-Revoke it after the review: `ovenlight revoke "App Review"`, or `share --cancel <id>` if
-it was never used.
+Revoke it after the review: `ovenlight revoke "App Review"`. `share --cancel <id>` only
+stops more devices from claiming it: those that have keep the app until revoked.
 
 Google Play's review needs a way in too: paste an invite's link and notes into Play
 Console, under App content, App access.

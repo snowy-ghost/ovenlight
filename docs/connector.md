@@ -352,13 +352,17 @@ It prints a link, a QR code and a message to send. The other sharing commands:
 - `ovenlight guests`: guests, the day each last opened each app, and open invites.
 - `ovenlight revoke Sam`: removes Sam from every app; add `--app <slug>` to remove just
   one.
-- `ovenlight share --cancel <id>`: withdraws an invite that hasn't been used.
+- `ovenlight share --cancel <id>`: withdraws an invite that hasn't been used, or a review
+  invite with places left (devices that joined with it keep the app).
+- `ovenlight share recipe-box --to "App Review" --review`: an invite for an app store's
+  review, which lasts 90 days and works on up to 10 devices
+  ([development.md](development.md#app-review-invites)).
 
-An invite link works once and expires after 7 days. Your friend's phone joins without
-waiting for your approval, even if your tailnet has device approval on
-([security.md](security.md#invites) says why). You can also share apps and remove guests
-in Ovenlight on your phone: touch and hold one of your apps, or open People & Sharing
-under the More button.
+An invite link works once and expires after 7 days (a review invite's works on up to 10
+devices for 90 days). Your friend's phone joins without waiting for your approval, even
+if your tailnet has device approval on ([security.md](security.md#invites) says why). You
+can also share apps and remove guests in Ovenlight on your phone: touch and hold one of
+your apps, or open People & Sharing under the More button.
 
 Revoking takes effect at once on the connector. As soon as the guest's phone notices it's
 no longer in your tailnet, it removes the app and its data. If the guest still has another

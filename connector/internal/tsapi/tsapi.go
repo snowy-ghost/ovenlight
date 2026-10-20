@@ -356,9 +356,10 @@ func (c *Client) DisableKeyExpiry(ctx context.Context, id string) error {
 
 // ---------- auth keys ----------
 
-// KeyRequest describes a single-use auth key to create.
+// KeyRequest describes an auth key to create: single use unless Reusable.
 type KeyRequest struct {
 	Tags          []string
+	Reusable      bool
 	Preauthorized bool
 	Expiry        time.Duration
 	Description   string
@@ -408,11 +409,12 @@ func (k keyJSON) key() Key {
 
 var descriptionUnsafe = regexp.MustCompile(`[^A-Za-z0-9 _-]+`)
 
-// CreateAuthKey mints a single-use auth key. It refuses, and deletes, a key the API made
-// reusable or tagged otherwise: a key without its tags would register the device as the
-// credential owner's own.
+// CreateAuthKey mints an auth key. It refuses, and deletes, a key the API made reusable
+// when it wasn't asked to be (or the reverse) or tagged otherwise: a key without its tags
+// would register the device as the credential owner's own.
 func (c *Client) CreateAuthKey(ctx context.Context, r KeyRequest) (Key, error) {
 	var caps keyCapabilities
+	caps.Devices.Create.Reusable = r.Reusable
 	caps.Devices.Create.Preauthorized = r.Preauthorized
 	caps.Devices.Create.Tags = r.Tags
 	desc := descriptionUnsafe.ReplaceAllString(r.Description, "-")
@@ -434,9 +436,12 @@ func (c *Client) CreateAuthKey(ctx context.Context, r KeyRequest) (Key, error) {
 	}
 	key := k.key()
 	switch {
-	case key.Reusable:
+	case key.Reusable && !r.Reusable:
 		c.DeleteKey(ctx, key.ID)
 		return Key{}, errors.New("tailscale api: asked for a single-use key but got a reusable one; deleted it")
+	case !key.Reusable && r.Reusable:
+		c.DeleteKey(ctx, key.ID)
+		return Key{}, errors.New("tailscale api: asked for a reusable key but got a single-use one; deleted it")
 	case !slices.Equal(slices.Sorted(slices.Values(key.Tags)), slices.Sorted(slices.Values(r.Tags))):
 		c.DeleteKey(ctx, key.ID)
 		return Key{}, fmt.Errorf("tailscale api: asked for a key tagged %v but got %v; deleted it", r.Tags, key.Tags)

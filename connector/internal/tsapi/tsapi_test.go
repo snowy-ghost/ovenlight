@@ -165,19 +165,27 @@ func TestAuthKeys(t *testing.T) {
 	if keys, _ := c.Keys(t.Context()); len(keys) != 0 {
 		t.Errorf("key still listed after delete")
 	}
+	if k, err := c.CreateAuthKey(t.Context(), tsapi.KeyRequest{Tags: []string{"tag:ovenlight-guest"}, Reusable: true, Expiry: time.Hour}); err != nil || !k.Reusable {
+		t.Errorf("reusable key = %+v, %v", k, err)
+	}
 }
 
-// A key the API made reusable, or without the tags asked for, is refused and deleted.
+// A key the API made reusable, or single use when asked for a reusable one, or without
+// the tags asked for, is refused and deleted.
 func TestMisbehavingKeyIsRefused(t *testing.T) {
-	for name, set := range map[string]func(*tsapitest.Fake){
-		"reusable": func(f *tsapitest.Fake) { f.ForceReusable = true },
-		"untagged": func(f *tsapitest.Fake) { f.DropKeyTags = true },
+	for name, c := range map[string]struct {
+		set      func(*tsapitest.Fake)
+		reusable bool
+	}{
+		"reusable":   {func(f *tsapitest.Fake) { f.ForceReusable = true }, false},
+		"single use": {func(f *tsapitest.Fake) { f.ForceSingleUse = true }, true},
+		"untagged":   {func(f *tsapitest.Fake) { f.DropKeyTags = true }, false},
 	} {
 		f := tsapitest.New()
 		defer f.Close()
-		set(f)
-		c := newClient(t, f, f.TokenCredentials())
-		if _, err := c.CreateAuthKey(t.Context(), tsapi.KeyRequest{Tags: []string{"tag:x"}, Expiry: time.Hour}); err == nil {
+		c.set(f)
+		api := newClient(t, f, f.TokenCredentials())
+		if _, err := api.CreateAuthKey(t.Context(), tsapi.KeyRequest{Tags: []string{"tag:x"}, Reusable: c.reusable, Expiry: time.Hour}); err == nil {
 			t.Errorf("%s: the key was accepted", name)
 		}
 		if !f.Keys[0].Deleted {

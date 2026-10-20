@@ -116,6 +116,9 @@ func (h headscaleAPI) CreateAuthKey(ctx context.Context, r tsapi.KeyRequest) (ts
 	if len(r.Tags) > 0 {
 		args = append(args, "--tags", strings.Join(r.Tags, ","))
 	}
+	if r.Reusable {
+		args = append(args, "--reusable")
+	}
 	out, err := h.run(ctx, args...)
 	if err != nil {
 		return tsapi.Key{}, err
@@ -131,11 +134,11 @@ func (h headscaleAPI) CreateAuthKey(ctx context.Context, r tsapi.KeyRequest) (ts
 	if err := json.Unmarshal(out, &k); err != nil || k.Key == "" {
 		return tsapi.Key{}, fmt.Errorf("headscale preauthkeys create: unexpected answer: %v", err)
 	}
-	if k.Reusable {
-		return tsapi.Key{}, errors.New("headscale made a reusable key")
+	if k.Reusable != r.Reusable {
+		return tsapi.Key{}, fmt.Errorf("headscale made a key with reusable %v, asked for %v", k.Reusable, r.Reusable)
 	}
 	return tsapi.Key{ID: k.ID.String(), Key: k.Key, Created: time.Now(), Expires: time.Unix(k.Expiration.Seconds, 0),
-		Tags: r.Tags, Preauthorized: true}, nil
+		Tags: r.Tags, Reusable: r.Reusable, Preauthorized: true}, nil
 }
 
 func (h headscaleAPI) DeleteKey(ctx context.Context, id string) error {

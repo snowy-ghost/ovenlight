@@ -41,7 +41,7 @@ const (
 )
 
 // Who can apply a fix: a coding agent on this computer, or only the person (the Tailscale
-// admin console, a login link, their iPhone, or a terminal command that asks them).
+// admin console, a login link, their phone, or a terminal command that asks them).
 const (
 	actorAgent  = "agent"
 	actorPerson = "person"
