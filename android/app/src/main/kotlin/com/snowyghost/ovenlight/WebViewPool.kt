@@ -289,6 +289,13 @@ object DownloadPolicy {
         return fileName(last)
     }
 
+    /**
+     * A Content-Disposition header to read a file's name from, or null when it's longer than
+     * any that names a file Ovenlight keeps: [maxFileNameBytes] percent-encoded and plain fit in
+     * 2 KB. androidx's parser takes time with the square of a header's length.
+     */
+    fun disposition(header: String?): String? = header?.takeIf { it.length <= 2 * 1024 }
+
     /** Well under the 255 bytes ext4 and f2fs allow, as on iOS. */
     const val maxFileNameBytes = 200
 

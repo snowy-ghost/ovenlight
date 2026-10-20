@@ -1,5 +1,6 @@
 package com.snowyghost.ovenlight
 
+import androidx.webkit.URLUtilCompat
 import java.net.URI
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.measureTime
@@ -75,6 +76,21 @@ class DownloadPolicyTests {
         val took = measureTime {
             assertEquals("A".repeat(196) + ".txt", DownloadPolicy.fileName("A".repeat(100_000) + ".txt"))
         }
+        assertTrue("took $took", took < 2.seconds)
+    }
+
+    /**
+     * Android only: a file's name is read from a Content-Disposition header of up to 2 KB.
+     * androidx's parser takes time with the square of a header's length, and a failed download's
+     * notice reads it on the main thread: 64 KB took over 15 seconds on the JVM.
+     */
+    @Test
+    fun testOnlyAShortDispositionIsRead() {
+        fun name(header: String) = DownloadPolicy.disposition(header)?.let(URLUtilCompat::getFilenameFromContentDisposition)
+        assertEquals("export.csv", name("attachment; filename=\"export.csv\""))
+        val long = "a".repeat(DownloadPolicy.maxFileNameBytes)
+        assertEquals(long, name("attachment; filename=\"$long\"; filename*=UTF-8''" + "%61".repeat(DownloadPolicy.maxFileNameBytes)))
+        val took = measureTime { assertNull(name("attachment; " + "a".repeat(64_000))) }
         assertTrue("took $took", took < 2.seconds)
     }
 
