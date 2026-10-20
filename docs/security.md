@@ -469,18 +469,18 @@ agent is told that it is an image its sender chose, and any text in it is data.
   connection, and on Android, its route is cleared). The closed view's app loads again
   through its route, at once if it's on screen. A shared app always goes through its
   owner's guest node.
-- Pages reach only a node's peers and the internet. A name in a tailnet resolves only
-  among that node's peers, never in public DNS. Any other address must be on the
-  internet: the proxy refuses the phone itself, its local networks, the network's public
-  address, other tailnets and the ranges that aren't globally reachable, NAT64 and
-  IPv4-mapped forms included (on iPhone and on Android 10, NAT64 under the well-known
-  prefix only, since neither gives Ovenlight the network's own), unless the address is one
-  of the node's peers. So no page reaches the phone's own network, or the router in front
-  of it, through Ovenlight. On iPhone, WebKit sends a load to one of the phone's own
-  addresses straight out, past the proxy. Content rules block loopback, private and
-  link-local IP literals (outside Tailscale's fd7a:115c:a1e0::/48), but not the phone's
-  other addresses, so a page can still reach the phone itself at one of those, such as a
-  public address, a carrier's in 100.64.0.0/10 or another VPN's.
+- Through Ovenlight's proxy, pages reach only a node's peers and the internet. A name in a
+  tailnet resolves only among that node's peers, never in public DNS. Any other address
+  must be on the internet: the proxy refuses the phone itself, its local networks, the
+  network's public address, other tailnets and the ranges that aren't globally reachable,
+  NAT64 and IPv4-mapped forms included (on iPhone and on Android 10, NAT64 under the
+  well-known prefix only, since neither gives Ovenlight the network's own), unless the
+  address is one of the node's peers. So no page reaches the phone's own network, or the
+  router in front of it, through Ovenlight. On iPhone, WebKit sends a load to one of the
+  phone's own addresses straight out, past the proxy. Content rules block loopback,
+  private and link-local IP literals (outside Tailscale's fd7a:115c:a1e0::/48), but not
+  the phone's other addresses, so a page can still reach the phone itself at one of those,
+  such as a public address, a carrier's in 100.64.0.0/10 or another VPN's.
 - Ovenlight takes WebRTC away from pages. Its traffic wouldn't go through Ovenlight's
   proxy: through a TURN relay a page could reach any address it names, the phone's own
   network included. A script at the start of every document, in every frame, removes it.
