@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Support · Ovenlight</title>
-<meta name="description" content="Help with Ovenlight: joining from an invite, reaching an app's computer, leaving or reporting a shared app, and setting up your own computer.">
+<meta name="description" content="Help with Ovenlight: invites, reaching an app's computer, leaving or reporting a shared app, the lock, and setting up and sharing your own apps.">
 <link rel="canonical" href="https://ovenlight.app/support">
 <meta name="theme-color" content="#faf5ee" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#19110d" media="(prefers-color-scheme: dark)">
@@ -12,7 +12,7 @@
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Ovenlight">
 <meta property="og:title" content="Support · Ovenlight">
-<meta property="og:description" content="Help with Ovenlight: joining from an invite, reaching an app's computer, leaving or reporting a shared app, and setting up your own computer.">
+<meta property="og:description" content="Help with Ovenlight: invites, reaching an app's computer, leaving or reporting a shared app, the lock, and setting up and sharing your own apps.">
 <meta property="og:image" content="https://ovenlight.app/og-invite.jpg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
@@ -20,7 +20,7 @@
 <meta property="og:url" content="https://ovenlight.app/support">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Support · Ovenlight">
-<meta name="twitter:description" content="Help with Ovenlight: joining from an invite, reaching an app's computer, leaving or reporting a shared app, and setting up your own computer.">
+<meta name="twitter:description" content="Help with Ovenlight: invites, reaching an app's computer, leaving or reporting a shared app, the lock, and setting up and sharing your own apps.">
 <meta name="twitter:image" content="https://ovenlight.app/og-invite.jpg">
 
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
@@ -59,10 +59,14 @@
       <ol>
         <li><a href="#invite">I got an invite. What do I do?</a></li>
         <li><a href="#cant-reach">The app says it can't reach the computer</a></li>
-        <li><a href="#no-longer-shared">An app disappeared, or Ovenlight says No Longer Shared with You</a></li>
+        <li><a href="#no-longer-shared">An app disappeared, or Ovenlight says it's no longer shared with you</a></li>
         <li><a href="#leave">How do I leave an app someone shared with me?</a></li>
         <li><a href="#report">How do I report a problem with a shared app?</a></li>
+        <li><a href="#lock">Ovenlight locks too often, or not at all</a></li>
+        <li><a href="#webview">Ovenlight asks me to update Android System WebView</a></li>
         <li><a href="#own-computer">How do I set up my own computer?</a></li>
+        <li><a href="#add-back">I removed one of my own apps. How do I get it back?</a></li>
+        <li><a href="#friend-cant-open">A friend can't open an app I shared</a></li>
         <li><a href="#data">Does Snowy Ghost see my data?</a></li>
         <li><a href="#contact">Contact us</a></li>
       </ol>
@@ -70,22 +74,28 @@
 
     <article class="prose">
       <h2 id="invite"><a href="#invite">I got an invite. What do I do?</a></h2>
-      <p>Open the invite link on your iPhone. If you don't have Ovenlight yet, get it from the <a href="https://apps.apple.com/app/id6817561066">App Store</a>, then open the link again. When Ovenlight shows who invited you and to which app, tap Join. You don't need an account. If the link opens a web page instead, tap Open in Ovenlight there. You were shown a QR code? Scan it with the Camera app, or in Ovenlight tap the ••• button, then Join with Invite, then Scan Invite Code.</p>
-      <p>An invite works once, on one iPhone, and expires after 7 days. If yours was used or has expired, ask for a new one.</p>
+      <p>Open the invite link on your phone. If you don't have Ovenlight yet, the link opens a page that shows where to get it. Install it, then open the link again. When Ovenlight shows who invited you and to which app, tap Join. You don't need an account. If you have Ovenlight but the link opens a web page, tap Open in Ovenlight there. You were shown a QR code? Scan it with your phone's camera, or open Ovenlight, choose to join with an invite, and scan the code there.</p>
+      <p>An invite works once, on one phone, and expires after 7 days. If yours was used or has expired, ask for a new one.</p>
 
       <h2 id="cant-reach"><a href="#cant-reach">The app says it can't reach the computer</a></h2>
-      <p>Each app runs on its owner's own computer, not on our servers, so it opens only while that computer is on, awake and online. Check that your iPhone is online, then tap Try Again. If it still doesn't open, the computer is probably asleep or off, so let the person who shared the app know.</p>
+      <p>Each app runs on its owner's own computer, not on our servers, so it opens only while that computer is on, awake and online. Check that your phone is online, then tap Try again. If it still doesn't open, the computer is probably asleep or off, so let the person who shared the app know.</p>
       <p>If it's your own computer, make sure it's awake (a Mac also needs to be logged in to its desktop), then run <code>ovenlight doctor</code> on it. It lists anything wrong, each with its fix. If you still need help, <a href="#contact">email us</a> what it prints. Before you send it, remove any login or invite link, since whoever opens one first can get into that app.</p>
 
-      <h2 id="no-longer-shared"><a href="#no-longer-shared">An app disappeared, or Ovenlight says No Longer Shared with You</a></h2>
-      <p>The person who shared the app stopped sharing it with you, or stopped running it. When that happens, the next time Ovenlight connects it removes the app and everything it stored on your iPhone. If you think it was a mistake, ask them for a new invite. Apps shared with you don't move to a new or restored iPhone either, so ask for a new invite there.</p>
+      <h2 id="no-longer-shared"><a href="#no-longer-shared">An app disappeared, or Ovenlight says it's no longer shared with you</a></h2>
+      <p>The person who shared the app stopped sharing it with you, or stopped running it. When that happens, the next time Ovenlight connects it removes the app and everything it stored on your phone. If you think it was a mistake, ask them for a new invite. Apps shared with you don't move to a new or restored phone either, so ask for a new invite there.</p>
 
       <h2 id="leave"><a href="#leave">How do I leave an app someone shared with me?</a></h2>
-      <p>In Ovenlight, tap the ••• button at the top right, then Settings, and tap Leave next to their name under Shared with You. You can also leave from the app's menu, or by touching and holding its icon. Leaving removes all of that person's apps and everything they stored on your iPhone, and you'll need a new invite to open them again. They still see you in their list until they remove you.</p>
+      <p>In Ovenlight, tap the More button at the top right, then Settings, and tap Leave next to their name under Shared with you. You can also leave from the app's menu. Leaving removes all of that person's apps and everything they stored on your phone, and you'll need a new invite to open them again. They still see you in their list until they remove you.</p>
 
       <h2 id="report"><a href="#report">How do I report a problem with a shared app?</a></h2>
-      <p>A shared app is run by the person who shared it, on their own computer. Snowy Ghost doesn't host or run it, and can't see inside it. For anything about how the app itself works, choose Send Feedback to (their name) from the app's menu: your note, and a screenshot unless you turn it off, go to the person who runs it.</p>
-      <p>To tell us about a problem, including an app you think is harmful, choose Report a Problem from the app's menu, or by touching and holding its icon. It starts an email to us with the app's name and address, who shared it, how its connection is doing, and your Ovenlight and iOS versions filled in. Add what happened, and send it when you're ready. You can also leave the app at any time.</p>
+      <p>A shared app is run by the person who shared it, on their own computer. Snowy Ghost doesn't host or run it, and can't see inside it. For anything about how the app itself works, choose Send feedback to (their name) from the app's menu: your note, and a screenshot unless you turn it off, go to the person who runs it.</p>
+      <p>To tell us about a problem, including an app you think is harmful, choose Report a problem from the app's menu, or by touching and holding its icon. It starts an email to us with the app's name and address, who shared it, how its connection is doing, and your Ovenlight version and your phone's iOS or Android version filled in (on Android, also its WebView version and model). Add what happened, and send it when you're ready. You can also leave the app at any time.</p>
+
+      <h2 id="lock"><a href="#lock">Ovenlight locks too often, or not at all</a></h2>
+      <p>Ovenlight locks after it has been in the background for the time you choose at the top of Settings: Immediately, or after 1, 5 or 15 minutes (1 minute unless you change it). It always locks after your phone restarts, and can't lock until your phone has a passcode or screen lock.</p>
+
+      <h2 id="webview"><a href="#webview">Ovenlight asks me to update Android System WebView</a></h2>
+      <p>On Android, Ovenlight needs Android System WebView 144 or later. Tap Open Google Play on the update screen, update Android System WebView there, then open Ovenlight again.</p>
 
       <h2 id="own-computer"><a href="#own-computer">How do I set up my own computer?</a></h2>
       <p>You need a computer that stays on and awake while anyone uses your apps: a Mac with macOS&nbsp;13 or later (kept logged in), a Linux computer with systemd (such as Ubuntu), or a Windows&nbsp;11 PC. A laptop must stay open, since closing its lid puts it to sleep. Windows puts an idle PC to sleep by default, so in Settings, under System &gt; Power (Power &amp; battery on a laptop), set sleep to Never. You also need a Tailscale account. Tailscale's free Personal plan is for non-commercial use, so a business needs one of <a href="https://tailscale.com/pricing">Tailscale's paid plans</a>.</p>
@@ -110,16 +120,23 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1</code></pre>
         </li>
         <li>Publish an app. With a coding agent, <a href="https://github.com/snowy-ghost/ovenlight#with-a-coding-agent">connect it</a> and ask it to put your app on your phone. To publish it yourself, run your app so it serves plain HTTP on <code>127.0.0.1</code>, and static files from a public folder only, never the project's folder with its data and code. Then publish it with its port, for example <code>ovenlight publish <span>--port 4317</span> <span>--name "Notes"</span></code>. No app yet? <code>ovenlight new <span>"Family List"</span> <span>--dir ~/src</span></code> writes a starter app and says how to run and publish it.</li>
         <li>Open the login link that <code>publish</code> prints, or that your agent passes on, and sign in with your Tailscale account. If your tailnet has device approval on, also approve the app, listed by its slug (such as <code>notes</code>), on the admin console's <a href="https://console.tailscale.com/admin/machines">Machines</a> page.</li>
-        <li>In Ovenlight on your iPhone, choose Use My Own Computers (if you've already joined someone's app, it's under the ••• button, then Settings), tap Connect, and sign in with the same account. If Tailscale says the iPhone needs approval, approve it on the Machines page too. Your apps then appear on their own.</li>
+        <li>In Ovenlight on your phone, choose Use my own computers (if you've already joined someone's app, it's under the More button, then Settings), tap Connect, and sign in with the same account. If Tailscale or Ovenlight says the phone needs approval, approve the device it names on the Machines page too. Your apps then appear on their own.</li>
       </ol>
+      <p>Signed in, but your apps don't appear? The phone must use the same Tailscale account as your computers. In Settings, Advanced shows which Tailscale account and tailnet the phone is on. If it's on another account, tap Sign out in Settings and follow step 5 again with the right account.</p>
       <p><code>ovenlight doctor</code> checks the setup and gives a fix for each problem it finds. To share an app, store a Tailscale API access token with <code>ovenlight auth set</code>, make the app shareable with <code>ovenlight publish <span>--slug notes</span> <span>--shareable</span></code>, then touch and hold the app in Ovenlight and choose Share.</p>
       <p>The <a href="/docs/connector">connector's documentation</a> covers downloading in a browser, checking a download's signature, updating, moving to a new computer and uninstalling.</p>
 
+      <h2 id="add-back"><a href="#add-back">I removed one of my own apps. How do I get it back?</a></h2>
+      <p>An app you remove doesn't come back on its own. Tap the More button, then Add app, and enter its address. <code>ovenlight status</code> on its computer lists each app's address.</p>
+
+      <h2 id="friend-cant-open"><a href="#friend-cant-open">A friend can't open an app I shared</a></h2>
+      <p>Your computer must be on and awake while they use it, and a Mac must also be logged in to its desktop. Each invite works once and expires after 7 days, so if theirs was used or has expired, touch and hold the app and choose Share to send a new one.</p>
+
       <h2 id="data"><a href="#data">Does Snowy Ghost see my data?</a></h2>
-      <p>No. Your apps run on your computers or your friends', and Ovenlight connects to them over a private, encrypted connection that doesn't pass through any server of ours. The app has no analytics, ads or tracking. Nothing you do in your apps reaches us. The only things that reach us are emails you choose to send, what Apple passes on (such as crash reports and TestFlight feedback), and the ordinary request when a page on ovenlight.app loads, when you download the connector, or when <code>ovenlight doctor</code> checks for a newer version. The <a href="/privacy">Privacy Policy</a> has the details.</p>
+      <p>No. Your apps run on your computers or your friends', and Ovenlight connects to them over a private, encrypted connection that doesn't pass through any server of ours. The app has no analytics, ads or tracking. Nothing you do in your apps reaches us. The only things that reach us are emails you choose to send, what Apple or Google passes on (such as crash reports and test feedback), and the ordinary request when a page on ovenlight.app loads, when you download the connector, or when <code>ovenlight doctor</code> checks for a newer version. The <a href="/privacy">Privacy Policy</a> has the details.</p>
 
       <h2 id="contact"><a href="#contact">Contact us</a></h2>
-      <p>Email <!--email_off--><a href="mailto:team@snowyghost.com">team@snowyghost.com</a><!--/email_off--> and a human will reply. You can also start that email from Ovenlight: tap the ••• button at the top right, then Settings, and tap Contact Us. It fills in your Ovenlight version.</p>
+      <p>Email <!--email_off--><a href="mailto:team@snowyghost.com">team@snowyghost.com</a><!--/email_off--> and a human will reply. You can also start that email from Ovenlight: tap the More button at the top right, then Settings, and tap Contact us. It fills in your Ovenlight version. On Android it also adds your Android and WebView versions, your phone's model and, if you use your own computers, how their connection is doing.</p>
     </article>
   </div>
 </main>

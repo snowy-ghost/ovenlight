@@ -3,24 +3,24 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Your own AI-built web apps, securely on your iPhone · Ovenlight</title>
-<meta name="description" content="Put the web apps you or your AI coding agent built on your iPhone, served from your own computer and locked with Face ID. Share any one with a friend by link.">
+<title>Your own AI-built web apps, securely on your phone · Ovenlight</title>
+<meta name="description" content="Put the web apps you or your AI coding agent built on your iPhone or Android phone, served privately from your own computer. Share one with a friend by link.">
 <link rel="canonical" href="https://ovenlight.app/">
 <meta name="theme-color" content="#faf5ee" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#19110d" media="(prefers-color-scheme: dark)">
 
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Ovenlight">
-<meta property="og:title" content="Your own AI-built web apps, securely on your iPhone · Ovenlight">
-<meta property="og:description" content="You or your AI coding agent built a web app. It runs on your own computer, and Ovenlight opens it on your iPhone, privately. Share it with a friend by invite.">
+<meta property="og:title" content="Your own AI-built web apps, securely on your phone · Ovenlight">
+<meta property="og:description" content="Cooking up apps with AI? Serve them to the people you made them for, and no one else. Your apps run on your own computer and open on your iPhone or Android phone, privately.">
 <meta property="og:image" content="https://ovenlight.app/og-invite.jpg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="The Ovenlight wordmark on its rack, lit by a soft cone of warm light from above.">
 <meta property="og:url" content="https://ovenlight.app/">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Your own AI-built web apps, securely on your iPhone · Ovenlight">
-<meta name="twitter:description" content="You or your AI coding agent built a web app. It runs on your own computer, and Ovenlight opens it on your iPhone, privately. Share it with a friend by invite.">
+<meta name="twitter:title" content="Your own AI-built web apps, securely on your phone · Ovenlight">
+<meta name="twitter:description" content="Cooking up apps with AI? Serve them to the people you made them for, and no one else. Your apps run on your own computer and open on your iPhone or Android phone, privately.">
 <meta name="twitter:image" content="https://ovenlight.app/og-invite.jpg">
 
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
@@ -31,11 +31,11 @@
   "@context": "https://schema.org",
   "@type": "MobileApplication",
   "name": "Ovenlight",
-  "description": "Put the web apps you or your AI coding agent built on your iPhone, served from your own computer and locked with Face ID.",
-  "operatingSystem": "iOS 18.1 or later",
+  "description": "Put the web apps you or your AI coding agent built on your phone, served from your own computer and locked with Face ID or your fingerprint.",
+  "operatingSystem": "iOS 18.1 or later, Android 10 or later",
   "applicationCategory": "DeveloperApplication",
   "url": "https://ovenlight.app/",
-  "downloadUrl": "https://apps.apple.com/app/id6817561066",
+  "downloadUrl": ["https://apps.apple.com/app/id6817561066", "https://play.google.com/store/apps/details?id=com.snowyghost.ovenlight"],
   "image": "https://ovenlight.app/icon-180.png",
   "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"},
   "publisher": {"@type": "Organization", "name": "Snowy Ghost", "url": "https://snowyghost.com"}
@@ -66,14 +66,17 @@
     <div class="container">
       <h1 class="wordmark">Ovenlight</h1>
       <span class="rack" aria-hidden="true"></span>
-      <p class="lead">You or your AI coding agent built a web&nbsp;app. It runs on your own computer, and Ovenlight opens it on your iPhone behind Face&nbsp;ID. Share it with a friend by link. They install Ovenlight and tap Join.</p>
-      <a class="store" href="https://apps.apple.com/app/id6817561066">
-        <picture>
-          <source srcset="/images/app-store-badge-white.svg" media="(prefers-color-scheme: dark)">
+      <p class="lead">Cooking up apps with AI? Serve them to the people you made them for, and no&nbsp;one&nbsp;else.</p>
+      <p class="lead-more">Your web apps run on your own computer, stay off the internet and open on your phone, behind Face&nbsp;ID or your fingerprint.</p>
+      <p class="stores">
+        <a class="store" href="https://apps.apple.com/app/id6817561066">
           <img src="/images/app-store-badge-black.svg" width="150" height="50" alt="Download on the App Store">
-        </picture>
-      </a>
-      <p class="store-note">Got an invite? Install Ovenlight, then open your link again.</p>
+        </a>
+        <a class="store" href="https://play.google.com/store/apps/details?id=com.snowyghost.ovenlight">
+          <img class="play" src="/images/google-play-badge.png" width="646" height="250" alt="Get it on Google Play">
+        </a>
+      </p>
+      <p class="store-note">Got an invite? Install Ovenlight, then open your invite link again.</p>
       <div class="hero-shot">
         <figure class="phone">
           <picture>
@@ -90,7 +93,7 @@
   <section class="section section-band" aria-labelledby="who">
     <div class="container intro">
       <h2 class="section-title" id="who">Who it's for</h2>
-      <p>You built a small web app for your family, your garden or your book club, maybe in an afternoon with a coding agent, and it runs on your own computer. The hard part now is getting it to the people it's for. Ovenlight puts it on your iPhone and theirs without putting it on the internet. They need nothing but Ovenlight.</p>
+      <p>You built a small web app for your family, your garden or your book club, maybe in an afternoon with a coding agent, and it runs on your own computer. The hard part now is getting it to the people it's for. Ovenlight puts it on your phone and theirs without putting it on the internet. They need nothing but Ovenlight.</p>
     </div>
   </section>
 
@@ -133,12 +136,12 @@
           <div class="feature">
             <span class="tile" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/></svg></span>
             <h3>Your apps, full screen</h3>
-            <p>Each app opens full screen from its own icon in a launcher that works like your Home Screen. No tabs to hunt through, and each app keeps its storage separate from the others.</p>
+            <p>Each app opens full screen from its own icon in a launcher that works like your phone's home screen. No tabs to hunt through, and each app keeps its storage separate from the others.</p>
           </div>
           <div class="feature">
             <span class="tile" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M12 3.2l7 2.8v5.2c0 4.4-2.9 8-7 9.6-4.1-1.6-7-5.2-7-9.6V6z"/><path d="M9 12l2.2 2.2L15.2 10"/></svg></span>
             <h3>A private connection, built in</h3>
-            <p>Ovenlight reaches your computers over your own Tailscale network through a connection built into the app. Your iPhone needs no VPN and no Tailscale app.</p>
+            <p>Ovenlight reaches your computers over your own Tailscale network through a connection built into the app. Your phone needs no VPN and no Tailscale app.</p>
           </div>
         </div>
       </div>
@@ -156,7 +159,7 @@
           <div class="feature">
             <span class="tile" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8.5V6.5a2.5 2.5 0 0 1 2.5-2.5h2M15.5 4h2A2.5 2.5 0 0 1 20 6.5v2M20 15.5v2a2.5 2.5 0 0 1-2.5 2.5h-2M8.5 20h-2A2.5 2.5 0 0 1 4 17.5v-2"/><path d="M9 9.5v1.2M15 9.5v1.2M12.2 9.5v3.6h-.9M9.6 15.6a3.6 3.6 0 0 0 4.8 0"/></svg></span>
             <h3>One unlock</h3>
-            <p>Face&nbsp;ID or your passcode opens all your apps at once. While Ovenlight is locked, no app can use the camera or microphone.</p>
+            <p>Unlock Ovenlight the way you unlock your phone, and all your apps open at once. While Ovenlight is locked, no app can use the camera or microphone.</p>
           </div>
           <div class="feature">
             <span class="tile" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5v11M8.2 7.2L12 3.5l3.8 3.7"/><path d="M8.5 10.5h-1A2.5 2.5 0 0 0 5 13v5a2.5 2.5 0 0 0 2.5 2.5h9A2.5 2.5 0 0 0 19 18v-5a2.5 2.5 0 0 0-2.5-2.5h-1"/></svg></span>
@@ -182,10 +185,10 @@
         <ol class="steps">
           <li><p>You make an app shareable once, on the computer that runs it.</p></li>
           <li><p>You send an invite from Ovenlight or from that computer: a link or a QR code that works once and expires after 7 days.</p></li>
-          <li><p>Your friend opens it on their iPhone and taps Join, with no account to create and nothing to sign in to.</p></li>
+          <li><p>Your friend opens it on their iPhone or Android phone and taps Join, with no account to create and nothing to sign in to.</p></li>
           <li><p>The app shows up in their Ovenlight marked with your name, and they can send you feedback from inside it. Your coding agent can read that feedback, screenshot included, and fix the app.</p></li>
         </ol>
-        <p class="share-after">You can stop sharing at any time. Their access ends at once, and the app and everything it stored are removed from their iPhone the next time Ovenlight connects.</p>
+        <p class="share-after">You can stop sharing at any time. Their access ends at once, and the app and everything it stored are removed from their phone the next time Ovenlight connects.</p>
       </div>
       <div class="pair">
         <figure>
@@ -197,7 +200,7 @@
               <img src="/images/sharing-960.jpg" srcset="/images/sharing-480.jpg 480w, /images/sharing-960.jpg 960w" sizes="(min-width: 600px) 232px, 42vw" width="960" height="2086" loading="lazy" decoding="async" alt="Sharing Book Club in Ovenlight: a Share button, two people who have joined, and an open invite that expires tomorrow.">
             </picture>
           </div>
-          <figcaption>On your iPhone</figcaption>
+          <figcaption>On your phone</figcaption>
         </figure>
         <figure>
           <div class="phone">
@@ -208,7 +211,7 @@
               <img src="/images/join-960.jpg" srcset="/images/join-480.jpg 480w, /images/join-960.jpg 960w" sizes="(min-width: 600px) 232px, 42vw" width="960" height="2086" loading="lazy" decoding="async" alt="An invite in Ovenlight asking: Join Riley's Movie Night? It explains the app runs on Riley's computer, with Join and Not Now buttons.">
             </picture>
           </div>
-          <figcaption>On your friend's iPhone</figcaption>
+          <figcaption>On your friend's phone</figcaption>
         </figure>
       </div>
     </div>
@@ -220,7 +223,7 @@
       <div class="needs">
         <p class="need">
           <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="9" y="3" width="14" height="26" rx="3.5"/><path d="M14 6.6h4"/></svg>
-          <span>An iPhone with iOS 18.1 or later.</span>
+          <span>An iPhone with iOS 18.1 or later, or a phone with Android 10 or later.</span>
         </p>
         <p class="need">
           <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="26" height="17" rx="2.5"/><path d="M12.5 27.5h7M16 22v5.5"/></svg>
@@ -233,14 +236,16 @@
 
   <section class="closing section-band" aria-labelledby="closing">
     <div class="container">
-      <h2 class="closing-title" id="closing">Your apps are already running. Put them on your iPhone.</h2>
+      <h2 class="closing-title" id="closing">Your apps are already running. Put them on your phone.</h2>
       <img class="closing-icon" src="/icon.svg" width="88" height="88" alt="" loading="lazy">
-      <a class="store" href="https://apps.apple.com/app/id6817561066">
-        <picture>
-          <source srcset="/images/app-store-badge-white.svg" media="(prefers-color-scheme: dark)">
+      <p class="stores">
+        <a class="store" href="https://apps.apple.com/app/id6817561066">
           <img src="/images/app-store-badge-black.svg" width="150" height="50" alt="Download on the App Store">
-        </picture>
-      </a>
+        </a>
+        <a class="store" href="https://play.google.com/store/apps/details?id=com.snowyghost.ovenlight">
+          <img class="play" src="/images/google-play-badge.png" width="646" height="250" alt="Get it on Google Play">
+        </a>
+      </p>
     </div>
   </section>
 </main>
@@ -254,7 +259,7 @@
       <a href="/privacy">Privacy Policy</a>
       <a href="https://github.com/snowy-ghost/ovenlight">Source code</a>
     </nav>
-    <p class="credits">Ovenlight is a trademark of Snowy Ghost LLC. Apple, the Apple logo, App Store, Face ID, iPhone, Mac, macOS, Safari and TestFlight are trademarks of Apple Inc., registered in the U.S. and other countries and regions. IOS is a trademark or registered trademark of Cisco in the U.S. and other countries and is used under license.</p>
+    <p class="credits">Ovenlight is a trademark of Snowy Ghost LLC. Apple, the Apple logo, App Store, Face ID, iPhone, Mac, macOS, Safari and TestFlight are trademarks of Apple Inc., registered in the U.S. and other countries and regions. IOS is a trademark or registered trademark of Cisco in the U.S. and other countries and is used under license. Android, Google Play and the Google Play logo are trademarks of Google LLC. Tailscale is a trademark of Tailscale Inc. Ovenlight is made by Snowy Ghost and is not affiliated with or endorsed by Tailscale.</p>
   </div>
 </footer>
 </body>

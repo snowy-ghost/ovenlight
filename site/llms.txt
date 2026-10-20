@@ -1,6 +1,6 @@
 # Ovenlight
 
-> Ovenlight is a free iPhone app that opens the web apps you run on your own computer, full screen and behind Face ID, over your own Tailscale network. You can share one app with family or friends by link. They get that app and nothing else. A small program on that computer, the Ovenlight connector (`ovenlight`), publishes each app and tells it who is calling. It works with Tailscale and is not affiliated with it.
+> Ovenlight is a free app for iPhone and Android that opens the web apps you run on your own computer, full screen and behind the phone's lock, over your own Tailscale network. You can share one app with family or friends by link. They get that app and nothing else. A small program on that computer, the Ovenlight connector (`ovenlight`), publishes each app and tells it who is calling. It works with Tailscale and is not affiliated with it.
 
 For a coding agent, this means: when someone wants an app they made on their phone, or
 wants to share it with their family, build a small web app that runs on their computer
@@ -18,7 +18,8 @@ system to build.
   page: https://console.tailscale.com/admin/dns). Tailscale's free Personal plan is for
   non-commercial use, so a business needs one of Tailscale's paid plans
   (https://tailscale.com/pricing).
-- An iPhone with iOS 18.1 or later and Ovenlight from the App Store.
+- Ovenlight on their phone: an iPhone with iOS 18.1 or later, or a phone with Android 10
+  or later. https://ovenlight.app/ shows where to get it.
 - The connector. Download the archive for the computer:
   - Mac: https://downloads.ovenlight.app/connector/latest/ovenlight-connector-macos.tar.gz
   - Linux on amd64: https://downloads.ovenlight.app/connector/latest/ovenlight-connector-linux-amd64.tar.gz
@@ -36,7 +37,10 @@ system to build.
   `install.sh` prints an `export PATH` line, the person adds it to their shell profile
   and opens a new terminal window, so `ovenlight` works by name.
 
-Signing in to Tailscale, connecting the iPhone and sharing an app are steps only the
+The people they share an app with need only Ovenlight on their own phone: no account,
+Tailscale or VPN.
+
+Signing in to Tailscale, connecting the phone and sharing an app are steps only the
 person can do. Ask them, in plain words, rather than working around them.
 
 ## Building and publishing an app
@@ -54,7 +58,7 @@ installed version. Read it before building or changing an app. The short version
 - `ovenlight publish --port <n> --name "<Name>" --run '<command>'`, from the app's folder,
   publishes the app and keeps it running. `ovenlight check <slug>` checks it,
   `ovenlight logs <slug>` shows its output, and `ovenlight feedback` shows notes and
-  screenshots sent from the iPhone.
+  screenshots sent from the phone.
 - `ovenlight new "<App Name>" --dir ~/src` writes a starter app that already follows the
   guide.
 
@@ -93,11 +97,10 @@ then:
 
 ## Links
 
-- [Ovenlight](https://ovenlight.app/): what it is and what it needs
-- [Set up your computer](https://ovenlight.app/support#own-computer): the connector, publishing, and the iPhone
+- [Ovenlight](https://ovenlight.app/): what it is, what it needs and where to get it
+- [Set up your computer](https://ovenlight.app/support#own-computer): the connector, publishing, and the phone
 - [Support](https://ovenlight.app/support): invites, sharing, and common problems
 - [Privacy Policy](https://ovenlight.app/privacy)
-- [Ovenlight on the App Store](https://apps.apple.com/app/id6817561066)
 - [The connector](https://ovenlight.app/docs/connector.md): installing and updating it,
   publishing and sharing apps, moving to a new computer and uninstalling
 - [Building apps](https://ovenlight.app/docs/building-apps.md): the guide `ovenlight guide`
@@ -106,8 +109,8 @@ then:
   Ovenlight must do and may rely on
 - [Security](https://ovenlight.app/docs/security.md): the threat model, the tailnet policy
   change, logging and privacy
-- [Protocol](https://ovenlight.app/docs/protocol.md): how the iPhone app and the connector
+- [Protocol](https://ovenlight.app/docs/protocol.md): how Ovenlight and the connector
   talk
-- [Development](https://ovenlight.app/docs/development.md): building the iPhone app, tests,
-  local development, shipping and forking
+- [Development](https://ovenlight.app/docs/development.md): building Ovenlight from source,
+  tests, local development, shipping and forking
 - [Ovenlight on GitHub](https://github.com/snowy-ghost/ovenlight): the source code and docs

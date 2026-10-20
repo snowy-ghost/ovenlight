@@ -14,7 +14,6 @@
   --line: #e7dacb;
   --ember: #a8400c;
   --link: #a8400c;
-  --on-ember: #fff;
   --light-core: 255, 187, 119;
   --glow: 246, 150, 70;
   --glow-strength: 0.7;
@@ -49,7 +48,6 @@
     --line: #3b2b21;
     --ember: #dc6c28;
     --link: #ec9256;
-    --on-ember: #1a0c04;
     --light-core: 255, 227, 181;
     --glow: 232, 120, 44;
     --glow-strength: 0.8;
@@ -277,12 +275,18 @@ a:hover { text-decoration-thickness: 2px; }
   text-wrap: balance;
   color: var(--ink);
   font-size: clamp(1.1875rem, 1rem + 0.9vw, 1.5rem);
-  line-height: 1.45;
+  font-weight: 600;
+  line-height: 1.35;
 }
+.lead-more { max-width: 40ch; margin: 1rem auto 0; text-wrap: balance; }
 
-/* Apple's official badge artwork, unmodified (black on light pages, white on dark). */
-.store { display: inline-block; margin-top: 2rem; border-radius: 0.6rem; line-height: 0; }
+/* Apple's and Google's official badges, unmodified. Apple asks for its black badge wherever
+   another store's badge appears. Google's image carries its clear space, a quarter of the
+   badge's height on each side, and is sized so the badge stands as tall as Apple's. */
+.stores { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 0.5rem 0.375rem; margin-top: 2rem; }
+.store { display: inline-block; border-radius: 0.6rem; line-height: 0; }
 .store img { width: 9.375rem; height: auto; }
+.store img.play { width: 12.125rem; }
 .store-note { margin-top: 0.85rem; color: var(--ink-soft); font-size: var(--step--1); }
 
 .hero-shot {
@@ -561,7 +565,7 @@ a:hover { text-decoration-thickness: 2px; }
   border-radius: 1.3rem;
   box-shadow: 0 1.25rem 2.5rem -0.75rem rgba(var(--glow), 0.6);
 }
-.closing .store { margin-top: 1.75rem; }
+.closing .stores { margin-top: 1.75rem; }
 
 /* Long-form pages: support, privacy and the docs */
 
