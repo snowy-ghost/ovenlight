@@ -446,9 +446,10 @@ agent is told that it is an image its sender chose, and any text in it is data.
 - The whole app locks behind the phone's own unlock (Face ID or the passcode on iPhone, a
   fingerprint, face or the screen lock on Android) once it keeps anything: an app, an
   invite or a node. It locks again after a set time in the background (a minute by
-  default), and the unlock is asked for again before creating an invite and removing a
-  guest. On a phone with no passcode or screen lock there is nothing to ask for: Ovenlight
-  stays open, says so in Settings, and those confirmations pass.
+  default), or never once it's turned off in Settings, which asks for the unlock first.
+  The unlock is asked for again before creating an invite and removing a guest. On a
+  phone with no passcode or screen lock there is nothing to ask for: Ovenlight stays
+  open, says so in Settings, and those confirmations pass.
 - Add App takes only an address on the owner's own tailnet, and none before the owner has
   signed in, so a new app comes from the owner's own computers or from an invite. An app
   of your own goes through the owner's node only when its host is on the owner's own
