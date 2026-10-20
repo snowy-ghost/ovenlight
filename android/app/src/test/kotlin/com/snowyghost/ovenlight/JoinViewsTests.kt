@@ -1,11 +1,13 @@
 package com.snowyghost.ovenlight
 
+import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.ViewRootForTest
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
@@ -19,6 +21,7 @@ import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
@@ -26,9 +29,14 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.net.URI
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.RuntimeEnvironment
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
@@ -43,6 +51,12 @@ import org.robolectric.annotation.GraphicsMode
 class JoinViewsTests {
     @get:Rule
     val composeRule = createComposeRule()
+
+    @Before
+    fun grantOverlayHiding() {
+        // The manifest's normal permission, which Robolectric doesn't grant by itself.
+        shadowOf(RuntimeEnvironment.getApplication()).grantPermissions(Manifest.permission.HIDE_OVERLAY_WINDOWS)
+    }
 
     private val look = mutableStateOf(Look.Light)
     private var state by mutableStateOf(JoinState())
@@ -133,6 +147,21 @@ class JoinViewsTests {
         assertEquals(listOf(invite), accepted)
         tap("Not now")
         assertEquals(1, closed)
+    }
+
+    /** Any app can send the link, so while the question asks, its window drops touches through another app's overlay. */
+    @Test
+    fun testTheQuestionGuardsItsWindowFromOverlaysOnlyWhileItAsks() {
+        show()
+        val decor = (composeRule.onRoot().fetchSemanticsNode().root as ViewRootForTest).view.rootView
+        fun guarded() = composeRule.runOnIdle { decor.filterTouchesWhenObscured }
+        assertTrue("asking", guarded())
+        state = JoinState(phases = mapOf("i1" to JoinPhase.Claiming))
+        assertFalse("joining", guarded())
+        state = JoinState()
+        assertTrue("asking again", guarded())
+        showing = false
+        assertFalse("gone, as under the lock", guarded())
     }
 
     @Test

@@ -933,16 +933,20 @@ private fun QuietChoice(checked: Boolean, onChange: (Boolean) -> Unit) {
 }
 
 /**
- * Ovenlight's own prompt can't be tapjacked: its window drops touches that pass through
- * another app's overlay, and on API 31 and up other apps' overlays hide while it shows.
+ * Ovenlight's own prompt can't be tapjacked: while it shows, its window (a dialog's, or else
+ * the activity's) drops touches that pass through another app's overlay, and on API 31 and up
+ * other apps' overlays hide. Both end with it, so a window has one such prompt at a time.
  */
 @Composable
 internal fun GuardedFromOverlays() {
     val view = LocalView.current
     DisposableEffect(view) {
-        val window = view.dialogWindow()
+        val window = view.dialogWindow() ?: view.context.componentActivity()?.window
         window?.decorView?.filterTouchesWhenObscured = true
         if (Build.VERSION.SDK_INT >= 31) window?.setHideOverlayWindows(true)
-        onDispose { if (Build.VERSION.SDK_INT >= 31) window?.setHideOverlayWindows(false) }
+        onDispose {
+            window?.decorView?.filterTouchesWhenObscured = false
+            if (Build.VERSION.SDK_INT >= 31) window?.setHideOverlayWindows(false)
+        }
     }
 }
