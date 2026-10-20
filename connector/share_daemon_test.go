@@ -64,7 +64,7 @@ func testDaemon(t *testing.T) (*daemon, *tsapitest.Fake) {
 func addApp(d *daemon, app App) {
 	d.cfg.Apps = append(d.cfg.Apps, app)
 	n := newAppNode(app, d.stateDir, devOptions{}, d)
-	n.dnsName, n.tags, n.backend = app.Slug+".tail1.ts.net", []string{policy.AppTag(app.Slug)}, "Running"
+	n.dnsName, n.tags, n.backend, n.selfID = app.Slug+".tail1.ts.net", []string{policy.AppTag(app.Slug)}, "Running", "n"+app.Slug
 	d.nodes[app.Slug] = n
 }
 
@@ -469,6 +469,7 @@ func TestSyncRemovesDeletedGuests(t *testing.T) {
 		{ID: "1", NodeID: "nMBP", User: "alex@example.com", Authorized: true},
 		{ID: "2", NodeID: "nNew", Name: "kim-iphone", Tags: []string{guestTag}},
 		{ID: "3", NodeID: "nServer", Name: "server", Tags: []string{"tag:server"}},
+		{ID: "c", NodeID: "ncoach"},
 	}
 	msg := d.syncOnce()
 	if !strings.Contains(msg, "1 guests removed") || d.sh.guestFor("nSam", "coach") != nil {
@@ -495,17 +496,35 @@ func TestSyncDistrustsAnotherTailnet(t *testing.T) {
 	res, _ := d.createInvite(guestRef{To: "Sam"}, "coach", "terminal", false)
 	link, _ := parseInviteLink(res.Link)
 	claim(t, d, samDev, link.Key)
+	// A credential for another tailnet lists none of this computer's apps, which can't be
+	// checked before the config loads, or before the app's node has its first network map
+	// and so its ID.
 	n := d.node("coach")
 	n.mu.Lock()
-	n.selfID = "nCoach"
+	n.selfID = ""
 	n.mu.Unlock()
-	// A credential for another tailnet lists none of this computer's apps.
 	f.Devices = []tsapi.Device{{ID: "1", NodeID: "nWork", User: "alex@work.example", Authorized: true}}
+	d.mu.Lock()
+	apps := d.cfg.Apps
+	d.cfg.Apps = nil
+	d.mu.Unlock()
+	if msg := d.syncOnce(); !strings.Contains(msg, "aren't connected yet") || d.sh.guestFor("nSam", "coach") == nil {
+		t.Errorf("before the config loads: %s", msg)
+	}
+	d.mu.Lock()
+	d.cfg.Apps, d.loaded = apps, true
+	d.mu.Unlock()
+	if msg := d.syncOnce(); !strings.Contains(msg, "aren't connected yet") || d.sh.guestFor("nSam", "coach") == nil {
+		t.Errorf("before the node's ID: %s", msg)
+	}
+	n.mu.Lock()
+	n.selfID = "ncoach"
+	n.mu.Unlock()
 	if msg := d.syncOnce(); !strings.Contains(msg, "another tailnet") || d.sh.guestFor("nSam", "coach") == nil {
 		t.Errorf("another tailnet's list: %s", msg)
 	}
 	f.Mu.Lock()
-	f.Devices = []tsapi.Device{{ID: "2", NodeID: "nCoach", Tags: []string{policy.AppTag("coach")}},
+	f.Devices = []tsapi.Device{{ID: "2", NodeID: "ncoach", Tags: []string{policy.AppTag("coach")}},
 		{ID: "3", NodeID: "nSam", Name: "sam-iphone", Tags: []string{guestTag}}}
 	f.Mu.Unlock()
 	if msg := d.syncOnce(); !strings.Contains(msg, "0 guests removed") || d.sh.guestFor("nSam", "coach") == nil ||
@@ -1333,7 +1352,7 @@ func TestUnpublishedWhileDownRetiresGuests(t *testing.T) {
 		Invites: []Invite{{ID: "i1", To: "Kim", Person: "p2", App: "notes", State: inviteSent, Expires: time.Now().Add(time.Hour), KeyID: "kKim"}},
 	}
 	f.Mu.Lock()
-	f.Devices = []tsapi.Device{{ID: "9", NodeID: "nSam", Tags: []string{notesTag}, Authorized: true}}
+	f.Devices = []tsapi.Device{{ID: "9", NodeID: "nSam", Tags: []string{notesTag}, Authorized: true}, {ID: "c", NodeID: "ncoach"}}
 	f.Mu.Unlock()
 	// The connector starts with notes gone from the config.
 	if err := d.cfg.Save(d.configPath); err != nil {
@@ -1345,7 +1364,7 @@ func TestUnpublishedWhileDownRetiresGuests(t *testing.T) {
 	waitFor(t, func() bool {
 		f.Mu.Lock()
 		defer f.Mu.Unlock()
-		return len(f.Devices) == 0
+		return len(f.Devices) == 1
 	}, "Sam's device to be deleted")
 	waitFor(t, func() bool { return keyDeleted(d, "i1") }, "Kim's key to be deleted")
 
@@ -1375,7 +1394,7 @@ func TestRepublishWaitsForRetirement(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.Mu.Lock()
-	f.Devices = []tsapi.Device{{ID: "9", NodeID: "nSam", Tags: []string{policy.GuestTag("notes")}, Authorized: true}}
+	f.Devices = []tsapi.Device{{ID: "9", NodeID: "nSam", Tags: []string{policy.GuestTag("notes")}, Authorized: true}, {ID: "c", NodeID: "ncoach"}}
 	f.Mu.Unlock()
 	// notes was unpublished while the connector was down.
 	if err := d.cfg.Save(d.configPath); err != nil {
@@ -1395,7 +1414,7 @@ func TestRepublishWaitsForRetirement(t *testing.T) {
 	waitFor(t, func() bool {
 		f.Mu.Lock()
 		defer f.Mu.Unlock()
-		return len(f.Devices) == 0
+		return len(f.Devices) == 1
 	}, "Sam's device to be deleted")
 	if res, err := publishApp(p, notes, nil, nil, false); err != nil || res.App.Slug != "notes" {
 		t.Fatalf("publish once retired: %+v, %v", res, err)
@@ -1449,7 +1468,7 @@ func TestSyncRetiresUnpublishedApps(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.Mu.Lock()
-	f.Devices = []tsapi.Device{{ID: "1", NodeID: "nMBP", User: "alex@example.com", Authorized: true}}
+	f.Devices = []tsapi.Device{{ID: "1", NodeID: "nMBP", User: "alex@example.com", Authorized: true}, {ID: "c", NodeID: "ncoach"}}
 	f.Mu.Unlock()
 	d.mu.Lock()
 	d.cfg.Apps = nil
@@ -1594,9 +1613,10 @@ func TestSyncListsUnclaimedGuestDevices(t *testing.T) {
 		{ID: "1", NodeID: "nMBP", User: "alex@example.com", Authorized: true},
 		{ID: "9", NodeID: "nSam", Tags: []string{guestTag}, Authorized: true},
 		{ID: "7", NodeID: "nStray", Name: "stray", Tags: []string{guestTag}, Authorized: true},
+		{ID: "c", NodeID: "ncoach"},
 	}
 	f.Mu.Unlock()
-	if msg := d.syncOnce(); !strings.Contains(msg, "1 unclaimed") || len(f.Devices) != 3 {
+	if msg := d.syncOnce(); !strings.Contains(msg, "1 unclaimed") || len(f.Devices) != 4 {
 		t.Errorf("sync: %s, %d devices left", msg, len(f.Devices))
 	}
 	gl := d.guestList()
@@ -1641,7 +1661,7 @@ func TestSyncRetriesInviteKeyDeletion(t *testing.T) {
 	f.Mu.Lock()
 	f.Token = "tskey-api-test"
 	f.Keys[2].Deleted = true // Lee's key is already gone from the tailnet
-	f.Devices = []tsapi.Device{{ID: "1", NodeID: "nMBP", User: "alex@example.com", Authorized: true}}
+	f.Devices = []tsapi.Device{{ID: "1", NodeID: "nMBP", User: "alex@example.com", Authorized: true}, {ID: "c", NodeID: "ncoach"}}
 	f.Mu.Unlock()
 	d.sh.mu.Lock()
 	d.sh.st.invite(lee.Invite.ID).Expires = time.Now().Add(-inviteTTL)
