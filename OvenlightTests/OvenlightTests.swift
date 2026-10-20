@@ -1,4 +1,5 @@
 import AVFoundation
+import LocalAuthentication
 import SwiftUI
 import WebKit
 import XCTest
@@ -798,6 +799,56 @@ final class LockTimingTests: XCTestCase {
         XCTAssertTrue(lock.isLocked)
     }
 
+    /// Locked by hand, even with the lock off, Ovenlight stays locked through a relaunch and a
+    /// restart until an unlock, and an iPhone with no passcode still opens. A delay works as before.
+    func testALockByHandHoldsUntilAnUnlock() async {
+        let defaults = UserDefaults.throwaway(for: self)
+        var now = ContinuousClock.now
+        var boot: String? = "boot-1"
+        var saved = false
+        func launch() -> LockManager { LockManager(hasSavedData: { saved }, now: { now }, boot: { boot }, defaults: defaults) }
+        var app = launch()
+        let previous = app.lockAfterSeconds
+        defer { app.lockAfterSeconds = previous }
+        app.lockAfterSeconds = LockManager.off
+        saved = true
+
+        app.lock()
+        app.didEnterBackground()
+        now += .seconds(60)
+        app = launch()
+        XCTAssertTrue(app.isLocked, "quit in the background")
+        boot = "boot-2"
+        app = launch()
+        XCTAssertTrue(app.isLocked, "the iPhone restarted")
+        await app.unlock(with: FakeFaceID())
+        XCTAssertFalse(app.isLocked)
+        XCTAssertFalse(launch().isLocked, "unlocked, the lock is off again")
+
+        app.lock()
+        app = launch()
+        let noPasscode = FakeFaceID()
+        noPasscode.passcodeSet = false
+        await app.unlock(with: noPasscode)
+        XCTAssertFalse(app.isLocked, "nothing to unlock with")
+        XCTAssertFalse(launch().isLocked)
+
+        app.lock()
+        saved = false
+        XCTAssertFalse(launch().isLocked, "nothing to protect")
+        saved = true
+        XCTAssertFalse(launch().isLocked)
+
+        app.lockAfterSeconds = 60
+        app.lock()
+        app = launch()
+        XCTAssertTrue(app.isLocked, "a delay: locked by hand")
+        await app.unlock(with: FakeFaceID())
+        app.didEnterBackground()
+        now += .seconds(30)
+        XCTAssertFalse(launch().isLocked, "a delay: quit 30 seconds after it left the front")
+    }
+
     func testAnEmptyNodeFolderOrListIsNothingToLock() throws {
         let base = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         defer { try? FileManager.default.removeItem(at: base) }
@@ -1547,4 +1598,16 @@ extension UserDefaults {
         test.addTeardownBlock { UserDefaults().removePersistentDomain(forName: name) }
         return UserDefaults(suiteName: name)!
     }
+}
+
+/// Stands in for Face ID, which a test can't pass: it always matches, or finds no passcode.
+private final class FakeFaceID: LAContext {
+    var passcodeSet = true
+
+    override func canEvaluatePolicy(_ policy: LAPolicy, error: NSErrorPointer) -> Bool {
+        if !passcodeSet { error?.pointee = NSError(domain: LAErrorDomain, code: LAError.passcodeNotSet.rawValue) }
+        return passcodeSet
+    }
+
+    override func evaluatePolicy(_ policy: LAPolicy, localizedReason: String) async throws -> Bool { true }
 }
