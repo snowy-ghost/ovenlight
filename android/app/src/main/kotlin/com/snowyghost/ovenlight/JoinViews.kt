@@ -5,6 +5,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.os.Build
 import androidx.camera.compose.CameraXViewfinder
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
@@ -337,6 +338,10 @@ private fun JoinInvite(invite: InviteLink, state: JoinState, close: () -> Unit) 
     val colors = MaterialTheme.colorScheme
     // Joined, but the app went since (removed, or its access ended): the invite asks again.
     val phase = state.phases[invite.invite]?.takeUnless { it is JoinPhase.Joined && state.apps.none { app -> app.id == it.app } }
+    // Any app can send the link, so while the question asks, an overlay can't tap Join. Only
+    // where Android hides overlays (12 and up): below that the guard would drop every tap under a
+    // screen-dimming app, as on the lock screen.
+    if (phase == null && Build.VERSION.SDK_INT >= 31) GuardedFromOverlays()
     val preflight = state.preflight(invite)
     // The invited app once it's on this phone, joined now or before. Its icon can't be fetched
     // until joining gives this phone access to its computer; adding the app fetches it, so the

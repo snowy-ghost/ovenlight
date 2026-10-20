@@ -7,7 +7,10 @@
     <string name="settings_lock_after_1_minute">After 1 minute</string>
     <string name="settings_lock_after_5_minutes">After 5 minutes</string>
     <string name="settings_lock_after_15_minutes">After 15 minutes</string>
-    <string name="settings_lock_footer">How long Ovenlight can stay in the background before it locks.</string>
+    <string name="settings_lock_off">Off</string>
+    <!-- The screen lock's prompt, before the lock is turned off. -->
+    <string name="settings_lock_off_reason">Turn off Ovenlight’s lock</string>
+    <string name="settings_lock_footer">How long Ovenlight can stay in the background before it locks, if at all.</string>
     <string name="settings_no_screen_lock">Ovenlight can’t lock until this phone has a screen lock.</string>
     <string name="settings_set_screen_lock">Set screen lock</string>
 

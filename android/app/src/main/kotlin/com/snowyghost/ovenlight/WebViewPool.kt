@@ -271,15 +271,12 @@ object DownloadPolicy {
                 if (c.isUnsafeInFileName()) append('-') else appendCodePoint(c)
             }
         }
-        var name = replaced.trim { it == '.' || it.isWhitespaceOrNewline() }
+        val name = replaced.trim { it == '.' || it.isWhitespaceOrNewline() }
         // Foundation takes a suffix with a space in it for no extension.
         val ext = name.substringAfterLast('.', "").takeIf { ' ' !in it } ?: ""
-        val keepsExtension = ext.isNotEmpty() && ext.utf8Count <= 16
-        while (name.utf8Count > maxFileNameBytes) {
-            val stem = if (keepsExtension) name.substringBeforeLast('.') else name
-            name = stem.droppingLastCharacter() + (if (keepsExtension) ".$ext" else "")
-        }
-        return name.ifEmpty { "Download" }
+        val suffix = if (ext.isNotEmpty() && ext.utf8Count <= 16) ".$ext" else ""
+        val stem = name.removeSuffix(suffix).fittingIn(maxFileNameBytes - suffix.utf8Count)
+        return (stem + suffix).ifEmpty { "Download" }
     }
 
     /**
@@ -291,6 +288,13 @@ object DownloadPolicy {
         val last = uri.path.orEmpty().substringAfterLast('/').ifEmpty { return null }
         return fileName(last)
     }
+
+    /**
+     * A Content-Disposition header to read a file's name from, or null when it's longer than
+     * any that names a file Ovenlight keeps: [maxFileNameBytes] percent-encoded and plain fit in
+     * 2 KB. androidx's parser takes time with the square of a header's length.
+     */
+    fun disposition(header: String?): String? = header?.takeIf { it.length <= 2 * 1024 }
 
     /** Well under the 255 bytes ext4 and f2fs allow, as on iOS. */
     const val maxFileNameBytes = 200
@@ -314,12 +318,21 @@ object DownloadPolicy {
 
     private val String.utf8Count: Int get() = toByteArray(Charsets.UTF_8).size
 
-    /** Without its last character as people see it, as Swift's `dropLast()` drops one. */
-    private fun String.droppingLastCharacter(): String {
+    /**
+     * The longest start of the text that fits in [bytes] of UTF-8, in whole characters as people
+     * see them, as Swift's `dropLast()` drops them. One pass from the start.
+     */
+    private fun String.fittingIn(bytes: Int): String {
         val breaks = BreakIterator.getCharacterInstance(Locale.ROOT)
         breaks.setText(this)
-        breaks.last()
-        val start = breaks.previous()
-        return if (start == BreakIterator.DONE) "" else substring(0, start)
+        var end = 0
+        var used = 0
+        while (true) {
+            val next = breaks.next()
+            if (next == BreakIterator.DONE) return this
+            used += substring(end, next).utf8Count
+            if (used > bytes) return substring(0, end)
+            end = next
+        }
     }
 }

@@ -163,8 +163,9 @@ object ManifestParser {
 
     data class Links(val manifest: URI?, val touchIcon: URI?)
 
-    private val linkTag = Regex("""<link\b[^>]*>""", RegexOption.IGNORE_CASE)
-    private val titleTag = Regex("<title[^>]*>([^<]*)</title>", RegexOption.IGNORE_CASE)
+    // A tag's run stops at the next `<`, so one that never closes costs its own run, not the rest of the page.
+    private val linkTag = Regex("""<link\b[^<>]*>""", RegexOption.IGNORE_CASE)
+    private val titleTag = Regex("<title[^<>]*>([^<]*)</title>", RegexOption.IGNORE_CASE)
     private val anyTag = Regex("<[^>]+>")
     private val integer = Regex("[+-]?[0-9]+")
 
@@ -172,7 +173,10 @@ object ManifestParser {
     fun links(inHTML: String, baseURL: URI): Links {
         var manifest: URI? = null
         var touchIcon: URI? = null
-        for (tag in linkTag.findAll(inHTML).map { it.value }) {
+        // One Matcher: on Android, each of findAll's matches copies the whole page again.
+        val tags = linkTag.toPattern().matcher(inHTML)
+        while (tags.find()) {
+            val tag = tags.group()
             val rel = attribute("rel", tag)?.lowercase() ?: continue
             val url = attribute("href", tag)?.let(baseURL::resolving) ?: continue
             val rels = rel.split(' ').filter { it.isNotEmpty() }
@@ -221,9 +225,13 @@ object ManifestParser {
         }.maxOrNull() ?: 0
     }
 
+    /** The attributes [links] reads, compiled once rather than for each of a page's tags. */
+    private val attributes = listOf("rel", "href").associateWith {
+        Regex("""\b$it\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))""", RegexOption.IGNORE_CASE)
+    }
+
     private fun attribute(name: String, tag: String): String? {
-        val pattern = Regex("""\b$name\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))""", RegexOption.IGNORE_CASE)
-        val match = pattern.find(tag) ?: return null
+        val match = attributes.getValue(name).find(tag) ?: return null
         return (1..3).firstNotNullOfOrNull { match.groups[it]?.value }
     }
 }

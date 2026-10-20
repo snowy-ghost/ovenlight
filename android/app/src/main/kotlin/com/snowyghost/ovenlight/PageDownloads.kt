@@ -206,7 +206,8 @@ class PageDownloads(
             val click = clicks.remove(url) ?: return later()
             started.remove(url)
             // A data URL has no origin of its own: only the app's page reporting the click counts.
-            val uri = URI("data", url.substringAfter(':').take(64), null)
+            // The page's text isn't parsed, since a page can write one java.net.URI refuses.
+            val uri = URI("data:,")
             if (!DownloadPolicy.allows(uri, from = click.fromHost, appHost = appHost, locked = isLocked())) return log("refused a data download")
             save(click.name) { DataURL.decode(url) }
         }
@@ -231,7 +232,7 @@ class PageDownloads(
         var name: String? = null
         val shownName = {
             name?.ifEmpty { null }?.let(DownloadPolicy::fileName)
-                ?: disposition?.let(URLUtilCompat::getFilenameFromContentDisposition)?.let(DownloadPolicy::fileName)
+                ?: DownloadPolicy.disposition(disposition)?.let(URLUtilCompat::getFilenameFromContentDisposition)?.let(DownloadPolicy::fileName)
                 ?: DownloadPolicy.name(url)
         }
         val client = client()
@@ -266,7 +267,7 @@ class PageDownloads(
                 response.body.source().timeout().timeout(READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
                 val sentType = response.header("Content-Type")?.substringBefore(';')?.trim() ?: type
                 val expected = response.body.contentLength().takeIf { it >= 0 } ?: length
-                write(name?.ifEmpty { null } ?: URLUtilCompat.guessFileName(url, sent, sentType), expected, response.body.byteStream())
+                write(name?.ifEmpty { null } ?: URLUtilCompat.guessFileName(url, DownloadPolicy.disposition(sent), sentType), expected, response.body.byteStream())
             }
         }
     }

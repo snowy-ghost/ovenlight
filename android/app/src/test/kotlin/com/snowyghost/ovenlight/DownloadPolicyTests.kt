@@ -1,6 +1,9 @@
 package com.snowyghost.ovenlight
 
+import androidx.webkit.URLUtilCompat
 import java.net.URI
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.measureTime
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -52,11 +55,40 @@ class DownloadPolicyTests {
         assertEquals("a-b-c-d.txt", DownloadPolicy.fileName("a:b\\c\u0000d.txt"))
         assertEquals("Download", DownloadPolicy.fileName(" .. "))
         assertEquals("Notes ✏️ May.md", DownloadPolicy.fileName("Notes ✏️ May.md"))
-        val long = DownloadPolicy.fileName("é".repeat(300) + ".csv")
-        assertTrue(long.toByteArray(Charsets.UTF_8).size <= DownloadPolicy.maxFileNameBytes)
-        assertTrue(long.endsWith("é.csv"))
         // Not in the Swift test: Foundation reads "final version" as no extension, so the end is cut.
         assertEquals("a".repeat(200), DownloadPolicy.fileName("a".repeat(250) + ".final version"))
+    }
+
+    /**
+     * A page's name of any length is cut in time linear in its length, at the same place as
+     * before: whole characters as people see them, the extension kept. Cut a character a pass,
+     * a name of 400,000 letters held the main thread for over two minutes as its download failed.
+     */
+    @Test
+    fun testALongNameIsCutWithoutStalling() {
+        assertEquals("é".repeat(98) + ".csv", DownloadPolicy.fileName("é".repeat(300) + ".csv"))
+        val flag = "\uD83C\uDDEC\uD83C\uDDE7"
+        assertEquals("a".repeat(184) + flag + ".txt", DownloadPolicy.fileName("a".repeat(184) + flag + flag + ".txt"))
+        assertEquals("a".repeat(190) + ".txt", DownloadPolicy.fileName("a".repeat(190) + flag + ".txt"))
+        val took = measureTime {
+            assertEquals("A".repeat(196) + ".txt", DownloadPolicy.fileName("A".repeat(100_000) + ".txt"))
+        }
+        assertTrue("took $took", took < 2.seconds)
+    }
+
+    /**
+     * Android only: a file's name is read from a Content-Disposition header of up to 2 KB.
+     * androidx's parser takes time with the square of a header's length, and a failed download's
+     * notice reads it on the main thread: 64 KB took over 15 seconds on the JVM.
+     */
+    @Test
+    fun testOnlyAShortDispositionIsRead() {
+        fun name(header: String) = DownloadPolicy.disposition(header)?.let(URLUtilCompat::getFilenameFromContentDisposition)
+        assertEquals("export.csv", name("attachment; filename=\"export.csv\""))
+        val long = "a".repeat(DownloadPolicy.maxFileNameBytes)
+        assertEquals(long, name("attachment; filename=\"$long\"; filename*=UTF-8''" + "%61".repeat(DownloadPolicy.maxFileNameBytes)))
+        val took = measureTime { assertNull(name("attachment; " + "a".repeat(64_000))) }
+        assertTrue("took $took", took < 2.seconds)
     }
 
     /** Android only: breaks, spaces and blank letters a page could use to push the real extension out of sight. */

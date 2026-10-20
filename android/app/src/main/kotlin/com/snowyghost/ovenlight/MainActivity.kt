@@ -116,6 +116,8 @@ class MainActivity : ComponentActivity() {
      */
     override fun onStart() {
         super.onStart()
+        // Back from Google Play with the WebView the update screen asked for.
+        WebViewSetup.startIfFound(applicationContext)
         // Back from Android 10's screen lock screen asked for again before an invite or a
         // removal: its answer arrives after this, and a yes means the time away doesn't count.
         if (unlockPrompt.confirming && unlockPrompt.showingCredentialScreen) lockCheckWaits = true else lock.willBecomeActive()

@@ -4,6 +4,7 @@ import android.app.admin.DevicePolicyManager
 import android.content.Intent
 import android.icu.text.ListFormatter
 import android.provider.Settings as SystemSettings
+import androidx.activity.compose.LocalActivity
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -123,6 +124,8 @@ data class SettingsState(
     val owner: OwnerSettings? = null,
     val version: String = "",
     val setLockAfter: (Int) -> Unit = {},
+    /** The screen lock again, before the lock is turned off (see UnlockPrompt.confirm). */
+    val confirm: suspend (reason: String) -> Boolean = { true },
     val setScreenLock: () -> Unit = {},
     val leave: (String) -> Unit = {},
     val useMyOwnComputers: () -> Unit = {},
@@ -141,6 +144,7 @@ data class SettingsState(
 @Composable
 fun SettingsView(model: AppModel, pages: SnapshotStateList<SettingsPage>, onClose: () -> Unit) {
     val context = LocalContext.current
+    val activity = LocalActivity.current as? MainActivity
     val nodes = model.nodes
     val memberships by nodes.memberships.membershipsFlow.collectAsState()
     val phases by model.guests.phases.collectAsState()
@@ -175,6 +179,7 @@ fun SettingsView(model: AppModel, pages: SnapshotStateList<SettingsPage>, onClos
             model.lock.lockAfterSeconds = seconds
             lockAfter = seconds
         },
+        confirm = { reason -> activity?.confirmOwner(reason) ?: false },
         // Straight to choosing a screen lock, or the security settings where that isn't offered.
         setScreenLock = { context.startOrFalse(Intent(DevicePolicyManager.ACTION_SET_NEW_PASSWORD)) || context.startOrFalse(Intent(SystemSettings.ACTION_SECURITY_SETTINGS)) },
         leave = { id -> model.scope.launch { model.guests.leave(id) } },
@@ -222,11 +227,13 @@ private val lockDelays = listOf(
     LockDelay(60, R.string.settings_lock_after_1_minute),
     LockDelay(300, R.string.settings_lock_after_5_minutes),
     LockDelay(900, R.string.settings_lock_after_15_minutes),
+    LockDelay(LockManager.OFF, R.string.settings_lock_off),
 )
 
 @Composable
 private fun SettingsList(state: SettingsState, scroll: ScrollState, onClose: () -> Unit, onAcknowledgements: () -> Unit) {
     var choosingDelay by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     var leaving by remember { mutableStateOf<SharedOwner?>(null) }
     /** The row asking first, by its name, which the dialog's button repeats. */
     var confirming by remember { mutableStateOf<Int?>(null) }
@@ -304,6 +311,7 @@ private fun SettingsList(state: SettingsState, scroll: ScrollState, onClose: () 
     }
 
     if (choosingDelay) {
+        val offReason = stringResource(R.string.settings_lock_off_reason)
         AlertDialog(
             onDismissRequest = { choosingDelay = false },
             title = { Text(stringResource(R.string.settings_require_screen_lock)) },
@@ -314,8 +322,9 @@ private fun SettingsList(state: SettingsState, scroll: ScrollState, onClose: () 
                         val selected = delay.seconds == state.lockAfterSeconds
                         Row(
                             Modifier.fillMaxWidth().heightIn(min = 48.dp).selectable(selected = selected, role = Role.RadioButton) {
-                                state.setLockAfter(delay.seconds)
                                 choosingDelay = false
+                                // Off asks first, so someone handed the unlocked phone can't turn the lock off.
+                                if (!selected) scope.launch { if (delay.seconds != LockManager.OFF || state.confirm(offReason)) state.setLockAfter(delay.seconds) }
                             },
                             verticalAlignment = Alignment.CenterVertically,
                         ) {

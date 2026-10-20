@@ -1,8 +1,11 @@
 package com.snowyghost.ovenlight
 
 import java.net.URI
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.measureTime
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ManifestParserTests {
@@ -47,5 +50,37 @@ class ManifestParserTests {
     fun testTitleFallback() {
         assertEquals("Coach", ManifestParser.title(inHTML = "<title>\n Coach </title>"))
         assertNull(ManifestParser.title(inHTML = "<p>none</p>"))
+    }
+
+    /**
+     * A page whose tags never close reads in time linear in its length. Each `<title` or `<link`
+     * scanned to the end of the page, so 600 KB of them held the main thread for minutes.
+     */
+    @Test
+    fun testATagThatNeverClosesDoesntStallTheRead() {
+        val head = """<title lang="en">Coach</title><link rel="manifest" href="m.json"><link rel="apple-touch-icon" href="t.png">"""
+        assertEquals("Coach", ManifestParser.title(head))
+        val links = ManifestParser.links(head, base)
+        assertEquals("https://alex-mac.example.ts.net:8443/m.json", links.manifest?.toString())
+        assertEquals("https://alex-mac.example.ts.net:8443/t.png", links.touchIcon?.toString())
+        for (tag in listOf("<title", "<link ")) {
+            val page = tag.repeat(50_000)
+            val took = measureTime {
+                assertNull(ManifestParser.title(page))
+                assertNull(ManifestParser.links(page, base).manifest)
+            }
+            assertTrue("$tag took $took", took < 2.seconds)
+        }
+    }
+
+    /** An icon whose address is thousands of `..` segments is skipped: java.net.URI took seconds to drop them. */
+    @Test
+    fun testAnIconAddressOfEndlessDotSegmentsIsSkipped() {
+        val src = "a/".repeat(120_000) + "../".repeat(120_000) + "icon.png"
+        val manifest = """{"icons":[{"src":"$src","sizes":"512x512"},{"src":"ok.png","sizes":"192x192"}]}"""
+        val took = measureTime {
+            assertEquals("https://alex-mac.example.ts.net:8443/ok.png", ManifestParser.metadata(manifest.toByteArray(), base).iconURL?.toString())
+        }
+        assertTrue("took $took", took < 2.seconds)
     }
 }

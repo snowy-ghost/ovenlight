@@ -4,6 +4,7 @@ import java.io.File
 import java.net.URI
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,7 +20,7 @@ import kotlinx.serialization.builtins.serializer
  * [session] fetches an app's page and icon: through the app's node, or null while it isn't up.
  * [webData] reaches what only Android holds, the apps' web views and their data. [iconPNG]
  * turns a fetched icon into the small PNG the launcher draws, off the main thread, or null when
- * it can't. Metadata refreshes run in [scope], on the main thread.
+ * it can't. Metadata refreshes run in [scope], on the main thread, and read the page off it.
  */
 class AppRegistry(
     private val directory: File,
@@ -282,14 +283,18 @@ class AppRegistry(
                 if (manifestOnly) return
             }
         }
-        // As iOS decodes a page: bytes that aren't UTF-8 become replacement characters.
-        val html = fetchOrNull(fetch, app.startURL)?.body?.decodeToString() ?: return
-        val links = ManifestParser.links(html, app.startURL)
-        var meta = ManifestParser.Metadata(name = ManifestParser.title(html))
+        val page = fetchOrNull(fetch, app.startURL)?.body ?: return
+        // Off the main thread: a page can run to megabytes.
+        val (links, title) = withContext(Dispatchers.Default) {
+            // As iOS decodes a page: bytes that aren't UTF-8 become replacement characters.
+            val html = page.decodeToString()
+            ManifestParser.links(html, app.startURL) to ManifestParser.title(html)
+        }
+        var meta = ManifestParser.Metadata(name = title)
         val manifestURL = links.manifest
         val manifestData = manifestURL?.let { fetchOrNull(fetch, it) }?.body
         if (manifestURL != null && manifestData != null) {
-            val fromManifest = ManifestParser.metadata(manifestData, manifestURL)
+            val fromManifest = withContext(Dispatchers.Default) { ManifestParser.metadata(manifestData, manifestURL) }
             meta = ManifestParser.Metadata(fromManifest.name ?: meta.name, fromManifest.themeColorHex, fromManifest.iconURL)
         }
         if (apps.none { it.id == id }) return
