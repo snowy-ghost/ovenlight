@@ -791,19 +791,20 @@ func readStylesheets(app App, host string, page *url.URL, hrefs []string) []styl
 	return sheets
 }
 
-// layoutChecks check that the page fits the phone's screen: Ovenlight's web view is full
-// screen and adds no insets, so the page pads itself with env(safe-area-inset-*).
+// layoutChecks check that the page fits the phone's screen: Ovenlight keeps the top of the
+// screen and runs a page with viewport-fit=cover to the bottom and side edges, adding no
+// insets there, so the page pads itself with env(safe-area-inset-*).
 func layoutChecks(viewport *string, body []byte, sheets []stylesheet) []Check {
 	c := Check{ID: "viewport", Actor: actorAgent}
 	switch {
 	case viewport == nil:
 		c.Status, c.Message = statusFail, `the home page has no <meta name="viewport">, so the phone lays it out 980 px wide and shrinks it to fit`
-		c.Fix = `Add <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"> to the page's <head>, and pad its edges with env(safe-area-inset-top) and the other insets.`
+		c.Fix = `Add <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"> to the page's <head>, and pad its bottom and sides with env(safe-area-inset-bottom), -left and -right.`
 		return []Check{c}
 	case !coversScreen(*viewport):
 		c.Status = statusWarn
-		c.Message = fmt.Sprintf("the viewport (%s) doesn't set viewport-fit=cover. Ovenlight shows the page full screen, under the system bars at the top and bottom of the screen; with viewport-fit=cover the page fills the screen and env(safe-area-inset-*) tells it how far to pad", clip(*viewport, 80))
-		c.Fix = "Add viewport-fit=cover to the viewport meta tag's content, and pad the page's edges with env(safe-area-inset-top) and the other insets."
+		c.Message = fmt.Sprintf("the viewport (%s) doesn't set viewport-fit=cover, so the page stays inside the safe areas at the sides and gets no env(safe-area-inset-bottom) to pad a fixed bottom bar by; with viewport-fit=cover it runs to the bottom and side edges and env(safe-area-inset-*) tells it how far to pad", clip(*viewport, 80))
+		c.Fix = "Add viewport-fit=cover to the viewport meta tag's content, and pad the page's bottom and sides with env(safe-area-inset-bottom), -left and -right."
 		return []Check{c}
 	}
 	c.Status, c.Message, c.Actor = statusOK, "viewport: "+clip(*viewport, 80), ""
@@ -832,8 +833,8 @@ func safeAreaCheck(body []byte, sheets []stylesheet) Check {
 			return c
 		}
 	}
-	c.Message = "neither the home page nor the stylesheets it links mention safe-area-inset, so its edges may sit under the system bars at the top and bottom of the screen"
-	c.Fix = "Pad the page's edges with env(safe-area-inset-top), -right, -bottom and -left, for example on body. CSS that a script loads isn't read here; if it pads already, nothing needs to change."
+	c.Message = "neither the home page nor the stylesheets it links mention safe-area-inset, so its bottom and sides may sit under the system bar at the bottom of the screen and the screen's rounded corners"
+	c.Fix = "Pad the page's bottom and sides with env(safe-area-inset-bottom), -left and -right, for example on body. CSS that a script loads isn't read here; if it pads already, nothing needs to change."
 	return c
 }
 
