@@ -395,10 +395,13 @@ func (d *daemon) cancelInvite(id string) (Invite, error) {
 // deleteInviteKey deletes the key of an invite that can't be used any more and clears
 // its KeyID, so the sync retries only the ones that failed. A key already gone counts as
 // deleted only for the sync, which first checks the credential against the device list
-// (see anchorNodes): another tailnet answers 404 for a key that still works.
+// (see anchorNodes): another tailnet answers 404 for a key that still works. That 404 goes
+// unlogged, since Tailscale drops a single-use key itself as its device joins.
 func (d *daemon) deleteInviteKey(ctx context.Context, api controlAPI, inv Invite, fromSync bool) error {
 	if err := api.DeleteKey(ctx, inv.KeyID); err != nil && !(fromSync && tsapi.IsNotFound(err)) {
-		log.Printf("invite %s is %s, but deleting its key %s failed (retried every few minutes): %v", inv.ID, inv.State, inv.KeyID, err)
+		if !tsapi.IsNotFound(err) {
+			log.Printf("invite %s is %s, but deleting its key %s failed (retried every few minutes): %v", inv.ID, inv.State, inv.KeyID, err)
+		}
 		return err
 	}
 	d.sh.mu.Lock()
