@@ -100,6 +100,15 @@ final class NavigationPolicyTests: XCTestCase {
         XCTAssertEqual(decide("https://alex-mac.example.ts.net:8443/cards"), .allow)
     }
 
+    /// An address past 2 MB is neither loaded nor handed on, as a page's endless `window.open`
+    /// held gigabytes in Ovenlight. A data URL is the page's own content, left to WebKit.
+    func testAnEndlessAddressGoesNowhere() {
+        let pad = String(repeating: "a", count: NavigationPolicy.maxAddressBytes)
+        XCTAssertEqual(decide("https://alex-mac.example.ts.net/big?pad=" + pad), .refuse)
+        XCTAssertEqual(decide("https://example.com/big?pad=" + pad, tapped: true), .refuse)
+        XCTAssertEqual(decide("data:text/plain," + pad), .allow)
+    }
+
     func testOnlyTheAppsOwnPagesPopUpAPost() {
         var post = URLRequest(url: URL(string: "https://alex-mac.example.ts.net/api/notes")!)
         post.httpMethod = "POST"
@@ -376,6 +385,25 @@ final class NoWebRTCTests: XCTestCase {
             """, contentWorld: .page)
         let gone = Array(repeating: "undefined", count: 5).joined(separator: ",")
         XCTAssertEqual(result as? [String], [gone, gone, gone, gone, "undefined", ""])
+    }
+}
+
+final class CoverTests: XCTestCase {
+    /// The viewport is read where the page can't answer for it: one that replaces what the
+    /// script calls changes nothing, as its answer once held gigabytes in Ovenlight.
+    @MainActor
+    func testAPageCantAnswerForItsViewport() async throws {
+        let replaced = "<script>RegExp.prototype.test = () => 'x'.repeat(1e6); Array.prototype.pop = () => ({ content: 'viewport-fit=cover' });</script>"
+        for (head, cover) in [("<meta name=viewport content='width=device-width, viewport-fit=cover'>", true),
+                              ("<meta name=viewport content='width=device-width'>", false)] {
+            let view = WKWebView(frame: .zero, configuration: WKWebViewConfiguration())
+            view.loadHTMLString(head + replaced + "<p>hi</p>", baseURL: URL(string: "https://example.com/"))
+            for _ in 0..<50 where try await view.evaluateJavaScript("document.readyState == 'complete'") as? Bool != true {
+                try await Task.sleep(for: .milliseconds(100))
+            }
+            let read = await withCheckedContinuation { done in WebCoordinator.readCover(of: view) { done.resume(returning: $0) } }
+            XCTAssertEqual(read, cover, head)
+        }
     }
 }
 

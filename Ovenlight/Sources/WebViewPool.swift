@@ -556,13 +556,19 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
         loadError = nil
         failedLoads = 0
         appDownLoads = 0
-        webView.evaluateJavaScript(Self.coverScript) { [weak self] result, _ in
-            self?.fitsCover = result as? Bool == true
+        Self.readCover(of: webView) { [weak self] cover in
+            self?.fitsCover = cover
             self?.hasLoadedOnce = true
         }
     }
 
-    /// Whether the page's viewport, its last viewport meta, asks for `viewport-fit=cover`.
+    /// Whether the page's viewport, its last viewport meta, asks for `viewport-fit=cover`. The
+    /// script runs in Ovenlight's own JavaScript world: in the page's, a page that replaced
+    /// `RegExp.test` could answer with gigabytes for WebKit to copy into Ovenlight.
+    static func readCover(of webView: WKWebView, then done: @escaping @MainActor (Bool) -> Void) {
+        webView.evaluateJavaScript(coverScript, in: nil, in: .defaultClient) { done((try? $0.get()) as? Bool == true) }
+    }
+
     static let coverScript = #"/viewport-fit\s*=\s*cover/i.test([...document.querySelectorAll('meta[name="viewport" i]')].pop()?.content ?? "")"#
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {

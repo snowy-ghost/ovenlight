@@ -208,6 +208,8 @@ enum NavigationPolicy {
         case refuse
     }
 
+    static let maxAddressBytes = 2 << 20
+
     /// Schemes iOS itself confirms before opening (calls). Every other app Ovenlight asks
     /// about first: a page's script can fake a link tap, and `shortcuts://` runs shortcuts.
     static let systemConfirms: Set<String> = ["tel", "facetime", "facetime-audio"]
@@ -226,6 +228,9 @@ enum NavigationPolicy {
     /// open only then, never from a script or a frame.
     static func decide(url: URL, appHost: String, isMainFrame: Bool, tapped: Bool) -> Decision {
         let scheme = url.scheme?.lowercased() ?? ""
+        // Chrome refuses an address over 2 MB, so no app needs one, and Ovenlight would otherwise
+        // load a page's endless popup itself, or hand it to Safari, at gigabytes of memory.
+        guard scheme == "data" || url.absoluteString.utf8.count <= maxAddressBytes else { return .refuse }
         switch scheme {
         case "http", "https":
             if !isMainFrame { return .allow }
