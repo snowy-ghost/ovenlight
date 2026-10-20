@@ -349,6 +349,11 @@ data class PageLook(val cover: Boolean = true, val header: String? = null, val b
          * matches, read through a canvas so any CSS color comes back as `#rrggbb` or `rgba()`
          * without touching the page's DOM. The background is the computed one of `html`, or of
          * `body`, which paints the page when `html` has none.
+         *
+         * The page shares this script's world and can replace anything it calls, so what comes back
+         * is checked with operators alone: a color over 128 characters, or anything but a string,
+         * is none. WebView copies the answer into Ovenlight's own process, where a page's endless
+         * "color" ran it out of memory.
          */
         const val script = """(() => {
   const ctx = document.createElement("canvas").getContext("2d");
@@ -364,7 +369,9 @@ data class PageLook(val cover: Boolean = true, val header: String? = null, val b
   const viewport = [...document.querySelectorAll('meta[name="viewport" i]')].pop();
   const navigation = performance.getEntriesByType("navigation")[0];
   const down = navigation?.responseStatus === 502 && document.contentType === "text/plain";
-  return { cover: /viewport-fit\s*=\s*cover/i.test(viewport?.content ?? ""), header: header ?? background, background, down };
+  const color = c => typeof c === "string" && c.length <= 128 ? c : null;
+  return { cover: /viewport-fit\s*=\s*cover/i.test(viewport?.content ?? "") === true,
+    header: color(header ?? background), background: color(background), down: down === true };
 })()"""
 
         /**
