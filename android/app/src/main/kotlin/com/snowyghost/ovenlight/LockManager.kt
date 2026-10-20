@@ -71,8 +71,10 @@ class LockManager(
             if (value == null) store.remove(BACKGROUNDED_AT_KEY) else store.putString(BACKGROUNDED_AT_KEY, "${bootCount()} $value")
         }
 
-    /** A launch locks unless the lock is off or Ovenlight went to the background unlocked within the timeout. */
-    private val locked = MutableStateFlow(hasSavedData() && lockAfterSeconds != OFF && (backgroundedAt == null || lockIsDue))
+    /** A launch locks while [lock] holds, and otherwise unless the lock is off or Ovenlight went to the background unlocked within the timeout. */
+    private val locked = MutableStateFlow(
+        hasSavedData() && (store.getBoolean(LOCKED_BY_HAND_KEY) || lockAfterSeconds != OFF && (backgroundedAt == null || lockIsDue)),
+    ).also { if (!it.value) store.remove(LOCKED_BY_HAND_KEY) }
     val isLocked: StateFlow<Boolean> = locked
 
     private val authenticating = MutableStateFlow(false)
@@ -118,8 +120,10 @@ class LockManager(
         backgroundedAt = null
     }
 
+    /** Holds until an unlock, whatever the delay, so it's kept on disk: Android ends a background Ovenlight within minutes. */
     fun lock() {
         locked.value = true
+        store.putBoolean(LOCKED_BY_HAND_KEY, true)
     }
 
     /** The screen lock was just entered again while unlocked (see UnlockPrompt.confirm): the time it kept Ovenlight stopped doesn't lock it. */
@@ -147,6 +151,7 @@ class LockManager(
                 Authenticator.Result.Canceled -> lastError.value = null
                 is Authenticator.Result.Failed -> lastError.value = result.message
             }
+            if (!locked.value) store.remove(LOCKED_BY_HAND_KEY)
         } finally {
             authenticating.value = false
         }
@@ -173,6 +178,7 @@ class LockManager(
     companion object {
         const val LOCK_AFTER_KEY = "lockAfterSeconds"
         const val BACKGROUNDED_AT_KEY = "lockBackgroundedAt"
+        const val LOCKED_BY_HAND_KEY = "lockedByHand"
         const val DEFAULT_LOCK_AFTER = 60
         /** Never locks. Read as a delay, it's the longest. */
         const val OFF = Int.MAX_VALUE

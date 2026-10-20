@@ -120,6 +120,44 @@ class LockTimingTests {
         assertTrue("and a return after it", lock.isLocked.value)
     }
 
+    /** Android ends a background Ovenlight on its own, and Lock Ovenlight holds through that even with the lock Off. */
+    @Test
+    fun testALockByHandHoldsUntilAnUnlock() = kotlinx.coroutines.test.runTest {
+        val store = MemoryStore()
+        var boot = 7
+        var saved = true
+        fun launch() = LockManager(store, hasSavedData = { saved }, now = { 1_000_000L }, bootCount = { boot })
+        fun answer(result: Authenticator.Result) = object : Authenticator {
+            override suspend fun authenticate() = result
+        }
+        fun lockByHand() = launch().run { willBecomeActive(); lock() }
+
+        for (delay in listOf(LockManager.OFF, 900)) {
+            store.putInt(LockManager.LOCK_AFTER_KEY, delay)
+            lockByHand()
+            assertTrue("a relaunch ($delay)", launch().isLocked.value)
+            boot += 1
+            val rebooted = launch()
+            assertTrue("a reboot ($delay)", rebooted.isLocked.value)
+            rebooted.unlock(answer(Authenticator.Result.Success))
+            rebooted.didEnterBackground()
+            assertFalse("a relaunch after the unlock ($delay)", launch().isLocked.value)
+        }
+
+        store.putInt(LockManager.LOCK_AFTER_KEY, LockManager.OFF)
+        lockByHand()
+        val lock = launch()
+        lock.didBecomeActive(answer(Authenticator.Result.NoScreenLock))
+        assertFalse("no screen lock to unlock with, so it opens", lock.isLocked.value)
+        assertFalse(launch().isLocked.value)
+
+        lockByHand()
+        saved = false
+        assertFalse("nothing to protect", launch().isLocked.value)
+        saved = true
+        assertFalse("nor once there is again", launch().isLocked.value)
+    }
+
     @Test
     fun testAnEmptyNodeFolderOrListIsNothingToLock() {
         val ovenlight = File(temp.root, "Ovenlight").apply { mkdirs() }
