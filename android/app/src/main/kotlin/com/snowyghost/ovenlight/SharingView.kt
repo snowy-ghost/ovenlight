@@ -1,12 +1,10 @@
 package com.snowyghost.ovenlight
 
 import android.content.ClipData
-import android.content.ClipDescription
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
-import android.os.Build
 import android.os.PersistableBundle
 import android.text.format.DateFormat
 import android.util.LruCache
@@ -865,7 +863,8 @@ private fun sendInvite(context: Context, message: String, subject: String) {
  */
 private fun copyLink(context: Context, label: String, link: String) {
     val clip = ClipData.newPlainText(label, link)
-    if (Build.VERSION.SDK_INT >= 33) clip.description.extras = PersistableBundle().apply { putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, true) }
+    // ClipDescription.EXTRA_IS_SENSITIVE (Android 13) by its value, which keyboards such as Gboard read before 13 too.
+    clip.description.extras = PersistableBundle().apply { putBoolean("android.content.extra.IS_SENSITIVE", true) }
     context.getSystemService(ClipboardManager::class.java).setPrimaryClip(clip)
 }
 
