@@ -151,11 +151,15 @@ class AppModel(context: Context) {
     /**
      * A link from outside, which opens a screen or another app and so closes the open one: while
      * its Send feedback has a send under way or a note (see [FeedbackDraft.holdsLinks]), the link
-     * waits until that closes, however it closes, as on iOS.
+     * waits until that closes, however it closes, as on iOS. A link that goes straight through
+     * drops one still waiting, so the newest link always wins.
      */
     fun handleLink(url: URI) {
         val feedback = router.openApp.value?.let { pool.feedback(it.id) }
-        if (feedback?.value?.holdsLinks != true) return router.handle(url, registry.apps)
+        if (feedback?.value?.holdsLinks != true) {
+            heldLink = null
+            return router.handle(url, registry.apps)
+        }
         if (heldLink == null) {
             scope.launch {
                 feedback.first { it == null }
