@@ -258,6 +258,8 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
     /// Each download under way, the file it's written to once WebKit asks where, and whether
     /// the person started it (see `isTap`), who then hears if it fails.
     private var downloads: [ObjectIdentifier: (download: WKDownload, file: URL?, tapped: Bool)] = [:]
+    /// Downloads agreed to that WebKit hasn't made yet, each holding its place under the cap.
+    private var agreed = AgreedDownloads()
     /// A brief message over the page, such as a download that failed; it goes by itself.
     @Published private(set) var notice: String?
     private var noticeTask: Task<Void, Never>?
@@ -484,20 +486,13 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
         guard let url = action.request.url else { return decisionHandler(.allow) }
         let isMainFrame = action.targetFrame?.isMainFrame ?? true
         if isMainFrame { tapped = Self.isTap(action) }
-        if isMainFrame || action.shouldPerformDownload { navigationActions += 1 }
         switch NavigationPolicy.decide(url: url, appHost: app.host, isMainFrame: isMainFrame, tapped: Self.isTap(action)) {
         case .allow where action.shouldPerformDownload:
-            // `<a download>`, of the app's own pages or of a blob or data URL. Answered after a
-            // moment, and only if no newer navigation came meanwhile: WebKit holds a process
-            // assertion for each download it's told to make, even one the page's next click
-            // replaced, and a page clicking a link hundreds of times at once got Ovenlight killed.
+            // `<a download>`, of the app's own pages or of a blob or data URL. Answered at once:
+            // the page's next navigation (a `#fragment` change too) takes the question back, and
+            // the download with it.
             let source = (action.sourceFrame as WKFrameInfo?)?.securityOrigin.host
-            let tap = Self.isTap(action), turn = navigationActions
-            Task { [weak self] in
-                try? await Task.sleep(for: DownloadPolicy.settle)
-                guard let self, turn == navigationActions else { return decisionHandler(.cancel) }
-                decisionHandler(mayDownload(url, from: source, tapped: tap) ? .download : .cancel)
-            }
+            decisionHandler(mayDownload(url, from: source, tapped: Self.isTap(action)) ? .download : .cancel)
         case .allow:
             decisionHandler(.allow)
         case .openExternally(let external):
@@ -508,10 +503,6 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
             decisionHandler(.cancel)
         }
     }
-
-    /// Main-frame navigations and downloads asked for so far, so a download answered late
-    /// can tell a newer one replaced it.
-    private var navigationActions = 0
 
     /// A link activated in the app's main frame. WebKit has no public "user gesture" flag,
     /// and a script's `a.click()` counts too, so another app still opens only after
@@ -797,12 +788,16 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
     /// would start one under another app), or once the person stopped its dialogs. Past
     /// `DownloadPolicy.hasRoom` the download is refused here, before WebKit starts it: one
     /// refused later never ends, and each holds a process assertion, so a page downloading
-    /// without end got Ovenlight killed. One the person started and the policy refused says so.
+    /// without end got Ovenlight killed. One agreed to counts under way from then on (see
+    /// `AgreedDownloads`). One the person started and the policy refused says so.
     private func mayDownload(_ url: URL, from sourceHost: String?, tapped: Bool) -> Bool {
         guard webView?.window != nil, !dialogs.stopped else { return false }
         let locked = OverlayPresenter.pageWindow == nil
-        if DownloadPolicy.hasRoom(underWay: downloads.count, waiting: WebViewPool.shared.waitingDownloads[app.id]?.count ?? 0),
-           DownloadPolicy.allows(url: url, from: sourceHost, appHost: app.host, locked: locked) { return true }
+        if DownloadPolicy.hasRoom(underWay: downloads.count + agreed.count, waiting: WebViewPool.shared.waitingDownloads[app.id]?.count ?? 0),
+           DownloadPolicy.allows(url: url, from: sourceHost, appHost: app.host, locked: locked) {
+            agreed.agree()
+            return true
+        }
         if tapped, !locked { downloadFailed(DownloadPolicy.name(in: url)) }
         return false
     }
@@ -816,6 +811,7 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
     }
 
     private func track(_ download: WKDownload, tapped: Bool) {
+        agreed.became()
         download.delegate = self
         downloads[ObjectIdentifier(download)] = (download, nil, tapped)
     }
@@ -1146,6 +1142,43 @@ struct PageDialogs {
     }
 }
 
+/// Downloads Ovenlight agreed to that WebKit hasn't made yet. WebKit takes a process
+/// assertion for each as it's agreed to, and never lets go of one the page's next navigation
+/// took back, so a page clicking a download link hundreds of times at once got Ovenlight
+/// killed. Each holds a place under the cap until it becomes a download, or for `expiry`.
+struct AgreedDownloads {
+    static let expiry: Duration = .seconds(30)
+
+    private var agreed: [ContinuousClock.Instant] = []
+    private let now: () -> ContinuousClock.Instant
+
+    init(now: @escaping () -> ContinuousClock.Instant = { .now }) {
+        self.now = now
+    }
+
+    /// Places held now.
+    var count: Int {
+        let at = now()
+        return agreed.count { $0.duration(to: at) < Self.expiry }
+    }
+
+    mutating func agree() {
+        dropExpired()
+        agreed.append(now())
+    }
+
+    /// WebKit made one a download, which counts under way itself from now on.
+    mutating func became() {
+        dropExpired()
+        if !agreed.isEmpty { agreed.removeFirst() }
+    }
+
+    private mutating func dropExpired() {
+        let at = now()
+        agreed.removeAll { $0.duration(to: at) >= Self.expiry }
+    }
+}
+
 /// Who gets the microphone without the page asking again (iOS still asks once): the
 /// owner's own apps (discovered, or on one of `ownersHosts`), on their own origin. The
 /// camera, shared apps, other sites added by address (someone's public Funnel URL among
@@ -1181,10 +1214,6 @@ enum DownloadPolicy {
     static func removeFolder(of file: URL) {
         try? FileManager.default.removeItem(at: file.deletingLastPathComponent())
     }
-
-    /// How long an `<a download>` waits before it's answered, so a click the page replaced at
-    /// once is never made into a download (see `decidePolicyFor`).
-    static let settle: Duration = .milliseconds(100)
 
     /// Whether an app's page may start another download: three under way and ten for the
     /// share sheet at most, as on Android. A page that downloaded without end once filled one

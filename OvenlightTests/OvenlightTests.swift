@@ -238,6 +238,28 @@ final class DownloadPolicyTests: XCTestCase {
         XCTAssertFalse(DownloadPolicy.hasRoom(underWay: 1, waiting: 9), "ten for the sheet at most")
     }
 
+    /// A download holds its place under the cap from the moment it's agreed to: until WebKit
+    /// makes it a download, or for half a minute if the page's next navigation took it back.
+    func testATakenBackDownloadHoldsItsPlaceForHalfAMinute() {
+        var now = ContinuousClock.now
+        var agreed = AgreedDownloads(now: { now })
+        agreed.agree()
+        agreed.agree()
+        XCTAssertEqual(agreed.count, 2)
+        agreed.became()
+        XCTAssertEqual(agreed.count, 1, "a download counts under way itself")
+        now += .seconds(29)
+        agreed.agree()
+        XCTAssertEqual(agreed.count, 2)
+        now += .seconds(1)
+        XCTAssertEqual(agreed.count, 1, "the one never made goes after 30 seconds")
+        agreed.became()
+        XCTAssertEqual(agreed.count, 0, "a download made gives back a place still held")
+        agreed.became()
+        agreed.agree()
+        XCTAssertEqual(agreed.count, 1, "a download made with none agreed takes no place away")
+    }
+
     func testAttachmentsAndFilesWebKitCantShowDownload() {
         func action(_ status: Int?, _ disposition: String?, canShow: Bool = true) -> DownloadPolicy.ResponseAction {
             DownloadPolicy.action(status: status, disposition: disposition, canShow: canShow)
