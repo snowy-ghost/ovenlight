@@ -281,6 +281,8 @@ records=("$dry"/sync/releases/1.1.0/promote-*.published)
 [ ${#records[@]} -eq 1 ] || fail "no record of the failed publish"
 cmp -s "$dry/bucket/connector/latest.json" "$dry/1.0.9.json" || fail "latest.json changed"
 pass "the failed publish left its record, and latest.json as it was"
+# Another promote signed meanwhile, on an Air the record hadn't reached yet.
+forge 1.1.0 promote air1 1.1.0
 run publish --promote 1.1.0
 grep -q "^finishing the publish of 1.1.0/promote-" "$dry/log" || fail "the rerun didn't finish the publish"
 pass "the rerun finished it: $(head -1 "$dry/log")"

@@ -192,7 +192,12 @@ folder)
   ;;
 
 promote)
-  id="$(newestof "$version/promote-*")"
+  # The last index published, when it's this version's promote, may be one that failed
+  # partway: it's finished, rather than a newer signature that has no record.
+  case "$newest" in
+  "$version"/promote-*) id="$newest" ;;
+  *) id="$(newestof "$version/promote-*")" ;;
+  esac
   idx="$records/$id.json"
   releaseindex "$version" "$(serialof "$id")" | cmp -s - "$idx" || refuse "$id isn't $version's index"
   # Its key signed the release's SHA256SUMS, and the one rule accepts both.

@@ -169,7 +169,8 @@ scripts/publish-connector.sh --promote 1.1.0
 ```
 
 That puts its files in `connector/latest/` and its index in `latest.json`, and every
-owner's two-day wait starts. `--pull`, the same way, takes the live release back out by
+owner's two-day wait starts. A publish that fails partway is finished by running the same
+command again. `--pull`, the same way, takes the live release back out by
 publishing the index of the release before it, signed again. Computers that already took
 the pulled release keep it, since the connector never installs an older one, so the fix
 is the next release. `--resign` publishes the live index signed again, before a canary
