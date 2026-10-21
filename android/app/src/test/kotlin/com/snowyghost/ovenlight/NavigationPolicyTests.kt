@@ -1,6 +1,9 @@
 package com.snowyghost.ovenlight
 
 import java.net.URI
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TestTimeSource
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -180,5 +183,25 @@ class NavigationPolicyTests {
         assertEquals(NavigationPolicy.Decision.OpenExternally(URI("https://forms.example.com/submit")), decide("https://forms.example.com/submit"))
         assertEquals(NavigationPolicy.Decision.Allow, decide("https://alex-mac.example.ts.net/save"))
         assertEquals(NavigationPolicy.Decision.Refuse, decide("blob:https://evil.example.com/6f1c"))
+    }
+
+    @Test
+    fun testAPageGets200NavigationsIn10Seconds() {
+        val clock = TestTimeSource()
+        var navigations = PageNavigations(clock)
+        repeat(200) { assertTrue(navigations.next()) }
+        assertFalse("the 201st in 10 seconds", navigations.next())
+        clock += 10.seconds
+        assertFalse("refused until 10 seconds have gone by", navigations.next())
+        clock += 1.milliseconds
+        assertTrue("then the count starts over", navigations.next())
+        repeat(199) { assertTrue(navigations.next()) }
+        assertFalse(navigations.next())
+
+        navigations = PageNavigations(clock)
+        repeat(1000) {
+            clock += 100.milliseconds
+            assertTrue("ten a second is never refused", navigations.next())
+        }
     }
 }

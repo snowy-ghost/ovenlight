@@ -162,6 +162,25 @@ final class NavigationPolicyTests: XCTestCase {
         let long = URL(string: "shortcuts://run-shortcut?name=" + String(repeating: "x", count: 100))!
         XCTAssertEqual(NavigationPolicy.target(of: long).count, 82, "quoted and cut short")
     }
+
+    func testAPageGets200NavigationsIn10Seconds() {
+        var now = ContinuousClock.now
+        var navigations = PageNavigations(now: { now })
+        for _ in 0..<200 { XCTAssertTrue(navigations.next()) }
+        XCTAssertFalse(navigations.next(), "the 201st in 10 seconds")
+        now += .seconds(10)
+        XCTAssertFalse(navigations.next(), "refused until 10 seconds have gone by")
+        now += .milliseconds(1)
+        XCTAssertTrue(navigations.next(), "then the count starts over")
+        for _ in 1..<200 { XCTAssertTrue(navigations.next()) }
+        XCTAssertFalse(navigations.next())
+
+        navigations = PageNavigations(now: { now })
+        for _ in 0..<1000 {
+            now += .milliseconds(100)
+            XCTAssertTrue(navigations.next(), "ten a second is never refused")
+        }
+    }
 }
 
 final class MediaCapturePolicyTests: XCTestCase {
@@ -236,6 +255,28 @@ final class DownloadPolicyTests: XCTestCase {
         XCTAssertTrue(DownloadPolicy.hasRoom(underWay: 2, waiting: 7))
         XCTAssertFalse(DownloadPolicy.hasRoom(underWay: 3, waiting: 0), "three under way at most")
         XCTAssertFalse(DownloadPolicy.hasRoom(underWay: 1, waiting: 9), "ten for the sheet at most")
+    }
+
+    /// A download holds its place under the cap from the moment it's agreed to: until WebKit
+    /// makes it a download, or for half a minute if the page's next navigation took it back.
+    func testATakenBackDownloadHoldsItsPlaceForHalfAMinute() {
+        var now = ContinuousClock.now
+        var agreed = AgreedDownloads(now: { now })
+        agreed.agree()
+        agreed.agree()
+        XCTAssertEqual(agreed.count, 2)
+        agreed.became()
+        XCTAssertEqual(agreed.count, 1, "a download counts under way itself")
+        now += .seconds(29)
+        agreed.agree()
+        XCTAssertEqual(agreed.count, 2)
+        now += .seconds(1)
+        XCTAssertEqual(agreed.count, 1, "the one never made goes after 30 seconds")
+        agreed.became()
+        XCTAssertEqual(agreed.count, 0, "a download made gives back a place still held")
+        agreed.became()
+        agreed.agree()
+        XCTAssertEqual(agreed.count, 1, "a download made with none agreed takes no place away")
     }
 
     func testAttachmentsAndFilesWebKitCantShowDownload() {
@@ -324,14 +365,18 @@ final class DownloadPolicyTests: XCTestCase {
                              "covered": ["closed", "waited"], "refused": ["unseen", "waited"]])
     }
 
-    /// Only a sheet that showed takes its files off the waiting list; either way it unregisters.
+    /// Only a sheet that showed takes its files off the waiting list; either way it unregisters,
+    /// and its page marks the close in its run of dialogs before anything else shows, its next
+    /// sheet included.
     @MainActor
     func testOnlyAShownSheetTakesItsFiles() async throws {
         let id = UUID(), shared = URL(fileURLWithPath: "/a"), later = URL(fileURLWithPath: "/b")
         WebViewPool.shared.waitingDownloads[id] = [shared, later]
         defer { WebViewPool.shared.waitingDownloads[id] = nil }
-        _ = WebCoordinator.makeSheet(sharing: [shared], of: id)
-        let sheet = WebCoordinator.makeSheet(sharing: [shared], of: id)
+        var log: [String] = []
+        _ = WebCoordinator.makeSheet(sharing: [shared], of: id) { log.append("refused closed") }
+        let sheet = WebCoordinator.makeSheet(sharing: [shared], of: id) { log.append("closed") }
+        sheet.waiting = [{ log.append("waited") }]
         try await Task.sleep(for: .milliseconds(100))
         XCTAssertEqual(WebViewPool.shared.waitingDownloads[id], [shared, later], "refused")
         XCTAssertTrue(WebCoordinator.sheet === sheet)
@@ -340,6 +385,7 @@ final class DownloadPolicyTests: XCTestCase {
         for _ in 0..<100 where WebCoordinator.sheet != nil { try await Task.sleep(for: .milliseconds(10)) }
         XCTAssertNil(WebCoordinator.sheet)
         XCTAssertEqual(WebViewPool.shared.waitingDownloads[id], [later])
+        XCTAssertEqual(log, ["refused closed", "closed", "waited"])
     }
 }
 

@@ -28,6 +28,7 @@ testBlocksLoopbackAndLocalAddressesOnly         # iOS only: WebKit loads loopbac
 testTheRulesCompile                             # iOS only, as above: WebKit's content rule list
 testRedirectsToAddressesComeBackAndNamesFollow  # iOS only, as above: a redirect could take URLSession to them past the proxy
 testSkipsLinksAndIconsOnOtherHosts              # iOS only, as above: a page's link or icon off its own host could name them
+testATakenBackDownloadHoldsItsPlaceForHalfAMinute  # iOS only: WebKit leaks a process assertion for each download a later navigation replaced; Android's DownloadListener holds none
 EOF
 }
 

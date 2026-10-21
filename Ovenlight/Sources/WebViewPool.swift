@@ -199,7 +199,8 @@ final class WebViewPool: ObservableObject {
 
 /// Navigation and UI delegate for one app's web view.
 @MainActor
-final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate {
+final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate,
+                             SFSafariViewControllerDelegate {
     fileprivate(set) var app: WebApp
     /// The node the app loads through, if any; the first navigation then waits for the gate.
     let node: MembershipNode?
@@ -257,6 +258,13 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
     /// Each download under way, the file it's written to once WebKit asks where, and whether
     /// the person started it (see `isTap`), who then hears if it fails.
     private var downloads: [ObjectIdentifier: (download: WKDownload, file: URL?, tapped: Bool)] = [:]
+    /// Downloads agreed to that WebKit hasn't made yet, each holding its place under the cap.
+    private var agreed = AgreedDownloads()
+    /// The newest `<a download>` waiting for the page's script to finish (see `decidePolicyFor`),
+    /// and whether a round trip to the page's process is out for it.
+    private var newestDownload: DialogAnswer<Bool>?
+    private var waitingForPage = false
+    private var navigations = PageNavigations()
     /// A brief message over the page, such as a download that failed; it goes by itself.
     @Published private(set) var notice: String?
     private var noticeTask: Task<Void, Never>?
@@ -452,6 +460,9 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
         guard routeIsCurrent(), nodeMayCarry else { return }
         loadError = nil
         guard let webView else { return }
+        // WebKit can't tell Ovenlight's loads from the page's own, so the page's count starts
+        // over instead (see `PageNavigations`), and Reload always loads.
+        navigations = PageNavigations()
         if webView.url != nil {
             webView.reload()
         } else {
@@ -482,20 +493,41 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
                  decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void) {
         guard let url = action.request.url else { return decisionHandler(.allow) }
         let isMainFrame = action.targetFrame?.isMainFrame ?? true
+        let decision = NavigationPolicy.decide(url: url, appHost: app.host, isMainFrame: isMainFrame, tapped: Self.isTap(action))
+        // The page's own loads only: not a download, and not a tap or Back, which go as fast as
+        // the person does. Refused, the page stays as it is, as in Chrome.
+        if isMainFrame, decision == .allow, !action.shouldPerformDownload, !Self.isTap(action),
+           action.navigationType != .backForward, !navigations.next() {
+            if navigations.count == PageNavigations.limit + 1 {
+                Self.log.notice("\(self.app.host, privacy: .public): over \(PageNavigations.limit) navigations in \(PageNavigations.window), refusing them")
+            }
+            return decisionHandler(.cancel)
+        }
         if isMainFrame { tapped = Self.isTap(action) }
-        if isMainFrame || action.shouldPerformDownload { navigationActions += 1 }
-        switch NavigationPolicy.decide(url: url, appHost: app.host, isMainFrame: isMainFrame, tapped: Self.isTap(action)) {
+        switch decision {
         case .allow where action.shouldPerformDownload:
-            // `<a download>`, of the app's own pages or of a blob or data URL. Answered after a
-            // moment, and only if no newer navigation came meanwhile: WebKit holds a process
-            // assertion for each download it's told to make, even one the page's next click
-            // replaced, and a page clicking a link hundreds of times at once got Ovenlight killed.
+            // `<a download>`, of the app's own pages or of a blob or data URL. Answered at once:
+            // the page's next navigation (a `#fragment` change too) takes the question back, and
+            // the download with it. While one agreed to hasn't become a download yet, the page
+            // may be starting several at once, and WebKit keeps only the last: only the newest is
+            // answered, once the script that started it has run (a round trip to the page's
+            // process). Waiting any longer lost the downloads of pages that change their
+            // fragment soon after.
             let source = (action.sourceFrame as WKFrameInfo?)?.securityOrigin.host
-            let tap = Self.isTap(action), turn = navigationActions
-            Task { [weak self] in
-                try? await Task.sleep(for: DownloadPolicy.settle)
-                guard let self, turn == navigationActions else { return decisionHandler(.cancel) }
-                decisionHandler(mayDownload(url, from: source, tapped: tap) ? .download : .cancel)
+            let tap = Self.isTap(action)
+            guard agreed.count > 0 else { return decisionHandler(mayDownload(url, from: source, tapped: tap) ? .download : .cancel) }
+            newestDownload?(false)
+            newestDownload = DialogAnswer(fallback: false) { [weak self] go in
+                decisionHandler(go && self?.mayDownload(url, from: source, tapped: tap) == true ? .download : .cancel)
+            }
+            guard !waitingForPage else { return }
+            waitingForPage = true
+            webView.evaluateJavaScript("0", in: nil, in: .defaultClient) { [weak self] _ in
+                guard let self else { return }
+                waitingForPage = false
+                let newest = newestDownload
+                newestDownload = nil
+                newest?(true)
             }
         case .allow:
             decisionHandler(.allow)
@@ -507,10 +539,6 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
             decisionHandler(.cancel)
         }
     }
-
-    /// Main-frame navigations and downloads asked for so far, so a download answered late
-    /// can tell a newer one replaced it.
-    private var navigationActions = 0
 
     /// A link activated in the app's main frame. WebKit has no public "user gesture" flag,
     /// and a script's `a.click()` counts too, so another app still opens only after
@@ -561,6 +589,7 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
         gateTask?.cancel()
         gateTask = Task { [weak self] in
             guard (try? await Task.sleep(for: .seconds(delay))) != nil, let self, routeIsCurrent(), nodeMayCarry else { return }
+            navigations = PageNavigations()
             webView?.load(URLRequest(url: app.startURL))
         }
     }
@@ -698,19 +727,38 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
             alertRefused(device)
             return decisionHandler(.deny)
         }
-        decisionHandler(decision)
+        guard decision == .prompt else { return decisionHandler(decision) }
+        // Ovenlight asks rather than WebKit, so the question counts with the page's dialogs: a
+        // page that asked again as it reloaded on each refusal brought WebKit's straight back,
+        // since a refusal lasts only for the page's document. One at a time.
+        guard raised == nil else { return decisionHandler(.deny) }
+        let device = switch type {
+        case .camera: "the Camera"
+        case .microphone: "the Microphone"
+        default: "the Camera and Microphone"
+        }
+        let asker = Discovery.normalizedHost(origin.host) == Discovery.normalizedHost(app.host) ? app.name : "\(origin.host) in \(app.name)"
+        let answer = pageAnswer(fallback: false) { allow in decisionHandler(allow ? .grant : .deny) }
+        let alert = UIAlertController(title: "Allow \(asker) to Use \(device)?", message: nil, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "Don’t Allow", style: .cancel) { _ in answer(false) })
+        alert.addAction(UIAlertAction(title: "Allow", style: .default) { _ in answer(true) })
+        raised = alert
+        presentPageDialog(alert, answer: answer)
     }
 
-    /// One dialog for a camera or microphone the person refused Ovenlight in Settings.
+    /// One dialog for a camera or microphone the person refused Ovenlight in Settings, counted
+    /// with the page's dialogs like the question.
     private func alertRefused(_ device: String) {
-        guard !(topController is UIAlertController) else { return }
+        guard raised == nil, !(topController is UIAlertController) else { return }
+        let answer = pageAnswer(fallback: false) { settings in
+            if settings, let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+        }
         let alert = UIAlertController(title: "Ovenlight Can’t Use the \(device)",
                                       message: "Allow it in Settings, then try again in \(app.name).", preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "Not Now", style: .cancel))
-        alert.addAction(UIAlertAction(title: "Open Settings", style: .default) { _ in
-            if let settings = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(settings) }
-        })
-        present(alert, orElse: {})
+        alert.addAction(UIAlertAction(title: "Not Now", style: .cancel) { _ in answer(false) })
+        alert.addAction(UIAlertAction(title: "Open Settings", style: .default) { _ in answer(true) })
+        raised = alert
+        presentPageDialog(alert, answer: answer)
     }
 
     func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,
@@ -757,30 +805,55 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
     }
 
     /// Past a few in a row, a page's dialog also offers to stop the rest (see `PageDialogs`).
-    private func presentPageDialog<Value>(_ alert: UIAlertController, answer: DialogAnswer<Value>) {
-        let offersStop = dialogs.next()
+    /// `offersStop` is given for one already counted: a sheet's ask (`presentPageSheet`).
+    private func presentPageDialog<Value>(_ alert: UIAlertController, answer: DialogAnswer<Value>, offersStop: Bool? = nil) {
+        let offersStop = offersStop ?? dialogs.next()
         if dialogs.stopped { return answer.fallBack() }
         if offersStop {
             alert.addAction(UIAlertAction(title: PageDialogs.stopTitle, style: .default) { [weak self] _ in
-                self?.dialogs.stopped = true
+                if let self {
+                    dialogs.stopped = true
+                    // Its files waiting for the sheet go too, and it downloads no more.
+                    WebViewPool.shared.dropWaitingDownloads(of: app.id)
+                }
                 answer.fallBack()
             })
         }
         present(alert) { answer.fallBack() }
     }
 
+    /// Ovenlight's own sheet for something the page did, which it can do without a tap,
+    /// counted with its dialogs: a page could raise one the moment the last one closed. Past a
+    /// few in a row, an ask naming the app and what it wants comes first, with the way to stop
+    /// the page's dialogs. `show` presents the sheet, and marks its close in the run; `cancel`
+    /// runs if the person declines, or the ask goes unanswered.
+    private func presentPageSheet(ask title: String, _ message: String, goAhead: String,
+                                  show: @escaping () -> Void, cancel: @escaping () -> Void = {}) {
+        guard dialogs.next() else { return show() }
+        let answer = pageAnswer(fallback: false) { go in go ? show() : cancel() }
+        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in answer(false) })
+        alert.addAction(UIAlertAction(title: goAhead, style: .default) { _ in answer(true) })
+        raised = alert
+        presentPageDialog(alert, answer: answer, offersStop: true)
+    }
+
     // MARK: Downloads
 
-    /// Nothing downloads while this page is kept off screen either: a script's `a.click()`
-    /// would start one under another app. Past `DownloadPolicy.hasRoom` the download is
-    /// refused here, before WebKit starts it: one refused later never ends, and each holds a
-    /// process assertion, so a page downloading without end got Ovenlight killed. One the
-    /// person started and the policy refused says so.
+    /// Nothing downloads while this page is kept off screen either (a script's `a.click()`
+    /// would start one under another app), or once the person stopped its dialogs. Past
+    /// `DownloadPolicy.hasRoom` the download is refused here, before WebKit starts it: one
+    /// refused later never ends, and each holds a process assertion, so a page downloading
+    /// without end got Ovenlight killed. One agreed to counts under way from then on (see
+    /// `AgreedDownloads`). One the person started and the policy refused says so.
     private func mayDownload(_ url: URL, from sourceHost: String?, tapped: Bool) -> Bool {
-        guard webView?.window != nil else { return false }
+        guard webView?.window != nil, !dialogs.stopped else { return false }
         let locked = OverlayPresenter.pageWindow == nil
-        if DownloadPolicy.hasRoom(underWay: downloads.count, waiting: WebViewPool.shared.waitingDownloads[app.id]?.count ?? 0),
-           DownloadPolicy.allows(url: url, from: sourceHost, appHost: app.host, locked: locked) { return true }
+        if DownloadPolicy.hasRoom(underWay: downloads.count + agreed.count, waiting: WebViewPool.shared.waitingDownloads[app.id]?.count ?? 0),
+           DownloadPolicy.allows(url: url, from: sourceHost, appHost: app.host, locked: locked) {
+            agreed.agree()
+            return true
+        }
         if tapped, !locked { downloadFailed(DownloadPolicy.name(in: url)) }
         return false
     }
@@ -794,6 +867,7 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
     }
 
     private func track(_ download: WKDownload, tapped: Bool) {
+        agreed.became()
         download.delegate = self
         downloads[ObjectIdentifier(download)] = (download, nil, tapped)
     }
@@ -813,10 +887,13 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
     }
 
     /// The share sheet saves the file to Files or sends it on. An empty one isn't worth a
-    /// sheet (an `<a download>` the server answered with nothing).
+    /// sheet (an `<a download>` the server answered with nothing), and none shows once the
+    /// person stopped the page's dialogs.
     func downloadDidFinish(_ download: WKDownload) {
         guard let file = downloads.removeValue(forKey: ObjectIdentifier(download))?.file else { return }
-        if (try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize) == 0 { return DownloadPolicy.removeFolder(of: file) }
+        if dialogs.stopped || (try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize) == 0 {
+            return DownloadPolicy.removeFolder(of: file)
+        }
         WebViewPool.shared.waitingDownloads[app.id, default: []].append(file)
         presentWaitingDownloads()
     }
@@ -863,7 +940,18 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
            transition.animate(alongsideTransition: nil, completion: { [weak self] _ in
                DispatchQueue.main.async { self?.showWaitingDownloads() }
            }) { return }
-        if webView.isDescendant(of: top.view) { return present(Self.makeSheet(sharing: files, of: app.id), orElse: {}) }
+        if webView.isDescendant(of: top.view), raised == nil {
+            // A page that downloaded about once a second brought a new sheet as each closed.
+            let id = app.id
+            return presentPageSheet(ask: "Download More Files?", "\(app.name) wants to download \(files.count) more \(files.count == 1 ? "file" : "files").",
+                                    goAhead: "Download") { [weak self] in
+                self?.present(Self.makeSheet(sharing: files, of: id) { self?.dialogs.closed() }, orElse: {})
+            } cancel: {
+                // Never shared, so they go at once.
+                WebViewPool.shared.waitingDownloads[id]?.removeAll(where: files.contains)
+                files.forEach(DownloadPolicy.removeFolder)
+            }
+        }
         watcher = Task { [weak self] in
             guard (try? await Task.sleep(for: .milliseconds(500))) != nil else { return }
             self?.showWaitingDownloads()
@@ -872,14 +960,15 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
 
     /// Registers a share sheet for `files`. Once it has shown they leave the waiting list,
     /// shared or cancelled, and stay on disk until the next launch (AirDrop may still be
-    /// sending); one that never showed leaves them waiting. Then what waited shows, and the
-    /// page on top shows any files still waiting, after an unseen sheet only once per
-    /// trigger. Another sheet may be up, which stays.
-    static func makeSheet(sharing files: [URL], of id: UUID) -> ShareSheet {
+    /// sending); one that never showed leaves them waiting. Then `onClose` runs, what waited
+    /// shows, and the page on top shows any files still waiting, after an unseen sheet only
+    /// once per trigger. Another sheet may be up, which stays.
+    static func makeSheet(sharing files: [URL], of id: UUID, onClose: @escaping @MainActor () -> Void) -> ShareSheet {
         let sheet = ShareSheet(activityItems: files, applicationActivities: nil)
         sheet.closed = { [weak sheet] shown, waiting in
             if Self.sheet === sheet { Self.sheet = nil }
             if shown { WebViewPool.shared.waitingDownloads[id]?.removeAll(where: files.contains) }
+            onClose()
             waiting.forEach { $0() }
             guard shown || !retriedUnseen else { return }
             WebViewPool.shared.presentWaitingDownloads()
@@ -901,29 +990,45 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
 
     // MARK: Helpers
 
-    /// The "Open in Another App?" ask on screen or waiting for its turn.
-    private weak var openAsk: UIAlertController?
+    /// The ask, camera alert or Safari view this page raised, on screen or waiting for its turn.
+    /// One at a time: a page's script can raise them without end.
+    private weak var raised: UIViewController?
 
     /// Does nothing while Ovenlight is locked, or while this page is kept off screen: a
     /// page's script can fake a link tap, and Safari would open over another app.
     func openExternally(_ url: URL) {
         guard OverlayPresenter.pageWindow != nil, webView?.window != nil else { return }
         if ["http", "https"].contains(url.scheme?.lowercased() ?? "") {
-            present(SFSafariViewController(url: url), orElse: {})
+            // A page that kept leaving for another site brought a new Safari view the moment
+            // the last one closed. None opens once the person stops the page's dialogs.
+            guard !dialogs.stopped, raised == nil else { return }
+            presentPageSheet(ask: "Open Another Website?", "\(app.name) wants to open \(NavigationPolicy.target(of: url)).",
+                             goAhead: "Open") { [weak self] in
+                guard let self else { return }
+                let safari = SFSafariViewController(url: url)
+                safari.delegate = self
+                raised = safari
+                present(safari) { [weak self] in self?.dialogs.closed() }
+            }
         } else if NavigationPolicy.asksBeforeOpening(url) {
-            // One ask at a time, counted with the page's dialogs: a script can click such a
-            // link without end, and its asks stacked until Ovenlight froze.
-            guard openAsk == nil else { return }
+            // Counted with the page's dialogs: a script can click such a link without end, and
+            // its asks stacked until Ovenlight froze.
+            guard raised == nil else { return }
             let answer = pageAnswer(fallback: false) { open in if open { UIApplication.shared.open(url) } }
             let alert = UIAlertController(title: "Open in Another App?",
                                           message: "\(app.name) wants to open \(NavigationPolicy.target(of: url)).", preferredStyle: .alert)
             alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in answer(false) })
             alert.addAction(UIAlertAction(title: "Open", style: .default) { _ in answer(true) })
-            openAsk = alert
+            raised = alert
             presentPageDialog(alert, answer: answer)
         } else {
             UIApplication.shared.open(url)
         }
+    }
+
+    /// The person closed a Safari view the page opened.
+    func safariViewControllerDidFinish(_ controller: SFSafariViewController) {
+        dialogs.closed()
     }
 
     /// Tells the person that their Reload, or a link they tapped, couldn't reach the app's
@@ -1048,10 +1153,12 @@ final class DialogAnswer<Value: Sendable>: @unchecked Sendable {
     }
 }
 
-/// A page's dialogs in a row, each within a second of the last one closing. Past three in a
-/// row, however long each was read, each offers to stop the page's dialogs, as Chrome does,
-/// so a page that asks in a loop can't trap the person. Once stopped, each is answered at
-/// once with its fallback, until the person reloads the app or opens it again.
+/// A page's dialogs in a row, each within a second of the last one closing: its alerts,
+/// confirms and prompts, and what it raises of Ovenlight's own (an ask, a camera or microphone
+/// question, a Safari view, the share sheet). Past three in a row, however long each was read,
+/// each offers to stop the page's dialogs, as Chrome does, so a page that asks in a loop can't
+/// trap the person. Once stopped, each is answered at once with its fallback, and nothing more
+/// opens or downloads, until the person reloads the app or opens it again.
 struct PageDialogs {
     static let loopCount = 3
     static let gap: Duration = .seconds(1)
@@ -1091,6 +1198,74 @@ struct PageDialogs {
     }
 }
 
+/// Downloads Ovenlight agreed to that WebKit hasn't made yet. WebKit takes a process
+/// assertion for each as it's agreed to, and never lets go of one the page's next navigation
+/// took back, so a page clicking a download link hundreds of times at once got Ovenlight
+/// killed. Each holds a place under the cap until it becomes a download, or for `expiry`.
+struct AgreedDownloads {
+    static let expiry: Duration = .seconds(30)
+
+    private var agreed: [ContinuousClock.Instant] = []
+    private let now: () -> ContinuousClock.Instant
+
+    init(now: @escaping () -> ContinuousClock.Instant = { .now }) {
+        self.now = now
+    }
+
+    /// Places held now.
+    var count: Int {
+        let at = now()
+        return agreed.count { $0.duration(to: at) < Self.expiry }
+    }
+
+    mutating func agree() {
+        dropExpired()
+        agreed.append(now())
+    }
+
+    /// WebKit made one a download, which counts under way itself from now on.
+    mutating func became() {
+        dropExpired()
+        if !agreed.isEmpty { agreed.removeFirst() }
+    }
+
+    private mutating func dropExpired() {
+        let at = now()
+        agreed.removeAll { $0.duration(to: at) >= Self.expiry }
+    }
+}
+
+/// The page's own navigations, capped as Chromium caps a page's (its `NavigationRateLimiter`):
+/// past `limit`, each is refused until `window` has gone by since the count began, and then the
+/// count starts over. WebKit has no cap, and does work on Ovenlight's
+/// main thread for each page that loads, so a page that reloaded itself without end (a sign-in
+/// redirect between two paths, say) froze the app.
+struct PageNavigations {
+    static let limit = 200
+    static let window: Duration = .seconds(10)
+
+    /// Every navigation counted since the count began, refused ones too.
+    private(set) var count = 0
+    private var since: ContinuousClock.Instant
+    private let now: () -> ContinuousClock.Instant
+
+    init(now: @escaping () -> ContinuousClock.Instant = { .now }) {
+        self.now = now
+        since = now()
+    }
+
+    /// Counts a navigation; false when it's refused.
+    mutating func next() -> Bool {
+        count += 1
+        guard count > Self.limit else { return true }
+        let at = now()
+        guard since.duration(to: at) > Self.window else { return false }
+        since = at
+        count = 1
+        return true
+    }
+}
+
 /// Who gets the microphone without the page asking again (iOS still asks once): the
 /// owner's own apps (discovered, or on one of `ownersHosts`), on their own origin. The
 /// camera, shared apps, other sites added by address (someone's public Funnel URL among
@@ -1126,10 +1301,6 @@ enum DownloadPolicy {
     static func removeFolder(of file: URL) {
         try? FileManager.default.removeItem(at: file.deletingLastPathComponent())
     }
-
-    /// How long an `<a download>` waits before it's answered, so a click the page replaced at
-    /// once is never made into a download (see `decidePolicyFor`).
-    static let settle: Duration = .milliseconds(100)
 
     /// Whether an app's page may start another download: three under way and ten for the
     /// share sheet at most, as on Android. A page that downloaded without end once filled one
