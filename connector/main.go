@@ -182,6 +182,7 @@ const maxLog = 20 << 20
 func cmdRun(args []string) error {
 	fs, p := newFlags("run")
 	logFile := fs.String("log", "", "write the log to this file, moved to <file>.1 at 20 MB, instead of standard error")
+	service := fs.Bool("service", false, "started as the installed service: the launchd agent, systemd unit and scheduled task pass it")
 	controlURL := fs.String("control-url", "", "development only: control server URL (Headscale)")
 	authKey := fs.String("auth-key", "", "development only: preauth key for every node")
 	certFile := fs.String("dev-tls-cert", "", "development only: TLS certificate to serve instead of the ts.net one")
@@ -235,7 +236,7 @@ func cmdRun(args []string) error {
 	}
 	endAppsWithConnector()
 	stopWithConsoleHost()
-	err := runDaemon(p.config, p.state, dev)
+	err := runDaemon(p.config, p.state, dev, *service)
 	if err != nil && *logFile != "" {
 		log.Printf("stopped: %v", err) // main prints it to standard error too
 	}

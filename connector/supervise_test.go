@@ -1634,7 +1634,7 @@ func TestLoginEnvFailureIsReported(t *testing.T) {
 // A unix socket's path has a limit, which a long --state would pass.
 func TestDaemonRefusesALongSocketPath(t *testing.T) {
 	state := filepath.Join(t.TempDir(), strings.Repeat("s", 100))
-	err := runDaemon(filepath.Join(state, "config.json"), state, devOptions{})
+	err := runDaemon(filepath.Join(state, "config.json"), state, devOptions{}, false)
 	want := fmt.Sprintf("the state directory's path is too long for its control socket (%d bytes, at most %d); use a shorter --state", len(socketPath(state)), maxSocketPath())
 	if err == nil || err.Error() != want {
 		t.Errorf("err = %v", err)

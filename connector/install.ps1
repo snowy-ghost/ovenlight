@@ -80,7 +80,7 @@ try {
   if (Test-Path $bin) { Move-Item $bin (Join-Path $binDir "ovenlight.old-$([DateTime]::Now.Ticks).exe") }
   Move-Item $new $bin -Force
 
-  $run = 'run --log "{0}" --config "{1}" --state "{2}"' -f $log, $config, $support
+  $run = 'run --service --log "{0}" --config "{1}" --state "{2}"' -f $log, $config, $support
   # At startup or sign-in, and every minute from now on: Task Scheduler restarts a task
   # only when it fails to start, not when it stops, so each minute it tries, and a try
   # while it runs does nothing (IgnoreNew).
