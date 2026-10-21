@@ -73,10 +73,13 @@ index() {
   echo "$s"
 }
 
-# releaseindex <version> <serial>: the release's index from its folder, with that serial.
+# releaseindex <version> <serial>: the release's index from its folder, with that serial, and
+# its secure and reinstallBelow from the canary index signed for it, not the unsigned
+# index.json.
 releaseindex() {
-  local f="$records/$1/index.json"
+  local f="$records/$1/canary.json"
   [ -f "$f" ] || refuse "no $f: $1 isn't signed"
+  verifyrule "$1" "$f" "$f.sig" ovenlight-canary
   index "$1" "$(field secure "$f")" "$(field reinstallBelow "$f")" "$2" "$records/$1/SHA256SUMS"
 }
 
@@ -216,6 +219,12 @@ livekeys() {
     if below "$live" "$w"; then echo "$records/$w/release_keys"; fi
   done
 }
+
+# pullkeys <version>: the release_keys of every computer a pull of the live release reaches:
+# updaters installing it (rulekeys), and those that took it or a pulled release above it
+# (livekeys). A key all of them list may sign the pull, such as the paper key once the Air
+# that signed the live index is lost.
+pullkeys() { rulekeys "$1"; livekeys; }
 
 # verifyrule <version> <file> <sig> <namespace>: refuses a signature the one rule doesn't accept.
 verifyrule() {
