@@ -230,6 +230,14 @@ class AdminAPITests {
     }
 
     @Test
+    fun testAnOverlongConnectorMessageIsDropped() {
+        val long = """{"error":"G${"\u0301".repeat(100_000)}"}""".toByteArray()
+        assertNull(AdminAPI.errorMessage(long))
+        assertEquals(FeedbackResult.Failed(ConnectionCopy.feedbackNetwork), FeedbackResult.interpret(400, long))
+        assertEquals(1000, AdminAPI.errorMessage("""{"error":"${"a".repeat(1000)}"}""".toByteArray())?.length)
+    }
+
+    @Test
     fun testGoTimestamps() {
         assertNotNull(AdminAPI.parseDate("2026-09-28T17:03:00Z"))
         assertNotNull(AdminAPI.parseDate("2026-09-28T17:03:00-04:00"))

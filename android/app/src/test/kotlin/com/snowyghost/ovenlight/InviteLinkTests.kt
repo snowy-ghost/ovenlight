@@ -167,6 +167,8 @@ class InviteLinkTests {
             InviteLink.label("Bank\u202EnigoL\u202C \u2066Pay\u2069\u200F\u200B\uFEFF"),
         )
         assertEquals("counted as people see them", InviteLink.maxLabel, InviteLink.label(family.repeat(30))?.graphemeCount())
+        val marked = InviteLink.label("G" + "\u0301".repeat(100_000) + "arden")
+        assertEquals("a character's marks are read only so far", InviteLink.maxLabel * 16, marked?.codePointCount(0, marked.length))
     }
 
     @Test

@@ -15,14 +15,13 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
-// Android only: iOS's URLSession reads the bodies itself.
 class TailnetCoreTests {
     private fun response(body: okhttp3.ResponseBody) = Response.Builder().request(Request.Builder().url("https://recipes.tail0000.ts.net/claim").build())
         .protocol(Protocol.HTTP_1_1).code(200).message("OK").body(body).build()
 
     /** A body cut short or too long is no answer, as no response is: a claim that got one may be sent again. */
     @Test
-    fun testOnlyAWholeBodyIsAnAnswer() {
+    fun testABodyPastTheCapIsRefused() {
         val whole = TailnetCore.answer(response("12345678".toResponseBody()), cap = 8)
         assertEquals(200, whole?.status)
         assertArrayEquals("12345678".toByteArray(), whole?.body)

@@ -223,7 +223,13 @@ class GuestManager(
         store.update(membershipID) { it.copy(joined = true) }
 
         setPhase(inviteID, JoinPhase.Claiming)
-        val outcome = claim(invite, node)
+        val apps = registry.apps.filter { it.membershipID == membershipID }.map { it.host }
+        val through = Claim.through(invite, apps, node.readStatus())
+        if (through.isNotEmpty()) log("${invite.host} isn't among the peers, claiming through ${through.joinToString(", ")}")
+        val outcome = claim(invite, node, through)
+        // Claimed through another app, the device's new tag reaches the node in a moment: the app
+        // is added once it has, so it opens.
+        if (outcome is Claim.Step.Claimed && through.isNotEmpty()) waitForPeer(node, invite.host, timeoutMillis = 30_000)
         if (pendingInvite(inviteID, membershipID) == null) {
             setPhase(inviteID, null) // canceled while claiming; nothing is added
             return
@@ -267,32 +273,41 @@ class GuestManager(
     private suspend fun waitForRunning(node: MembershipNode, timeoutMillis: Long): JoinError? =
         if (withTimeoutOrNull(timeoutMillis) { node.status.first { it?.backendState == "Running" } } != null) null else JoinError.Network
 
+    /** Waits until [host] is among the node's peers, for up to [timeoutMillis]. */
+    private suspend fun waitForPeer(node: MembershipNode, host: String, timeoutMillis: Long) {
+        withTimeoutOrNull(timeoutMillis) {
+            while (node.readStatus()?.peers?.any { Discovery.normalizedHost(it.dnsName) == host } != true) delay(500)
+        }
+    }
+
     /**
-     * Posts the invite's key to the app's connector. Right after joining, the connector may not
+     * Posts the invite's key to the app's connector, at the first host in [through] that answers,
+     * else at the invite's own (see [Claim.through]), trying each again every round, as a
+     * computer can come back during the claim. Right after joining, the connector may not
      * know the device yet, so connection failures and "Unknown caller" retry for up to
      * [Claim.budget] in all (docs/protocol.md), each try with a new session from the node,
      * which may have been replaced meanwhile. The budget is kept on [now], which stops while the
      * phone sleeps, and a try always follows a wait, so a suspension by itself doesn't fail the
      * claim.
      */
-    private suspend fun claim(invite: InviteLink, node: MembershipNode): Claim.Step {
+    private suspend fun claim(invite: InviteLink, node: MembershipNode, through: List<String>): Claim.Step {
         val deadline = now() + Claim.budget.inWholeMilliseconds
         var attempt = 0
         while (true) {
-            val timeout = Claim.tryTimeout((deadline - now()).milliseconds).inWholeMilliseconds
-            val response = node.makeSession(timeout, timeout)?.let { session ->
-                try {
-                    session(Claim.request(invite))
+            for (host in through + invite.host) {
+                val timeout = Claim.tryTimeout((deadline - now()).milliseconds).inWholeMilliseconds
+                val session = node.makeSession(timeout, timeout) ?: break
+                val response = try {
+                    session(Claim.request(invite, host))
                 } catch (e: CancellationException) {
                     throw e
                 } catch (_: Exception) {
                     null
-                }
-            }
-            if (response != null) {
+                } ?: continue
                 val step = Claim.interpret(response.status, response.header(ConnectorError.header), response.body)
                 if (step != Claim.Step.Retry) return step
                 log("claim answered ${response.status}, trying again")
+                break
             }
             delay(Claim.wait(after = attempt, left = (deadline - now()).milliseconds) ?: return Claim.Step.Retry)
             attempt += 1

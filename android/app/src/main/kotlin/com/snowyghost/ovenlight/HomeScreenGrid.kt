@@ -618,7 +618,8 @@ fun AppIconView(app: WebApp, image: Bitmap?, size: Dp, modifier: Modifier = Modi
 
 /** A web manifest's theme color (`#RGB` or `#RRGGBB`), or null for anything else, as iOS reads it. */
 fun themeColor(hex: String?): Color? {
-    var text = hex?.trimmingWhitespace() ?: return null
+    if (hex == null || hex.length > 16) return null
+    var text = hex.trimmingWhitespace()
     if (text.startsWith("#")) text = text.drop(1)
     if (text.length == 3) text = text.map { "$it$it" }.joinToString("")
     if (text.length != 6) return null
