@@ -303,6 +303,24 @@ build 1.1.2 1.0.6
 signfolder 1.1.2 paper1
 promote 1.1.2 paper1
 
+fresh paperpull "the Air that signed the live index lost before its pull, which the paper key signs"
+keyfolder air1 paper1
+keys air1 paper1
+ship 1.1.0 1.0.6 air1 1.1.0
+ship 1.1.1 1.0.6 air1
+tick
+refused "1.1.0/release_keys doesn't list this one" sign paper2 --pull 1.1.1
+forge 1.1.1 pull paper2 1.1.0
+refused "isn't signed by a key any release lists" publish --pull 1.1.1
+# A key that only a release not yet promoted lists can't sign it either.
+keyfolder air2 paper1
+keys air2 paper1 air1
+build 1.1.2 1.0.6
+signfolder 1.1.2 air1
+forge 1.1.1 pull air2 1.1.0
+refused "the index it replaces, or one" publish --pull 1.1.1
+pull 1.1.1 paper1 1.1.0
+
 fresh move "a planned move to a new Air, with releases inside and after its four weeks"
 keyfolder air1 paper1
 keys air1 paper1

@@ -9,7 +9,8 @@
 #       its index for latest.json (namespace ovenlight-latest), with the same key
 #   scripts/sign-connector.sh [--key <file>] --pull <version>
 #       the live release's pull: the index of the newest promoted release before it that
-#       wasn't pulled, with the key that signed the live index
+#       wasn't pulled, with the key that signed the live index, or one every release a
+#       computer it reaches may run lists
 #   scripts/sign-connector.sh [--key <file>] --resign
 #       the live index again, with a key the live release lists, as does every pulled
 #       release above it
@@ -184,9 +185,14 @@ pull)
     refuse "$version isn't the live release (${live:-nothing is promoted}): only the live one is pulled, and one that's no longer the latest is fixed forward"
   target="$(keptbelow "$version")"
   [ -n "$target" ] || refuse "nothing promoted before $version to go back to"
-  # Computers that took the live index can check a pull signed with its key.
-  verify "$records/$newest.json" "$records/$newest.json.sig" ovenlight-latest "$tmp/signer" ||
-    refuse "the live index, $newest, was signed with another key, which signs its pull too"
+  # Computers that took the live index can check a pull signed with its key, and every
+  # computer the pull reaches one that all their releases list.
+  if ! verify "$records/$newest.json" "$records/$newest.json.sig" ovenlight-latest "$tmp/signer"; then
+    for k in $(pullkeys "$version"); do
+      haskey "$kblob" "$k" ||
+        refuse "the live index, $newest, was signed with another key, and $k doesn't list this one"
+    done
+  fi
   verifyrule "$target" "$records/$target/SHA256SUMS" "$records/$target/SHA256SUMS.sig" file
   ordered "$now"
   releaseindex "$target" "$now" > "$tmp/pull-$now.json"

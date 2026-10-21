@@ -217,6 +217,12 @@ livekeys() {
   done
 }
 
+# pullkeys <version>: the release_keys of every computer a pull of the live release reaches:
+# updaters installing it (rulekeys), and those that took it or a pulled release above it
+# (livekeys). A key all of them list may sign the pull, such as the paper key once the Air
+# that signed the live index is lost.
+pullkeys() { rulekeys "$1"; livekeys; }
+
 # verifyrule <version> <file> <sig> <namespace>: refuses a signature the one rule doesn't accept.
 verifyrule() {
   local k
