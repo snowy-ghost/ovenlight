@@ -574,7 +574,7 @@ func updateFinding(u *updateView, v string, running bool, now time.Time) *Check 
 			"It tries again each night. "+byHand(u.Failure.Version))
 	case running && !u.SelfUpdating:
 		warn("the running connector isn't the installed service, so it doesn't update itself",
-			"Stop the connector started by hand, and start the installed one with "+serviceCommands[runtime.GOOS].start)
+			serviceFix("Stop the connector started by hand, and start the installed one", serviceCommands[runtime.GOOS].start))
 	case stale:
 		msg := "no update check has worked for 7 days"
 		if u.CheckError != "" {
