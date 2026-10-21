@@ -78,9 +78,8 @@ class PageCaptureTests {
         val capture = capture()
         held = false
         fun refused(vararg resources: String): MediaCaptureType? {
-            capture.refused.value = null
-            // Each in a document of its own: a refusal lasts for the one it came in.
-            capture.documentChanged()
+            // Each from the page's start: Android isn't asked again for what it refused for good.
+            capture.stop()
             capture.onPermissionRequest(Request(own, *resources))
             return capture.refused.value
         }
@@ -96,6 +95,37 @@ class PageCaptureTests {
         capture.refused.value = MediaCaptureType.Camera
         capture.stop()
         assertNull("the lock or closing the app puts it away", capture.refused.value)
+    }
+
+    /**
+     * What Android refused for good isn't asked for again while the page runs, whatever it
+     * loads: Android would refuse at once without a word, so a page that reloads on each
+     * refusal would only keep its permission screen opening. Allowed in Settings, it's asked
+     * about again.
+     */
+    @Test
+    fun testWhatAndroidRefusedForGoodIsntAskedForAgain() = runTest {
+        val capture = capture()
+        held = false
+        refusedForGood = listOf(Manifest.permission.CAMERA)
+        capture.onPermissionRequest(Request(own, video))
+        assertEquals(MediaCaptureType.Camera, capture.refused.value)
+        capture.refused.value = null
+        repeat(3) {
+            capture.documentChanged()
+            val again = Request(own, video)
+            capture.onPermissionRequest(again)
+            assertTrue(again.denied)
+        }
+        assertNull("the notice once", capture.refused.value)
+        assertEquals("and Android's permission screen once", 1, asked.size)
+        capture.onPermissionRequest(Request(own, audio))
+        assertEquals("what it didn't refuse is still asked for", 2, asked.size)
+
+        held = true
+        capture.documentChanged()
+        capture.onPermissionRequest(Request(own, video))
+        assertTrue("allowed in Settings, it's asked about again", capture.prompt.value != null)
     }
 
     @Test

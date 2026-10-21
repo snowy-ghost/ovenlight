@@ -231,7 +231,7 @@ private fun AppPageView(model: AppModel, page: AppPage, app: WebApp, origin: Tra
             confirmButton = { TextButton(onClick = { page.cantReachAlert.value = false }) { Text(stringResource(R.string.ok)) } },
         )
     }
-    CapturePrompt(page, app.name)
+    CapturePrompt(page.capture, page.edges, app.name)
     DownloadSheet(model, page)
 }
 

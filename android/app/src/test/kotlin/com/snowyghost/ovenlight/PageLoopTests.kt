@@ -1,9 +1,16 @@
 package com.snowyghost.ovenlight
 
+import android.Manifest
 import android.net.Uri
+import android.webkit.PermissionRequest
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import androidx.activity.ComponentActivity
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.net.URI
 import java.time.Duration
@@ -16,13 +23,16 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
+import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.shadows.ShadowSystemClock
 
-/** A page that asks in a loop, through its download sheets or trips to another site, can't trap the person. */
+/** A page that asks in a loop, through its capture questions, download sheets or trips to another site, can't trap the person. */
 @RunWith(AndroidJUnit4::class)
 class PageLoopTests {
     private val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup().get()
@@ -32,13 +42,22 @@ class PageLoopTests {
     private val lifecycle = AppLifecycle(scope, { 0L }, setAway = {}, closeNodes = {}, cameToFront = {})
     private val capture = PageCapture(
         app, ownersHosts = { emptySet() }, isLocked = { false }, isOnScreen = { true }, scope = scope,
-        permissions = { _, _, done -> done(false) }, holds = { false }, stillCapturing = { false }, destroy = {},
+        permissions = { _, _, done -> done(true) }, holds = { true }, stillCapturing = { false }, destroy = {},
     )
     private var downloadsStopped = 0
     private val edges = PageEdges(
         app, WebView(activity), activity, scope, MutableStateFlow(false), lifecycle, capture, isShown = { true },
         home = {}, stopDownloads = { downloadsStopped += 1 },
     )
+
+    @get:Rule
+    val composeRule = createComposeRule()
+
+    @Before
+    fun grantOverlayHiding() {
+        // The manifest's normal permission, which Robolectric doesn't grant by itself.
+        shadowOf(RuntimeEnvironment.getApplication()).grantPermissions(Manifest.permission.HIDE_OVERLAY_WINDOWS)
+    }
 
     @After
     fun tearDown() = job.cancel()
@@ -56,6 +75,17 @@ class PageLoopTests {
     }
 
     private fun go(to: String, tapped: Boolean = false) = edges.shouldOverrideUrlLoading(Trip(to, tapped))
+
+    /** The app's own page asking for the camera. */
+    private class AskForCamera : PermissionRequest() {
+        var denied = false
+        override fun getOrigin(): Uri = Uri.parse("https://recipes.e2e.ts.net")
+        override fun getResources() = arrayOf(RESOURCE_VIDEO_CAPTURE)
+        override fun grant(resources: Array<out String>) = Unit
+        override fun deny() {
+            denied = true
+        }
+    }
 
     /** The tabs and other activities opened since the last look. */
     private fun opened() = generateSequence { shadowOf(activity).nextStartedActivity }.count()
@@ -145,5 +175,29 @@ class PageLoopTests {
         go("https://accounts.example.com/again", tapped = true)
         edges.pageFinished("https://accounts.example.com/again")
         assertEquals("a tapped one opens once too", 1, opened())
+    }
+
+    /**
+     * Ovenlight's camera question counts in the run with the page's dialogs, across the page's
+     * own reloads, which forget a refusal: a page that reloads and asks again as each is refused
+     * is offered the way out from the fourth, and taking it refuses the rest at once.
+     */
+    @Test
+    fun testCameraQuestionsInARowOfferTheWayOut() {
+        composeRule.setContent { CapturePrompt(capture, edges, app.name) }
+        val quiet = "Don’t let this app show more dialogs"
+        repeat(4) { n ->
+            edges.chrome.onPermissionRequest(AskForCamera())
+            composeRule.onNodeWithText("Allow Recipe Box to use the camera?").assertIsDisplayed()
+            assertEquals("the way out, from the fourth", n == 3, composeRule.onAllNodesWithText(quiet).fetchSemanticsNodes().isNotEmpty())
+            if (n == 3) composeRule.onNodeWithText(quiet).performClick()
+            composeRule.onNodeWithText("Don’t allow").performClick()
+            capture.documentChanged()
+        }
+        assertTrue(edges.quiet)
+        val after = AskForCamera()
+        edges.chrome.onPermissionRequest(after)
+        assertTrue("stopped, the page is refused at once", after.denied)
+        composeRule.onNodeWithText("Allow Recipe Box to use the camera?").assertDoesNotExist()
     }
 }

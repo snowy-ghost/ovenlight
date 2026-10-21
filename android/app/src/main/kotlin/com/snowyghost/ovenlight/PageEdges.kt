@@ -352,23 +352,27 @@ class PageEdges(
         mutableDialog.value = dialog
     }
 
-    /** The page's dialogs, download sheets and own trips to other sites in a row, each within [DIALOG_RUN_GAP_MILLIS] of the last one closing. */
+    /**
+     * The page's dialogs, capture questions, download sheets and own trips to other sites in a
+     * row, each within [DIALOG_RUN_GAP_MILLIS] of the last one closing.
+     */
     private var dialogRun = 0
     private var lastDialogClosed: Long? = null
 
     /**
      * The person stopped this page: each of its dialogs is answered with its fallback at once,
-     * and none of its downloads ([PageDownloads]) or its own trips to other sites starts, until
-     * they reload the app or open it again ([allowDialogsAgain]). Nothing the page does itself
-     * (a reload of its own) lifts it.
+     * its camera and microphone are refused, and none of its downloads ([PageDownloads]) or its
+     * own trips to other sites starts, until they reload the app or open it again
+     * ([allowDialogsAgain]). Nothing the page does itself (a reload of its own) lifts it.
      */
     var quiet = false
         private set
 
     /**
-     * Counts a page's dialog, a download sheet or a trip in the run: true past [DIALOG_LOOP_COUNT]
-     * in a row, however long each was read, when it offers "Don't let this app show more
-     * dialogs", as Chrome does, so a page that asks in a loop can't trap the person.
+     * Counts a page's dialog, a capture question, a download sheet or a trip in the run: true
+     * past [DIALOG_LOOP_COUNT] in a row, however long each was read, when it offers "Don't let
+     * this app show more dialogs", as Chrome does, so a page that asks in a loop can't trap the
+     * person.
      */
     fun nextInRun(): Boolean {
         val now = SystemClock.elapsedRealtime()
@@ -377,7 +381,7 @@ class PageEdges(
         return dialogRun > DIALOG_LOOP_COUNT
     }
 
-    /** A page's dialog, a download sheet or a trip closed. */
+    /** A page's dialog, a capture question, a download sheet or a trip closed. */
     fun closedInRun() {
         lastDialogClosed = SystemClock.elapsedRealtime()
     }
@@ -613,6 +617,8 @@ class PageEdges(
 
         /** Ovenlight never gives a page the phone's location, as on iOS (docs/building-apps.md). */
         override fun onPermissionRequest(request: PermissionRequest) {
+            // A page the person stopped gets no question, nor Android's.
+            if (quiet) return request.deny()
             capture.onPermissionRequest(request)
         }
 
@@ -988,7 +994,7 @@ private fun PageDialogText(message: String, below: @Composable () -> Unit = {}) 
     }
 }
 
-/** Chrome's way out of a page's dialog loop, on its dialogs and download sheets ([PageEdges.quietDialogs]). */
+/** Chrome's way out of a page's dialog loop, on each dialog in its run ([PageEdges.nextInRun], [PageEdges.quietDialogs]). */
 @Composable
 internal fun QuietChoice(checked: Boolean, modifier: Modifier = Modifier, onChange: (Boolean) -> Unit) {
     Row(

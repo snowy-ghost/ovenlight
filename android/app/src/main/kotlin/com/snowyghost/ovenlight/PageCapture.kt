@@ -18,8 +18,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.core.content.ContextCompat
@@ -83,6 +87,14 @@ class PageCapture(
     private val denied = mutableSetOf<String>()
     private val deniedByAndroid = mutableSetOf<String>()
 
+    /**
+     * What Android refused for good, turned off for Ovenlight, as this page asked: whatever
+     * document asks for it next is refused at once until Settings allows it or the page stops,
+     * since Android would refuse again without a word, and a page that reloads on each refusal
+     * would only keep its permission screen opening.
+     */
+    private val offInSettings = mutableSetOf<String>()
+
     /** Reaches the page script, which stops its tracks and its frames' (see [PageBridge]). */
     private var stopTracks: (() -> Unit)? = null
 
@@ -102,6 +114,7 @@ class PageCapture(
         val asked = decision == PermissionDecision.Grant || allowed[key]?.containsAll(resources) == true
         pending = request
         val refusedForGood = { denied: List<String> ->
+            offInSettings += denied
             refused.value = if (Manifest.permission.CAMERA in denied) MediaCaptureType.Camera else MediaCaptureType.Microphone
         }
         permissions(androidPermissions(resources), refusedForGood) { held ->
@@ -131,7 +144,7 @@ class PageCapture(
     }
 
     private fun refusedBefore(resources: Set<String>): Boolean =
-        resources.any(denied::contains) || androidPermissions(resources).any { it in deniedByAndroid && !holds(it) }
+        resources.any(denied::contains) || androidPermissions(resources).any { (it in deniedByAndroid || it in offInSettings) && !holds(it) }
 
     fun onPermissionRequestCanceled(request: PermissionRequest) {
         if (pending !== request) return
@@ -163,6 +176,7 @@ class PageCapture(
         allowed.clear()
         denied.clear()
         deniedByAndroid.clear()
+        offInSettings.clear()
         refused.value = null
         dropPending()
         if (!granted) return
@@ -284,16 +298,30 @@ object RuntimePermissions {
  * good. Leaving the question unanswered denies.
  */
 @Composable
-fun CapturePrompt(page: AppPage, appName: String) {
-    val prompt by page.capture.prompt.collectAsState()
-    val refused by page.capture.refused.collectAsState()
+fun CapturePrompt(capture: PageCapture, edges: PageEdges, appName: String) {
+    val prompt by capture.prompt.collectAsState()
+    val refused by capture.refused.collectAsState()
     prompt?.let { open ->
         DisposableEffect(open) { onDispose { open.answer.dropped() } }
-        CapturePromptDialog(capturePromptTitle(open, appName), open.answer::invoke)
+        // In the run with the page's dialogs, counted as it shows and closed as it goes: a page
+        // that reloads and asks again as each is refused, so that no document remembers the
+        // refusal, is offered the way out.
+        var offersQuiet by remember(open) { mutableStateOf(false) }
+        var stopMore by remember(open) { mutableStateOf(false) }
+        LaunchedEffect(open) { offersQuiet = edges.nextInRun() }
+        DisposableEffect(open) { onDispose(edges::closedInRun) }
+        // One per question: Allow's wait ([GoAheadButton]) starts as it shows, not as it redraws.
+        val answer = remember(open) {
+            { allow: Boolean ->
+                if (stopMore) edges.quietDialogs()
+                open.answer(allow)
+            }
+        }
+        CapturePromptDialog(capturePromptTitle(open, appName), if (offersQuiet) ({ QuietChoice(stopMore) { stopMore = it } }) else null, answer)
     }
     refused?.let { type ->
         val context = LocalContext.current
-        val done = { page.capture.refused.value = null }
+        val done = { capture.refused.value = null }
         AlertDialog(
             onDismissRequest = done,
             title = { Text(stringResource(if (type == MediaCaptureType.Camera) R.string.capture_refused_camera else R.string.capture_refused_microphone)) },
@@ -323,13 +351,14 @@ internal fun capturePromptTitle(prompt: PageCapture.Prompt, appName: String): St
 }
 
 @Composable
-internal fun CapturePromptDialog(title: String, answer: (Boolean) -> Unit) {
+internal fun CapturePromptDialog(title: String, quiet: (@Composable () -> Unit)? = null, answer: (Boolean) -> Unit) {
     AlertDialog(
         onDismissRequest = { answer(false) },
         title = {
             Text(title)
             GuardedFromOverlays()
         },
+        text = quiet,
         confirmButton = { GoAheadButton(answer, stringResource(R.string.capture_allow)) { answer(true) } },
         dismissButton = { TextButton(onClick = { answer(false) }) { Text(stringResource(R.string.capture_dont_allow)) } },
     )
