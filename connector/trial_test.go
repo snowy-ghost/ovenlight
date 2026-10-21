@@ -62,6 +62,9 @@ func trialRig(t *testing.T, rec updateTrial) (dir, installed string) {
 
 const onWindows = runtime.GOOS == "windows"
 
+// The tests' computer booted long before their swaps, unless a test says otherwise.
+func init() { sinceBoot = func() time.Duration { return 100000 * time.Hour } }
+
 // rolledBack checks that .prev is back and the trial gone, and returns the failure
 // recorded.
 func rolledBack(t *testing.T, dir, installed string) *updateFailure {
@@ -128,6 +131,30 @@ func TestTrialCleanStop(t *testing.T) {
 	if exists(filepath.Join(dir, updateTrialFile)) {
 		t.Error("a stop after the trial wrote it again")
 	}
+}
+
+// Windows ends the connector at a restart with no clean stop, so a start after the
+// computer booted since the swap begins the trial afresh. With no boot, it rolls back.
+func TestTrialWindowsRestart(t *testing.T) {
+	defer func(f func() time.Duration) { sinceBoot = f }(sinceBoot)
+	dir, installed := trialRig(t, trialTo(t, "1.2.0", nsLatest))
+	beginTrial(dir, "1.2.0", true, time.Now)
+	sinceBoot = func() time.Duration { return time.Minute }
+	if tr, exit := beginTrial(dir, "1.2.0", true, time.Now); tr == nil || exit {
+		t.Fatal("a start after a restart rolled back")
+	}
+	if tr, exit := beginTrial(dir, "1.2.0", false, time.Now); tr != nil || !exit {
+		t.Fatal("a Mac or Linux start with no clean stop went on")
+	}
+	rolledBack(t, dir, installed)
+
+	dir, installed = trialRig(t, trialTo(t, "1.2.0", nsLatest))
+	beginTrial(dir, "1.2.0", true, time.Now)
+	sinceBoot = func() time.Duration { return 100000 * time.Hour }
+	if _, exit := beginTrial(dir, "1.2.0", true, time.Now); !exit {
+		t.Fatal("a start with no restart went on")
+	}
+	rolledBack(t, dir, installed)
 }
 
 // A rollback that a crash cut short after recording its failure doesn't count it again,

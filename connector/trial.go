@@ -41,7 +41,7 @@ type updateTrial struct {
 	Starts int `json:"starts"`
 	// Stopped is set when To stops cleanly during its trial, through the normal shutdown on
 	// a signal: the computer restarting, or the service restarted. Its next start begins
-	// the trial afresh.
+	// the trial afresh, as does one after Windows restarted, which sends no signal.
 	Stopped bool `json:"stopped,omitempty"`
 }
 
@@ -112,8 +112,9 @@ func startTrial() {
 // binary is in, and returns its trial when it's on one. A trial to another version ends:
 // the swap didn't finish, a rollback did, or an install script put another release in
 // place. So does one with nothing to roll back to, or that isn't a trial record. One that
-// can't be read now stays for the next start. A second start with no clean stop before it
-// rolls back at once, and exit says the connector should then exit.
+// can't be read now stays for the next start. A second start with no clean stop or
+// Windows restart before it rolls back at once, and exit says the connector should then
+// exit.
 func beginTrial(dir, v string, windows bool, now func() time.Time) (t *trial, exit bool) {
 	path := filepath.Join(dir, updateTrialFile)
 	data, err := jsonfile.ReadFile(path)
@@ -131,11 +132,11 @@ func beginTrial(dir, v string, windows bool, now func() time.Time) (t *trial, ex
 	case t.rec.To != v:
 	case !exists(prevBinary(installedBinary(dir))):
 		log.Printf("updates: %s has nothing to roll back to, so its trial ends", v)
-	case t.rec.Starts > 0 && !t.rec.Stopped:
+	case t.rec.Starts > 0 && !t.rec.Stopped && !t.restarted():
 		return nil, t.rollback(fmt.Errorf("%s started again within its trial: it crashed, hung or was killed", v))
 	default:
-		if t.rec.Stopped {
-			log.Printf("updates: %s stopped cleanly during its trial, which starts again", v)
+		if t.rec.Starts > 0 {
+			log.Printf("updates: %s stopped cleanly or the computer restarted during its trial, which starts again", v)
 		}
 		t.rec.Starts, t.rec.Stopped = 1, false
 		if err := jsonfile.Save(path, &t.rec); err != nil {
@@ -146,6 +147,12 @@ func beginTrial(dir, v string, windows bool, now func() time.Time) (t *trial, ex
 	}
 	t.end()
 	return nil, false
+}
+
+// restarted reports whether Windows started since the swap. Windows ends the connector at
+// a restart with no signal to mark a clean stop, so the boot time stands in for one.
+func (t *trial) restarted() bool {
+	return t.windows && t.now().Add(-sinceBoot()).After(t.rec.At)
 }
 
 func exists(path string) bool {

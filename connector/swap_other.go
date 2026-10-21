@@ -7,6 +7,9 @@ import (
 	"time"
 )
 
+// sinceBoot is only read on Windows, and set by the tests of it.
+var sinceBoot func() time.Duration
+
 // renamer is a file to rename. Only Windows keeps a file that something holds from being
 // renamed, so here it's just the path, for the tests of Windows' renames.
 type renamer struct{ path string }

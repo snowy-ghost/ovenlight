@@ -10,6 +10,9 @@ import (
 	"golang.org/x/sys/windows"
 )
 
+// sinceBoot is how long ago Windows started, sleep included.
+var sinceBoot = windows.DurationSinceBoot
+
 // renamer is a file held open for renaming, with DELETE access. It shares every access,
 // so the running binary's own handles keep working, and anything that opens the file
 // later without sharing a rename, such as antivirus, is kept out. A rename through it
