@@ -155,8 +155,7 @@ scripts/publish-connector.sh 1.2.0
 ovenlight update now --index ~/Sync/ovenlight/releases/1.2.0/canary.json
 ```
 
-A folder upload that fails partway is finished by running it again, before the next
-build replaces `build/release`. The mini's connector must run the live release first: after a pull it may still run the
+The mini's connector must run the live release first: after a pull it may still run the
 release taken out, so install the live one by hand from its folder. The live index must
 also be signed with a key the new release lists, so after a key change, `--resign` it
 first. The canary passes once the apps serve again and `ovenlight status` shows 1.2.0
@@ -180,15 +179,16 @@ scripts/publish-connector.sh --promote 1.2.0
 
 That puts its files in `connector/latest/` and its index in `latest.json`, and every
 owner's two-day wait starts. A publish that fails partway is finished by running the same
-command again. `--pull`, the same way, takes the live release back out by publishing the
-index of the release before it, signed again. Computers that already took the pulled
-release keep it, since the connector never installs an older one, so the fix is the next
-release. `--resign` publishes the live index signed again, before a canary after a key
-change or to supersede a signed promote that mustn't ship. Every promote, pull and resign
-is recorded in `~/Sync/ovenlight/releases/`, the only history the scripts read. Each
-script's header says what it checks, and `scripts/test-connector-release.sh` dry-runs them
-all. Each release restarts every owner's connector, and one promoted within two days of
-the last restarts every owner's wait, so batch what isn't urgent.
+command again (a folder's before the next build replaces `build/release`). `--pull`, the
+same way, takes the live release back out by publishing the index of the release before
+it, signed again. Computers that already took the pulled release keep it, since the
+connector never installs an older one, so the fix is the next release. `--resign`
+publishes the live index signed again, before a canary after a key change or to supersede
+a signed promote that mustn't ship. Every promote, pull and resign is recorded in
+`~/Sync/ovenlight/releases/`, the only history the scripts read. Each script's header says
+what it checks, and `scripts/test-connector-release.sh` dry-runs them all. Each release
+restarts every owner's connector, and one promoted within two days of the last restarts
+every owner's wait, so batch what isn't urgent.
 
 Uploads go to the R2 bucket behind `https://downloads.ovenlight.app`, through `wrangler`
 (signed in with `npx wrangler@4.147.0 login`, or `CLOUDFLARE_API_TOKEN` and
