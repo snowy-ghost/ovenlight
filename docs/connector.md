@@ -138,8 +138,8 @@ run it; `install.ps1` says so when the connector doesn't start.
 
 ### What it installs
 
-Running the install script again reinstalls and restarts the connector, keeping your apps
-and node state. It installs:
+Running the install script again installs the connector it came with, even an older one,
+and restarts it, keeping your apps, node state and update settings. It installs:
 
 | | macOS | Linux | Windows |
 |---|---|---|---|
@@ -153,7 +153,8 @@ On Linux, `$XDG_CONFIG_HOME` and `$XDG_STATE_HOME` take the place of `~/.config`
 `~/.local/state` when set. At 20 MB the log moves to `ovenlight.log.1` beside it,
 replacing the one before. What bypasses the log, such as a crash, goes to
 `ovenlight.stderr.log` beside the log on macOS and Windows, and to the user journal on
-Linux (`journalctl --user -u ovenlight`).
+Linux (`journalctl --user -u ovenlight`). The updater keeps a few files of its own in the
+state directory and the bin folder ([security.md](security.md#the-files-it-keeps)).
 
 On macOS and Linux, `install.sh` links `ovenlight` in `~/.local/bin`, but never replaces a
 file it didn't make. When `~/.local/bin` isn't on your `PATH`, it prints the
@@ -184,11 +185,57 @@ that's only stopped starts again within a minute.
 
 ## Update
 
-Run the [release commands](#from-a-release) again: they replace the files in
-`~/ovenlight-connector`, and the install script reinstalls the connector. From source,
-pull and run the install script again. A release build's `ovenlight doctor` says when a
-newer release is out, and fails when one fixes a security problem in yours; a build from
-source doesn't check.
+The connector updates itself. Releases up to 1.0.9 don't: install a newer release
+[by hand](#install-a-release-by-hand) once, and from then on it does. It checks once a
+day, and installs a new release two days after it comes out, at a quiet moment: between
+02:00 and 05:00 your computer's time, once nothing has used your apps or the connector for
+10 minutes. A release that fixes a
+security problem in yours goes in at the first quiet 10 minutes, day or night. On a
+computer that's never quiet, or asleep every night, an update still waiting a day after
+it was due goes in at the next 02:00, or as soon as the connector runs after that, busy or
+not. Installing restarts the connector, so the apps it runs stop and open connections
+drop for a few seconds (up to a minute on Windows). If the new release doesn't serve your
+apps again within 10 minutes, the connector goes back to the one before and tries again
+the next night.
+
+`ovenlight status` shows the last check, a release waiting its turn and when it installs,
+the last update, and one that failed. [security.md](security.md#updates) has what the
+connector checks before it installs anything. Only a release updates itself: from source,
+pull and run the install script again.
+
+- `ovenlight update off` stops installing updates. The connector still checks daily, and
+  `ovenlight doctor` still fails when your release has a known security problem.
+- `ovenlight update on` turns them back on.
+
+### Install a release by hand
+
+A release that changes what the install script sets up can't come as an update: `status`
+and `doctor` say when yours needs its install script. To install it, or the latest
+release at any time, run the [release commands](#from-a-release) again. On a Mac or Linux,
+the verified steps there check the download's signature first. They replace the files in
+`~/ovenlight-connector`, and the install script reinstalls the connector.
+
+On Windows, check the signatures before installing. In an administrator PowerShell:
+
+```powershell
+mkdir $HOME\ovenlight-connector -Force | Out-Null; cd $HOME\ovenlight-connector
+curl.exe -fsSL https://downloads.ovenlight.app/connector/latest/ovenlight-connector-windows-amd64.zip -o connector.zip
+tar -xf connector.zip --strip-components 1
+Get-AuthenticodeSignature .\ovenlight.exe, .\install.ps1 | Format-List Path, Status, SignerCertificate
+```
+
+If both say `Valid`, with Snowy Ghost LLC in the certificate's subject, run
+`powershell -ExecutionPolicy Bypass -File .\install.ps1`. On an Arm PC, use
+`windows-arm64` in place of `windows-amd64`.
+
+Each release from 1.0.1 on also stays in its own folder, such as
+`https://downloads.ovenlight.app/connector/1.0.9/`. To install an older release and stay
+on it, first run `ovenlight update off`, or a release that updates itself moves to the
+newest again. One up to 1.0.9 never updates itself, and `ovenlight doctor` says when the
+release you're on has a known security problem. Then put the release's folder in place of
+`latest` in the commands (in `base=` for the verified steps). For the verified steps, also
+fetch `allowed_signers` as it was at the release's tag: put `connector-v1.0.9`, for
+example, in place of `master` in its address.
 
 ## Publish an app
 
@@ -431,5 +478,6 @@ ran (`connector\uninstall.ps1` in a clone).
 since other services of yours may need it: `loginctl disable-linger` turns it off.
 
 `--purge` deletes node state, the config, the stored API credential, guest records, the
-feedback inbox, the policy backups and the logs. Without it, all of that stays, so a
-reinstall needs no new logins.
+feedback inbox, the policy backups, the updater's record and settings, and the logs.
+Without it, all of that stays, so a reinstall needs no new logins and keeps updates off if
+you turned them off.

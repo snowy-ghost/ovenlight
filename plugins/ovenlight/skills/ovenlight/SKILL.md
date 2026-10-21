@@ -20,7 +20,8 @@ The `ovenlight` connector on that computer publishes each app and tells it who i
    account, the Ovenlight app on their phone, and the connector, a free download.
    https://ovenlight.app/support#own-computer has the steps. Then wait for them; don't
    look for workarounds. If it is installed but not running, the person
-   starts it with the command the guide gives; don't run `ovenlight run` yourself.
+   starts it with the command `ovenlight status` gives. Don't run `ovenlight run`
+   yourself.
 3. **Use the tools for the loop**: publish, restart the app after changing the server,
    check it, read its logs, and read the feedback the person sends from their phone. The
    command that keeps the app running is set only in a terminal: with a shell, publish
@@ -34,3 +35,12 @@ The `ovenlight` connector on that computer publishes each app and tells it who i
    coding agent that can, Claude Code for example, and publish it from there.
 4. **You can't share an app.** When the person wants to share, tell them the steps from
    the guide and let them do it.
+5. **The connector updates itself.** When `status` shows a failed update, tell the
+   person what failed, in plain words: it tries again the next night. A release waiting
+   its turn needs nothing from either of you. When `doctor`'s `update` check gives a fix,
+   pass it on. A release to install by hand, including one an older connector's `doctor`
+   names with a download link, goes in with the verified install steps in
+   https://github.com/snowy-ghost/ovenlight/blob/master/docs/connector.md#update. On a
+   Mac or Linux they check the download's checksums and signature with
+   `ssh-keygen -Y verify`, and on Windows its Authenticode signature. Offer those, never a
+   bare download.

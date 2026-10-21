@@ -39,6 +39,11 @@ in `connector/go.mod`.
   connections from another user) and `supervise_*.go` (the process groups of the apps
   the connector runs).
 - **Global flags.** Commands take `--config <file>` and `--state <dir>`.
+- **The service.** The launchd agent, systemd unit and scheduled task start
+  `ovenlight run --service`. Only a release build started that way, running from the
+  connector's bin folder, updates itself (`selfUpdating` in `connector/updater.go`, and
+  [security.md](security.md#updates) has how). A build from source, a pre-release and a
+  plain `ovenlight run` never do.
 - **The building guide.** `ovenlight guide` and the MCP `guide` tool serve
   `connector/building-apps.md`, a copy of [building-apps.md](building-apps.md) that Go
   can embed. After editing the doc, run `go generate` in `connector/`; a test fails
@@ -116,35 +121,75 @@ first. Windows signing needs `jsign` (`brew install jsign`) and the Azure CLI
 Certificate Profile Signer role on the certificate profile that `WIN_PROFILE` in the
 script names.
 
-Try the Windows build on a PC with Smart App Control on before publishing. Then tag the
-release, sign it on the Air with the release key, and publish it from the mini:
+Try the Windows build on a PC with Smart App Control on before publishing. Then, on the
+mini, tag the release on `HEAD`, the clean commit on `origin/master` it was built from:
 
 ```sh
 git tag -s -m "Connector 1.1.0" connector-v1.1.0
 git push origin connector-v1.1.0
+```
+
+Sign it on the Air, with the release key behind Touch ID:
+
+```sh
 scripts/sign-connector.sh 1.1.0
+```
+
+It copies the build's `SHA256SUMS` and index from the mini and prints what it signs: the
+index's fields, the commit, the connector changes since the last release and
+`SHA256SUMS`. It refuses a commit whose `connector/release_keys` isn't the two keys in
+`~/.ssh/ovenlight-release-keys/` plus the one signing. It signs `SHA256SUMS` and a canary
+index, `canary.json`, which only `ovenlight update now --index` takes, and keeps both in
+the release's folder in `~/Sync/ovenlight/releases/`. `--key <file>` signs with another
+key, such as the paper backup.
+
+Back on the mini, upload the version's folder, then try the release on the mini's own
+connector, the canary:
+
+```sh
 scripts/publish-connector.sh 1.1.0
+ovenlight update now --index ~/Sync/ovenlight/releases/1.1.0/canary.json
+```
+
+The mini's connector must run the live release first: after a pull it may still run the
+release taken out, so install the live one by hand from its folder. The live index must
+also be signed with a key the new release lists, so after a key change, `--resign` it
+first. The canary passes once the apps serve again and `ovenlight status` shows 1.1.0
+running with a check made since it started. A release that raises `reinstallBelow`
+passes once `update now` says it needs its install script, the mini installs it by hand
+from `connector/1.1.0/` ([connector.md](connector.md#install-a-release-by-hand)), and
+status shows a check made since. A release whose canary fails is never promoted: fix it
+under a new version, since a published folder never changes.
+
+Then promote it, signing on the Air and publishing on the mini:
+
+```sh
 scripts/sign-connector.sh --promote 1.1.0
 scripts/publish-connector.sh --promote 1.1.0
 ```
 
-The tag goes on `HEAD`, the clean commit on `origin/master` the release was built from.
-`sign-connector.sh` runs on the Air and keeps what it signs in
-`~/Sync/ovenlight/releases/`. `publish-connector.sh <version>` uploads only the version's
-folder, `--promote` makes it the latest, `--pull` takes the live release back out, and
-`--resign` puts up the live index signed again, each after `sign-connector.sh` with the same
-option. Each script's header says what it checks. `scripts/test-connector-release.sh` dry-runs them all.
+That puts its files in `connector/latest/` and its index in `latest.json`, and every
+owner's two-day wait starts. `--pull`, the same way, takes the live release back out by
+publishing the index of the release before it, signed again. Computers that already took
+the pulled release keep it, since the connector never installs an older one, so the fix
+is the next release. `--resign` publishes the live index signed again, before a canary
+after a key change or to supersede a signed promote that mustn't ship. Every promote, pull
+and resign is recorded in `~/Sync/ovenlight/releases/`, the only history the scripts
+read. Each script's header says what it checks, and `scripts/test-connector-release.sh`
+dry-runs them all. Each release restarts every owner's connector, and one promoted within
+two days of the last restarts every owner's wait, so batch what isn't urgent.
+
 Uploads go to the R2 bucket behind `https://downloads.ovenlight.app`, through `wrangler`
 (signed in with `npx wrangler@4.147.0 login`, or `CLOUDFLARE_API_TOKEN` and
 `CLOUDFLARE_ACCOUNT_ID`):
 
 - `connector/<version>/`: the release's files, never replaced;
-- `connector/latest/`: the same files, replaced by each release, which the install commands
+- `connector/latest/`: the same files of the latest release, which the install commands
   and download links in the docs point to;
-- `connector/latest.json` and its signature `latest.json.sig`: the signed index, whose
-  `latest` and `secure` `ovenlight doctor` reads to tell people about updates. It fails
-  while they run a version older than `secure`, so raise `secure` with any release that
-  fixes a security problem.
+- `connector/latest.json` and its signature `latest.json.sig`: the signed index the
+  updater checks daily ([security.md](security.md#updates)). A connector older than its
+  `secure` updates without the two-day wait, and `doctor` fails on it, so raise `secure`
+  with any release that fixes a security problem.
 
 ## The iPhone app
 
@@ -418,9 +463,13 @@ To build and sign your own copy, change to your own:
   `AppLinks.privacyPolicy`;
 - to release the connector, the Developer ID identity (`IDENTITY`) and the Artifact
   Signing profile (`WIN_ENDPOINT`, `WIN_PROFILE`) in `scripts/release-connector.sh`, the
-  keys in `docs/allowed_signers`, the `team@snowyghost.com` principal both release scripts
-  verify `SHA256SUMS.sig` against, the bucket and site in `scripts/publish-connector.sh`,
-  and `releaseBase` and `installDocs` in `connector/update.go`.
+  bucket and site in `scripts/publish-connector.sh`, and `releaseBase` and `installDocs`
+  in `connector/update.go`. A fork signs with release keys of its own: list them in
+  `connector/release_keys`, which every build trusts, and in `docs/allowed_signers` (a
+  test checks the two agree), put their public halves in `~/.ssh/ovenlight-release-keys/`
+  on the computer that signs, and change `HANDLE` in `scripts/sign-connector.sh`,
+  `minirelease` in `scripts/connector-release-lib.sh`, and the `team@snowyghost.com`
+  principal `publish-connector.sh` and connector.md verify `SHA256SUMS.sig` with.
 
 ### Invite links
 
