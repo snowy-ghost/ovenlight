@@ -421,17 +421,32 @@ resign air1 1.1.1
 pass "secure is still 1.0.6"
 refused "sign a fresh one" publish --promote 1.1.2
 build 1.1.3 1.0.5
-signfolder 1.1.3 air1
-tick
-refused "secure would go down" sign air1 --promote 1.1.3
-forge 1.1.3 promote air1 1.1.3
-refused "secure would go down" publish --promote 1.1.3
+refused "1.1.3 can't go below either" sign air1 1.1.3
 forge 1.1.0 promote air1 1.1.0
 refused "1.1.0 was promoted already" publish --promote 1.1.0
-build 1.1.4 1.0.6
+build 1.1.4 1.1.2
 signfolder 1.1.4 air1
 forge 1.1.4 promote paper1 1.1.4
 refused "are signed with different keys" publish --promote 1.1.4
+
+fresh lower "a release signed but not promoted keeps what it raised"
+keyfolder air1 paper1
+keys air1 paper1
+ship 1.1.0 1.0.6 air1 1.1.0
+# 1.1.2 is signed before 1.1.1 raises secure and reinstallBelow, so only its promote refuses it.
+build 1.1.2 1.0.6
+signfolder 1.1.2 air1
+build 1.1.1 1.1.1 1.1.1
+signfolder 1.1.1 air1
+build 1.1.3 1.0.6
+refused "1.1.3 can't go below either" sign air1 1.1.3
+build 1.1.3 1.1.1 1.1.0
+refused "1.1.3 can't go below either" sign air1 1.1.3
+promote 1.1.1 air1
+tick
+refused "secure would go down" sign air1 --promote 1.1.2
+forge 1.1.2 promote air1 1.1.2
+refused "secure would go down" publish --promote 1.1.2
 
 fresh gates "what no release gets past"
 keyfolder air1 paper1
