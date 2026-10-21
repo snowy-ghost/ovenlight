@@ -2,8 +2,8 @@
 #   ssh-keygen -Y verify -f allowed_signers -I team@snowyghost.com -n file -s SHA256SUMS.sig < SHA256SUMS
 # and the index the connector updates from, latest.json, with:
 #   ssh-keygen -Y verify -f allowed_signers -I team@snowyghost.com -n ovenlight-latest -s latest.json.sig < latest.json
-# The keys that signed releases up to 1.0.9. They leave once the first release signed with
-# the release keys is promoted.
+# The keys that signed releases up to 1.0.9, which are checked with this file at their own
+# tag. They leave with the mock keys below.
 team@snowyghost.com namespaces="file" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILPcRhVVWAsXwW8S4kx91sX5+3/wLs6gI+tbgUYa7VP1
 team@snowyghost.com namespaces="file" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIM/8+4qOycuMKBX1KUt7U/avwRbFGLbl/ngNW5+kbrkQ
 # Mock release keys for building the updater, whose private halves are public in

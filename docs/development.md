@@ -209,26 +209,31 @@ The first release that updates itself, 1.1.0 here, goes out once, with 1.1.1 aft
 1. Before the updater reaches master, swap the mock release keys for the real ones, in
    one commit:
    - `connector/release_keys` and `docs/allowed_signers` list the two real public keys,
-     the latter in namespaces `file,ovenlight-latest`. The mock lines and their comment
-     leave `allowed_signers`, and the old keys stay.
-   - On the Air, `connector/testdata/update/sign.sh` re-signs the test fixtures, given the
-     Touch ID handle and the paper key's file in the order `release_keys` lists them.
+     the latter in namespaces `file,ovenlight-latest`. The mock lines, the keys that
+     signed releases up to 1.0.9 and their comments leave `allowed_signers`: a release up
+     to 1.0.9 is checked with the file at its own tag.
+   - `index.json.release-1.sig` and `index.json.release-2.sig`, which key setup signed
+     with the two real keys, are copied from `~/Sync/ovenlight/release-key-test/` into
+     `connector/testdata/update/`.
    - The comment in `connector/keys.go` loses its sentence about the mock keys.
    - The Air's `~/.ssh/ovenlight-release-keys/` holds the two real public keys.
 
    `connector/testdata/releasekey/mock-*.pub` stay: `release-connector.sh` refuses any key
    there in `release_keys` or `allowed_signers`.
-2. `~/Sync/ovenlight/releases/` holds no records yet, so 1.1.0 names its own
-   `reinstallBelow`: `scripts/release-connector.sh 1.1.0 1.0.6 1.1.0`. Sign and publish its
-   folder, then build, sign and publish 1.1.1 from the same commit.
+2. Merge the updater to master. Check that `~/Sync/ovenlight/releases/` holds no records
+   yet, so 1.1.0 names its own `reinstallBelow`:
+   `scripts/release-connector.sh 1.1.0 1.0.6 1.1.0`. Sign and publish its folder, then
+   build, sign and publish 1.1.1 from the same commit.
 3. Nothing before 1.1.0 updates itself, so it has no canary. The mini installs it by hand
    from `connector/1.1.0/` ([connector.md](connector.md#install-a-release-by-hand)), then
    runs 1.1.1's canary. The trial passes on the canary index, but no daily check verifies
    while `latest.json` is 1.0.9's, which is unsigned. The mini's first verified check after
-   1.1.0's promote completes the canary.
-4. Promote 1.1.0, then take the old keys out of `docs/allowed_signers`. Until that promote,
-   the verified install steps fail on 1.0.9's unsigned `latest.json`, so promote soon
-   after the merge. Promote 1.1.1 a day later, the owners' first automatic update.
+   1.1.0's promote completes the canary. The mini's Windows on Arm VM installs 1.1.0 by
+   hand too, with no canary, and stays on it, to take 1.1.1 the way owners will.
+4. Deploy the site, so its privacy policy covers the update check, then promote 1.1.0.
+   Until that promote, the verified install steps fail on 1.0.9's unsigned
+   `latest.json`, so promote soon after the merge. Promote 1.1.1 a day later, the owners'
+   first automatic update.
 
 ## The iPhone app
 
