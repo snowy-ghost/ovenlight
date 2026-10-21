@@ -179,6 +179,17 @@ func TestUpdateTarget(t *testing.T) {
 	}
 }
 
+// A time read back from update.json keeps the offset it was saved in: its time of day is
+// the one where the computer is now.
+func TestDayTimeIsLocal(t *testing.T) {
+	here := time.Date(2026, 10, 21, 2, 30, 0, 0, time.Local)
+	_, offset := here.Zone()
+	saved := here.In(time.FixedZone("", offset-5*60*60)) // 21:30 the evening before
+	if dayTime(saved) != dayTime(here) {
+		t.Errorf("%v: %v, not %v", saved, dayTime(saved), dayTime(here))
+	}
+}
+
 func TestDownloadArchive(t *testing.T) {
 	body := []byte("an archive")
 	sum := sha256.Sum256(body)

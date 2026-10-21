@@ -167,7 +167,7 @@ func updateTarget(v string, idx *updateIndex, seen time.Time) (target string, du
 // dayTime is t's local time of day on the updater's clock. A test-key build may shorten
 // the updater's hour, and with it the day, which still runs from 00:00 to 24:00.
 func dayTime(t time.Time) time.Duration {
-	h, m, s := t.Clock()
+	h, m, s := t.Local().Clock()
 	wall := time.Duration(h)*time.Hour + time.Duration(m)*time.Minute + time.Duration(s)*time.Second + time.Duration(t.Nanosecond())
 	return wall % (24 * updateHour) * (time.Hour / updateHour)
 }
