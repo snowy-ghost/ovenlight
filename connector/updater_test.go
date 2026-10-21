@@ -144,14 +144,14 @@ func at(day, hour, minute int) time.Time {
 }
 
 // testUpdater is an updater of a connector at version v, started at start, fetching from
-// srv, whose swaps are recorded (or, with stub, go to the real swapIn).
+// srv, whose swaps are recorded (or, with realSwap, go to swapIn).
 type testUpdater struct {
 	*updater
 	clock *fakeClock
 	swaps []pendingSwap
 }
 
-func newTestUpdater(t *testing.T, srv *releaseServer, dir, v string, start time.Time, stub bool) *testUpdater {
+func newTestUpdater(t *testing.T, srv *releaseServer, dir, v string, start time.Time, realSwap bool) *testUpdater {
 	t.Helper()
 	if updateHour != time.Hour {
 		t.Skip("a compressed schedule")
@@ -163,7 +163,7 @@ func newTestUpdater(t *testing.T, srv *releaseServer, dir, v string, start time.
 	d := &daemon{stateDir: dir}
 	tu := &testUpdater{clock: &fakeClock{start}}
 	tu.updater = &updater{d: d, dir: dir, bin: filepath.Join(dir, "bin"), base: srv.URL, v: v, now: tu.clock.now, st: *st, swap: d.swapIn}
-	if !stub {
+	if !realSwap {
 		tu.swap = func(p pendingSwap) error { tu.swaps = append(tu.swaps, p); return nil }
 	}
 	os.MkdirAll(tu.bin, 0o700)
@@ -438,10 +438,10 @@ func TestSwapNow(t *testing.T) {
 }
 
 // readyAt is a test updater at 1.1.5 whose update to 1.2.0 downloaded on day 2 at 09:00.
-func readyAt(t *testing.T, stub bool) (*releaseServer, *testUpdater, []byte) {
+func readyAt(t *testing.T, realSwap bool) (*releaseServer, *testUpdater, []byte) {
 	srv := newReleaseServer(t)
 	data := srv.publish("1.2.0", "1.1.0", "1.1.0", 100)
-	tu := newTestUpdater(t, srv, t.TempDir(), "1.1.5", at(0, 9, 0), stub)
+	tu := newTestUpdater(t, srv, t.TempDir(), "1.1.5", at(0, 9, 0), realSwap)
 	tu.st.Minute = 9 * 60
 	tu.pollAt(at(0, 9, 0))
 	tu.pollAt(at(2, 9, 0))
@@ -542,14 +542,15 @@ func TestUpdaterOffBeforeTheSwap(t *testing.T) {
 	}
 }
 
-// A failed swap (swapIn's stub) is recorded and tried again the next night.
+// A failed swap, of a release that doesn't run here, is recorded and tried again the next
+// night.
 func TestUpdaterSwapFailure(t *testing.T) {
 	srv, tu, _ := readyAt(t, true)
 	archive := "/1.2.0/" + archiveName()
 	tu.pollAt(at(3, 2, 30))
 	st, err := loadUpdateState(tu.dir)
 	if err != nil || st.Failed == nil || st.Failed.Version != "1.2.0" || !st.Failed.At.Equal(at(3, 2, 30)) ||
-		st.Failed.Error != "swap not implemented" || st.Failed.Count != 1 {
+		!strings.Contains(st.Failed.Error, "doesn't run here") || st.Failed.Count != 1 {
 		t.Fatalf("%+v %v", st.Failed, err)
 	}
 	n := srv.count(archive)
@@ -684,7 +685,7 @@ func TestUpdateNow(t *testing.T) {
 		t.Errorf("%+v", s)
 	}
 	tu.swap = tu.d.swapIn
-	if _, err := tu.updateNow(ctx, canary, sig); err == nil || !strings.Contains(err.Error(), "swap not implemented") {
+	if _, err := tu.updateNow(ctx, canary, sig); err == nil || !strings.Contains(err.Error(), "doesn't run here") {
 		t.Errorf("a failed swap: %v", err)
 	}
 	if after, _ := os.ReadFile(statePath); !bytes.Equal(after, before) || srv.count("/latest.json") != fetches {

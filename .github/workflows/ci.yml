@@ -67,14 +67,17 @@ jobs:
   # The install scripts, as a user runs them: install, a crash and restart, reinstall,
   # uninstall, uninstall --purge. On Windows the script builds from source. A reinstall
   # drops an update's trial and the binary it would roll back to, and an uninstall the
-  # updater's binaries, and both keep the updater's state.
+  # updater's binaries, and both keep the updater's state. Then the updater end to end,
+  # on macOS too.
   install:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, windows-2025]
+        os: [ubuntu-24.04, windows-2025, macos-15]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    # The updates take about 20 minutes, and up to 35 when each night comes late. A
+    # rollback on Windows waits up to a minute for each of three starts.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -154,6 +157,24 @@ jobs:
           Check ($LASTEXITCODE -eq 0) 'uninstall failed'
           Check (-not (Get-ScheduledTask ovenlight -ErrorAction SilentlyContinue)) 'task left behind'
           Check (-not (Test-Path "$env:LOCALAPPDATA\ovenlight")) 'folder left behind'
+      # The connector is a launchd agent of the login session, so this runner can run it
+      # only if it has one.
+      - name: launchd's user domain
+        if: runner.os == 'macOS'
+        run: launchctl print "gui/$(id -u)" > /dev/null
+      # Test releases installed with their own install script, updating from a local server
+      # on a 5-second hour: two updates in a row through the daily check, the wait and the
+      # night, an older release's install script, and a rollback from a release that
+      # crashes at start (connector/e2e/update_test.go).
+      - name: Updates
+        working-directory: connector
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then
+            XDG_RUNTIME_DIR="/run/user/$(id -u)"
+            export XDG_RUNTIME_DIR
+          fi
+          OVENLIGHT_E2E_UPDATE=1 go test -tags e2e ./e2e -run TestUpdate -v -count=1 -timeout 55m
 
   e2e:
     runs-on: ubuntu-24.04

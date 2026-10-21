@@ -49,7 +49,14 @@ type daemon struct {
 	apiClient controlAPI
 	apiFinger string
 
-	upd *updater // nil unless the connector updates itself (see selfUpdating)
+	upd   *updater // nil unless the connector updates itself (see selfUpdating)
+	trial *trial   // the last update's trial, while this binary is on it
+	// exits takes why the connector exits through its normal shutdown for the service to
+	// start the binary in bin, after a swap or a rollback.
+	exitOnce  sync.Once
+	exits     chan string
+	exitBegun atomic.Bool  // set by exit: the updater does nothing more
+	calls     atomic.Int32 // control requests being answered
 	// lastRequest is when the last request through an app node, the admin API or the
 	// control socket started, in Unix nanoseconds: the updater swaps at a quiet moment.
 	lastRequest atomic.Int64
@@ -96,6 +103,9 @@ func runDaemon(configPath, stateDir string, dev devOptions, service bool) error 
 	}
 	d := &daemon{configPath: configPath, stateDir: stateDir, dev: dev, service: service, sh: sh, nodes: map[string]*appNode{},
 		procs: newSupervisors(appLogDir(stateDir))}
+	if service {
+		d.trial = serviceTrial
+	}
 	log.Printf("Ovenlight connector starting (config %s, state %s)", configPath, stateDir)
 	if dev.ControlURL != "" {
 		log.Printf("DEV MODE: control server %s", dev.ControlURL)
@@ -110,6 +120,9 @@ func runDaemon(configPath, stateDir string, dev devOptions, service bool) error 
 	}
 	go d.serveControl(ln)
 	go d.syncLoop()
+	if d.trial != nil {
+		d.trial.attach(d)
+	}
 	// Reloads run beside the signal loop, so SIGTERM never waits for one to finish
 	// starting every node; opMu keeps them in order.
 	reload := func(what string) {
@@ -118,17 +131,62 @@ func runDaemon(configPath, stateDir string, dev devOptions, service bool) error 
 		}
 	}
 	go reload("config")
-	for sig := range signals {
-		if sig == syscall.SIGHUP {
-			go reload("reload")
-			continue
+	for {
+		restart := false
+		select {
+		case sig := <-signals:
+			if sig == syscall.SIGHUP {
+				go reload("reload")
+				continue
+			}
+			log.Printf("%v: shutting down", sig)
+		case why := <-d.exiting():
+			log.Printf("%s: shutting down, for the service to start the connector again", why)
+			// A shutdown that hangs mustn't keep the service from starting the binary in bin.
+			time.AfterFunc(time.Minute, func() {
+				log.Printf("the shutdown took over a minute: exiting")
+				os.Exit(1)
+			})
+			restart = true
 		}
-		log.Printf("%v: shutting down", sig)
 		ln.Close()
+		// Control requests being answered, such as the update now that swapped, get their
+		// answer first.
+		for wait := time.Now().Add(5 * time.Second); restart && d.calls.Load() > 0 && time.Now().Before(wait); {
+			time.Sleep(50 * time.Millisecond)
+		}
 		d.shutdown()
 		return nil
 	}
-	return nil
+}
+
+func (d *daemon) exiting() chan string {
+	d.exitOnce.Do(func() { d.exits = make(chan string, 1) })
+	return d.exits
+}
+
+// exit has the connector shut down as on SIGTERM, and exit for the service to start it
+// again: the binary now in bin.
+func (d *daemon) exit(why string) {
+	d.exitBegun.Store(true)
+	select {
+	case d.exiting() <- why:
+	default: // already exiting
+	}
+}
+
+func (d *daemon) onTrial() bool { return d.trial != nil && d.trial.running() }
+
+// servingApps are the apps serving with their node logged in and its key unexpired, as
+// an update's trial records them.
+func (d *daemon) servingApps(now time.Time) []string {
+	var apps []string
+	for _, n := range d.snapshot() {
+		if s := n.status(); servesLoggedIn(s) && (s.KeyExpiry == nil || s.KeyExpiry.After(now)) {
+			apps = append(apps, s.Slug)
+		}
+	}
+	return apps
 }
 
 // errLocked is lockFile's answer when another process holds the lock.
@@ -423,6 +481,8 @@ func (d *daemon) serveControl(ln net.Listener) {
 }
 
 func (d *daemon) handleControl(conn net.Conn) {
+	d.calls.Add(1)
+	defer d.calls.Add(-1)
 	defer conn.Close()
 	d.noteRequest()
 	conn.SetDeadline(time.Now().Add(3 * time.Minute)) // make-shareable waits for a login

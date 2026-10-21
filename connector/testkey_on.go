@@ -16,6 +16,11 @@ const testKeyBuild = true
 
 var testKeys = mustParseKeys(testKey)
 
+// testCrash, set with -ldflags -X main.testCrash=1, makes a release that crashes each
+// time the service starts it, right after its trial counts the start: the end-to-end
+// tests' rollback.
+var testCrash string
+
 const testKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFRYuu6sp1blc6PV9kSNS2YDhXeNBrwverfKrfyn8Pdv ovenlight test release key, public on purpose"
 
 // updateBase and updateHour come from the environment here, so the end-to-end tests can

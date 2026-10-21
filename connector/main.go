@@ -125,6 +125,13 @@ func commandUsage(name string) string {
 
 func main() {
 	log.SetFlags(log.LstdFlags)
+	// Before anything else, so a release that fails while starting is caught.
+	if serviceStart(os.Args[1:]) {
+		startTrial()
+		if testCrash != "" {
+			panic("a test release that crashes as the service starts it")
+		}
+	}
 	if len(os.Args) < 2 {
 		fmt.Fprint(os.Stderr, usage)
 		os.Exit(2)

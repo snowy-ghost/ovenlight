@@ -339,13 +339,14 @@ func TestLoginShell(t *testing.T) {
 // exits 1.
 const serveCommand = "__serve"
 
-// TestMain lets loginEnv's login shell run the test binary as it runs the connector, and
-// apps run it as serveCommand.
+// TestMain lets loginEnv's login shell run the test binary as it runs the connector, apps
+// run it as serveCommand, and the swap's tests run it as a release.
 func TestMain(m *testing.M) {
 	if len(os.Args) > 1 && os.Args[1] == env0Command {
 		printEnv0()
 		return
 	}
+	runAsRelease()
 	if len(os.Args) > 1 && os.Args[1] == serveCommand {
 		if _, err := net.Listen("tcp", "127.0.0.1:"+os.Getenv("PORT")); err == nil {
 			time.Sleep(300 * time.Millisecond) // long enough for watchServing's lsof to see it
