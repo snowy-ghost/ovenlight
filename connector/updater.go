@@ -507,13 +507,22 @@ type updateView struct {
 	NeedsScript bool           `json:"needsInstallScript,omitempty"`
 	LastUpdate  *updateEvent   `json:"lastUpdate,omitempty"`
 	Failure     *updateFailure `json:"failure,omitempty"` // a failed update to the release it installs next
+	// BelowSecure is set when the running release has a security problem: it's below Secure.
+	BelowSecure bool `json:"belowSecure,omitempty"`
 
-	security bool      // the running version is below Secure
-	since    time.Time // when the updater first ran here
+	since time.Time // when the updater first ran here
 }
 
 // when is a time as status and doctor show it.
 func when(t time.Time) string { return t.Local().Format("2 Jan 15:04") }
+
+// installs says when Pending installs on its own, as status and doctor put it.
+func (u *updateView) installs(now time.Time) string {
+	if !now.Before(u.InstallBy) {
+		return "installs on its own as soon as it can"
+	}
+	return fmt.Sprintf("installs on its own at a quiet moment from %s, and by %s even if busy", when(u.InstallAfter), when(u.InstallBy))
+}
 
 // daemonUpdate is readUpdateView for the connector that sent reply, and its version: with
 // none running, for this binary.
@@ -539,7 +548,7 @@ func readUpdateView(stateDir, v string, self bool) *updateView {
 	if p.idx == nil {
 		return u
 	}
-	u.Latest, u.Secure, u.NeedsScript, u.security = p.idx.Latest, p.idx.Secure, p.script, p.security
+	u.Latest, u.Secure, u.NeedsScript, u.BelowSecure = p.idx.Latest, p.idx.Secure, p.script, p.security
 	if p.target != "" {
 		u.Pending, u.InstallAfter, u.InstallBy = p.target, p.after, p.by
 		// Only the release it would install: one the index no longer names was pulled.

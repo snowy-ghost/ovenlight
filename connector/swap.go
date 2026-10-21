@@ -73,6 +73,10 @@ func (d *daemon) swapIn(p pendingSwap) error {
 	return nil
 }
 
+// notRunnable is how a failure of a release that can't start here begins, which doctor
+// recognises: installing it by hand fails the same way.
+const notRunnable = "doesn't run here"
+
 // versionWait bounds the version check of a downloaded binary. macOS checks a binary's
 // signature on its first run, which can take a while.
 const versionWait = time.Minute
@@ -103,7 +107,7 @@ func nextVersion(path string) (string, error) {
 func checkNext(path, want string) error {
 	out, err := nextVersion(path)
 	if err != nil {
-		return fmt.Errorf("the downloaded %s doesn't run here: %w", want, err)
+		return fmt.Errorf("the downloaded %s %s: %w", want, notRunnable, err)
 	}
 	if out != want+"\n" {
 		return fmt.Errorf("the downloaded %s says it's %q", want, clip(strings.TrimSpace(out), 40))

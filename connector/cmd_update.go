@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/snowy-ghost/ovenlight/connector/internal/jsonfile"
 )
@@ -33,12 +34,20 @@ func cmdUpdate(args []string) error {
 		if err := os.WriteFile(off, []byte("Updates are off: ovenlight update on turns them back on.\n"), 0o600); err != nil {
 			return err
 		}
-		fmt.Println("Updates are off. The connector still checks for them daily, and says when its release has a security problem; `ovenlight update on` turns them back on.")
+		msg := "Updates are off: `ovenlight update on` turns them back on."
+		if _, ok := semver(version()); ok {
+			msg += " The connector still checks for them daily, and says when its release has a security problem."
+		}
+		fmt.Println(msg)
 	case "on":
 		if err := os.Remove(off); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
-		fmt.Println("Updates are on. The connector installs a new release on its own at a quiet moment two days after it comes out, and a security fix sooner.")
+		msg := "Updates are on."
+		if _, ok := semver(version()); ok {
+			msg += " The connector installs a new release on its own at a quiet moment two days after it comes out, and a security fix sooner."
+		}
+		fmt.Println(msg)
 	case "now":
 		if *index == "" {
 			return errors.New("usage: ovenlight update now --index <file>")
@@ -65,8 +74,8 @@ func cmdUpdate(args []string) error {
 	return nil
 }
 
-// updateLines say what status shows of the updater of a connector at version v.
-func updateLines(u *updateView, v string) []string {
+// updateLines say what status shows, at now, of the updater of a connector at version v.
+func updateLines(u *updateView, v string, now time.Time) []string {
 	if _, ok := semver(v); !ok || u == nil {
 		return nil // a development build
 	}
@@ -86,11 +95,14 @@ func updateLines(u *updateView, v string) []string {
 	if u.CheckError != "" {
 		lines = append(lines, "The last check failed: "+u.CheckError)
 	}
+	if u.BelowSecure {
+		lines = append(lines, fmt.Sprintf("SECURITY PROBLEM: %s has one, fixed in %s.", v, u.Secure))
+	}
 	switch {
 	case u.NeedsScript:
 		lines = append(lines, fmt.Sprintf("%s needs its install script, since an update replaces only the binary: install it with the verified steps in %s", u.Latest, installDocs))
 	case u.Pending != "" && u.SelfUpdating && !u.Off:
-		lines = append(lines, fmt.Sprintf("%s installs on its own at a quiet moment from %s, and by %s at the latest.", u.Pending, when(u.InstallAfter), when(u.InstallBy)))
+		lines = append(lines, u.Pending+" "+u.installs(now)+".")
 	case u.Pending != "":
 		lines = append(lines, u.Pending+" is out.")
 	}

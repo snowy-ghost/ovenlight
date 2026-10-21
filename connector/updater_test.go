@@ -366,7 +366,8 @@ func TestUpdaterWaitsTwoDays(t *testing.T) {
 		if got := srv.count(archive) > before; got != want.download {
 			t.Errorf("%s: downloaded %v", v, got)
 		}
-		if u := readUpdateView(dir, v, true); u.NeedsScript != want.script || (u.Pending != "") != (v == "1.0.9" || v == "1.1.5") {
+		if u := readUpdateView(dir, v, true); u.NeedsScript != want.script || (u.Pending != "") != (v == "1.0.9" || v == "1.1.5") ||
+			u.BelowSecure != (v == "1.0.9" || v == "1.0.5") {
 			t.Errorf("%s: %+v", v, u)
 		}
 	}
@@ -810,11 +811,13 @@ func TestUpdateFinding(t *testing.T) {
 		has     string
 	}{
 		{"up to date", view(nil), "1.2.0", true, statusOK, "1.2.0 is up to date"},
-		{"waiting its turn", view(pending), "1.1.5", true, statusOK, "1.2.0 is out, and it installs 1.2.0 on its own"},
+		{"waiting its turn", view(pending), "1.1.5", true, statusOK, "1.2.0 is out, and installs on its own at a quiet moment from"},
+		{"past its install-by", view(func(u *updateView) { pending(u); u.InstallBy = now.Add(-time.Hour) }), "1.1.5", true, statusOK, "installs on its own as soon as it can"},
 		{"no check yet", view(func(u *updateView) { u.Latest, u.LastCheck = "", time.Time{} }), "1.1.5", true, statusOK, "no update check has worked yet"},
-		{"below secure, waiting", view(func(u *updateView) { pending(u); u.security = true }), "1.0.9", true, statusFail, "Nothing to do: it installs 1.2.0"},
-		{"below secure, off", view(func(u *updateView) { pending(u); u.security, u.Off = true, true }), "1.0.9", false, statusFail, "ovenlight update on"},
+		{"below secure, waiting", view(func(u *updateView) { pending(u); u.BelowSecure = true }), "1.0.9", true, statusFail, "Nothing to do: 1.2.0 installs on its own"},
+		{"below secure, off", view(func(u *updateView) { pending(u); u.BelowSecure, u.Off = true, true }), "1.0.9", false, statusFail, "ovenlight update on"},
 		{"off", view(func(u *updateView) { pending(u); u.Off = true }), "1.1.5", true, statusWarn, "updates are off"},
+		{"off, 8 days without a check", view(func(u *updateView) { u.Off, u.LastCheck = true, now.Add(-8*day) }), "1.2.0", true, statusWarn, "can't tell when its release has a security problem"},
 		{"needs its script", view(func(u *updateView) { u.NeedsScript = true }), "1.0.5", true, statusWarn, installDocs},
 		{"failed twice", view(func(u *updateView) {
 			pending(u)
@@ -824,8 +827,13 @@ func TestUpdateFinding(t *testing.T) {
 			pending(u)
 			u.Failure = &updateFailure{Version: "1.2.0", Count: 3, Error: "swap not implemented"}
 		}), "1.1.5", true, statusWarn, "has failed 3 times in a row"},
+		{"doesn't run here", view(func(u *updateView) {
+			pending(u)
+			u.Failure = &updateFailure{Version: "1.2.0", Count: 3, Error: "the downloaded 1.2.0 " + notRunnable + ": exec format error"}
+		}), "1.1.5", true, statusWarn, "newer version of the operating system"},
 		{"6 days without a check", view(func(u *updateView) { u.LastCheck = now.Add(-6 * day) }), "1.2.0", true, statusOK, "up to date"},
 		{"8 days without a check", view(func(u *updateView) { u.LastCheck, u.CheckError = now.Add(-8*day), "offline" }), "1.2.0", true, statusWarn, "for 7 days: offline"},
+		{"8 days without a check, after a key change", view(func(u *updateView) { u.LastCheck = now.Add(-8 * day) }), "1.2.0", true, statusWarn, "If it does, install the latest release with the verified steps in " + installDocs},
 		{"never checked in 8 days", view(func(u *updateView) { u.Latest, u.LastCheck, u.since = "", time.Time{}, now.Add(-8*day) }), "1.2.0", true, statusWarn, "for 7 days"},
 		{"run by hand", view(func(u *updateView) { u.SelfUpdating = false }), "1.2.0", true, statusWarn, "isn't the installed service"},
 		{"not running", view(func(u *updateView) { u.SelfUpdating = false }), "1.2.0", false, statusOK, "up to date"},
@@ -836,6 +844,9 @@ func TestUpdateFinding(t *testing.T) {
 		}
 		if got != nil && strings.Contains(got.Fix, "downloads.ovenlight.app/connector/latest/") {
 			t.Errorf("%s: points at an unverified download", c.name)
+		}
+		if c.name == "doesn't run here" && strings.Contains(got.Fix, installDocs) {
+			t.Errorf("%s: offers an install by hand, which fails the same way", c.name)
 		}
 	}
 	if updateFinding(view(nil), "devel-9cd108a0f732", true, now) != nil {
@@ -867,23 +878,29 @@ func TestUpdateOffAndOn(t *testing.T) {
 
 func TestUpdateLines(t *testing.T) {
 	now := at(0, 9, 0)
-	u := &updateView{SelfUpdating: true, LastCheck: now, Pending: "1.2.0", InstallAfter: now, InstallBy: now.Add(day),
+	u := &updateView{SelfUpdating: true, LastCheck: now, Pending: "1.2.0", InstallAfter: now, InstallBy: now.Add(day), Secure: "1.2.0", BelowSecure: true,
 		LastUpdate: &updateEvent{From: "1.1.4", To: "1.1.5", At: now}, Failure: &updateFailure{Version: "1.2.0", At: now, Error: "swap not implemented", Count: 1}}
-	got := strings.Join(updateLines(u, "1.1.5"), "\n")
-	for _, want := range []string{"Updates: on; last checked", "1.2.0 installs on its own", "Last update: 1.1.4 to 1.1.5", "UPDATE FAILED: 1.2.0"} {
+	lines := func(u *updateView, v string) string { return strings.Join(updateLines(u, v, now), "\n") }
+	got := lines(u, "1.1.5")
+	for _, want := range []string{"Updates: on; last checked", "SECURITY PROBLEM: 1.1.5 has one, fixed in 1.2.0.", "1.2.0 installs on its own at a quiet moment from",
+		"even if busy.", "Last update: 1.1.4 to 1.1.5", "UPDATE FAILED: 1.2.0"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("no %q in\n%s", want, got)
 		}
 	}
+	u.InstallBy = now
+	if got := lines(u, "1.1.5"); !strings.Contains(got, "1.2.0 installs on its own as soon as it can.") {
+		t.Errorf("past its install-by:\n%s", got)
+	}
 	u.Off = true
-	if got := strings.Join(updateLines(u, "1.1.5"), "\n"); !strings.Contains(got, "Updates: off") || strings.Contains(got, "installs on its own") {
+	if got := lines(u, "1.1.5"); !strings.Contains(got, "Updates: off") || strings.Contains(got, "installs on its own") {
 		t.Errorf("off:\n%s", got)
 	}
 	u.NeedsScript = true
-	if got := strings.Join(updateLines(u, "1.1.5"), "\n"); !strings.Contains(got, installDocs) {
+	if got := lines(u, "1.1.5"); !strings.Contains(got, installDocs) {
 		t.Errorf("a release that needs its script:\n%s", got)
 	}
-	if updateLines(u, "devel-9cd108a0f732") != nil {
+	if updateLines(u, "devel-9cd108a0f732", now) != nil {
 		t.Error("a development build")
 	}
 }

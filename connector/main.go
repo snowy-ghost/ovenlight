@@ -991,7 +991,7 @@ func cmdStatus(args []string) error {
 			mode = " (DEV control server)"
 		}
 		fmt.Printf("Connector: running, pid %d, version %s%s\n", out.PID, orDash(out.DaemonVersion), mode)
-		for _, line := range updateLines(out.Update, out.DaemonVersion) {
+		for _, line := range updateLines(out.Update, out.DaemonVersion, time.Now()) {
 			fmt.Println("  " + line)
 		}
 		processes := map[string]ProcessStatus{}
