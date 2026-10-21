@@ -68,7 +68,7 @@ jobs:
   # uninstall, uninstall --purge. On Windows the script builds from source. A reinstall
   # drops an update's trial and the binary it would roll back to, and an uninstall the
   # updater's binaries, and both keep the updater's state. Then the updater end to end,
-  # on macOS too.
+  # on macOS too, which also dry-runs the release scripts.
   install:
     strategy:
       fail-fast: false
@@ -157,6 +157,10 @@ jobs:
           Check ($LASTEXITCODE -eq 0) 'uninstall failed'
           Check (-not (Get-ScheduledTask ovenlight -ErrorAction SilentlyContinue)) 'task left behind'
           Check (-not (Test-Path "$env:LOCALAPPDATA\ovenlight")) 'folder left behind'
+      # The release scripts' dry runs, with the BSD sed and date of the Macs that release.
+      - name: Release scripts
+        if: runner.os == 'macOS'
+        run: scripts/test-connector-release.sh
       # The connector is a launchd agent of the login session, so this runner can run it
       # only if it has one.
       - name: launchd's user domain

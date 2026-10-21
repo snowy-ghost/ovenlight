@@ -40,7 +40,5 @@ The `ovenlight` connector on that computer publishes each app and tells it who i
    its turn needs nothing from either of you. When `doctor`'s `update` check gives a fix,
    pass it on. A release to install by hand, including one an older connector's `doctor`
    names with a download link, goes in with the verified install steps in
-   https://github.com/snowy-ghost/ovenlight/blob/master/docs/connector.md#update. On a
-   Mac or Linux they check the download's checksums and signature with
-   `ssh-keygen -Y verify`, and on Windows its Authenticode signature. Offer those, never a
-   bare download.
+   https://github.com/snowy-ghost/ovenlight/blob/master/docs/connector.md#check-a-download-first.
+   Offer those, never a bare download.

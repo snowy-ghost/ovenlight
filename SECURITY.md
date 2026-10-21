@@ -24,8 +24,9 @@ A connector fix comes as a new release, which the connector installs on its own 
 1.0.9 doesn't: install a newer release by hand once). It checks daily, and takes a
 security fix at its first quiet moment, without the two-day wait other releases have.
 `ovenlight doctor` fails on a release with a known security problem, even with updates
-off, and says what to do. A build from source doesn't update itself: pull and run the
-install script again for fixes. A fix to either phone app comes in an app update.
+off, warns when no check has worked for seven days, and says what to do. A build from
+source doesn't update itself: pull and run the install script again for fixes. A fix to
+either phone app comes in an app update.
 
 [docs/security.md](docs/security.md) has the threat model, and what to do when something
 goes wrong.

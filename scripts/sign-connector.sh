@@ -9,7 +9,8 @@
 #       its index for latest.json (namespace ovenlight-latest), with the same key
 #   scripts/sign-connector.sh [--key <file>] --pull <version>
 #       the live release's pull: the index of the newest promoted release before it that
-#       wasn't pulled, with the key that signed the live index
+#       wasn't pulled, with the key that signed the live index, or one every release a
+#       computer it reaches may run lists
 #   scripts/sign-connector.sh [--key <file>] --resign
 #       the live index again, with a key the live release lists, as does every pulled
 #       release above it
@@ -19,10 +20,11 @@
 # Touch ID shows a prompt and not what it signs, so this prints that first, and refuses
 # before it whatever publish-connector.sh would refuse. A release is signed only when its
 # connector/release_keys is exactly the two keys in ~/.ssh/ovenlight-release-keys/ plus the
-# key signing it, so the keys a release trusts never come from the commit alone.
+# key signing it, so the keys a release trusts never come from the commit alone. The paper
+# key signs only a release that replaces it, so its .pub has left that folder.
 #
-# --key signs with a key other than the Touch ID handle, such as the paper backup, with its
-# public half beside it as <file>.pub.
+# --key signs with a key other than this Air's Touch ID handle, such as the paper backup or
+# another Touch ID key's handle, with its public half beside it as <file>.pub.
 set -euo pipefail
 
 HANDLE="$HOME/.ssh/id_ecdsa_sk_rk_ovenlight-release"
@@ -51,8 +53,10 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 if [ -z "$key" ]; then
   [ -z "$dry" ] || refuse "a dry run signs with --key and a fixture key, never the Touch ID key"
   key="$HANDLE"
-  export SSH_SK_PROVIDER=/usr/lib/ssh-keychain.dylib
 fi
+# A Touch ID handle, the default one or another given with --key, signs through macOS's
+# ssh-keychain.dylib.
+if [ -e /usr/lib/ssh-keychain.dylib ]; then export SSH_SK_PROVIDER=/usr/lib/ssh-keychain.dylib; fi
 [ -f "$key" ] && [ -f "$key.pub" ] || refuse "no $key, or no $key.pub beside it"
 awk 'NF >= 2 { print $1, $2; exit }' "$key.pub" > "$tmp/signer"
 kblob="$(awk '{ print $2 }' "$tmp/signer")"
@@ -130,6 +134,10 @@ release)
     refuse "connector/release_keys at $commit isn't the two keys in $keydir plus the one signing:
 $(diff "$tmp/want" "$tmp/have" | sed -n 's/^</  missing/p; s/^>/  extra/p')"
   fi
+  # The paper key, the one ssh-ed25519 key, signs only the release that replaces it.
+  if [ "$(awk '{ print $1 }' "$tmp/signer")" = ssh-ed25519 ] && haskey "$kblob" "$tmp/folder"; then
+    refuse "$keydir still holds this key: the paper key signs only the release that brings in its successor"
+  fi
   rulehas "$version" "$b/release_keys"
 
   echo "connector $version, built from $commit"
@@ -168,9 +176,9 @@ promote)
     refuse "$version's SHA256SUMS was signed with another key, which signs its promote too"
   abovereleased "$version"
   ordered "$now"
+  rulehas "$version"
   releaseindex "$version" "$now" > "$tmp/promote-$now.json"
   nodrop "$tmp/promote-$now.json"
-  rulehas "$version"
   newkeywait "$kblob" "$now"
   echo "promoting $version: latest.json becomes"
   echo "  $(cat "$tmp/promote-$now.json")"
@@ -184,9 +192,14 @@ pull)
     refuse "$version isn't the live release (${live:-nothing is promoted}): only the live one is pulled, and one that's no longer the latest is fixed forward"
   target="$(keptbelow "$version")"
   [ -n "$target" ] || refuse "nothing promoted before $version to go back to"
-  # Computers that took the live index can check a pull signed with its key.
-  verify "$records/$newest.json" "$records/$newest.json.sig" ovenlight-latest "$tmp/signer" ||
-    refuse "the live index, $newest, was signed with another key, which signs its pull too"
+  # Computers that took the live index can check a pull signed with its key, and every
+  # computer the pull reaches one that all their releases list.
+  if ! verify "$records/$newest.json" "$records/$newest.json.sig" ovenlight-latest "$tmp/signer"; then
+    for k in $(pullkeys "$version"); do
+      haskey "$kblob" "$k" ||
+        refuse "the live index, $newest, was signed with another key, and $k doesn't list this one"
+    done
+  fi
   verifyrule "$target" "$records/$target/SHA256SUMS" "$records/$target/SHA256SUMS.sig" file
   ordered "$now"
   releaseindex "$target" "$now" > "$tmp/pull-$now.json"

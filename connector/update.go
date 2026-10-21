@@ -28,7 +28,7 @@ const releaseBase = "https://downloads.ovenlight.app/connector"
 
 // installDocs has the verified install steps, for a release that needs its install script
 // and for an owner who installs one by hand.
-const installDocs = "https://github.com/snowy-ghost/ovenlight/blob/master/docs/connector.md#update"
+const installDocs = "https://github.com/snowy-ghost/ovenlight/blob/master/docs/connector.md#check-a-download-first"
 
 // archiveName is this system's release archive.
 func archiveName() string {

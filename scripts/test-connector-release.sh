@@ -208,7 +208,11 @@ build 1.1.1 1.0.6
 pass "U+1 takes U's reinstallBelow"
 signfolder 1.1.1 air1
 untouched
+# What a promote publishes comes from the canary index signed on the Air.
+sed -i '' 's/"secure": "1.0.6"/"secure": "1.1.0"/' "$dry/sync/releases/1.1.0/index.json"
 promote 1.1.0 air1
+[ "$(field secure "$dry/bucket/connector/latest.json")" = 1.0.6 ] || fail "the promote took secure from index.json"
+pass "the promote takes secure from the signed canary index, not index.json"
 promote 1.1.1 air1
 pull 1.1.1 air1 1.1.0
 build 1.1.1 1.0.6
@@ -281,6 +285,8 @@ records=("$dry"/sync/releases/1.1.0/promote-*.published)
 [ ${#records[@]} -eq 1 ] || fail "no record of the failed publish"
 cmp -s "$dry/bucket/connector/latest.json" "$dry/1.0.9.json" || fail "latest.json changed"
 pass "the failed publish left its record, and latest.json as it was"
+# Another promote signed meanwhile, on an Air the record hadn't reached yet.
+forge 1.1.0 promote air1 1.1.0
 run publish --promote 1.1.0
 grep -q "^finishing the publish of 1.1.0/promote-" "$dry/log" || fail "the rerun didn't finish the publish"
 pass "the rerun finished it: $(head -1 "$dry/log")"
@@ -302,6 +308,24 @@ pull 1.1.1 paper1 1.1.0
 build 1.1.2 1.0.6
 signfolder 1.1.2 paper1
 promote 1.1.2 paper1
+
+fresh paperpull "the Air that signed the live index lost before its pull, which the paper key signs"
+keyfolder air1 paper1
+keys air1 paper1
+ship 1.1.0 1.0.6 air1 1.1.0
+ship 1.1.1 1.0.6 air1
+tick
+refused "1.1.0/release_keys doesn't list this one" sign paper2 --pull 1.1.1
+forge 1.1.1 pull paper2 1.1.0
+refused "isn't signed by a key any release lists" publish --pull 1.1.1
+# A key that only a release not yet promoted lists can't sign it either.
+keyfolder air2 paper1
+keys air2 paper1 air1
+build 1.1.2 1.0.6
+signfolder 1.1.2 air1
+forge 1.1.1 pull air2 1.1.0
+refused "the index it replaces, or one" publish --pull 1.1.1
+pull 1.1.1 paper1 1.1.0
 
 fresh move "a planned move to a new Air, with releases inside and after its four weeks"
 keyfolder air1 paper1
@@ -331,8 +355,16 @@ refused "four weeks and four days" publish --promote 1.1.3
 forge 1.1.1 resign air2 1.1.1
 refused "four weeks and four days" publish --resign
 backdate 33
-# The live index re-signed with the new key before the canary, then the promote and a pull.
-resign air2 1.1.1
+# The live index re-signed with the new key before the canary, once master's
+# docs/allowed_signers, which owners check latest.json with, lists that key. Then the promote
+# and a pull.
+signers air1 paper1
+tick
+run sign air2 --resign
+refused "which owners check latest.json with" publish --resign
+signers air1 paper1 air2
+run publish --resign
+latest_is 1.1.1 air2
 promote 1.1.3 air2
 signers air2 paper1
 tick
@@ -422,6 +454,15 @@ if [ -n "$mocks" ]; then
   mkdir -p "$dry/home"
   refused "holds a release key whose private half is public" env -u OVENLIGHT_RELEASE_DRY HOME="$dry/home" \
     "$repo/scripts/release-connector.sh" --unsigned 1.1.0 1.0.6 1.1.0
+  # A key swap that leaves a mock key in docs/allowed_signers would let owners' own check pass
+  # what its public private half signs, so a real build refuses that too.
+  cat "$fixtures/air1.pub" "$fixtures/paper1.pub" > "$repo/connector/release_keys"
+  # shellcheck disable=SC2086 # one path per word
+  awk '{ print "team@snowyghost.com namespaces=\"file,ovenlight-latest\"", $1, $2 }' $mocks >> "$repo/docs/allowed_signers"
+  commit "a mock key left in allowed_signers"
+  refused "docs/allowed_signers holds a release key whose private half is public" env -u OVENLIGHT_RELEASE_DRY \
+    HOME="$dry/home" "$repo/scripts/release-connector.sh" --unsigned 1.1.0 1.0.6 1.1.0
+  signers air1 paper1
 fi
 keys air1 paper1
 refused "a dry run builds only with --unsigned" "$repo/scripts/release-connector.sh" 1.1.0 1.0.6 1.1.0
@@ -439,6 +480,7 @@ refused "has no .release-dry-run" env OVENLIGHT_RELEASE_DRY="$repo" "$repo/scrip
 refused "is a dry-run fixture key" env -u OVENLIGHT_RELEASE_DRY HOME="$dry/home" \
   "$repo/scripts/sign-connector.sh" --key "$dry/private/air1" 1.1.0
 refused "isn't the two keys in" sign paper2 1.1.0
+refused "the paper key signs only the release that brings in its successor" sign paper1 1.1.0
 # An archive with another version's folder in it.
 a=ovenlight-connector-linux-amd64.tar.gz
 old="$(awk -v a="$a" '$2 == a { print $1 }' "$dry/build/SHA256SUMS")"
@@ -451,7 +493,7 @@ sed -i '' "s/$old/$new/" "$dry/build/index.json"
 run sign air1 1.1.0
 refused "holds more than an ovenlight-connector-1.1.0/ folder" publish 1.1.0
 # A build over the updater's cap, which publish reads from connector/keys.go.
-sed -i '' 's/^const maxArchiveBytes = .*/const maxArchiveBytes = 1 << 10/' "$repo/connector/keys.go"
+sed -i '' 's|^const maxArchiveBytes = .*|const maxArchiveBytes = 1 << 10 // 1 KiB|' "$repo/connector/keys.go"
 commit "a 1 KiB cap"
 build 1.1.1 1.0.6
 run sign air1 1.1.1
