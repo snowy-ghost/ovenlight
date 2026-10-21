@@ -1,13 +1,20 @@
 package main
 
 import (
+	"archive/tar"
+	"archive/zip"
 	"bytes"
+	"compress/gzip"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -249,4 +256,200 @@ func dayTime(t time.Time) time.Duration {
 	h, m, s := t.Clock()
 	wall := time.Duration(h)*time.Hour + time.Duration(m)*time.Minute + time.Duration(s)*time.Second + time.Duration(t.Nanosecond())
 	return wall % (24 * updateHour) * (time.Hour / updateHour)
+}
+
+// updateClient fetches updates. It follows no redirect, which could lead off the release
+// host.
+var updateClient = &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+
+// downloadTimeout bounds an archive's download: the cap at 1 Mbit/s takes 18 minutes.
+const downloadTimeout = 30 * time.Minute
+
+// fetchIndex fetches the published index and its signature from base, within a minute.
+func fetchIndex(ctx context.Context, base string) (data, sig []byte, err error) {
+	ctx, cancel := context.WithTimeout(ctx, time.Minute)
+	defer cancel()
+	if data, err = fetchSmall(ctx, base+"/latest.json"); err == nil {
+		sig, err = fetchSmall(ctx, base+"/latest.json.sig")
+	}
+	return data, sig, err
+}
+
+// fetchSmall reads a file of at most maxIndexBytes.
+func fetchSmall(ctx context.Context, url string) ([]byte, error) {
+	resp, err := get(ctx, url, maxIndexBytes)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	b, err := io.ReadAll(io.LimitReader(resp.Body, maxIndexBytes+1))
+	if err == nil && len(b) > maxIndexBytes {
+		err = errors.New(url + " is over 4 KB")
+	}
+	return b, err
+}
+
+// get fetches url, refusing anything but a 200 and a stated length over max.
+func get(ctx context.Context, url string, max int64) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := updateClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK || resp.ContentLength > max {
+		resp.Body.Close()
+		return nil, fmt.Errorf("%s: %s, %d bytes", url, resp.Status, resp.ContentLength)
+	}
+	return resp, nil
+}
+
+// downloadArchive fetches this system's archive of idx's latest release, from its
+// version's folder under base, into bin/ovenlight.download, hashing as it streams, within
+// downloadTimeout and maxArchiveBytes. The file is always new, with any old one deleted
+// first, and it's kept only when its SHA-256 is the one idx lists.
+func downloadArchive(ctx context.Context, base, bin string, idx *updateIndex) (string, error) {
+	path := filepath.Join(bin, "ovenlight.download")
+	f, err := createNew(path, 0o600)
+	if err != nil {
+		return "", err
+	}
+	name := archiveName()
+	want, ok := idx.Archives[name]
+	if !ok {
+		f.Close()
+		os.Remove(path)
+		return "", errors.New("the index lists no " + name)
+	}
+	ctx, cancel := context.WithTimeout(ctx, downloadTimeout)
+	defer cancel()
+	h := sha256.New()
+	var n int64
+	resp, err := get(ctx, base+"/"+idx.Latest+"/"+name, maxArchiveBytes)
+	if err == nil {
+		n, err = io.Copy(io.MultiWriter(f, h), io.LimitReader(resp.Body, maxArchiveBytes+1))
+		resp.Body.Close()
+	}
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	switch {
+	case err != nil:
+	case n > maxArchiveBytes:
+		err = errors.New(name + " is over the size cap")
+	case hex.EncodeToString(h.Sum(nil)) != want:
+		err = errors.New(name + " doesn't match the index")
+	}
+	if err != nil {
+		os.Remove(path)
+		return "", err
+	}
+	return path, nil
+}
+
+// extractBinary takes the connector out of a downloaded archive of version, by its exact
+// name, ovenlight-connector-<version>/ovenlight (ovenlight.exe on Windows), into
+// bin/ovenlight.next (ovenlight.next.exe).
+func extractBinary(archive, bin, version string) (string, error) {
+	exe, next := "ovenlight", "ovenlight.next"
+	if runtime.GOOS == "windows" {
+		exe, next = "ovenlight.exe", "ovenlight.next.exe"
+	}
+	out := filepath.Join(bin, next)
+	if err := extractEntry(archive, strings.HasSuffix(archiveName(), ".zip"), "ovenlight-connector-"+version+"/"+exe, out); err != nil {
+		return "", err
+	}
+	return out, nil
+}
+
+// extractEntry copies the entry named name out of a .zip or .tar.gz archive into out, a
+// new file with any old one deleted first, synced to disk. Nothing else in the archive is
+// written anywhere, and an archive with that entry missing, twice, over maxArchiveBytes,
+// or as anything but a regular file is refused.
+func extractEntry(archive string, zipped bool, name, out string) (err error) {
+	f, err := createNew(out, 0o755)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if cerr := f.Close(); err == nil {
+			err = cerr
+		}
+		if err != nil {
+			os.Remove(out)
+		}
+	}()
+	found := false
+	take := func(r io.Reader, size int64, regular bool) error {
+		if found || !regular || size > maxArchiveBytes {
+			return errors.New("the archive's " + name + " isn't one file within the size cap")
+		}
+		found = true
+		n, err := io.Copy(f, io.LimitReader(r, maxArchiveBytes+1))
+		if err == nil && n > maxArchiveBytes {
+			err = errors.New("the archive's " + name + " is over the size cap")
+		}
+		return err
+	}
+	if zipped {
+		z, err := zip.OpenReader(archive)
+		if err != nil {
+			return err
+		}
+		defer z.Close()
+		for _, e := range z.File {
+			if e.Name != name {
+				continue
+			}
+			r, err := e.Open()
+			if err != nil {
+				return err
+			}
+			err = take(r, int64(min(e.UncompressedSize64, maxArchiveBytes+1)), e.Mode().IsRegular())
+			r.Close()
+			if err != nil {
+				return err
+			}
+		}
+	} else {
+		a, err := os.Open(archive)
+		if err != nil {
+			return err
+		}
+		defer a.Close()
+		gz, err := gzip.NewReader(a)
+		if err != nil {
+			return err
+		}
+		// The binary and a few small files: a stream far longer is no release.
+		tr := tar.NewReader(io.LimitReader(gz, 2*maxArchiveBytes))
+		for {
+			h, err := tr.Next()
+			if err == io.EOF {
+				break
+			} else if err != nil {
+				return err
+			}
+			if h.Name == name {
+				if err := take(tr, h.Size, h.Typeflag == tar.TypeReg); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	if !found {
+		return errors.New("the archive has no " + name)
+	}
+	return f.Sync()
+}
+
+// createNew creates path as a new file, deleting any old one first, so nothing written
+// earlier, or still open or running, is written into.
+func createNew(path string, perm os.FileMode) (*os.File, error) {
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	return os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm)
 }
