@@ -224,7 +224,8 @@ func (u *updater) awakeSince() time.Time {
 func (u *updater) poll(ctx context.Context) {
 	u.mu.Lock()
 	defer u.mu.Unlock()
-	if ctx.Err() != nil {
+	// Once a swap has begun the exit, another would make the new binary .prev.
+	if ctx.Err() != nil || u.d.exitBegun.Load() {
 		return
 	}
 	now := u.now()
@@ -278,7 +279,9 @@ func (u *updater) check(ctx context.Context) (data, sig []byte, idx *updateIndex
 func (u *updater) advance(ctx context.Context) {
 	now := u.now()
 	p := planUpdate(&u.st, u.v)
-	if p.target == "" || now.Before(p.after) || updatesOff(u.dir) {
+	// Nothing is downloaded or swapped during the last update's trial, which may need the
+	// record.
+	if p.target == "" || now.Before(p.after) || updatesOff(u.dir) || u.d.onTrial() {
 		return
 	}
 	if u.ready != p.target {
@@ -331,12 +334,18 @@ func (u *updater) apply(p pendingSwap) {
 // fail records a failed update of version.
 func (u *updater) fail(version string, err error) {
 	log.Printf("updates: %s failed: %v", version, err)
-	f := &updateFailure{Version: version, At: u.now(), Error: err.Error(), Count: 1}
-	if u.st.Failed != nil && u.st.Failed.Version == version {
-		f.Count = u.st.Failed.Count + 1
-	}
-	u.st.Failed = f
+	u.st.noteFailure(version, u.now(), err)
 	u.save()
+}
+
+// noteFailure records a failed update of version at at, counting it with the failures of
+// that version before it.
+func (st *updateState) noteFailure(version string, at time.Time, err error) {
+	f := &updateFailure{Version: version, At: at, Error: err.Error(), Count: 1}
+	if st.Failed != nil && st.Failed.Version == version {
+		f.Count = st.Failed.Count + 1
+	}
+	st.Failed = f
 }
 
 func (u *updater) save() {
@@ -358,6 +367,12 @@ func (u *updater) updateNow(ctx context.Context, data, sig []byte) (string, erro
 	defer u.mu.Unlock()
 	if updatesOff(u.dir) {
 		return "", errors.New("updates are off: ovenlight update on turns them back on")
+	}
+	if u.d.exitBegun.Load() {
+		return "", errors.New("the connector is restarting on a new release")
+	}
+	if u.d.onTrial() {
+		return "", fmt.Errorf("%s is still on its trial, which ends %s after it started: try again then", u.v, quietFor)
 	}
 	idx, err := checkCanary(u.st.Index, data, sig)
 	if err != nil {

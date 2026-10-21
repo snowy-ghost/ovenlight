@@ -8,7 +8,7 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-const testKeyBuild = false
+const testKeyBuild, testCrash = false, ""
 
 var testKeys []ssh.PublicKey
 

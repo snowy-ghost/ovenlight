@@ -1,0 +1,307 @@
+package main
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"log"
+	"os"
+	"path/filepath"
+	"runtime"
+	"slices"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/snowy-ghost/ovenlight/connector/internal/jsonfile"
+)
+
+// updateTrialFile is the last update's trial, in the state folder while it runs.
+const updateTrialFile = "update-trial.json"
+
+// updateTrial is update-trial.json. The swap writes it, synced, before the new binary is
+// in place, and every run --service reads it before it parses its flags. The install and
+// uninstall scripts remove it. Fields are added, never renamed or reinterpreted
+// (docs/protocol.md).
+type updateTrial struct {
+	From string    `json:"from"`
+	To   string    `json:"to"`
+	At   time.Time `json:"at"` // when the swap was made
+	// Apps are the slugs of the apps serving at the swap with their node logged in and its
+	// key unexpired. Each must serve again, logged in, for the trial to pass.
+	Apps []string `json:"apps"`
+	// Index is the signed index that brought To, and Sig its signature in Namespace: To
+	// must verify it with its own built-in keys.
+	Index     []byte `json:"index"`
+	Sig       []byte `json:"sig"`
+	Namespace string `json:"namespace"`
+	// Starts counts To's starts as the service. A second one within the trial means it
+	// stopped or hung (or the computer restarted), and puts .prev back.
+	Starts int `json:"starts"`
+}
+
+// serviceStart reports whether args (os.Args[1:]) start the connector as the installed
+// service: run with --service. Only such a start reads the trial. CLI commands,
+// ovenlight mcp and the login shell's helper never do.
+func serviceStart(args []string) bool {
+	return len(args) > 0 && args[0] == "run" && slices.Contains(args[1:], "--service")
+}
+
+// serviceTrial is the trial this process is on, from main, before the daemon starts.
+var serviceTrial *trial
+
+// trial is an update's trial in the binary on trial, the release it installed, started
+// as the service. It runs quietFor of time awake from the start, before flag parsing, so
+// a release that hangs while starting is caught too. It passes when the daemon is up,
+// every app recorded at the swap has served again with its node logged in, and the
+// binary has verified the index that brought it. Otherwise .prev comes back.
+type trial struct {
+	rec     updateTrial
+	dir     string // the state folder, the binary's bin/..
+	now     func() time.Time
+	windows bool
+	exit    func(why string) // ends the connector after a rollback
+
+	mu     sync.Mutex
+	d      *daemon // once it's up
+	served map[string]bool
+	awake  time.Duration
+	last   time.Time
+	ended  bool
+}
+
+// startTrial reads the trial beside the running binary, first thing in main. A start it
+// rolls back exits, and the service starts the binary put back.
+func startTrial() {
+	exe, err := os.Executable()
+	if err != nil {
+		return
+	}
+	t, exit := beginTrial(filepath.Dir(filepath.Dir(exe)), version(), runtime.GOOS == "windows", func() time.Time { return time.Now().Round(0) })
+	if exit {
+		os.Exit(1)
+	}
+	if t == nil {
+		return
+	}
+	t.exit = func(why string) {
+		if d := t.daemon(); d != nil {
+			d.exit(why)
+			return
+		}
+		log.Printf("%s: exiting", why)
+		os.Exit(1)
+	}
+	serviceTrial = t
+	go t.watch()
+}
+
+// beginTrial counts a start of version v as the service, given the state folder the
+// binary is in, and returns its trial when it's on one. A trial to another version ends:
+// the swap didn't finish, a rollback did, or an install script put another release in
+// place. So does one with nothing to roll back to. A second start, or an index the binary
+// can't verify, rolls back at once, and exit says the connector should then exit.
+func beginTrial(dir, v string, windows bool, now func() time.Time) (t *trial, exit bool) {
+	path := filepath.Join(dir, updateTrialFile)
+	data, err := jsonfile.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, false
+	}
+	t = &trial{dir: dir, now: now, windows: windows, served: map[string]bool{}}
+	if err == nil {
+		err = json.Unmarshal(data, &t.rec)
+	}
+	switch {
+	case err != nil:
+		log.Printf("updates: the last update's trial ends, since it can't be read: %v", err)
+	case t.rec.To != v:
+	case !exists(prevBinary(installedBinary(dir))):
+		log.Printf("updates: %s has nothing to roll back to, so its trial ends", v)
+	case t.rec.Starts > 0:
+		return nil, t.rollback(fmt.Errorf("%s started again within its trial: it stopped or hung, or the computer restarted", v))
+	default:
+		if err := t.checkIndex(); err != nil {
+			return nil, t.rollback(err)
+		}
+		t.rec.Starts++
+		if err := jsonfile.Save(path, &t.rec); err != nil {
+			return nil, t.rollback(fmt.Errorf("%s can't count its start: %w", v, err))
+		}
+		t.last = now()
+		return t, false
+	}
+	t.end()
+	return nil, false
+}
+
+func exists(path string) bool {
+	_, err := os.Lstat(path)
+	return err == nil
+}
+
+// checkIndex verifies the index that brought the release with this binary's own keys,
+// which proves its verifier and keys before it's kept, with no network involved.
+func (t *trial) checkIndex() error {
+	var idx *updateIndex
+	err := errors.New("no index of the latest release or a canary")
+	if t.rec.Namespace == nsLatest || t.rec.Namespace == nsCanary {
+		idx, err = readIndex(t.rec.Index, t.rec.Sig, t.rec.Namespace)
+	}
+	if err == nil && idx.Latest != t.rec.To {
+		err = fmt.Errorf("it names %s", idx.Latest)
+	}
+	if err != nil {
+		return fmt.Errorf("%s doesn't verify the index that brought it: %w", t.rec.To, err)
+	}
+	return nil
+}
+
+// attach gives the trial the daemon once it's up, serving its control socket.
+func (t *trial) attach(d *daemon) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.d = d
+}
+
+func (t *trial) daemon() *daemon {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.d
+}
+
+// running reports whether the trial is still on: the updater swaps nothing meanwhile.
+func (t *trial) running() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return !t.ended
+}
+
+// watch ticks every awakeTick until the trial is over.
+func (t *trial) watch() {
+	tick := time.NewTicker(awakeTick)
+	defer tick.Stop()
+	for range tick.C {
+		if t.tick() {
+			return
+		}
+	}
+}
+
+// tick notes the recorded apps that serve, logged in, and adds the time since the last
+// tick to the time awake, unless a sleep (or a clock change) left a gap. Once that's
+// quietFor, the trial passes or rolls back. It reports whether the trial is over.
+func (t *trial) tick() bool {
+	now := t.now()
+	t.mu.Lock()
+	if gap := now.Sub(t.last); gap >= 0 && gap <= 3*awakeTick {
+		t.awake += gap
+	}
+	t.last = now
+	d, due := t.d, t.awake >= quietFor
+	t.mu.Unlock()
+	if d != nil {
+		for _, n := range d.snapshot() {
+			if s := n.status(); servesLoggedIn(s) {
+				t.mu.Lock()
+				t.served[s.Slug] = true
+				t.mu.Unlock()
+			}
+		}
+	}
+	if !due {
+		return false
+	}
+	if err := t.failure(d); err != nil {
+		if t.rollback(err) {
+			t.exit("rolled back to " + t.rec.From)
+		}
+		return true
+	}
+	// The trial ends before the update is recorded: a crash in between keeps the release,
+	// which passed.
+	t.end()
+	log.Printf("updates: %s passed its trial", t.rec.To)
+	if err := t.record(func(st *updateState) { st.Updated = &updateEvent{From: t.rec.From, To: t.rec.To, At: t.rec.At} }); err != nil {
+		log.Printf("updates: recording the update to %s: %v", t.rec.To, err)
+	}
+	return true
+}
+
+// failure is why the trial fails at its deadline, or nil when it passes. An app
+// unpublished since the swap needn't serve.
+func (t *trial) failure(d *daemon) error {
+	if d == nil {
+		return fmt.Errorf("%s didn't finish starting within its trial", t.rec.To)
+	}
+	cfg, found, err := loadConfigFile(d.configPath)
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	var missing []string
+	for _, slug := range t.rec.Apps {
+		if _, ok := cfg.Find(slug); t.served[slug] || (err == nil && found && !ok) {
+			continue
+		}
+		missing = append(missing, slug)
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("%s didn't serve again with its node logged in within %s's trial", strings.Join(missing, ", "), t.rec.To)
+	}
+	return nil
+}
+
+// servesLoggedIn reports whether an app's node serves with its node logged in.
+func servesLoggedIn(s NodeStatus) bool { return s.State == "serving" && s.Backend == "Running" }
+
+// rollback records why the release failed in update.json, puts .prev back in place of
+// the binary on trial, and ends the trial. It reports whether the connector should exit
+// so the service starts what's in place, which is once bin/ovenlight exists.
+func (t *trial) rollback(why error) bool {
+	log.Printf("updates: rolling back from %s to %s: %v", t.rec.To, t.rec.From, why)
+	// The failure first, so the release waits for the next night. A crash after it starts
+	// the release again, and its second start rolls back without counting it twice.
+	if err := t.record(func(st *updateState) {
+		if f := st.Failed; f == nil || f.Version != t.rec.To || f.At.Before(t.rec.At) {
+			st.noteFailure(t.rec.To, t.now(), why)
+		}
+	}); err != nil {
+		log.Printf("updates: recording the failure of %s: %v", t.rec.To, err)
+	}
+	installed := installedBinary(t.dir)
+	// A crash once .prev is back starts it, and it ends the trial, which isn't its own.
+	if err := restorePrev(installed, t.windows); err != nil {
+		// The trial stays, so the next start tries again.
+		log.Printf("updates: can't put %s back: %v", prevBinary(installed), err)
+		return exists(installed)
+	}
+	t.end()
+	return true
+}
+
+// end removes the trial.
+func (t *trial) end() {
+	t.mu.Lock()
+	t.ended = true
+	t.mu.Unlock()
+	if err := jsonfile.Remove(filepath.Join(t.dir, updateTrialFile)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		log.Printf("updates: removing the trial: %v", err)
+	}
+}
+
+// record changes update.json: through the updater once it runs, which holds the record,
+// and in the file before.
+func (t *trial) record(change func(*updateState)) error {
+	if d := t.daemon(); d != nil && d.upd != nil {
+		u := d.upd
+		u.mu.Lock()
+		defer u.mu.Unlock()
+		change(&u.st)
+		u.save()
+		return nil
+	}
+	st, err := loadUpdateState(t.dir)
+	if err != nil {
+		return err
+	}
+	change(st)
+	return jsonfile.Save(filepath.Join(t.dir, updateStateFile), st)
+}
