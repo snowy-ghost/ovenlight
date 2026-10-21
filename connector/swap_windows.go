@@ -15,8 +15,9 @@ import (
 // sinceBoot is how long ago Windows started, sleep included.
 var sinceBoot = windows.DurationSinceBoot
 
-// restartedSince reports whether Windows started since at. Windows ends the connector at a
-// restart with no signal to mark a clean stop, so the boot time stands in for one.
+// restartedSince reports whether Windows started since at, the release's last counted
+// start. Windows ends the connector at a restart with no signal to mark a clean stop, so
+// a boot after that start stands in for one.
 func restartedSince(at, now time.Time) bool { return now.Add(-sinceBoot()).After(at) }
 
 // replaceBinary puts next in place of installed, the running binary, which Windows renames

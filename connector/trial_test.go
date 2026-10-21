@@ -135,7 +135,7 @@ func TestTrialRollbackCountsOnce(t *testing.T) {
 		want     int
 	}{{at(0, 2, 33), 1}, {at(-1, 2, 30), 2}} {
 		rec := trialTo(t, "1.2.0", nsLatest)
-		rec.Starts = 1
+		rec.Starts, rec.Started = 1, at(0, 2, 31)
 		dir, installed := trialRig(t, rec)
 		st := &updateState{Failed: &updateFailure{Version: "1.2.0", At: c.failedAt, Error: "earlier", Count: 1}}
 		if err := jsonfile.Save(filepath.Join(dir, updateStateFile), st); err != nil {
@@ -216,7 +216,7 @@ func TestTrialIndex(t *testing.T) {
 		}
 	}
 	rec := trialTo(t, "1.2.1", nsLatest)
-	rec.Starts = 1
+	rec.Starts, rec.Started = 1, time.Now()
 	dir, installed := trialRig(t, rec)
 	if tr, exit := beginTrial(dir, "1.2.0", time.Now); tr != nil || !exit {
 		t.Fatal("the start after a verifier that crashed went on")

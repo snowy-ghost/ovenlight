@@ -169,15 +169,24 @@ func TestRenameAsideRunning(t *testing.T) {
 }
 
 // Windows ends the connector at a restart with no clean stop, so a start after the
-// computer booted since the swap begins the trial afresh. With no boot, it rolls back.
+// computer booted since the last counted start begins the trial afresh. With no boot
+// since, it rolls back: a crash after one restart, in the same boot, rolls back at once.
 func TestTrialWindowsRestart(t *testing.T) {
 	defer func(f func() time.Duration) { sinceBoot = f }(sinceBoot)
 	dir, installed := trialRig(t, trialTo(t, "1.2.0", nsLatest))
-	beginTrial(dir, "1.2.0", time.Now)
-	sinceBoot = func() time.Duration { return time.Minute }
-	if tr, exit := beginTrial(dir, "1.2.0", time.Now); tr == nil || exit {
+	clock := &fakeClock{at(0, 2, 31)}
+	beginTrial(dir, "1.2.0", clock.now)
+	clock.t = at(0, 2, 34)
+	sinceBoot = func() time.Duration { return time.Minute } // booted at 02:33
+	if tr, exit := beginTrial(dir, "1.2.0", clock.now); tr == nil || exit {
 		t.Fatal("a start after a restart rolled back")
 	}
+	clock.t = at(0, 2, 35)
+	sinceBoot = func() time.Duration { return 2 * time.Minute }
+	if tr, exit := beginTrial(dir, "1.2.0", clock.now); tr != nil || !exit {
+		t.Fatal("a crash in the same boot went on")
+	}
+	rolledBack(t, dir, installed)
 
 	dir, installed = trialRig(t, trialTo(t, "1.2.0", nsLatest))
 	beginTrial(dir, "1.2.0", time.Now)

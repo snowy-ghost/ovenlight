@@ -37,6 +37,8 @@ type updateTrial struct {
 	// Starts counts To's starts as the service since the swap or its last clean stop. A
 	// second one within the trial means it crashed, hung or was killed, and puts .prev back.
 	Starts int `json:"starts"`
+	// Started is To's last counted start: a Windows boot after it stands in for a clean stop.
+	Started time.Time `json:"started,omitzero"`
 }
 
 // serviceStart reports whether args (os.Args[1:]) start the connector as the installed
@@ -106,8 +108,8 @@ func startTrial() {
 // the swap didn't finish, a rollback did, or an install script put another release in
 // place. So does one with nothing to roll back to, or that isn't a trial record. One that
 // can't be read now stays for the next start. A second start with no clean stop or
-// Windows restart before it rolls back at once, and exit says the connector should then
-// exit.
+// Windows restart since the last counted start rolls back at once, and exit says the
+// connector should then exit.
 func beginTrial(dir, v string, now func() time.Time) (t *trial, exit bool) {
 	path := filepath.Join(dir, updateTrialFile)
 	data, err := jsonfile.ReadFile(path)
@@ -125,13 +127,13 @@ func beginTrial(dir, v string, now func() time.Time) (t *trial, exit bool) {
 	case t.rec.To != v:
 	case !exists(prevBinary(installedBinary(dir))):
 		log.Printf("updates: %s has nothing to roll back to, so its trial ends", v)
-	case t.rec.Starts > 0 && !restartedSince(t.rec.At, now()):
+	case t.rec.Starts > 0 && !restartedSince(t.rec.Started, now()):
 		return nil, t.rollback(fmt.Errorf("%s started again within its trial: it crashed, hung or was killed", v))
 	default:
 		if t.rec.Starts > 0 {
 			log.Printf("updates: Windows restarted during %s's trial, which starts again", v)
 		}
-		t.rec.Starts = 1
+		t.rec.Starts, t.rec.Started = 1, now()
 		if err := jsonfile.Save(path, &t.rec); err != nil {
 			return nil, t.rollback(fmt.Errorf("%s can't count its start: %w", v, err))
 		}
