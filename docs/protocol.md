@@ -104,11 +104,12 @@ any of the connector's shareable app nodes:
 
 A device belongs to one person, so it may claim only that person's invites. One
 exception settles who an invite is for when it's accepted, at whichever app: an invite
-for someone who has never had a device (not even one since removed) becomes
-the device's person's, and the device gets the app under that person's name. Only that
+for someone who has never had a device (not even one since removed) becomes the
+device's person's, and the device gets the app under that person's name. Only that
 invite moves. The person invited keeps their other invites, each of which settles the
 same way when claimed, and drops out of the owner's lists once they have no invites
-left. A review invite never settles.
+left. Such an invite gives a device that already has its app nothing: the answer is 200
+with the device's own claim, and the invite stays open. A review invite never settles.
 
 Claiming again from the same device is harmless. A review invite admits up to 10
 devices, and every other invite one.

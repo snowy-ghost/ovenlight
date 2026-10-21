@@ -213,11 +213,13 @@ a node's key expires within 30 days.
 - A device belongs to one person. A device already admitted to any of your apps can only
   claim that person's invites; any other invite stays unused. The exception is an invite
   for someone who has never had a device, opened on a phone that holds another of your
-  apps: Ovenlight claims it through that app's node when it can't reach this one yet, and the invite becomes the phone's
-  person's. That covers inviting someone you already share with under a new name, and
-  two people sharing one phone. Only that invite moves, and each key still opens only
-  its own app, so holding one invite never grants another's app. Review invites never
-  move.
+  apps: the invite becomes the phone's person's, and the phone gets the app. Ovenlight
+  claims it through the other app's node when the phone can't reach this one yet. That
+  covers inviting someone you already share with under a new name, and two people
+  sharing one phone. Only that invite moves, and each key still opens only its own app,
+  so holding one invite never grants another's app. A phone that already has the app
+  gains nothing, so the invite stays open for whoever else it was meant for. Review
+  invites never move.
 - Making an invite with `share` takes a terminal. The MCP server can't share at all.
 - `share --cancel <id>` withdraws an unused invite, or a review invite with places left
   (devices that joined with it keep the app), and deletes its key. If the delete
