@@ -40,6 +40,8 @@ Usage:
   ovenlight version
   ovenlight guide                                 how to build apps for Ovenlight, for coding agents
   ovenlight run                                   run the connector (its background service does this)
+  ovenlight update off|on                         stop installing updates, or start again (it checks daily either way)
+  ovenlight update now --index <file>             install the release a canary index names, at once (testing a release)
 
 Sharing (one-time setup: auth set, then publish --slug <slug> --shareable, which records you as the owner):
   ovenlight auth set [--oauth-client-id <id>]     reads the secret from stdin
@@ -131,7 +133,7 @@ func main() {
 		"run": cmdRun, "publish": cmdPublish, "unpublish": cmdUnpublish, "status": cmdStatus, "doctor": cmdDoctor, "check": cmdCheck,
 		"auth": cmdAuth, "setup-sharing": cmdSetupSharing, "share": cmdShare, "guests": cmdGuests,
 		"revoke": cmdRevoke, "feedback": cmdFeedback, "mcp": cmdMCP, "logs": cmdLogs,
-		"new": cmdNew, "guide": cmdGuide, "restart": cmdRestart,
+		"new": cmdNew, "guide": cmdGuide, "restart": cmdRestart, "update": cmdUpdate,
 		"version": func([]string) error { fmt.Println(version()); return nil },
 	}
 	cmd, args := os.Args[1], os.Args[2:]
@@ -876,6 +878,7 @@ type statusOut struct {
 	PID           int            `json:"pid,omitempty"`
 	Dev           bool           `json:"dev,omitempty"`
 	LoginEnvError string         `json:"loginEnvError,omitempty"` // see controlReply.EnvError
+	Update        *updateView    `json:"update,omitempty"`        // the running connector's, or with none running this binary's
 	Apps          []appStatus    `json:"apps"`
 	Sharing       sharingSummary `json:"sharing"`
 }
@@ -890,6 +893,7 @@ func collectStatus(p *paths) (*statusOut, error) {
 		return nil, daemonErr
 	}
 	out := &statusOut{Version: version(), Daemon: reply != nil, Apps: []appStatus{}}
+	out.Update, _ = daemonUpdate(p.state, reply)
 	live := map[string]NodeStatus{}
 	var processes map[string]ProcessStatus
 	if reply != nil {
@@ -980,6 +984,9 @@ func cmdStatus(args []string) error {
 			mode = " (DEV control server)"
 		}
 		fmt.Printf("Connector: running, pid %d, version %s%s\n", out.PID, orDash(out.DaemonVersion), mode)
+		for _, line := range updateLines(out.Update, out.DaemonVersion) {
+			fmt.Println("  " + line)
+		}
 		processes := map[string]ProcessStatus{}
 		for _, a := range out.Apps {
 			if a.Process != nil {

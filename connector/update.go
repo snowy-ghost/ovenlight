@@ -21,59 +21,14 @@ import (
 	"time"
 )
 
-// latestURL names the newest connector release and the oldest without a known security
-// hole: {"latest": "1.2.0", "secure": "1.1.3"}. doctor reads it; nothing else does.
-var latestURL = releaseBase + "/latest.json"
-
 // releaseBase is where releases come from: each in its version's folder, beside the
 // signed index, latest.json. Only a test-key build fetches updates from elsewhere
 // (updateBase).
 const releaseBase = "https://downloads.ovenlight.app/connector"
 
-// updateCheck says when a newer release is out, and fails when this one has a security
-// hole fixed since. A development or pre-release build, or a file it can't read, checks
-// nothing.
-func updateCheck() *Check {
-	v, ok := semver(releaseVersion)
-	if !ok {
-		return nil
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, latestURL, nil)
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil
-	}
-	defer resp.Body.Close()
-	var latest struct{ Latest, Secure string }
-	if resp.StatusCode != http.StatusOK || json.NewDecoder(io.LimitReader(resp.Body, 4096)).Decode(&latest) != nil {
-		return nil
-	}
-	newest, okN := semver(latest.Latest)
-	secure, okS := semver(latest.Secure)
-	if okS && (!okN || less(newest, secure)) {
-		newest, okN = secure, true // never point to a release older than the secure one
-	}
-	fix := func(v [3]int) string {
-		return fmt.Sprintf("Install %s (%s) with its install script; your apps and node state are kept", vstring(v), latestArchive())
-	}
-	switch {
-	case okS && less(v, secure):
-		return &Check{ID: "update", Status: statusFail, Actor: actorPerson,
-			Message: "this connector, " + releaseVersion + ", has a security problem fixed in " + vstring(secure), Fix: fix(newest)}
-	case okN && less(v, newest):
-		return &Check{ID: "update", Status: statusWarn, Actor: actorPerson,
-			Message: vstring(newest) + " is out (this is " + releaseVersion + ")", Fix: fix(newest)}
-	}
-	return &Check{ID: "update", Status: statusOK, Message: releaseVersion + " is the latest"}
-}
-
-// latestArchive is this system's archive of the latest release, which is the newest one,
-// never older than the secure one: scripts/publish-connector.sh refuses otherwise.
-func latestArchive() string {
-	return releaseBase + "/latest/" + archiveName()
-}
+// installDocs has the verified install steps, for a release that needs its install script
+// and for an owner who installs one by hand.
+const installDocs = "https://github.com/snowy-ghost/ovenlight/blob/master/docs/connector.md#update"
 
 // archiveName is this system's release archive.
 func archiveName() string {
