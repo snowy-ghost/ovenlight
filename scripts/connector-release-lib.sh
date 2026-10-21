@@ -141,12 +141,10 @@ nodrop() {
   done
 }
 
-# fixture <blob>: whether a key is a fixture: a dry run's, the connector's test key, or a
-# mock release key.
-fixture() {
-  cat /dev/null "$root"/scripts/testdata/release-keys/*.pub "$root"/connector/testdata/releasekey/*.pub |
-    awk -v b="$1" '$2 == b { found = 1 } END { exit !found }'
-}
+# The fixture keys: a dry run's, the connector's test key and the mock release keys.
+# fixture <blob>: whether a key is one of them.
+cat /dev/null "$root"/scripts/testdata/release-keys/*.pub "$root"/connector/testdata/releasekey/*.pub > "$tmp/fixtures"
+fixture() { haskey "$1" "$tmp/fixtures"; }
 
 # trusted <keys>: refuses a key a run of this kind mustn't trust: in a dry run any but the
 # fixtures, otherwise any fixture.

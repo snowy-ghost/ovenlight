@@ -72,12 +72,11 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 conn="$root/connector"
 name="ovenlight-connector-$version"
 # The keys no release may trust: the test key, and outside a dry run, whose stand-ins may
-# hold the mock release keys, every fixture key, as fixture() lists them.
+# hold the mock release keys, every fixture key.
 if [ -n "$dry" ]; then
   awk '{ print $2 }' "$conn/testdata/releasekey/test-key.pub" > "$tmp/public"
 else
-  cat /dev/null "$conn"/testdata/releasekey/*.pub "$root"/scripts/testdata/release-keys/*.pub |
-    awk '{ print $2 }' > "$tmp/public"
+  awk '{ print $2 }' "$tmp/fixtures" > "$tmp/public"
 fi
 [ -s "$tmp/public" ] || refuse "no connector/testdata/releasekey/test-key.pub"
 
