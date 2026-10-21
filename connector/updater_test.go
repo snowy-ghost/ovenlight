@@ -631,10 +631,13 @@ func TestUpdaterClockRanAhead(t *testing.T) {
 	tu = newTestUpdater(t, srv, t.TempDir(), "1.1.5", at(0, 9, 0), false)
 	tu.st.Minute = 10 * 60 // its night starts at 02:00
 	tu.pollAt(at(0, 9, 0))
-	tu.st.Seen = at(9, 9, 0)
+	tu.st.Seen, tu.st.Checked, tu.st.Since = at(9, 9, 0), at(9, 9, 0), at(9, 9, 0)
+	tu.d.lastRequest.Store(at(9, 9, 0).UnixNano())
 	tu.pollAt(at(0, 9, 1))
-	if !tu.st.Seen.Equal(at(0, 9, 1)) {
-		t.Errorf("seen %v", tu.st.Seen)
+	for name, got := range map[string]time.Time{"seen": tu.st.Seen, "checked": tu.st.Checked, "since": tu.st.Since, "last request": tu.d.lastRequestTime()} {
+		if !got.Equal(at(0, 9, 1)) {
+			t.Errorf("%s %v", name, got)
+		}
 	}
 }
 

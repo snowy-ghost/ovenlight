@@ -237,12 +237,18 @@ func (u *updater) poll(ctx context.Context) {
 	if u.st.NextCheck.After(now.Add(updateDay + updateHour)) {
 		u.st.NextCheck = now // the clock was set back
 	}
-	// Times noted while the clock ran ahead would hold the wait and the retry back as long.
-	if u.st.Seen.After(now) {
-		u.st.Seen = now
+	// Times noted while the clock ran ahead would hold the wait, the retry and every quiet
+	// moment back as long, and hide a week without a check.
+	for _, t := range []*time.Time{&u.st.Seen, &u.st.Checked, &u.st.Since} {
+		if t.After(now) {
+			*t = now
+		}
 	}
 	if f := u.st.Failed; f != nil && f.At.After(now) {
 		f.At = now
+	}
+	if u.d.lastRequestTime().After(now) {
+		u.d.lastRequest.Store(now.UnixNano())
 	}
 	if !now.Before(u.st.NextCheck) {
 		u.check(ctx)
