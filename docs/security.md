@@ -455,10 +455,10 @@ replaces only the binary: never the install scripts, the service, the config or 
    with its node logged in, and to verify the signed index that brought it, with its own
    built-in keys. If it crashes, or doesn't do both in that time, the previous binary goes
    back and the update is tried again at the start of the next night, busy or not. One
-   that hangs so that its trial can't end goes back after 15 minutes awake. A restart
-   counts only when it's not a clean stop: on Windows, `Stop-ScheduledTask` sends none,
-   nor does shutting down or signing out of a work, school or domain account
-   ([connector.md](connector.md#update)).
+   that hangs so that its trial can't end goes back after 15 minutes awake. A restart of
+   the computer or the service starts the 10 minutes again, but on Windows,
+   `Stop-ScheduledTask`, and shutting down or signing out of a work, school or domain
+   account, count as a crash ([connector.md](connector.md#update)).
 
 A failure before the swap leaves the running connector as it was. `ovenlight status`
 shows any failure, and `doctor` warns once one release has failed three times in a row.
