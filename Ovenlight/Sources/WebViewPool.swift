@@ -483,11 +483,20 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
         guard let url = action.request.url else { return decisionHandler(.allow) }
         let isMainFrame = action.targetFrame?.isMainFrame ?? true
         if isMainFrame { tapped = Self.isTap(action) }
+        if isMainFrame || action.shouldPerformDownload { navigationActions += 1 }
         switch NavigationPolicy.decide(url: url, appHost: app.host, isMainFrame: isMainFrame, tapped: Self.isTap(action)) {
         case .allow where action.shouldPerformDownload:
-            // `<a download>`, of the app's own pages or of a blob or data URL.
+            // `<a download>`, of the app's own pages or of a blob or data URL. Answered after a
+            // moment, and only if no newer navigation came meanwhile: WebKit holds a process
+            // assertion for each download it's told to make, even one the page's next click
+            // replaced, and a page clicking a link hundreds of times at once got Ovenlight killed.
             let source = (action.sourceFrame as WKFrameInfo?)?.securityOrigin.host
-            decisionHandler(mayDownload(url, from: source, tapped: Self.isTap(action)) ? .download : .cancel)
+            let tap = Self.isTap(action), turn = navigationActions
+            Task { [weak self] in
+                try? await Task.sleep(for: DownloadPolicy.settle)
+                guard let self, turn == navigationActions else { return decisionHandler(.cancel) }
+                decisionHandler(mayDownload(url, from: source, tapped: tap) ? .download : .cancel)
+            }
         case .allow:
             decisionHandler(.allow)
         case .openExternally(let external):
@@ -498,6 +507,10 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
             decisionHandler(.cancel)
         }
     }
+
+    /// Main-frame navigations and downloads asked for so far, so a download answered late
+    /// can tell a newer one replaced it.
+    private var navigationActions = 0
 
     /// A link activated in the app's main frame. WebKit has no public "user gesture" flag,
     /// and a script's `a.click()` counts too, so another app still opens only after
@@ -888,6 +901,9 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
 
     // MARK: Helpers
 
+    /// The "Open in Another App?" ask on screen or waiting for its turn.
+    private weak var openAsk: UIAlertController?
+
     /// Does nothing while Ovenlight is locked, or while this page is kept off screen: a
     /// page's script can fake a link tap, and Safari would open over another app.
     func openExternally(_ url: URL) {
@@ -895,11 +911,16 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
         if ["http", "https"].contains(url.scheme?.lowercased() ?? "") {
             present(SFSafariViewController(url: url), orElse: {})
         } else if NavigationPolicy.asksBeforeOpening(url) {
+            // One ask at a time, counted with the page's dialogs: a script can click such a
+            // link without end, and its asks stacked until Ovenlight froze.
+            guard openAsk == nil else { return }
+            let answer = pageAnswer(fallback: false) { open in if open { UIApplication.shared.open(url) } }
             let alert = UIAlertController(title: "Open in Another App?",
                                           message: "\(app.name) wants to open \(NavigationPolicy.target(of: url)).", preferredStyle: .alert)
-            alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-            alert.addAction(UIAlertAction(title: "Open", style: .default) { _ in UIApplication.shared.open(url) })
-            present(alert, orElse: {})
+            alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in answer(false) })
+            alert.addAction(UIAlertAction(title: "Open", style: .default) { _ in answer(true) })
+            openAsk = alert
+            presentPageDialog(alert, answer: answer)
         } else {
             UIApplication.shared.open(url)
         }
@@ -1105,6 +1126,10 @@ enum DownloadPolicy {
     static func removeFolder(of file: URL) {
         try? FileManager.default.removeItem(at: file.deletingLastPathComponent())
     }
+
+    /// How long an `<a download>` waits before it's answered, so a click the page replaced at
+    /// once is never made into a download (see `decidePolicyFor`).
+    static let settle: Duration = .milliseconds(100)
 
     /// Whether an app's page may start another download: three under way and ten for the
     /// share sheet at most, as on Android. A page that downloaded without end once filled one
