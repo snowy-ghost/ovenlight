@@ -140,8 +140,6 @@ func selfUpdating(v string, service bool, exe, installed string) bool {
 // clock with the times update.json keeps.
 type updater struct {
 	d    *daemon
-	dir  string // the state folder
-	bin  string // the connector's bin folder
 	base string // where releases come from: updateBase
 	v    string // the running version
 	now  func() time.Time
@@ -169,7 +167,7 @@ func newUpdater(d *daemon) *updater {
 		}
 		st = &updateState{}
 	}
-	u := &updater{d: d, dir: d.stateDir, bin: filepath.Dir(installedBinary(d.stateDir)), base: updateBase, v: version(),
+	u := &updater{d: d, base: updateBase, v: version(),
 		now: func() time.Time { return time.Now().Round(0) }, swap: d.swapIn, st: *st}
 	u.start()
 	return u
@@ -295,7 +293,7 @@ func (u *updater) advance(ctx context.Context) {
 	p := planUpdate(&u.st, u.v)
 	// Nothing is downloaded or swapped during the last update's trial, which may need the
 	// record.
-	if p.target == "" || now.Before(p.after) || updatesOff(u.dir) || u.d.onTrial() {
+	if p.target == "" || now.Before(p.after) || updatesOff(u.d.stateDir) || u.d.onTrial() {
 		return
 	}
 	if u.ready != p.target {
@@ -317,7 +315,7 @@ func (u *updater) advance(ctx context.Context) {
 		return
 	}
 	// The fetch can take a minute: updates may have gone off meanwhile.
-	if updatesOff(u.dir) {
+	if updatesOff(u.d.stateDir) {
 		return
 	}
 	u.apply(pendingSwap{Version: p.target, Next: u.next, Index: data, Sig: sig, Namespace: nsLatest})
@@ -326,12 +324,13 @@ func (u *updater) advance(ctx context.Context) {
 // download fetches idx's latest release and takes its binary out into bin/ovenlight.next.
 func (u *updater) download(ctx context.Context, idx *updateIndex) error {
 	u.ready = ""
-	archive, err := downloadArchive(ctx, u.base, u.bin, idx)
+	bin := filepath.Dir(installedBinary(u.d.stateDir))
+	archive, err := downloadArchive(ctx, u.base, bin, idx)
 	if err != nil {
 		return err
 	}
 	defer os.Remove(archive)
-	next, err := extractBinary(archive, u.bin, idx.Latest)
+	next, err := extractBinary(archive, bin, idx.Latest)
 	if err != nil {
 		return err
 	}
@@ -367,7 +366,7 @@ func (st *updateState) noteFailure(version string, at time.Time, err error) {
 }
 
 func (u *updater) save() {
-	if err := jsonfile.Save(filepath.Join(u.dir, updateStateFile), &u.st); err != nil {
+	if err := jsonfile.Save(filepath.Join(u.d.stateDir, updateStateFile), &u.st); err != nil {
 		log.Printf("updates: saving %s: %v", updateStateFile, err)
 	}
 }
@@ -383,7 +382,7 @@ const updateNowWait = downloadTimeout + 5*time.Minute
 func (u *updater) updateNow(ctx context.Context, data, sig []byte) (string, error) {
 	u.mu.Lock()
 	defer u.mu.Unlock()
-	if updatesOff(u.dir) {
+	if updatesOff(u.d.stateDir) {
 		return "", errors.New("updates are off: ovenlight update on turns them back on")
 	}
 	if u.d.exitBegun.Load() {
@@ -414,7 +413,7 @@ func (u *updater) updateNow(ctx context.Context, data, sig []byte) (string, erro
 	if err := u.download(ctx, idx); err != nil {
 		return "", fmt.Errorf("downloading %s: %w", idx.Latest, err)
 	}
-	if updatesOff(u.dir) {
+	if updatesOff(u.d.stateDir) {
 		return "", errors.New("updates were turned off: ovenlight update on turns them back on")
 	}
 	u.ready = "" // the loop downloads its own target again

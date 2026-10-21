@@ -269,7 +269,7 @@ func TestTrialPasses(t *testing.T) {
 	}
 	tr, dir, installed := startTrialing(t, "coach")
 	d, _ := testDaemon(t)
-	d.upd = &updater{d: d, dir: dir, now: tr.clock.now}
+	d.upd = &updater{d: d, now: tr.clock.now}
 	tr.attach(d)
 	if tr.pass(3 * time.Minute) {
 		t.Fatal("over in 3 minutes")
@@ -288,7 +288,7 @@ func TestTrialPasses(t *testing.T) {
 		t.Error("didn't pass")
 	}
 	// Compared field by field: a time read back from JSON has another location.
-	st, _ := loadUpdateState(dir)
+	st, _ := loadUpdateState(d.stateDir) // the updater's, which holds the record
 	for _, u := range []*updateEvent{d.upd.st.Updated, st.Updated} {
 		if u == nil || u.From != "1.1.5" || u.To != "1.2.0" || !u.At.Equal(at(0, 2, 30)) {
 			t.Errorf("%+v", u)
@@ -339,7 +339,7 @@ func TestTrialDeadline(t *testing.T) {
 func TestTrialBackstop(t *testing.T) {
 	tr, dir, installed := startTrialing(t, "coach")
 	d, _ := testDaemon(t)
-	d.upd = &updater{d: d, dir: dir, now: time.Now}
+	d.upd = &updater{d: d, now: time.Now}
 	tr.attach(d)
 	d.mu.Lock()
 	d.upd.mu.Lock()

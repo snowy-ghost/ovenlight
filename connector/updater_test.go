@@ -166,14 +166,17 @@ func newTestUpdater(t *testing.T, srv *releaseServer, dir, v string, start time.
 	}
 	d := &daemon{stateDir: dir}
 	tu := &testUpdater{clock: &fakeClock{start}}
-	tu.updater = &updater{d: d, dir: dir, bin: filepath.Join(dir, "bin"), base: srv.URL, v: v, now: tu.clock.now, st: *st, swap: d.swapIn}
+	tu.updater = &updater{d: d, base: srv.URL, v: v, now: tu.clock.now, st: *st, swap: d.swapIn}
 	if !realSwap {
 		tu.swap = func(p pendingSwap) error { tu.swaps = append(tu.swaps, p); return nil }
 	}
-	os.MkdirAll(tu.bin, 0o700)
+	os.MkdirAll(tu.bin(), 0o700)
 	tu.start()
 	return tu
 }
+
+// bin is the connector's bin folder.
+func (tu *testUpdater) bin() string { return filepath.Join(tu.d.stateDir, "bin") }
 
 // pass moves the clock on by d, awake all along, with the updater looking every minute.
 func (tu *testUpdater) pass(d time.Duration) {
@@ -393,11 +396,11 @@ func TestUpdaterWaitsTwoDays(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		exe = "ovenlight.next.exe"
 	}
-	b, _ := os.ReadFile(filepath.Join(tu.bin, exe))
+	b, _ := os.ReadFile(filepath.Join(tu.bin(), exe))
 	if srv.count(archive) != n+1 || tu.ready != "1.2.0" || string(b) != "connector 1.2.0" {
 		t.Fatalf("at two days: ready %q, %q", tu.ready, b)
 	}
-	if _, err := os.Stat(filepath.Join(tu.bin, "ovenlight.download")); err == nil {
+	if _, err := os.Stat(filepath.Join(tu.bin(), "ovenlight.download")); err == nil {
 		t.Error("the download was kept")
 	}
 	u := readUpdateView(dir, "1.1.5", true)
@@ -480,7 +483,7 @@ func TestUpdaterSwapsAtAQuietMoment(t *testing.T) {
 	}
 	fetches := srv.count("/latest.json")
 	tu.pollAt(at(3, 2, 10))
-	next := filepath.Join(tu.bin, "ovenlight.next")
+	next := filepath.Join(tu.bin(), "ovenlight.next")
 	if runtime.GOOS == "windows" {
 		next += ".exe"
 	}
@@ -531,7 +534,7 @@ func TestUpdaterFetchBeforeTheSwap(t *testing.T) {
 	if len(tu.swaps) != 0 || !bytes.Equal(tu.st.Index, pull) {
 		t.Errorf("swapped to a release the index no longer names: %+v", tu.swaps)
 	}
-	if u := readUpdateView(tu.dir, "1.1.5", true); u.Pending != "1.1.9" || !u.InstallAfter.Equal(tu.clock.t.Add(48*time.Hour)) {
+	if u := readUpdateView(tu.d.stateDir, "1.1.5", true); u.Pending != "1.1.9" || !u.InstallAfter.Equal(tu.clock.t.Add(48*time.Hour)) {
 		t.Errorf("after the pull: %+v", u)
 	}
 }
@@ -539,7 +542,7 @@ func TestUpdaterFetchBeforeTheSwap(t *testing.T) {
 // updates-off is read before the swap, after its fetch.
 func TestUpdaterOffBeforeTheSwap(t *testing.T) {
 	srv, tu, _ := readyAt(t, false)
-	off := filepath.Join(tu.dir, updatesOffFile)
+	off := filepath.Join(tu.d.stateDir, updatesOffFile)
 	srv.onIndex = func() { os.WriteFile(off, nil, 0o600) } // turned off during the fetch
 	tu.pollAt(at(3, 2, 30))
 	if len(tu.swaps) != 0 {
@@ -559,7 +562,7 @@ func TestUpdaterSwapFailure(t *testing.T) {
 	srv, tu, _ := readyAt(t, true)
 	archive := "/1.2.0/" + archiveName()
 	tu.pollAt(at(3, 2, 30))
-	st, err := loadUpdateState(tu.dir)
+	st, err := loadUpdateState(tu.d.stateDir)
 	if err != nil || st.Failed == nil || st.Failed.Version != "1.2.0" || !st.Failed.At.Equal(at(3, 2, 30)) ||
 		!strings.Contains(st.Failed.Error, "doesn't run here") || st.Failed.Count != 1 {
 		t.Fatalf("%+v %v", st.Failed, err)
@@ -572,7 +575,7 @@ func TestUpdaterSwapFailure(t *testing.T) {
 	}
 	// It's tried again the next night, busy or not: a computer that's never quiet would
 	// otherwise take it only every other night.
-	u := readUpdateView(tu.dir, "1.1.5", true)
+	u := readUpdateView(tu.d.stateDir, "1.1.5", true)
 	if u.Failure == nil || u.Pending != "1.2.0" || !u.InstallAfter.Equal(at(4, 2, 0)) || !u.InstallBy.Equal(at(4, 2, 0)) {
 		t.Errorf("%+v", u)
 	}
@@ -581,14 +584,14 @@ func TestUpdaterSwapFailure(t *testing.T) {
 	if srv.count(archive) != n+1 || tu.st.Failed.Count != 2 {
 		t.Errorf("the next night: %d downloads, %+v", srv.count(archive)-n, tu.st.Failed)
 	}
-	if u := readUpdateView(tu.dir, "1.2.0", true); u.Failure != nil {
+	if u := readUpdateView(tu.d.stateDir, "1.2.0", true); u.Failure != nil {
 		t.Error("a failure of the running version is shown")
 	}
 	// Once the index no longer names it, a pull, its failure isn't shown.
 	srv.publish("1.1.9", "1.1.0", "1.1.0", 101)
 	tu.st.NextCheck = time.Time{}
 	tu.pollAt(at(4, 9, 0))
-	if u := readUpdateView(tu.dir, "1.1.5", true); u.Failure != nil || u.Pending != "1.1.9" {
+	if u := readUpdateView(tu.d.stateDir, "1.1.5", true); u.Failure != nil || u.Pending != "1.1.9" {
 		t.Errorf("after a pull: %+v", u)
 	}
 }
@@ -660,7 +663,7 @@ func TestUpdaterCap(t *testing.T) {
 	// Off through 02:00, and started that morning: it downloads again, then swaps 10
 	// minutes after the start.
 	srv, tu, _ := readyAt(t, false)
-	tu = newTestUpdater(t, srv, tu.dir, "1.1.5", at(4, 9, 0), false)
+	tu = newTestUpdater(t, srv, tu.d.stateDir, "1.1.5", at(4, 9, 0), false)
 	tu.busyAt(at(4, 9, 0))
 	tu.busyAt(at(4, 9, 9))
 	if tu.ready != "1.2.0" || len(tu.swaps) != 0 {
@@ -697,7 +700,7 @@ func TestUpdateNow(t *testing.T) {
 	srv.publish("1.1.5", "1.1.0", "1.1.0", 100)
 	tu := newTestUpdater(t, srv, t.TempDir(), "1.1.5", at(0, 9, 0), false)
 	tu.pollAt(at(0, 9, 0))
-	statePath := filepath.Join(tu.dir, updateStateFile)
+	statePath := filepath.Join(tu.d.stateDir, updateStateFile)
 	before, _ := os.ReadFile(statePath)
 	canary := testIndex("1.2.0", "1.1.0", "1.1.0", 1, srv.release("1.2.0"))
 	sig := signIndex(t, canary, nsCanary)
@@ -722,7 +725,7 @@ func TestUpdateNow(t *testing.T) {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
-	off := filepath.Join(tu.dir, updatesOffFile)
+	off := filepath.Join(tu.d.stateDir, updatesOffFile)
 	os.WriteFile(off, nil, 0o600)
 	if _, err := tu.updateNow(ctx, canary, sig); err == nil || !strings.Contains(err.Error(), "updates are off") {
 		t.Errorf("updates off: %v", err)
