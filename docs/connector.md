@@ -223,8 +223,10 @@ still waiting a day after it was due goes in at the start of the next night, bus
 once the connector has been running and awake for 10 minutes. Installing restarts the
 connector, so the apps it runs stop and open connections drop for a few seconds (about 10
 on Linux, up to a minute on Windows). If the new release doesn't serve your apps again
-within 10 minutes, the connector goes back to the one before and tries again the next
-night. A restart of your computer in those 10 minutes starts them again.
+within 10 minutes, the connector goes back to the one before, and tries again at the start
+of the next night, busy or not. A restart of your computer in those 10 minutes starts them
+again. On Windows, the Stop or Restart command above in that time makes it go back too, as
+does signing out of a work, school or domain account.
 
 `ovenlight status` shows the last check, a release waiting its turn and when it installs,
 the last update, one that failed, and whether yours has a known security problem.
