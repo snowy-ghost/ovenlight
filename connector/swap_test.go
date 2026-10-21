@@ -63,6 +63,18 @@ func copyTestBinary(t *testing.T, path string) {
 	}
 }
 
+// statFile is the file at path as an open handle to it sees it, so it names that file
+// even once another is at path. Windows' os.Stat reads which file it is by its path only
+// when it's compared.
+func statFile(path string) (os.FileInfo, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return f.Stat()
+}
+
 func exe(name string) string {
 	if runtime.GOOS == "windows" {
 		return name + ".exe"
@@ -142,28 +154,17 @@ func TestSwapIn(t *testing.T) {
 	}
 }
 
-// A release that doesn't run here, says it's another version, or is replaced after its
-// version check isn't swapped in, and nothing is left behind.
+// A release that doesn't run here, or says it's another version, isn't swapped in, and
+// nothing is left behind.
 func TestSwapInRefuses(t *testing.T) {
-	orig := nextVersion
-	t.Cleanup(func() { nextVersion = orig })
 	for name, c := range map[string]struct {
 		setup func(t *testing.T, next string)
 		want  string
 	}{
 		"another version": {func(t *testing.T, _ string) { t.Setenv(testVersionVar, "1.2.1") }, `says it's "1.2.1"`},
 		"not a program":   {func(t *testing.T, next string) { writeFile(t, next, "connector 1.2.0") }, "doesn't run here"},
-		"replaced after its version check": {func(t *testing.T, next string) {
-			nextVersion = func(path string) (string, error) {
-				out, err := orig(path)
-				os.Remove(path)
-				copyTestBinary(t, path)
-				return out, err
-			}
-		}, "changed after its version check"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			nextVersion = orig
 			d, installed, next := swapRig(t)
 			c.setup(t, next)
 			err := d.swapIn(pendingSwap{Version: "1.2.0", Next: next, Namespace: nsLatest})

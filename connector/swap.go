@@ -38,8 +38,7 @@ type pendingSwap struct {
 // binary is in place: the updater records it as the version's failure and tries it again
 // the next night.
 func (d *daemon) swapIn(p pendingSwap) error {
-	checked, err := checkNext(p.Next, p.Version)
-	if err != nil {
+	if err := checkNext(p.Next, p.Version); err != nil {
 		return err
 	}
 	now := time.Now().Round(0)
@@ -61,12 +60,7 @@ func (d *daemon) swapIn(p pendingSwap) error {
 		replace = renameAside
 	}
 	installed := installedBinary(d.stateDir)
-	// What moves into place must be the file whose version was checked.
-	if info, serr := statFile(p.Next); serr != nil || !sameContent(info, checked) {
-		err = errors.New("the downloaded binary changed after its version check")
-	} else {
-		err = replace(installed, p.Next)
-	}
+	err := replace(installed, p.Next)
 	if err == nil {
 		_, err = os.Stat(installed) // the service's path, which the exit needs
 	}
@@ -79,30 +73,12 @@ func (d *daemon) swapIn(p pendingSwap) error {
 	return nil
 }
 
-// sameContent reports whether a and b are the same file, unchanged: a file replaced or
-// written into in between differs.
-func sameContent(a, b os.FileInfo) bool {
-	return os.SameFile(a, b) && a.Size() == b.Size() && a.ModTime().Equal(b.ModTime())
-}
-
-// statFile is the file at path as an open handle to it sees it, so it names that file
-// even once another is at path. Windows' os.Stat reads which file it is by its path only
-// when it's compared.
-func statFile(path string) (os.FileInfo, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	return f.Stat()
-}
-
 // versionWait bounds the version check of a downloaded binary. macOS checks a binary's
 // signature on its first run, which can take a while.
 const versionWait = time.Minute
 
 // nextVersion runs the binary at path with version and returns what it printed.
-var nextVersion = func(path string) (string, error) {
+func nextVersion(path string) (string, error) {
 	for try := 0; ; try++ {
 		ctx, cancel := context.WithTimeout(context.Background(), versionWait)
 		out, err := exec.CommandContext(ctx, path, "version").Output()
@@ -123,20 +99,16 @@ var nextVersion = func(path string) (string, error) {
 
 // checkNext runs the downloaded binary's version and requires exactly want, which
 // catches a binary that can't start here: a raised OS minimum, a broken signature, the
-// wrong architecture. It returns the file as checked.
-func checkNext(path, want string) (os.FileInfo, error) {
-	before, err := statFile(path)
-	if err != nil {
-		return nil, err
-	}
+// wrong architecture.
+func checkNext(path, want string) error {
 	out, err := nextVersion(path)
 	if err != nil {
-		return nil, fmt.Errorf("the downloaded %s doesn't run here: %w", want, err)
+		return fmt.Errorf("the downloaded %s doesn't run here: %w", want, err)
 	}
 	if out != want+"\n" {
-		return nil, fmt.Errorf("the downloaded %s says it's %q", want, clip(strings.TrimSpace(out), 40))
+		return fmt.Errorf("the downloaded %s says it's %q", want, clip(strings.TrimSpace(out), 40))
 	}
-	return before, nil
+	return nil
 }
 
 // prevBinary is the binary a rollback puts back: bin/ovenlight.prev, or

@@ -67,6 +67,7 @@ type releaseServer struct {
 	archives map[string][]byte // by path
 	down     bool              // answer everything with a 503
 	hits     map[string]int
+	onIndex  func() // runs as the index is served
 }
 
 func newReleaseServer(t *testing.T) *releaseServer {
@@ -76,6 +77,9 @@ func newReleaseServer(t *testing.T) *releaseServer {
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		s.hits[r.URL.Path]++
+		if r.URL.Path == "/latest.json" && s.onIndex != nil {
+			s.onIndex()
+		}
 		body, ok := map[string][]byte{"/latest.json": s.index, "/latest.json.sig": s.sig}[r.URL.Path]
 		if !ok {
 			body, ok = s.archives[r.URL.Path]
@@ -525,16 +529,16 @@ func TestUpdaterFetchBeforeTheSwap(t *testing.T) {
 	}
 }
 
-// updates-off is read again before the swap, and before its fetch.
+// updates-off is read before the swap, after its fetch.
 func TestUpdaterOffBeforeTheSwap(t *testing.T) {
 	srv, tu, _ := readyAt(t, false)
 	off := filepath.Join(tu.dir, updatesOffFile)
-	os.WriteFile(off, nil, 0o600)
-	n := srv.count("/latest.json")
+	srv.onIndex = func() { os.WriteFile(off, nil, 0o600) } // turned off during the fetch
 	tu.pollAt(at(3, 2, 30))
-	if len(tu.swaps) != 0 || srv.count("/latest.json") != n {
+	if len(tu.swaps) != 0 {
 		t.Fatal("swapped with updates off")
 	}
+	srv.onIndex = nil
 	os.Remove(off)
 	tu.pollAt(at(3, 2, 31))
 	if len(tu.swaps) != 1 {

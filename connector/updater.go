@@ -275,7 +275,7 @@ func (u *updater) check(ctx context.Context) (data, sig []byte, idx *updateIndex
 
 // advance downloads the release the index held names once it's due, and swaps it in at
 // its moment, after a fresh fetch of the index that still names it. updates-off is read
-// before each.
+// before the download, and before the swap once that fetch is done.
 func (u *updater) advance(ctx context.Context) {
 	now := u.now()
 	p := planUpdate(&u.st, u.v)
@@ -291,7 +291,7 @@ func (u *updater) advance(ctx context.Context) {
 		return // its swap comes at a later poll
 	}
 	// A fetch that failed waits for its retry, as the daily check does.
-	if !swapNow(now, p, u.d.lastRequestTime(), u.awakeSince()) || (u.st.CheckError != "" && now.Before(u.st.NextCheck)) || updatesOff(u.dir) {
+	if !swapNow(now, p, u.d.lastRequestTime(), u.awakeSince()) || (u.st.CheckError != "" && now.Before(u.st.NextCheck)) {
 		return
 	}
 	data, sig, idx, err := u.check(ctx)
@@ -300,6 +300,10 @@ func (u *updater) advance(ctx context.Context) {
 	}
 	if target, _, _ := updateTarget(u.v, idx, u.st.Seen); target != p.target {
 		log.Printf("updates: the index no longer names %s, so it isn't installed", p.target)
+		return
+	}
+	// The fetch can take a minute: updates may have gone off meanwhile.
+	if updatesOff(u.dir) {
 		return
 	}
 	u.apply(pendingSwap{Version: p.target, Next: u.next, Index: data, Sig: sig, Namespace: nsLatest})
