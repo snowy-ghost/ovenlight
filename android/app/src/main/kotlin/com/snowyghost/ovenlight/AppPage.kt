@@ -118,6 +118,7 @@ class AppPage(
             CaptureMonitor.watch(this.context)
             RuntimePermissions.request(this.context, needed, refusedForGood, done)
         },
+        holds = { RuntimePermissions.holds(this.context, it) },
         stillCapturing = { CaptureMonitor.capturing(this.context) },
         destroy = { pool.replace(this) },
     )

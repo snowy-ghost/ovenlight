@@ -57,6 +57,7 @@ class PageCaptureTests {
             needed.filter { it in refusedForGood }.takeIf { it.isNotEmpty() }?.let(refused)
             done(held)
         },
+        holds = { held },
         stillCapturing = { capturing },
         destroy = { destroyed += 1 },
     )
@@ -78,6 +79,8 @@ class PageCaptureTests {
         held = false
         fun refused(vararg resources: String): MediaCaptureType? {
             capture.refused.value = null
+            // Each in a document of its own: a refusal lasts for the one it came in.
+            capture.documentChanged()
             capture.onPermissionRequest(Request(own, *resources))
             return capture.refused.value
         }
@@ -114,9 +117,51 @@ class PageCaptureTests {
         capture.documentChanged()
         capture.onPermissionRequest(Request(own, video))
         assertTrue("a new document asks again", capture.prompt.value != null)
-        capture.prompt.value!!.answer(false)
+    }
+
+    /**
+     * A refusal lasts for the document, as in WebKit: a page that asks again on each one is
+     * refused at once, without Ovenlight's question, Android's or the refused notice coming
+     * back, until a new document or the stop. What Android refused is asked about again once
+     * Settings allows it.
+     */
+    @Test
+    fun testARefusalLastsForTheDocument() = runTest {
+        val capture = capture()
         capture.onPermissionRequest(Request(own, video))
-        assertTrue("and Don't allow isn't remembered either", capture.prompt.value != null)
+        capture.prompt.value!!.answer(false)
+        val again = Request(own, video, audio)
+        capture.onPermissionRequest(again)
+        capture.onPermissionRequest(Request("https://meet.example.com", video))
+        assertTrue(again.denied)
+        assertNull("not asked again, whichever frame asks", capture.prompt.value)
+        assertEquals("nor Android", 1, asked.size)
+        capture.onPermissionRequest(Request("https://meet.example.com", audio))
+        assertTrue("what wasn't refused is still asked about", capture.prompt.value != null)
+        capture.prompt.value!!.answer(false)
+
+        capture.stop()
+        capture.onPermissionRequest(Request(own, video))
+        assertTrue("the stop forgets it", capture.prompt.value != null)
+        capture.prompt.value!!.answer(false)
+        capture.documentChanged()
+        capture.onPermissionRequest(Request(own, video))
+        assertTrue("and so does a new document", capture.prompt.value != null)
+        capture.prompt.value!!.answer(false)
+
+        capture.documentChanged()
+        asked.clear()
+        held = false
+        refusedForGood = listOf(Manifest.permission.CAMERA)
+        capture.onPermissionRequest(Request(own, video))
+        assertEquals(MediaCaptureType.Camera, capture.refused.value)
+        capture.refused.value = null
+        capture.onPermissionRequest(Request(own, video))
+        assertNull("the notice once a document", capture.refused.value)
+        assertEquals("and Android's question once", 1, asked.size)
+        held = true
+        capture.onPermissionRequest(Request(own, video))
+        assertTrue("allowed in Settings, it's asked about again", capture.prompt.value != null)
     }
 
     @Test

@@ -27,7 +27,7 @@ class PageLoopTests {
     private val lifecycle = AppLifecycle(scope, { 0L }, setAway = {}, closeNodes = {}, cameToFront = {})
     private val capture = PageCapture(
         app, ownersHosts = { emptySet() }, isLocked = { false }, isOnScreen = { true }, scope = scope,
-        permissions = { _, _, done -> done(false) }, stillCapturing = { false }, destroy = {},
+        permissions = { _, _, done -> done(false) }, holds = { false }, stillCapturing = { false }, destroy = {},
     )
     private var downloadsStopped = 0
     private val edges = PageEdges(
