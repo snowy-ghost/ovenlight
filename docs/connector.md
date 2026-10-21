@@ -213,24 +213,28 @@ that's only stopped starts again within a minute.
 
 The connector updates itself. Releases up to 1.0.9 don't: install a newer release
 [by hand](#install-a-release-by-hand) once, and from then on it does. It checks once a
-day, and installs a new release two days after it comes out, at a quiet moment: between
-02:00 and 05:00 your computer's time, once nothing has used your apps or the connector for
-10 minutes. A release that fixes a
-security problem in yours goes in at the first quiet 10 minutes, day or night. On a
-computer that's never quiet, or asleep every night, an update still waiting a day after
-it was due goes in at the next 02:00, or as soon as the connector runs after that, busy or
-not. Installing restarts the connector, so the apps it runs stop and open connections
-drop for a few seconds (up to a minute on Windows). If the new release doesn't serve your
-apps again within 10 minutes, the connector goes back to the one before and tries again
-the next night.
+day, and installs a new release two days after it comes out, at a quiet moment in the
+night: once nothing has used your apps or the connector for 10 minutes. Each computer's
+night starts at a time of its own between 02:00 and 04:00, and ends at 05:00, its own
+time. A release that fixes a security problem in yours goes in at the first quiet 10
+minutes, day or night. On a computer that's never quiet, or asleep every night, an update
+still waiting a day after it was due goes in at the start of the next night, busy or not,
+once the connector has been running and awake for 10 minutes. Installing restarts the
+connector, so the apps it runs stop and open connections drop for a few seconds (about 10
+on Linux, up to a minute on Windows). If the new release doesn't serve your apps again
+within 10 minutes, the connector goes back to the one before and tries again the next
+night. A restart of your computer in those 10 minutes starts them again.
 
 `ovenlight status` shows the last check, a release waiting its turn and when it installs,
-the last update, and one that failed. [security.md](security.md#updates) has what the
-connector checks before it installs anything. Only a release updates itself: from source,
-pull and run the install script again.
+the last update, one that failed, and whether yours has a known security problem.
+[security.md](security.md#updates) has what the connector checks before it installs
+anything. Only a release updates itself: from source, pull and run the install script
+again.
 
 - `ovenlight update off` stops installing updates. The connector still checks daily, and
-  `ovenlight doctor` still fails when your release has a known security problem.
+  `ovenlight doctor` still fails when your release has a known security problem, and warns
+  when no check has worked for seven days. Turn updates back on now and then: a connector
+  that misses a change of release keys can't check any more.
 - `ovenlight update on` turns them back on.
 
 ### Install a release by hand
