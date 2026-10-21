@@ -12,7 +12,8 @@
 #   scripts/publish-connector.sh --resign              the live index, signed again
 #
 # Signatures are checked by the one rule (connector-release-lib.sh). The folder goes up
-# alone: nothing points at it until its promote. A promote, pull or resign records itself in
+# alone, once its connector-v<version> tag is the commit it was built from: nothing points
+# at it until its promote. A promote, pull or resign records itself in
 # ~/Sync/ovenlight/releases/ before it uploads anything, so one that fails partway is
 # finished by running it again, and it goes up only when its serial is the highest signed
 # so far. latest/ and latest.json are uploaded fresh, never copied with a version's year-long
@@ -175,6 +176,10 @@ folder)
   [ -f SHA256SUMS ] || refuse "no SHA256SUMS in build/release: build $version"
   sig="$records/$version/SHA256SUMS.sig"
   [ -f "$sig" ] || refuse "no $sig: sign $version on the Air"
+  # Owners check a release with the allowed_signers at its tag.
+  built="$(cat "$records/$version/commit")"
+  [ "$(git -C "$root" rev-parse -q --verify "connector-v$version^{commit}")" = "$built" ] ||
+    refuse "connector-v$version isn't tagged on $built, the commit $version was built from: tag it"
   # The release is what the signed SHA256SUMS lists, with or without Windows.
   files="$(awk '{ print $2 }' SHA256SUMS) SHA256SUMS"
   while read -r _ f; do checkarchive "$f"; done < SHA256SUMS
