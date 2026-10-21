@@ -19,6 +19,7 @@ func TestReleaseKeysAreAllowedSigners(t *testing.T) {
 		key := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(k)))
 		found := false
 		for _, line := range strings.Split(string(signers), "\n") {
+			line = strings.TrimSpace(line) // a Windows checkout has CRLF
 			if strings.HasSuffix(line, " "+key) && strings.Contains(line, `namespaces="file,ovenlight-latest"`) {
 				found = true
 			}
