@@ -564,7 +564,12 @@ final class AppRegistryTests: XCTestCase {
         await nodes.disableOwner()
         XCTAssertEqual(registry.apps.map(\.id), [handAdded.id, shared.id])
         XCTAssertEqual(nodes.discovered, [], "what the node found goes with it, so nothing merges it back")
-        let after = await stores()
+        // WebKit may still list a store for a moment after removing it.
+        var after = await stores()
+        for _ in 0..<20 where after.contains(found.dataStoreID) {
+            try await Task.sleep(for: .milliseconds(100))
+            after = await stores()
+        }
         XCTAssertFalse(after.contains(found.dataStoreID), "its data store is deleted")
 
         await registry.mergeDiscovered([coach, recipes])

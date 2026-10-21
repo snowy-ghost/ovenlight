@@ -759,12 +759,15 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
     // MARK: Downloads
 
     /// Nothing downloads while this page is kept off screen either: a script's `a.click()`
-    /// would start one under another app. One the person started and the policy refused
-    /// says so.
+    /// would start one under another app. Past `DownloadPolicy.hasRoom` the download is
+    /// refused here, before WebKit starts it: one refused later never ends, and each holds a
+    /// process assertion, so a page downloading without end got Ovenlight killed. One the
+    /// person started and the policy refused says so.
     private func mayDownload(_ url: URL, from sourceHost: String?, tapped: Bool) -> Bool {
         guard webView?.window != nil else { return false }
         let locked = OverlayPresenter.pageWindow == nil
-        if DownloadPolicy.allows(url: url, from: sourceHost, appHost: app.host, locked: locked) { return true }
+        if DownloadPolicy.hasRoom(underWay: downloads.count, waiting: WebViewPool.shared.waitingDownloads[app.id]?.count ?? 0),
+           DownloadPolicy.allows(url: url, from: sourceHost, appHost: app.host, locked: locked) { return true }
         if tapped, !locked { downloadFailed(DownloadPolicy.name(in: url)) }
         return false
     }
@@ -783,14 +786,10 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
     }
 
     /// Each download gets a folder of its own, so the file keeps the name the page gave it.
-    /// One that asks after `stop()` cancelled it, or past `DownloadPolicy.hasRoom`, gets
-    /// nowhere to write.
+    /// One that asks after `stop()` cancelled it gets nowhere to write.
     func download(_ download: WKDownload, decideDestinationUsing response: URLResponse, suggestedFilename: String,
                   completionHandler: @escaping @MainActor (URL?) -> Void) {
-        let underWay = downloads.values.filter { $0.file != nil }.count
-        guard !stopped, DownloadPolicy.hasRoom(underWay: underWay, waiting: WebViewPool.shared.waitingDownloads[app.id]?.count ?? 0) else {
-            return completionHandler(nil)
-        }
+        guard !stopped else { return completionHandler(nil) }
         let folder = DownloadPolicy.directory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         guard (try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)) != nil else {
             return completionHandler(nil)
