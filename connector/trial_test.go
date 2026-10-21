@@ -443,6 +443,28 @@ func TestTrialBackstopOrTick(t *testing.T) {
 	}
 }
 
+// A release whose updater hangs holding its lock would never update again: it doesn't
+// pass, and the backstop rolls it back.
+func TestTrialWedgedUpdater(t *testing.T) {
+	if updateHour != time.Hour {
+		t.Skip("a compressed schedule")
+	}
+	tr, dir, installed := startTrialing(t, "coach")
+	d, _ := testDaemon(t)
+	d.upd = &updater{d: d, now: tr.clock.now}
+	d.nodes["coach"].serving = true
+	tr.attach(d)
+	d.upd.mu.Lock()
+	defer d.upd.mu.Unlock()
+	if tr.pass(11*time.Minute) || !tr.running() {
+		t.Fatal("passed with the updater wedged")
+	}
+	if !tr.giveUp() {
+		t.Fatal("the backstop didn't roll back")
+	}
+	rolledBack(t, dir, installed)
+}
+
 // During the last update's trial the updater downloads and swaps nothing, and once a swap
 // has begun the exit, it does nothing more.
 func TestUpdaterWaitsForTheTrial(t *testing.T) {

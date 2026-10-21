@@ -260,6 +260,16 @@ func (t *trial) tick() bool {
 		return false
 	}
 	err := t.failure(d)
+	// A pass holds the updater's lock, taken before the trial's as poll takes them: a
+	// release whose updater hangs holding it would never update again, so it's left to
+	// the backstop.
+	var u *updater
+	if err == nil && d.upd != nil {
+		if u = d.upd; !u.mu.TryLock() {
+			return false
+		}
+		defer u.mu.Unlock()
+	}
 	t.mu.Lock()
 	givingUp := t.givingUp
 	if err == nil && !givingUp {
@@ -278,14 +288,19 @@ func (t *trial) tick() bool {
 	// which passed.
 	t.end()
 	log.Printf("updates: %s passed its trial", t.rec.To)
-	if err := t.record(func(st *updateState) { st.Updated = &updateEvent{From: t.rec.From, To: t.rec.To, At: t.rec.At} }); err != nil {
+	passed := func(st *updateState) { st.Updated = &updateEvent{From: t.rec.From, To: t.rec.To, At: t.rec.At} }
+	if u != nil {
+		passed(&u.st)
+		u.save()
+	} else if err := recordFile(t.dir, passed); err != nil {
 		log.Printf("updates: recording the update to %s: %v", t.rec.To, err)
 	}
 	return true
 }
 
 // backstopAfter is how long past quietFor of time awake the backstop gives a trial that
-// hasn't ended. A tick that ends the trial waits a minute at most, for an update check.
+// hasn't ended. A pass waits for the updater's lock, which an update check holds a minute
+// at most.
 var backstopAfter = quietFor / 2
 
 // backstop ends a trial that tick can't: a release that deadlocks its daemon blocks tick
