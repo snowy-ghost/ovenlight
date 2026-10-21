@@ -413,8 +413,9 @@ class AppPage(
         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
             val overridden = edges.shouldOverrideUrlLoading(request)
             // The page's own loads only: WebView never asks about Ovenlight's or Back, and a tap
-            // carries a gesture. Refused, the page stays as it is, as in Chrome.
-            if (!overridden && request.isForMainFrame && !request.hasGesture() && !navigations.next()) {
+            // carries a gesture. A redirect is part of a navigation already counted, and carries
+            // no gesture even after a tap. Refused, the page stays as it is, as in Chrome.
+            if (!overridden && request.isForMainFrame && !request.hasGesture() && !request.isRedirect && !navigations.next()) {
                 if (navigations.count == PageNavigations.LIMIT + 1) {
                     OvenlightLog.i("${app.host}: over ${PageNavigations.LIMIT} navigations in ${PageNavigations.window}, refusing them")
                 }
