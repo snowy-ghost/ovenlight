@@ -10,8 +10,8 @@
 # <kind>-<serial>.base, the published index it was built on. Those records are the only history
 # the scripts read, never the bucket.
 #
-# OVENLIGHT_RELEASE_DRY=<folder> makes a dry run, which scripts/test-connector-release.sh does:
-# that folder stands in for everything outside the repo (build/release on the mini, the records,
+# OVENLIGHT_RELEASE_DRY=<folder> makes a dry run, which scripts/test-connector-release.sh does
+# in folders it marks with a .release-dry-run file, which this requires: that folder stands in for everything outside the repo (build/release on the mini, the records,
 # the release key folder and the bucket), no real one is reachable, and only fixture keys are
 # trusted: those in scripts/testdata/release-keys and connector/testdata/releasekey, whose
 # private halves are public. Outside a dry run they never are.
@@ -26,6 +26,7 @@ if [ -n "${OVENLIGHT_RELEASE_DRY+set}" ]; then
   case "$dry/" in
   "$home"/Sync/* | "$home"/.ssh/*) refuse "a dry run's folder can't be in ~/Sync or ~/.ssh" ;;
   esac
+  [ -f "$dry/.release-dry-run" ] || refuse "$dry isn't a dry run's folder: it has no .release-dry-run"
   release="$dry/build"         # build/release, on the mini
   minirelease="$dry/build"     # the same, from the Air
   records="$dry/sync/releases" # ~/Sync/ovenlight/releases
@@ -203,6 +204,16 @@ rulekeys() {
   echo "$records/$p/release_keys"
   for w in $pulled; do
     if below "$p" "$w" && below "$w" "$1"; then echo "$records/$w/release_keys"; fi
+  done
+}
+
+# livekeys: the release_keys of the live release, and of every pulled release above it, which
+# computers that took one keep. Each must list a key that signs the live index again.
+livekeys() {
+  local w
+  echo "$records/$live/release_keys"
+  for w in $pulled; do
+    if below "$live" "$w"; then echo "$records/$w/release_keys"; fi
   done
 }
 

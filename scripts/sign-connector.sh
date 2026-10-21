@@ -11,7 +11,8 @@
 #       the live release's pull: the index of the newest promoted release before it that
 #       wasn't pulled, with the key that signed the live index
 #   scripts/sign-connector.sh [--key <file>] --resign
-#       the live index again, with a key the live release lists
+#       the live index again, with a key the live release lists, as does every pulled
+#       release above it
 #
 # Each index gets the time now as its serial. What it signs goes in the release's folder in
 # ~/Sync/ovenlight/releases/, which scripts/publish-connector.sh publishes from on the mini.
@@ -200,8 +201,9 @@ pull)
 
 resign)
   [ -n "$newest" ] || refuse "no index is published yet"
-  haskey "$kblob" "$records/$live/release_keys" ||
-    refuse "the live release, $live, doesn't list this key, so it can't check the index"
+  for k in $(livekeys); do
+    haskey "$kblob" "$k" || refuse "$k doesn't list this key, so computers on that release can't check the index"
+  done
   newkeywait "$kblob" "$now"
   ordered "$now"
   releaseindex "$live" "$now" > "$tmp/resign-$now.json"

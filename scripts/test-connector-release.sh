@@ -31,6 +31,7 @@ fresh() {
   dry="$tmp/$1"
   repo="$dry/repo"
   mkdir -p "$dry"/{build,sync/releases,keys,private,bucket/connector/latest,headers/connector/latest} "$repo"
+  touch "$dry/.release-dry-run"
   export OVENLIGHT_RELEASE_DRY="$dry"
   echo '{"latest": "1.0.9", "secure": "1.0.6"}' > "$dry/bucket/connector/latest.json"
   echo "1.0.9's" > "$dry/bucket/connector/latest/SHA256SUMS"
@@ -141,6 +142,19 @@ ship() {
   promote "$1" "$3"
 }
 
+# forge <version> <kind> <key> <release>: an index signed straight with ssh-keygen, for a
+# publish to refuse on its own, as sign-connector.sh would have first: <release>'s index,
+# with the time now as its serial, built on the newest index published.
+forge() {
+  local d="$dry/sync/releases" s f
+  tick
+  s="$(date +%s)"
+  f="$d/$1/$2-$s"
+  sed "s/\"serial\": 0,/\"serial\": $s,/" "$d/$4/index.json" > "$f.json"
+  ssh-keygen -Y sign -q -f "$dry/private/$3" -n ovenlight-latest < "$f.json" > "$f.json.sig"
+  for s in "$d"/*/*.published; do s="${s#"$d/"}"; echo "${s%.published}"; done | sort -t- -k2,2n | tail -1 > "$f.base"
+}
+
 # header <key> <cache-control>: the object's cache, as uploaded.
 header() {
   grep -qxF "Cache-Control: $2" "$dry/headers/$1" || fail "$1 isn't cached as \"$2\": $(cat "$dry/headers/$1" 2>&1)"
@@ -224,6 +238,8 @@ build 1.1.2 1.0.6
 signfolder 1.1.2 air1
 latest_is 1.1.1 air1
 refused "1.1.2 isn't the live release (1.1.1)" sign air1 --pull 1.1.2
+forge 1.1.2 pull air1 1.1.1
+refused "1.1.2 isn't the live release (1.1.1)" publish --pull 1.1.2
 pull 1.1.1 air1 1.1.0
 refused "nothing promoted before 1.1.0" sign air1 --pull 1.1.0
 
@@ -310,6 +326,10 @@ tick
 refused "four weeks and four days" sign air2 --promote 1.1.3
 tick
 refused "four weeks and four days" sign air2 --resign
+forge 1.1.3 promote air2 1.1.3
+refused "four weeks and four days" publish --promote 1.1.3
+forge 1.1.1 resign air2 1.1.1
+refused "four weeks and four days" publish --resign
 backdate 33
 # The live index re-signed with the new key before the canary, then the promote and a pull.
 resign air2 1.1.1
@@ -321,6 +341,12 @@ refused "add its key back first" publish --pull 1.1.3
 signers air2 paper1 air1
 run publish --pull 1.1.3
 latest_is 1.1.1 air2
+# Computers that took 1.1.3 keep it, so the live index can't be signed again with the key it
+# dropped.
+tick
+refused "1.1.3/release_keys doesn't list this key" sign air1 --resign
+forge 1.1.1 resign air1 1.1.1
+refused "1.1.3/release_keys lists" publish --resign
 # 1.1.3, which dropped the old key, was pulled, so the next release is checked against its
 # keys too: the old key can't sign it.
 keys air2 paper1 air1
@@ -330,6 +356,24 @@ keys air2 paper1
 build 1.1.4 1.0.6
 signfolder 1.1.4 air2
 promote 1.1.4 air2
+
+fresh rule "a release signed while its key was trusted, then promoted after a pull took that trust away"
+keyfolder air1 paper1
+keys air1 paper1
+ship 1.1.0 1.0.6 air1 1.1.0
+keyfolder air2 paper1
+keys air2 paper1 air1
+ship 1.1.1 1.0.6 air1
+# Signed while 1.1.1, which lists air2, is live. 1.1.0, which doesn't, is live again after the
+# pull, so the computers that would install 1.1.2 can't check air2.
+keys air2 paper1
+build 1.1.2 1.0.6
+signfolder 1.1.2 air2
+pull 1.1.1 air1 1.1.0
+tick
+refused "1.1.0/release_keys doesn't list this key" sign air2 --promote 1.1.2
+forge 1.1.2 promote air2 1.1.2
+refused "1.1.0/release_keys, which updaters installing 1.1.2 hold" publish --promote 1.1.2
 
 fresh secure "a signed promote that raises secure and mustn't ship, superseded with --resign"
 keyfolder air1 paper1
@@ -348,6 +392,14 @@ build 1.1.3 1.0.5
 signfolder 1.1.3 air1
 tick
 refused "secure would go down" sign air1 --promote 1.1.3
+forge 1.1.3 promote air1 1.1.3
+refused "secure would go down" publish --promote 1.1.3
+forge 1.1.0 promote air1 1.1.0
+refused "1.1.0 was promoted already" publish --promote 1.1.0
+build 1.1.4 1.0.6
+signfolder 1.1.4 air1
+forge 1.1.4 promote paper1 1.1.4
+refused "are signed with different keys" publish --promote 1.1.4
 
 fresh gates "what no release gets past"
 keyfolder air1 paper1
@@ -381,6 +433,11 @@ refused "isn't a folder" env OVENLIGHT_RELEASE_DRY= "$repo/scripts/sign-connecto
 mkdir -p "$dry/home/Sync/ovenlight" "$dry/home/.ssh"
 refused "can't be in ~/Sync or ~/.ssh" env HOME="$dry/home" OVENLIGHT_RELEASE_DRY="$dry/home/Sync/ovenlight" "$repo/scripts/sign-connector.sh" --key "$dry/private/air1" 1.1.0
 refused "can't be in ~/Sync or ~/.ssh" env HOME="$dry/home" OVENLIGHT_RELEASE_DRY="$dry/home/.ssh" "$repo/scripts/publish-connector.sh" 1.1.0
+refused "has no .release-dry-run" env OVENLIGHT_RELEASE_DRY="$repo" "$repo/scripts/release-connector.sh" --unsigned 1.1.0 1.0.6 1.1.0
+# Outside a dry run, with defaults that point into the scratch folder all the same, a fixture
+# key never signs. It's refused before the mini is asked the time.
+refused "is a dry-run fixture key" env -u OVENLIGHT_RELEASE_DRY HOME="$dry/home" \
+  "$repo/scripts/sign-connector.sh" --key "$dry/private/air1" 1.1.0
 refused "isn't the two keys in" sign paper2 1.1.0
 # An archive with another version's folder in it.
 a=ovenlight-connector-linux-amd64.tar.gz

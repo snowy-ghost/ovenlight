@@ -248,11 +248,14 @@ resign)
   idx="$records/$id.json"
   version="${id%%/*}"
   releaseindex "$version" "$(serialof "$id")" | cmp -s - "$idx" || refuse "$id isn't $version's index"
-  # Checked against the live release's own keys.
-  verify "$idx" "$idx.sig" ovenlight-latest "$records/$version/release_keys" ||
-    refuse "$id isn't signed by a key $version lists"
+  # Checked against the keys of the live release, and of the pulled ones above it.
+  for f in $(livekeys); do
+    verify "$idx" "$idx.sig" ovenlight-latest "$f" || refuse "$id isn't signed by a key $f lists"
+  done
   k="$(signer "$idx" "$idx.sig" ovenlight-latest)"
-  files=
+  # latest/ goes up again, so a promote cut short before it can't leave a mix of releases.
+  fetchrelease "$version"
+  documented "$version"
   if ! begin "$id"; then
     [ "$version" = "$live" ] || refuse "$id is for $version, and the live release is ${live:-none}"
     based "$id"
