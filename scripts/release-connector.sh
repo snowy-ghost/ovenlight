@@ -27,8 +27,10 @@
 # stamps none in a git worktree, so run it in a clone). --unsigned skips all signing and
 # notarization, and those checks, to test everything else, and writes no index. Only a dry
 # run's build (OVENLIGHT_RELEASE_DRY, in connector-release-lib.sh), which is unsigned and
-# has stand-ins for the binaries, has one. In every mode it refuses a binary that holds the
-# test release key, whose private half is public. Notarization uses an App Store
+# has stand-ins for the binaries, has one. It refuses a binary that holds the test release
+# key in every mode, and outside a dry run any key in connector/testdata/releasekey, all of
+# whose private halves are public, so a build with the mock release keys can't go out.
+# Notarization uses an App Store
 # Connect API key named by ASC_KEY_ID, ASC_ISSUER_ID and ASC_KEY_PATH in the environment.
 # Over SSH, unlock the login keychain first. Windows signing uses jsign (brew install jsign)
 # and the Azure CLI, signed in (az login) as someone with the Artifact Signing Certificate
@@ -67,7 +69,22 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 . "$root/scripts/connector-release-lib.sh"
 conn="$root/connector"
 name="ovenlight-connector-$version"
-testkey="$(awk '{ print $2 }' "$conn/testdata/releasekey/test-key.pub")"
+# The keys no release may trust: the test key, and outside a dry run, whose stand-ins may
+# hold the mock release keys, every key whose private half is in connector/testdata/releasekey.
+if [ -n "$dry" ]; then
+  awk '{ print $2 }' "$conn/testdata/releasekey/test-key.pub" > "$tmp/public"
+else
+  cat /dev/null "$conn"/testdata/releasekey/*.pub | awk '{ print $2 }' > "$tmp/public"
+fi
+[ -s "$tmp/public" ] || refuse "no connector/testdata/releasekey/test-key.pub"
+
+# public <file>: refuses a file that holds one of those keys.
+public() {
+  if LC_ALL=C grep -qF -f "$tmp/public" "$1"; then
+    refuse "$1 holds a release key whose private half is public, in connector/testdata/releasekey"
+  fi
+}
+public "$conn/release_keys"
 
 # Only a build that can be signed gets an index: a real one, or a dry run's.
 indexed=true
@@ -168,14 +185,6 @@ EOF
   fi
 }
 
-# checktestkey <binary>: refuses a binary that trusts the test release key, which an
-# ovenlight_testkey build or a release_keys holding it would.
-checktestkey() {
-  if [ -z "$testkey" ] || LC_ALL=C grep -qF "$testkey" "$1"; then
-    refuse "$1 holds the test release key, whose private half is public"
-  fi
-}
-
 # build <binary> <env>...: go build in that environment. A dry run writes a stand-in instead,
 # which holds release_keys as the binary embeds it.
 build() {
@@ -210,7 +219,7 @@ for os in linux windows; do
     [ "$os" = windows ] && exe=ovenlight.exe
     build "$dir/$exe" CGO_ENABLED=0 GOOS="$os" GOARCH="$arch"
     $unsigned || checkstamp "$dir/$exe"
-    checktestkey "$dir/$exe"
+    public "$dir/$exe"
     notices CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" > "$dir/THIRD_PARTY_NOTICES.txt"
     if [ "$os" = linux ]; then
       mkdir -p "$dir/systemd"
@@ -240,7 +249,7 @@ for arch in arm64 amd64; do
   build "$tmp/ovenlight-$arch" CGO_ENABLED=1 GOOS=darwin GOARCH="$arch" \
     CGO_CFLAGS="-O2 -g -mmacosx-version-min=$MACOS_MIN" CGO_LDFLAGS="-mmacosx-version-min=$MACOS_MIN"
   $unsigned || checkstamp "$tmp/ovenlight-$arch"
-  checktestkey "$tmp/ovenlight-$arch"
+  public "$tmp/ovenlight-$arch"
   notices CGO_ENABLED=1 GOOS=darwin GOARCH="$arch" > "$tmp/notices-$arch.txt"
 done
 if [ -n "$dry" ]; then

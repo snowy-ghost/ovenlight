@@ -39,7 +39,7 @@ fresh() {
   (cd "$root" && tar cf - scripts/*-connector.sh scripts/connector-release-lib.sh scripts/testdata \
     connector/go.mod connector/keys.go connector/install.sh connector/uninstall.sh \
     connector/install.ps1 connector/uninstall.ps1 connector/systemd connector/launchd \
-    connector/testdata/releasekey/test-key.pub LICENSE NOTICE) | (cd "$repo" && tar xf -)
+    connector/testdata/releasekey/*.pub LICENSE NOTICE) | (cd "$repo" && tar xf -)
   mkdir -p "$repo/docs"
   : > "$repo/docs/allowed_signers"
   git -C "$repo" init -q -b master
@@ -347,7 +347,24 @@ fresh gates "what no release gets past"
 keyfolder air1 paper1
 { cat "$fixtures/air1.pub" "$fixtures/paper1.pub" "$root/connector/testdata/releasekey/test-key.pub"; } > "$repo/connector/release_keys"
 commit "the test key"
-refused "holds the test release key" release 1.1.0 1.0.6 1.1.0
+refused "holds a release key whose private half is public" release 1.1.0 1.0.6 1.1.0
+# A dry run builds with the mock release keys, which stand in for the real ones until they're
+# made, and a real build refuses them before it builds anything. Its defaults point into the
+# scratch folder all the same.
+mocks=
+for k in "$root"/connector/testdata/releasekey/*.pub; do
+  if [ "$(basename "$k")" != test-key.pub ]; then mocks="$mocks $k"; fi
+done
+if [ -n "$mocks" ]; then
+  # shellcheck disable=SC2086 # one path per word
+  cat "$fixtures/air1.pub" "$fixtures/paper1.pub" $mocks > "$repo/connector/release_keys"
+  commit "the mock keys"
+  build 1.1.0 1.0.6 1.1.0
+  pass "a dry run builds with the mock release keys"
+  mkdir -p "$dry/home"
+  refused "holds a release key whose private half is public" env -u OVENLIGHT_RELEASE_DRY HOME="$dry/home" \
+    "$repo/scripts/release-connector.sh" --unsigned 1.1.0 1.0.6 1.1.0
+fi
 keys air1 paper1
 refused "a dry run builds only with --unsigned" "$repo/scripts/release-connector.sh" 1.1.0 1.0.6 1.1.0
 build 1.1.0 1.0.6 1.1.0

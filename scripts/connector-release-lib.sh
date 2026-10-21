@@ -12,8 +12,9 @@
 #
 # OVENLIGHT_RELEASE_DRY=<folder> makes a dry run, which scripts/test-connector-release.sh does:
 # that folder stands in for everything outside the repo (build/release on the mini, the records,
-# the release key folder and the bucket), no real one is reachable, and only the fixture keys in
-# scripts/testdata/release-keys are trusted. Outside a dry run they never are.
+# the release key folder and the bucket), no real one is reachable, and only fixture keys are
+# trusted: those in scripts/testdata/release-keys and connector/testdata/releasekey, whose
+# private halves are public. Outside a dry run they never are.
 shopt -s nullglob
 
 refuse() { echo "$*" >&2; exit 1; }
@@ -132,9 +133,10 @@ nodrop() {
   done
 }
 
-# fixture <blob>: whether a key is a dry-run fixture or the connector's test key.
+# fixture <blob>: whether a key is a fixture: a dry run's, the connector's test key, or a
+# mock release key.
 fixture() {
-  cat "$root"/scripts/testdata/release-keys/*.pub "$root/connector/testdata/releasekey/test-key.pub" |
+  cat /dev/null "$root"/scripts/testdata/release-keys/*.pub "$root"/connector/testdata/releasekey/*.pub |
     awk -v b="$1" '$2 == b { found = 1 } END { exit !found }'
 }
 
