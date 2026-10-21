@@ -1148,18 +1148,35 @@ func TestProcessGroupOfPidZero(t *testing.T) {
 	}
 }
 
-// The installed connector is the person's background service; one for other paths isn't.
+// The installed connector is the person's background service, started by the service
+// manager; one for other paths isn't.
 func TestStartFix(t *testing.T) {
 	if note := runNote(&paths{config: defaultConfigPath(), state: defaultStateDir()}, "coach"); strings.Contains(note, "--config") || !strings.Contains(note, " publish --slug coach --dir") {
 		t.Errorf("runNote, default paths: %s", note)
 	}
 	fix := startFix(&paths{config: defaultConfigPath(), state: defaultStateDir()})
-	if !strings.Contains(fix, "install script again") || strings.Contains(fix, "ovenlight run") {
+	if !strings.Contains(fix, serviceCommands[runtime.GOOS].start) || !strings.Contains(fix, defaultLogPath()) ||
+		strings.Contains(fix, "install script") || strings.Contains(fix, "ovenlight run") {
 		t.Errorf("default paths: %s", fix)
 	}
 	fix = startFix(&paths{config: "/tmp/c.json", state: "/tmp/s"})
 	if strings.Contains(fix, "install script") || !strings.Contains(fix, "--config /tmp/c.json and --state /tmp/s") {
 		t.Errorf("other paths: %s", fix)
+	}
+}
+
+// The connector's messages and docs/connector.md give the same commands.
+func TestServiceCommandsMatchDocs(t *testing.T) {
+	doc, err := os.ReadFile("../docs/connector.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for goos, c := range serviceCommands {
+		for _, cmd := range []string{c.start, c.restart} {
+			if cmd = strings.TrimSuffix(cmd, " in an administrator PowerShell"); !strings.Contains(string(doc), "`"+cmd+"`") {
+				t.Errorf("%s: docs/connector.md doesn't give %s", goos, cmd)
+			}
+		}
 	}
 }
 

@@ -163,27 +163,24 @@ windows opened after you add it. On Windows, `install.ps1` adds the bin folder t
 
 ### Start and stop
 
-`ovenlight status` says whether the connector runs. To stop it on macOS until you next log
-in:
+`ovenlight status` says whether the connector runs. On macOS:
 
-```sh
-launchctl bootout gui/$(id -u)/com.snowyghost.ovenlight.connector
-```
+- Start: `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.snowyghost.ovenlight.connector.plist`
+- Stop, until you next log in: `launchctl bootout gui/$(id -u)/com.snowyghost.ovenlight.connector`
+- Restart: `launchctl kickstart -k gui/$(id -u)/com.snowyghost.ovenlight.connector`
 
 On Linux:
 
-```sh
-systemctl --user disable --now ovenlight
-```
+- Start: `systemctl --user enable --now ovenlight`
+- Stop: `systemctl --user disable --now ovenlight`
+- Restart: `systemctl --user restart ovenlight`
 
-On Windows, in an administrator PowerShell, disable the task as well as stopping it, since
-a task that's only stopped starts again within a minute:
+On Windows, in an administrator PowerShell. Stopping disables the task too, since a task
+that's only stopped starts again within a minute.
 
-```powershell
-Disable-ScheduledTask ovenlight; Stop-ScheduledTask ovenlight
-```
-
-Running the install script again starts the connector.
+- Start: `Enable-ScheduledTask ovenlight; Start-ScheduledTask ovenlight`
+- Stop: `Disable-ScheduledTask ovenlight; Stop-ScheduledTask ovenlight`
+- Restart: `Stop-ScheduledTask ovenlight; Start-ScheduledTask ovenlight`
 
 ## Update
 
