@@ -231,6 +231,13 @@ final class DownloadPolicyTests: XCTestCase {
         XCTAssertFalse(allows("javascript:void(0)"))
     }
 
+    func testOnlySoManyFilesWaitForTheSheet() {
+        XCTAssertTrue(DownloadPolicy.hasRoom(underWay: 0, waiting: 0))
+        XCTAssertTrue(DownloadPolicy.hasRoom(underWay: 2, waiting: 7))
+        XCTAssertFalse(DownloadPolicy.hasRoom(underWay: 3, waiting: 0), "three under way at most")
+        XCTAssertFalse(DownloadPolicy.hasRoom(underWay: 1, waiting: 9), "ten for the sheet at most")
+    }
+
     func testAttachmentsAndFilesWebKitCantShowDownload() {
         func action(_ status: Int?, _ disposition: String?, canShow: Bool = true) -> DownloadPolicy.ResponseAction {
             DownloadPolicy.action(status: status, disposition: disposition, canShow: canShow)

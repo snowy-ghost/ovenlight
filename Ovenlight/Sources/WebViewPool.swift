@@ -783,10 +783,14 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
     }
 
     /// Each download gets a folder of its own, so the file keeps the name the page gave it.
-    /// One that asks after `stop()` cancelled it gets nowhere to write.
+    /// One that asks after `stop()` cancelled it, or past `DownloadPolicy.hasRoom`, gets
+    /// nowhere to write.
     func download(_ download: WKDownload, decideDestinationUsing response: URLResponse, suggestedFilename: String,
                   completionHandler: @escaping @MainActor (URL?) -> Void) {
-        guard !stopped else { return completionHandler(nil) }
+        let underWay = downloads.values.filter { $0.file != nil }.count
+        guard !stopped, DownloadPolicy.hasRoom(underWay: underWay, waiting: WebViewPool.shared.waitingDownloads[app.id]?.count ?? 0) else {
+            return completionHandler(nil)
+        }
         let folder = DownloadPolicy.directory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         guard (try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)) != nil else {
             return completionHandler(nil)
@@ -1102,6 +1106,11 @@ enum DownloadPolicy {
     static func removeFolder(of file: URL) {
         try? FileManager.default.removeItem(at: file.deletingLastPathComponent())
     }
+
+    /// Whether an app's page may start another download: three under way and ten for the
+    /// share sheet at most, as on Android. A page that downloaded without end once filled one
+    /// sheet with 1,491 files, which froze Ovenlight each time it closed.
+    static func hasRoom(underWay: Int, waiting: Int) -> Bool { underWay < 3 && underWay + waiting < 10 }
 
     /// `sourceHost`: the host of the frame that started it, when WebKit says (a navigation
     /// response doesn't).
