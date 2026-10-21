@@ -123,7 +123,7 @@ try {
     -Action $action -Trigger $triggers -Principal $principal -Settings $settings -Force | Out-Null
   Start-ScheduledTask -TaskName $task
 } catch {
-  if ($aside -and -not (Test-Path $bin)) { Move-Item $aside $bin }
+  if ($aside -and -not (Test-Path $bin)) { Move-Item $aside $bin -ErrorAction Continue }
   if ($existing) {
     Enable-ScheduledTask -TaskName $task | Out-Null
     Start-ScheduledTask -TaskName $task
