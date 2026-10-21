@@ -421,7 +421,9 @@ pulled release back to a computer that saw the pull. An index doesn't expire, so
 the server holds one back, `status` and `doctor` still show recent checks. The
 [verified steps](connector.md#check-a-download-first) for installing by hand check the
 same signed index, so they too take only a release once published as the latest, though
-not that it still is: an older index, with its release, passes them too.
+not that it still is: an older index, with its release, passes them too. They trust this
+repository's `allowed_signers`, so a change pushed to master changes what they accept:
+the connector itself trusts only the keys built into it.
 
 Once a day the connector fetches the signed index,
 `https://downloads.ovenlight.app/connector/latest.json`, and its signature,
