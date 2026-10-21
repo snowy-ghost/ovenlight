@@ -1,0 +1,13 @@
+{
+ "latest": "1.1.1",
+ "secure": "1.0.6",
+ "reinstallBelow": "1.1.0",
+ "serial": 1793000000,
+ "archives": {
+  "ovenlight-connector-macos.tar.gz": "7e49a95cbf5be6e0e0eaa4530d1e934ec5288ba9049847ee91308f725b7be4e8",
+  "ovenlight-connector-linux-amd64.tar.gz": "87cd25eec014a456ef176e6cc246ec258d02e5a7b9a0cd3622d8dcabcbd2b505",
+  "ovenlight-connector-linux-arm64.tar.gz": "c5f02acdea05745565d6bda66ea755ba36fc5d53385ebe2f7efc173ed97e69e2",
+  "ovenlight-connector-windows-amd64.zip": "4ca88ea604418655a9fc0b33ce451232db04d93fc5fff0aa96afd84a2f8b5805",
+  "ovenlight-connector-windows-arm64.zip": "d04a9c20bc9457f0e67445b4cbf80dd25356c0e1b5f35aafc11e613973448382"
+ }
+}
