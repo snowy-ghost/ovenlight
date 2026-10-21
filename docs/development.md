@@ -235,6 +235,65 @@ The first release that updates itself, 1.1.0 here, goes out once, with 1.1.1 aft
    `latest.json`, so promote soon after the merge. Promote 1.1.1 a day later, the owners'
    first automatic update.
 
+#### Changing a release key
+
+A change of release keys takes two releases. R brings in the new keys, signed with an old
+one, and R+1 drops that old key. R's `connector/release_keys` is the two keys that sign
+from then on plus the old key that signs R, as `sign-connector.sh` requires.
+`docs/allowed_signers` adds the new keys. A key that leaves `release_keys` stays in
+`allowed_signers` until R+1 is promoted, since a pull back to a release it signed puts
+that release's files in `latest/` again. `publish-connector.sh --pull` says when one has
+to come back.
+
+`TestReleaseKeySignatures` wants one test signature in `connector/testdata/update/` for
+each key in `release_keys`. R adds one for each new key, as the next free
+`index.json.release-<n>.sig`, and the commit that drops a key deletes its signature. Never
+run `connector/testdata/update/sign.sh` after the key swap: it replaces the real keys'
+signatures with the mock keys'.
+
+For a planned move to a new Air, the old Air signs R:
+
+1. On the new Air, make its Touch ID key:
+
+   ```sh
+   sc_auth create-ctk-identity -l ovenlight-release -k p-256-ne -t bio
+   cd ~/.ssh && ssh-keygen -w /usr/lib/ssh-keychain.dylib -K -N ''
+   ```
+
+   Its public half, `~/.ssh/id_ecdsa_sk_rk_ovenlight-release.pub`, takes the place of the
+   old Air's own, `touchid.pub`, in the old Air's `~/.ssh/ovenlight-release-keys/`. The
+   new Air's folder gets the same two files.
+2. In the new Air's clone, sign the new key's test signature (number 3 at the first
+   change):
+
+   ```sh
+   SSH_SK_PROVIDER=/usr/lib/ssh-keychain.dylib ssh-keygen -Y sign -q -f ~/.ssh/id_ecdsa_sk_rk_ovenlight-release -n ovenlight-test < connector/testdata/update/index.json > connector/testdata/update/index.json.release-3.sig
+   ```
+
+3. Commit R's keys and signature, then release R as usual on the old Air. A release needed
+   before R+1 can go out is signed there too and lists the same three keys.
+4. R+1 drops the old key and is signed on the new Air. Its canary needs the live index
+   signed with the new key (`--resign`). That and R+1's promote are refused until four
+   weeks and four days after the last promote signed with the old key. Keep the old Air
+   until R+1 is promoted, since a pull before then is signed with the old key.
+
+After a lost Air, the paper key signs R:
+
+1. On the replacement Air, make its Touch ID key with the two commands above. Then run key
+   setup (`~/Sync/ovenlight/release-key-setup.sh`). It makes a new paper key, files both
+   new public keys in `~/.ssh/ovenlight-release-keys/`, and signs a test signature with
+   each in `~/Sync/ovenlight/release-key-test/`.
+2. R lists the two new keys and the old paper key, and drops the lost key and its
+   signature. Copy key setup's `index.json.release-1.sig` and `index.json.release-2.sig`
+   in under the next two free numbers.
+3. The old paper key signs what R needs: its folder, the `--resign` before its canary and
+   its promote. It also signs any pull before R+1 is promoted. For each, type it from
+   paper into a file and `chmod 600` it. Write its public half beside it with
+   `ssh-keygen -y -f <file> > <file>.pub`, which also checks the passphrase. Sign with
+   `--key <file>`, then delete both files.
+4. R+1 drops the old paper key and is signed with the new Touch ID key. Its `--resign`
+   and promote wait the same four weeks and four days.
+
 ## The iPhone app
 
 Building the app needs Xcode 26 or later, for the Icon Composer icon and the iOS 26 glass
