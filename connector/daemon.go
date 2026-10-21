@@ -52,7 +52,6 @@ type daemon struct {
 	trial *trial   // the last update's trial, while this binary is on it
 	// exits takes why the connector exits through its normal shutdown for the service to
 	// start the binary in bin, after a swap or a rollback.
-	exitOnce  sync.Once
 	exits     chan string
 	exitBegun atomic.Bool  // set by exit: the updater does nothing more
 	calls     atomic.Int32 // control requests being answered
@@ -101,7 +100,7 @@ func runDaemon(configPath, stateDir string, dev devOptions, service bool) error 
 		return err
 	}
 	d := &daemon{configPath: configPath, stateDir: stateDir, dev: dev, sh: sh, nodes: map[string]*appNode{},
-		procs: newSupervisors(appLogDir(stateDir)), trial: serviceTrial}
+		procs: newSupervisors(appLogDir(stateDir)), trial: serviceTrial, exits: make(chan string, 1)}
 	log.Printf("Ovenlight connector starting (config %s, state %s)", configPath, stateDir)
 	if dev.ControlURL != "" {
 		log.Printf("DEV MODE: control server %s", dev.ControlURL)
@@ -137,7 +136,7 @@ func runDaemon(configPath, stateDir string, dev devOptions, service bool) error 
 			if d.trial != nil {
 				d.trial.stopped()
 			}
-		case why := <-d.exiting():
+		case why := <-d.exits:
 			log.Printf("%s: shutting down, for the service to start the connector again", why)
 			// A shutdown that hangs mustn't keep the service from starting the binary in bin.
 			time.AfterFunc(time.Minute, func() {
@@ -157,17 +156,12 @@ func runDaemon(configPath, stateDir string, dev devOptions, service bool) error 
 	}
 }
 
-func (d *daemon) exiting() chan string {
-	d.exitOnce.Do(func() { d.exits = make(chan string, 1) })
-	return d.exits
-}
-
 // exit has the connector shut down as on SIGTERM, and exit for the service to start it
 // again: the binary now in bin.
 func (d *daemon) exit(why string) {
 	d.exitBegun.Store(true)
 	select {
-	case d.exiting() <- why:
+	case d.exits <- why:
 	default: // already exiting
 	}
 }
