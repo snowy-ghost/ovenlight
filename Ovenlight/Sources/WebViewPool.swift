@@ -260,8 +260,10 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
     private var downloads: [ObjectIdentifier: (download: WKDownload, file: URL?, tapped: Bool)] = [:]
     /// Downloads agreed to that WebKit hasn't made yet, each holding its place under the cap.
     private var agreed = AgreedDownloads()
-    /// `<a download>` actions so far, so one answered late can tell a newer one came.
-    private var downloadActions = 0
+    /// The newest `<a download>` waiting for the page's script to finish (see `decidePolicyFor`),
+    /// and whether a round trip to the page's process is out for it.
+    private var newestDownload: DialogAnswer<Bool>?
+    private var waitingForPage = false
     /// A brief message over the page, such as a download that failed; it goes by itself.
     @Published private(set) var notice: String?
     private var noticeTask: Task<Void, Never>?
@@ -493,17 +495,25 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
             // `<a download>`, of the app's own pages or of a blob or data URL. Answered at once:
             // the page's next navigation (a `#fragment` change too) takes the question back, and
             // the download with it. While one agreed to hasn't become a download yet, the page
-            // is starting several at once and WebKit keeps only the last, so after a moment only
-            // the newest is agreed to.
+            // may be starting several at once, and WebKit keeps only the last: only the newest is
+            // answered, once the script that started it has run (a round trip to the page's
+            // process). Waiting any longer lost the downloads of pages that change their
+            // fragment soon after.
             let source = (action.sourceFrame as WKFrameInfo?)?.securityOrigin.host
             let tap = Self.isTap(action)
-            downloadActions += 1
             guard agreed.count > 0 else { return decisionHandler(mayDownload(url, from: source, tapped: tap) ? .download : .cancel) }
-            let turn = downloadActions
-            Task { [weak self] in
-                try? await Task.sleep(for: AgreedDownloads.settle)
-                guard let self, turn == downloadActions else { return decisionHandler(.cancel) }
-                decisionHandler(mayDownload(url, from: source, tapped: tap) ? .download : .cancel)
+            newestDownload?(false)
+            newestDownload = DialogAnswer(fallback: false) { [weak self] go in
+                decisionHandler(go && self?.mayDownload(url, from: source, tapped: tap) == true ? .download : .cancel)
+            }
+            guard !waitingForPage else { return }
+            waitingForPage = true
+            webView.evaluateJavaScript("0", in: nil, in: .defaultClient) { [weak self] _ in
+                guard let self else { return }
+                waitingForPage = false
+                let newest = newestDownload
+                newestDownload = nil
+                newest?(true)
             }
         case .allow:
             decisionHandler(.allow)
@@ -1160,9 +1170,6 @@ struct PageDialogs {
 /// killed. Each holds a place under the cap until it becomes a download, or for `expiry`.
 struct AgreedDownloads {
     static let expiry: Duration = .seconds(30)
-    /// How long a download started while another is still being made waits, so only the
-    /// newest of a handler's several is agreed to.
-    static let settle: Duration = .milliseconds(100)
 
     private var agreed: [ContinuousClock.Instant] = []
     private let now: () -> ContinuousClock.Instant
