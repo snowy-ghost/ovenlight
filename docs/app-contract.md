@@ -162,9 +162,9 @@ None of this is required: an app without it is still listed, by name.
   site, or rely on a popup and `window.opener`, don't return to the app. Past three Safari
   sheets in a row, Ovenlight asks before the next, and the person can stop the page's
   dialogs, which stops these too until the app is reloaded or opened again.
-- **Navigations**: a page's own (reloads, redirects, `#fragment` changes) are capped at 200
-  in 10 seconds, and refused past that until the 10 seconds are up, so a redirect loop
-  stops instead of freezing the app. Taps, Back and the app menu's Reload always go.
+- **Navigations**: a page's own (reloads, redirects, links it clicks itself) are capped at
+  200 in 10 seconds, and refused past that until the 10 seconds are up, so a redirect loop
+  stops instead of freezing the app. Back and the app menu's Reload always go.
 - **Other apps**: a page can't open `ovenlight://` links directly. Other apps open only
   from a link activated in the page's main frame, and Ovenlight first asks "Open in
   another app?" naming the link, except for `tel:`, `facetime:` and `facetime-audio:`,

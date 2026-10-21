@@ -494,9 +494,10 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
         guard let url = action.request.url else { return decisionHandler(.allow) }
         let isMainFrame = action.targetFrame?.isMainFrame ?? true
         let decision = NavigationPolicy.decide(url: url, appHost: app.host, isMainFrame: isMainFrame, tapped: Self.isTap(action))
-        // The page's own loads only: not a download, and not a tap or Back, which go as fast as
-        // the person does. Refused, the page stays as it is, as in Chrome.
-        if isMainFrame, decision == .allow, !action.shouldPerformDownload, !Self.isTap(action),
+        // The page's own loads, taps included: a script's click counts as one, and the person
+        // never comes near the cap. Not a download or Back. Refused, the page stays as it is,
+        // as in Chrome.
+        if isMainFrame, decision == .allow, !action.shouldPerformDownload,
            action.navigationType != .backForward, !navigations.next() {
             if navigations.count == PageNavigations.limit + 1 {
                 Self.log.notice("\(self.app.host, privacy: .public): over \(PageNavigations.limit) navigations in \(PageNavigations.window), refusing them")
