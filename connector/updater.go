@@ -572,6 +572,9 @@ func readUpdateView(stateDir, v string, self bool) *updateView {
 	u.Latest, u.Secure, u.NeedsScript, u.BelowSecure = p.idx.Latest, p.idx.Secure, p.script, p.security
 	if p.target != "" {
 		u.Pending, u.InstallAfter, u.InstallBy = p.target, p.after, p.by
+		if !p.security && !p.inNight(p.after) {
+			u.InstallAfter = nextAt(p.after, p.night) // a quiet moment in the night
+		}
 		// Only the release it would install: one the index no longer names was pulled.
 		if f := st.Failed; f != nil && f.Version == p.target {
 			u.Failure = f
