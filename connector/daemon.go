@@ -133,6 +133,10 @@ func runDaemon(configPath, stateDir string, dev devOptions, service bool) error 
 				continue
 			}
 			log.Printf("%v: shutting down", sig)
+			// The computer restarting, or the service restarted, isn't the release failing.
+			if d.trial != nil {
+				d.trial.stopped()
+			}
 		case why := <-d.exiting():
 			log.Printf("%s: shutting down, for the service to start the connector again", why)
 			// A shutdown that hangs mustn't keep the service from starting the binary in bin.

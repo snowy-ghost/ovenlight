@@ -100,6 +100,36 @@ func TestTrialSecondStart(t *testing.T) {
 	}
 }
 
+// A clean stop during the trial, such as the computer restarting, marks it, and the next
+// start begins it afresh. A start after that with no clean stop rolls back.
+func TestTrialCleanStop(t *testing.T) {
+	dir, installed := trialRig(t, trialTo(t, "1.2.0", nsLatest))
+	tr, _ := beginTrial(dir, "1.2.0", onWindows, time.Now)
+	tr.stopped()
+	if rec := readTrial(t, dir); !rec.Stopped || rec.Starts != 1 {
+		t.Fatalf("not marked: %+v", rec)
+	}
+	if tr, exit := beginTrial(dir, "1.2.0", onWindows, time.Now); tr == nil || exit {
+		t.Fatal("a start after a clean stop rolled back")
+	}
+	if rec := readTrial(t, dir); rec.Stopped || rec.Starts != 1 || readFile(t, installed) != "new" {
+		t.Fatalf("not afresh: %+v", rec)
+	}
+	if _, exit := beginTrial(dir, "1.2.0", onWindows, time.Now); !exit {
+		t.Fatal("a crash after it went on")
+	}
+	rolledBack(t, dir, installed)
+
+	// Once the trial is over, a stop leaves nothing behind.
+	dir, _ = trialRig(t, trialTo(t, "1.2.0", nsLatest))
+	tr, _ = beginTrial(dir, "1.2.0", onWindows, time.Now)
+	tr.end()
+	tr.stopped()
+	if exists(filepath.Join(dir, updateTrialFile)) {
+		t.Error("a stop after the trial wrote it again")
+	}
+}
+
 // A rollback that a crash cut short after recording its failure doesn't count it again,
 // and a failure from an earlier night is counted with it.
 func TestTrialRollbackCountsOnce(t *testing.T) {
