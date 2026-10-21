@@ -412,11 +412,14 @@ class MembershipNode(
             return preferences.getString(NodeManager.OWNER_SUFFIX_KEY)
         }
 
-    /** The MagicDNS suffix of the network the node is in, read from the node now. */
-    suspend fun magicDNSSuffix(): String? {
+    /** The node's status, read from the node now. */
+    suspend fun readStatus(): TailnetStatus? {
         val node = node ?: return null
-        return withContext(io) { runCatching { node.statusJSON() }.getOrNull() }?.let(TailnetStatus::decode)?.tailnet?.magicDNSSuffix
+        return withContext(io) { runCatching { node.statusJSON() }.getOrNull() }?.let(TailnetStatus::decode)
     }
+
+    /** The MagicDNS suffix of the network the node is in, read from the node now. */
+    suspend fun magicDNSSuffix(): String? = readStatus()?.tailnet?.magicDNSSuffix
 
     /** Logs the node out of its network, closes it and deletes its state. */
     suspend fun logOutAndForget() = withContext(NonCancellable) {

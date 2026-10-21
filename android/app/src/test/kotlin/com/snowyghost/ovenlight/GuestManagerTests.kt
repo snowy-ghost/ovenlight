@@ -3,6 +3,7 @@ package com.snowyghost.ovenlight
 import java.io.File
 import java.net.URI
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -28,6 +29,12 @@ private val echoInvite = InviteLink.parse(
 private const val claimURL = "https://echo-board.taildef456.ts.net/__ovenlight/claim"
 private const val echoPeer = """"k2":{"HostName":"echo-board","DNSName":"echo-board.taildef456.ts.net.","OS":"linux","Online":true,"UserID":1}"""
 private val guestRunning = status("Running", peers = echoPeer, suffix = "taildef456.ts.net")
+private val guideInvite = echoInvite.copy(
+    app = "house-guide", invite = "5c7e9a1b3d", host = "house-guide.taildef456.ts.net", name = "House Guide",
+    key = "tskey-auth-" + "kGuest0-NotReal", to = "Sam",
+)
+private const val guideClaimURL = "https://house-guide.taildef456.ts.net/__ovenlight/claim"
+private const val guidePeer = """"k1":{"HostName":"house-guide","DNSName":"house-guide.taildef456.ts.net.","OS":"linux","Online":true,"UserID":1}"""
 
 private fun answer(status: Int, json: String, code: String? = null) =
     FetchResponse(status, json.toByteArray(), if (code == null) emptyMap() else mapOf(ConnectorError.header to code))
@@ -294,7 +301,8 @@ class GuestManagerTests {
     fun testALostLoginClearsItsJoinPhases() = runTest {
         val s = setup()
         val notesInvite = echoInvite.copy(app = "notes", invite = "8b2d4e6f1a", host = "notes.taildef456.ts.net", name = "Notes", key = "tskey-auth-" + "kGuest2-NotReal")
-        s.clients.anyStatus = guestRunning
+        val notesPeer = """"k3":{"HostName":"notes","DNSName":"notes.taildef456.ts.net.","OS":"linux","Online":true,"UserID":1}"""
+        s.clients.anyStatus = status("Running", peers = "$echoPeer,$notesPeer", suffix = "taildef456.ts.net")
         s.clients.respond = { request ->
             when (request.url.toString()) {
                 claimURL -> answer(200, "{}")
@@ -310,6 +318,69 @@ class GuestManagerTests {
         advanceTimeBy(30_000)
         assertTrue("the owner removed this device", s.registry.apps.isEmpty())
         assertNull(s.guests.phases.value[notesInvite.invite])
+    }
+
+    /** Sam's phone, joined for House Guide. Echo Board's invite names "Sam Lee", so the node can't reach Echo Board yet. */
+    private suspend fun TestScope.joinedForHouseGuide(): Setup {
+        val s = setup()
+        s.clients.anyStatus = status("Running", peers = guidePeer, suffix = "taildef456.ts.net")
+        s.clients.respond = { request -> if (request.url.toString() == guideClaimURL) answer(200, "{}") else null }
+        s.guests.accept(guideInvite)
+        s.clients.requests.clear()
+        return s
+    }
+
+    /** The claim goes through House Guide, and Echo Board is added once the connector's retag brings it among the peers. */
+    @Test
+    fun testAnInviteUnderANewNameIsClaimedThroughAnotherApp() = runTest {
+        val s = joinedForHouseGuide()
+        s.clients.respond = { request ->
+            if (request.url.toString() == guideClaimURL) {
+                backgroundScope.launch {
+                    delay(4_000)
+                    s.clients.anyStatus = status("Running", peers = "$guidePeer,$echoPeer", suffix = "taildef456.ts.net")
+                }
+                answer(200, """{"app":"echo-board","appName":"Echo","owner":"Riley"}""")
+            } else {
+                null
+            }
+        }
+        val started = testScheduler.currentTime
+        s.guests.accept(echoInvite)
+
+        val claim = s.clients.requests.single { it.url.encodedPath == Claim.path }
+        assertEquals(guideClaimURL, claim.url.toString())
+        assertEquals("""{"key":"${echoInvite.key}"}""", Buffer().also { claim.body!!.writeTo(it) }.readUtf8())
+        assertTrue("added once Echo Board is among the peers", testScheduler.currentTime - started in 4_000..5_000)
+        val app = s.registry.apps.single { it.host == echoInvite.host }
+        assertEquals("Echo", app.name)
+        assertEquals(JoinPhase.Joined(app.id), s.guests.phases.value[echoInvite.invite])
+        val membership = s.nodes.memberships.memberships.single()
+        assertEquals(membership.id, app.membershipID)
+        assertEquals("Sam Lee", membership.guestName)
+        assertEquals(emptyList<PendingClaim>(), membership.pendingClaims)
+    }
+
+    /**
+     * With no other app answering, the claim goes to the invite's own host as before. Claimed
+     * through another, the app waits half a minute at most for its host to appear.
+     */
+    @Test
+    fun testAClaimThroughAnotherAppWaitsHalfAMinuteForItsHost() = runTest {
+        val s = joinedForHouseGuide()
+        s.clients.respond = { null }
+        s.guests.accept(echoInvite)
+        assertEquals(JoinPhase.Failed(JoinError.Network), s.guests.phases.value[echoInvite.invite])
+        val claims = s.clients.requests.filter { it.url.encodedPath == Claim.path }.map { it.url.toString() }
+        assertEquals(guideClaimURL, claims.first())
+        assertTrue("then the invite's own host, until the budget ends", claims.size > 2 && claims.drop(1).all { it == claimURL })
+
+        s.clients.respond = { request -> if (request.url.toString() == guideClaimURL) answer(200, "{}") else null }
+        val started = testScheduler.currentTime
+        s.guests.retry(echoInvite.invite)
+        assertTrue(testScheduler.currentTime - started in 30_000..31_000)
+        val app = s.registry.apps.single { it.host == echoInvite.host }
+        assertEquals(JoinPhase.Joined(app.id), s.guests.phases.value[echoInvite.invite])
     }
 
     /** A shared app's tile follows the name its connector gives it now, unless the guest renamed it. */

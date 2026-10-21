@@ -149,10 +149,26 @@ object Claim {
         return if (invite.isNetwork(suffix)) Landing.InNetwork else Landing.Elsewhere(leave = registeredNow)
     }
 
-    fun request(invite: InviteLink): Request {
+    /**
+     * The membership's other app hosts to claim [invite] through before its own, those listed
+     * online first. An invite under a new name reuses the node, which reaches only the apps it
+     * was invited to, and the connector retags it for this one only once the invite is claimed
+     * through one of those. None when the node's peers list the invite's host, offline or not,
+     * or can't say (see [GuestProbe.absentHosts]), and for a node that just joined with this
+     * invite's key, which has no other apps.
+     */
+    fun through(invite: InviteLink, appHosts: List<String>, status: TailnetStatus?): List<String> {
+        val host = Discovery.normalizedHost(invite.host)
+        val others = appHosts.map(Discovery::normalizedHost).toSet() - host
+        if (status == null || GuestProbe.absentHosts(others + host, status)?.contains(host) != true) return emptyList()
+        val online = status.peers.filter { it.online }.map { Discovery.normalizedHost(it.dnsName) }.toSet()
+        return others.sortedBy { it !in online }
+    }
+
+    fun request(invite: InviteLink, host: String = invite.host): Request {
         val body = buildJsonObject { put("key", invite.key) }.toString()
         return Request.Builder()
-            .url("https://${invite.host}$path")
+            .url("https://$host$path")
             .post(body.toByteArray().toRequestBody("application/json".toMediaType()))
             .build()
     }

@@ -167,6 +167,28 @@ class GuestCleanupTests {
         assertEquals("back in the list starts over", emptySet<String>(), absence.record(setOf(notes)))
     }
 
+    /**
+     * An invite under a new name reuses the node, whose peers lack its app until the claim
+     * retags the device: it's claimed through the owner's other apps first, those listed online
+     * first. Anything else claims at the invite's own host, as before.
+     */
+    @Test
+    fun testAnInviteMissingFromThePeersIsClaimedThroughAnotherApp() {
+        val guide = "house-guide.taildef456.ts.net"
+        val invite = InviteLink(
+            control = URI("https://c.example"), key = "k", owner = "Riley", app = "echo-board", invite = "i", host = echo, name = "Echo", to = "Sam Lee",
+        )
+        fun through(apps: List<String>, peers: Map<String, Boolean>) = Claim.through(invite, apps, status(peers = peers))
+        assertEquals("absent", listOf(guide, notes), through(listOf(notes, guide), mapOf(notes to false, guide to true)))
+        assertEquals("listed offline", emptyList<String>(), through(listOf(guide), mapOf(echo to false, guide to true)))
+        assertEquals("present", emptyList<String>(), through(listOf(guide), mapOf(echo to true, guide to true)))
+        assertEquals("no other host", emptyList<String>(), through(listOf("Echo-Board.taildef456.ts.net."), mapOf(guide to true)))
+        assertEquals("a list with none of them can't say", emptyList<String>(), through(listOf(guide), mapOf(notes to true)))
+        assertEquals(emptyList<String>(), Claim.through(invite, listOf(guide), status("Starting", peers = mapOf(guide to true))))
+        assertEquals(emptyList<String>(), Claim.through(invite, listOf(guide), null))
+        assertEquals("https://$guide/__ovenlight/claim", Claim.request(invite, guide).url.toString())
+    }
+
     /** A sleeping computer's apps aren't probed, so their tiles say Offline at once rather than after every probe times out. */
     @Test
     fun testAppsOnAComputerListedOfflineArentProbed() {
