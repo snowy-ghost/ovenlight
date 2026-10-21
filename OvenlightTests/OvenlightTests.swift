@@ -1215,6 +1215,44 @@ final class DiscoveryTests: XCTestCase {
     }
 }
 
+final class CappedDataTests: XCTestCase {
+    /// A body is read up to `maxBody` and refused past it, counted as URLSession hands it over,
+    /// after any decompression.
+    func testABodyPastTheCapIsRefused() async throws {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [SizedProtocol.self]
+        let session = URLSession(configuration: config)
+        defer { session.invalidateAndCancel() }
+        let (data, _) = try await session.cappedData(from: URL(string: "https://notes.tailabc123.ts.net/\(URLSession.maxBody)")!)
+        XCTAssertEqual(data.count, URLSession.maxBody)
+        do {
+            _ = try await session.cappedData(for: URLRequest(url: URL(string: "https://notes.tailabc123.ts.net/\(URLSession.maxBody + 1)")!))
+            XCTFail("a body past the cap was read")
+        } catch let error as URLError {
+            XCTAssertEqual(error.code, .dataLengthExceedsMaximum)
+        }
+    }
+}
+
+/// Answers with as many bytes as its path says, in 1 MiB pieces.
+private final class SizedProtocol: URLProtocol {
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        guard let url = request.url, var left = Int(url.lastPathComponent) else { return }
+        client?.urlProtocol(self, didReceive: HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!,
+                            cacheStoragePolicy: .notAllowed)
+        while left > 0 {
+            client?.urlProtocol(self, didLoad: Data(count: min(left, 1 << 20)))
+            left -= 1 << 20
+        }
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
+}
+
 /// Serves every host a connector's manifest (with no icon) at once, except `host`, which fails
 /// after `delay`.
 private final class SlowHostProtocol: URLProtocol {

@@ -433,7 +433,7 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
     /// Any HTTP answer from the host counts; only connection-level failures don't.
     private static func canReachDirectly(_ startURL: URL) async -> Bool {
         guard let url = URL(string: OvenlightManifest.path, relativeTo: startURL)?.absoluteURL else { return false }
-        return (try? await directProbe.data(from: url)) != nil
+        return (try? await directProbe.cappedData(from: url)) != nil
     }
 
     private func giveUp(_ event: AppLoadGate.Event = .gaveUp) {

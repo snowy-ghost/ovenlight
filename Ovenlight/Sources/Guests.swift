@@ -480,7 +480,7 @@ final class GuestManager: ObservableObject {
             let timeout = Claim.tryTimeout(left: clock.now.duration(to: deadline)) / .seconds(1)
             if let session = node.makeSession(timeout: timeout, resource: timeout) {
                 defer { session.invalidateAndCancel() }
-                if let (data, response) = try? await session.data(for: Claim.request(for: invite)),
+                if let (data, response) = try? await session.cappedData(for: Claim.request(for: invite)),
                    let http = response as? HTTPURLResponse {
                     let step = Claim.interpret(status: http.statusCode, header: http.value(forHTTPHeaderField: ConnectorError.header), body: data)
                     if step != .retry { return step }

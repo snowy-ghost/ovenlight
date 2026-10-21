@@ -476,7 +476,7 @@ struct AdminClient {
         while true {
             attempt += 1
             do {
-                let (data, response) = try await session.data(for: request)
+                let (data, response) = try await session.cappedData(for: request)
                 let status = (response as? HTTPURLResponse)?.statusCode ?? 0
                 switch status {
                 case 200: return data

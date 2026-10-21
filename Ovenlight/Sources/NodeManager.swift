@@ -641,7 +641,7 @@ final class MembershipNode: ObservableObject {
         let reach: Reach
         if isOwner {
             guard let url = URL(string: OvenlightManifest.path, relativeTo: app.startURL)?.absoluteURL else { return .unreachable }
-            reach = (try? await session.data(from: url)) != nil ? .reached : .unreachable
+            reach = (try? await session.cappedData(from: url)) != nil ? .reached : .unreachable
         } else {
             reach = await GuestProbe.whoami(host: host, session: session).reach
         }
@@ -697,6 +697,34 @@ final class MembershipNode: ObservableObject {
         config.timeoutIntervalForResource = resource ?? timeout * 2
         config.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
         return URLSession(configuration: config, delegate: RedirectPolicy.shared, delegateQueue: nil)
+    }
+}
+
+extension URLSession {
+    /// Above the connector's 5 MiB for a feedback screenshot, the largest answer Ovenlight reads,
+    /// as on Android.
+    static let maxBody = 6 << 20
+
+    /// `data(for:)` that gives up on a body past `maxBody`. URLSession inflates a compressed body
+    /// as it reads, so a small answer could otherwise grow to gigabytes in Ovenlight.
+    func cappedData(for request: URLRequest) async throws -> (Data, URLResponse) {
+        try await Self.capped(bytes(for: request))
+    }
+
+    func cappedData(from url: URL) async throws -> (Data, URLResponse) {
+        try await Self.capped(bytes(from: url))
+    }
+
+    private static func capped(_ answer: (AsyncBytes, URLResponse)) async throws -> (Data, URLResponse) {
+        var data = Data()
+        for try await byte in answer.0 {
+            guard data.count < maxBody else {
+                answer.0.task.cancel()
+                throw URLError(.dataLengthExceedsMaximum)
+            }
+            data.append(byte)
+        }
+        return (data, answer.1)
     }
 }
 
@@ -772,7 +800,7 @@ enum GuestProbe {
     /// its claim does, so a tile can follow a rename.
     static func whoami(host: String, session: URLSession) async -> (reach: Reach, appName: String?) {
         guard let url = URL(string: "https://\(host)/__ovenlight/whoami"),
-              let (data, response) = try? await session.data(from: url),
+              let (data, response) = try? await session.cappedData(from: url),
               let http = response as? HTTPURLResponse else { return (.unreachable, nil) }
         let name = http.statusCode == 200 ? appName(from: data) : nil
         return (classify(status: http.statusCode, header: http.value(forHTTPHeaderField: ConnectorError.header), body: data), name)

@@ -124,7 +124,7 @@ enum Discovery {
                 group.addTask {
                     guard let url = URL(string: "https://\(host)\(OvenlightManifest.path)") else { return (host, nil, false) }
                     do {
-                        let (data, response) = try await session.data(from: url)
+                        let (data, response) = try await session.cappedData(from: url)
                         let ok = (response as? HTTPURLResponse)?.statusCode == 200
                         return (host, ok ? data : nil, true)
                     } catch {

@@ -326,7 +326,7 @@ final class AppRegistry: ObservableObject {
     /// Only a 2xx answer counts. A redirect to an address comes back as itself, and its page,
     /// like an error page, says nothing about the app.
     private static func body(from url: URL, in session: URLSession) async -> Data? {
-        guard let (data, response) = try? await session.data(from: url),
+        guard let (data, response) = try? await session.cappedData(from: url),
               let status = (response as? HTTPURLResponse)?.statusCode, (200..<300).contains(status) else { return nil }
         return data
     }

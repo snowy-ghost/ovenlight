@@ -73,7 +73,7 @@ enum FeedbackSender {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try? JSONEncoder().encode(payload)
-        guard let (data, response) = try? await session.data(for: request),
+        guard let (data, response) = try? await session.cappedData(for: request),
               let status = (response as? HTTPURLResponse)?.statusCode else {
             return network()
         }
