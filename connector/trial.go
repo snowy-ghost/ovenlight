@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -79,7 +80,16 @@ func startTrial() {
 	if err != nil {
 		return
 	}
-	t, exit := beginTrial(filepath.Dir(filepath.Dir(exe)), version(), func() time.Time { return time.Now().Round(0) })
+	dir := filepath.Dir(filepath.Dir(exe))
+	if runtime.GOOS == "windows" {
+		// A scheduled task's standard error goes nowhere, and cmdRun opens the task's --log
+		// later: what the trial logs as it starts goes to that log, which install.ps1 puts here.
+		if f, err := os.OpenFile(filepath.Join(dir, "ovenlight.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600); err == nil {
+			log.SetOutput(f)
+			defer func() { log.SetOutput(os.Stderr); f.Close() }()
+		}
+	}
+	t, exit := beginTrial(dir, version(), func() time.Time { return time.Now().Round(0) })
 	if exit {
 		os.Exit(1)
 	}
