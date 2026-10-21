@@ -143,7 +143,7 @@ func run() error {
 	// Every page for search engines, the docs included. The join page isn't one: it's an invite's.
 	var sitemap strings.Builder
 	sitemap.WriteString("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n")
-	pages := []string{"/", "/docs", "/support", "/privacy"}
+	pages := []string{"/", "/docs", "/support", "/privacy", "/privacy/android"}
 	for _, p := range all {
 		pages = append(pages, "/docs/"+p.Name)
 	}

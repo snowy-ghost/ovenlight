@@ -100,7 +100,8 @@ then:
 - [Ovenlight](https://ovenlight.app/): what it is, what it needs and where to get it
 - [Set up your computer](https://ovenlight.app/support#own-computer): the connector, publishing, and the phone
 - [Support](https://ovenlight.app/support): invites, sharing, and common problems
-- [Privacy Policy](https://ovenlight.app/privacy)
+- [Privacy Policy for iPhone](https://ovenlight.app/privacy)
+- [Privacy Policy for Android](https://ovenlight.app/privacy/android)
 - [The connector](https://ovenlight.app/docs/connector.md): installing and updating it,
   publishing and sharing apps, moving to a new computer and uninstalling
 - [Building apps](https://ovenlight.app/docs/building-apps.md): the guide `ovenlight guide`
