@@ -12,7 +12,7 @@ set -euo pipefail
 
 # tailscale.com and Go move only together with iOS (scripts/build-tailscalekit.sh):
 # android/core/go.mod pins tailscale.com, and this the toolchain.
-GO_TOOLCHAIN=go1.27.2
+GO_TOOLCHAIN=go1.27.3
 # -trimpath keeps the build machine's file paths out of the compiled code (passed to gomobile
 # below). The build info still names android/core's folder, which gomobile's module replaces it
 # with, so a library built elsewhere differs in that one path.

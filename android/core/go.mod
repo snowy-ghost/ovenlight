@@ -2,7 +2,7 @@ module github.com/snowy-ghost/ovenlight/android/core
 
 go 1.27.1
 
-toolchain go1.27.2
+toolchain go1.27.3
 
 require (
 	golang.org/x/mobile v0.0.0-20261011034528-197770444867

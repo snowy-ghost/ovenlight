@@ -10,7 +10,7 @@ LIBTAILSCALE_REPO=https://github.com/tailscale/libtailscale.git
 LIBTAILSCALE_COMMIT=d1dc45d039edb7759ecbee6ba2aea0c4bca884b8
 # libtailscale's go.mod asks for Go 1.27.1 or later. Keep the latest 1.27 patch
 # release: it carries the standard library's security fixes.
-GO_TOOLCHAIN=go1.27.2
+GO_TOOLCHAIN=go1.27.3
 # -trimpath keeps the build machine's file paths, such as /Users/<name>/go, out of the binary.
 GO_FLAGS=-trimpath
 # Modules raised past libtailscale's go.mod for security fixes (govulncheck). Drop an
