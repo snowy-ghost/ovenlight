@@ -20,7 +20,8 @@
 # Touch ID shows a prompt and not what it signs, so this prints that first, and refuses
 # before it whatever publish-connector.sh would refuse. A release is signed only when its
 # connector/release_keys is exactly the two keys in ~/.ssh/ovenlight-release-keys/ plus the
-# key signing it, so the keys a release trusts never come from the commit alone.
+# key signing it, so the keys a release trusts never come from the commit alone. The paper
+# key signs only a release that replaces it, so its .pub has left that folder.
 #
 # --key signs with a key other than this Air's Touch ID handle, such as the paper backup or
 # another Touch ID key's handle, with its public half beside it as <file>.pub.
@@ -132,6 +133,10 @@ release)
   if ! cmp -s "$tmp/want" "$tmp/have"; then
     refuse "connector/release_keys at $commit isn't the two keys in $keydir plus the one signing:
 $(diff "$tmp/want" "$tmp/have" | sed -n 's/^</  missing/p; s/^>/  extra/p')"
+  fi
+  # The paper key, the one ssh-ed25519 key, signs only the release that replaces it.
+  if [ "$(awk '{ print $1 }' "$tmp/signer")" = ssh-ed25519 ] && haskey "$kblob" "$tmp/folder"; then
+    refuse "$keydir still holds this key: the paper key signs only the release that brings in its successor"
   fi
   rulehas "$version" "$b/release_keys"
 

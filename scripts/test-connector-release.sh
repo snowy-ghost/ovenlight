@@ -468,6 +468,7 @@ refused "has no .release-dry-run" env OVENLIGHT_RELEASE_DRY="$repo" "$repo/scrip
 refused "is a dry-run fixture key" env -u OVENLIGHT_RELEASE_DRY HOME="$dry/home" \
   "$repo/scripts/sign-connector.sh" --key "$dry/private/air1" 1.1.0
 refused "isn't the two keys in" sign paper2 1.1.0
+refused "the paper key signs only the release that brings in its successor" sign paper1 1.1.0
 # An archive with another version's folder in it.
 a=ovenlight-connector-linux-amd64.tar.gz
 old="$(awk -v a="$a" '$2 == a { print $1 }' "$dry/build/SHA256SUMS")"
