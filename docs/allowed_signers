@@ -2,3 +2,7 @@
 #   ssh-keygen -Y verify -f allowed_signers -I team@snowyghost.com -n file -s SHA256SUMS.sig < SHA256SUMS
 team@snowyghost.com namespaces="file" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILPcRhVVWAsXwW8S4kx91sX5+3/wLs6gI+tbgUYa7VP1
 team@snowyghost.com namespaces="file" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIM/8+4qOycuMKBX1KUt7U/avwRbFGLbl/ngNW5+kbrkQ
+# Mock release keys for building the updater, whose private halves are public in
+# connector/testdata/releasekey. The real keys replace them before this branch merges.
+team@snowyghost.com namespaces="file,ovenlight-latest" ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBCblnUQ8mC8cR/0P8+BzCaE+EANtJdNKfUTRPlLQ4LiHZPauV8oOlXyvF5fyMDdXoYk3RIV/g4q6FY8l91/wbCg=
+team@snowyghost.com namespaces="file,ovenlight-latest" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOs0G3KYzqiSBNnopNZ3CvYKIDFRILE8vbHY3maVrGWM

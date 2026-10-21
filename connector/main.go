@@ -72,8 +72,19 @@ func startFix(p *paths) string {
 		return fmt.Sprintf("No connector is running for --config %s and --state %s. The connector the person installed uses the default paths, "+
 			"so nothing for these paths is served until the person runs a connector with them; an agent must not start one itself", p.config, p.state)
 	}
-	return "Start it by running its install script again (install.sh, or install.ps1 on Windows); if it starts but keeps stopping, " +
-		"the reason is at the end of " + defaultLogPath()
+	return "Start it with " + serviceCommands[runtime.GOOS].start + ". If it starts but keeps stopping, the reason is at the end of " + defaultLogPath()
+}
+
+// serviceCommands start and restart the installed connector on each OS, as
+// docs/connector.md gives them. Starting also undoes the stops it describes. They name
+// the service, never the install script: an older release's script would bring back a
+// connector that doesn't update itself.
+var serviceCommands = map[string]struct{ start, restart string }{
+	"darwin": {"launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.snowyghost.ovenlight.connector.plist",
+		"launchctl kickstart -k gui/$(id -u)/com.snowyghost.ovenlight.connector"},
+	"linux": {"systemctl --user enable --now ovenlight", "systemctl --user restart ovenlight"},
+	"windows": {"Enable-ScheduledTask ovenlight; Start-ScheduledTask ovenlight in an administrator PowerShell",
+		"Stop-ScheduledTask ovenlight; Start-ScheduledTask ovenlight in an administrator PowerShell"},
 }
 
 type paths struct {
@@ -182,6 +193,7 @@ const maxLog = 20 << 20
 func cmdRun(args []string) error {
 	fs, p := newFlags("run")
 	logFile := fs.String("log", "", "write the log to this file, moved to <file>.1 at 20 MB, instead of standard error")
+	service := fs.Bool("service", false, "started as the installed service: the launchd agent, systemd unit and scheduled task pass it")
 	controlURL := fs.String("control-url", "", "development only: control server URL (Headscale)")
 	authKey := fs.String("auth-key", "", "development only: preauth key for every node")
 	certFile := fs.String("dev-tls-cert", "", "development only: TLS certificate to serve instead of the ts.net one")
@@ -235,7 +247,7 @@ func cmdRun(args []string) error {
 	}
 	endAppsWithConnector()
 	stopWithConsoleHost()
-	err := runDaemon(p.config, p.state, dev)
+	err := runDaemon(p.config, p.state, dev, *service)
 	if err != nil && *logFile != "" {
 		log.Printf("stopped: %v", err) // main prints it to standard error too
 	}
@@ -514,7 +526,7 @@ func restartLoginFix(p *paths) string {
 		return fmt.Sprintf("The connector running for --config %s and --state %s isn't the installed one: whoever started it stops it and starts it again; "+
 			"an agent must not start one itself. Then ovenlight status shows the link", p.config, p.state)
 	}
-	return "Restart the connector by running its install script again (install.sh, or install.ps1 on Windows); then ovenlight status shows the link"
+	return "Restart the connector with " + serviceCommands[runtime.GOOS].restart + ". Then ovenlight status shows the link"
 }
 
 // checkRetired refuses to publish a slug the config doesn't list while sharing.json still

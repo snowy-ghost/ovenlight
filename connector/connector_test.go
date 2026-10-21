@@ -21,6 +21,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -1037,7 +1038,7 @@ func TestNoLoginLinkSaysWhy(t *testing.T) {
 			t.Errorf("%s, shareable: %+v %+v", name, st, c)
 		}
 	}
-	if fix := restartLoginFix(installed); !strings.Contains(fix, "install script again") {
+	if fix := restartLoginFix(installed); !strings.Contains(fix, serviceCommands[runtime.GOOS].restart) || strings.Contains(fix, "install script") {
 		t.Errorf("installed: %s", fix)
 	}
 	if fix := restartLoginFix(&paths{config: "/tmp/c.json", state: "/tmp/s"}); strings.Contains(fix, "install script") || !strings.Contains(fix, "--state /tmp/s") {
