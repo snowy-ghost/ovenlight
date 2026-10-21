@@ -267,8 +267,8 @@ class AppRegistry(
         val fetch = session(app) ?: return
         if (app.hasConnector) {
             val manifest = uri("https://${app.host}${OvenlightManifest.path}")
-                ?.let { fetchOrNull(fetch, it) }
-                ?.let { OvenlightManifest.parse(it.body) }
+                ?.let { body(fetch, it) }
+                ?.let { OvenlightManifest.parse(it) }
             if (manifest != null && apps.any { it.id == id }) {
                 update(id) {
                     it.copy(
@@ -283,7 +283,7 @@ class AppRegistry(
                 if (manifestOnly) return
             }
         }
-        val page = fetchOrNull(fetch, app.startURL)?.body ?: return
+        val page = body(fetch, app.startURL) ?: return
         // Off the main thread: a page can run to megabytes.
         val (links, title) = withContext(Dispatchers.Default) {
             // As iOS decodes a page: bytes that aren't UTF-8 become replacement characters.
@@ -292,7 +292,7 @@ class AppRegistry(
         }
         var meta = ManifestParser.Metadata(name = title)
         val manifestURL = links.manifest
-        val manifestData = manifestURL?.let { fetchOrNull(fetch, it) }?.body
+        val manifestData = manifestURL?.let { body(fetch, it) }
         if (manifestURL != null && manifestData != null) {
             val fromManifest = withContext(Dispatchers.Default) { ManifestParser.metadata(manifestData, manifestURL) }
             meta = ManifestParser.Metadata(fromManifest.name ?: meta.name, fromManifest.themeColorHex, fromManifest.iconURL)
@@ -313,7 +313,7 @@ class AppRegistry(
     private suspend fun saveIcon(url: URI, id: UUID) {
         val app = apps.firstOrNull { it.id == id } ?: return
         val fetch = session(app) ?: return
-        val data = fetchOrNull(fetch, url)?.body ?: return
+        val data = body(fetch, url) ?: return
         val png = iconPNG(data) ?: return
         if (apps.none { it.id == id }) return
         val name = "${id.toString().uppercase()}.png"
@@ -327,6 +327,12 @@ class AppRegistry(
         update(id) { it.copy(iconFile = name) }
         icons.value += id to ((icons.value[id] ?: 0) + 1)
     }
+
+    /**
+     * What [url] answers, only when it's a 2xx. A redirect Ovenlight doesn't follow (https to
+     * http) comes back as itself, and its page, like an error page, says nothing about the app.
+     */
+    private suspend fun body(fetch: Fetch, url: URI): ByteArray? = fetchOrNull(fetch, url)?.takeIf { it.status in 200..<300 }?.body
 
     /** Each app's missing icon, once [reachable] says its node can carry the fetch. Runs on every return to the front. */
     suspend fun refreshAllMissingIcons(reachable: suspend (WebApp) -> Boolean) = coroutineScope {

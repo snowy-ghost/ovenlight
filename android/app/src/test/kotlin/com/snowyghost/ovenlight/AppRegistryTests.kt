@@ -253,6 +253,48 @@ class AppRegistryTests {
         registry.refreshMetadata(registry.apps.single().id)
         assertEquals(listOf(OvenlightManifest.path, "/"), fetched)
     }
+
+    /**
+     * A redirect Ovenlight doesn't follow, from https to http, comes back as the 302 itself. Its
+     * page, like an error page, never names an app, colors it or gives it an icon, and neither
+     * does a 302 for ovenlight.json. On a `moved` host every answer is a 302, and on `broken` all
+     * but the page are a 404.
+     */
+    @Test
+    fun testOnlyA2xxAnswerFillsInAnApp() = runTest {
+        val apps = listOf("moved", "moved-connector", "broken", "notes").map { label ->
+            val url = URI("https://$label.tailabc123.ts.net/")
+            WebApp(name = url.host, startURL = url, discovered = label == "moved-connector")
+        }
+        File(dir, "apps.json").writeText(ovenlightJSON.encodeToString(ListSerializer(WebApp.serializer()), apps))
+        val registry = AppRegistry(
+            dir,
+            session = {
+                { url ->
+                    val status = if (url.host.startsWith("moved")) 302 else if (url.host.startsWith("broken") && url.path != "/") 404 else 200
+                    val body = when (url.path) {
+                        OvenlightManifest.path -> """{"name":"Notes App","version":1,"themeColor":"#e05a00"}"""
+                        "/manifest.json" -> """{"name":"Notes App","theme_color":"#e05a00"}"""
+                        "/icon.png" -> "icon"
+                        else -> """<title>Notes</title><link rel="manifest" href="/manifest.json"><link rel="apple-touch-icon" href="/icon.png">"""
+                    }
+                    FetchResponse(status, body.toByteArray())
+                }
+            },
+            webData = object : AppRegistry.WebData {
+                override fun discard(app: UUID) {}
+                override suspend fun clear(store: UUID) {}
+                override fun delete(store: UUID) {}
+                override suspend fun stores() = emptyList<UUID>()
+            },
+            iconPNG = { it }, scope = backgroundScope,
+        )
+
+        for (app in apps) registry.refreshMetadata(app.id)
+        assertEquals(listOf("moved.tailabc123.ts.net", "moved-connector.tailabc123.ts.net", "Notes", "Notes App"), registry.apps.map { it.name })
+        assertEquals(listOf(null, null, null, "#e05a00"), registry.apps.map { it.themeColorHex })
+        assertEquals(listOf(false, false, false, true), registry.apps.map { it.iconFile != null })
+    }
 }
 
 /** The registry's tests that need Android's own image decoding, run under Robolectric with its native graphics. */
