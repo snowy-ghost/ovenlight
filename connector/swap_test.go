@@ -237,6 +237,17 @@ func TestRenameAside(t *testing.T) {
 	if readFile(t, installed) != "running" || exists(prev) {
 		t.Error(".prev isn't back")
 	}
+
+	// A put-back that failed left the running binary as .prev and nothing at installed:
+	// it's put back first, never moved aside.
+	os.Rename(installed, prev)
+	writeFile(t, next, "new")
+	if err := renameAside(installed, next); err != nil {
+		t.Fatal(err)
+	}
+	if readFile(t, installed) != "new" || readFile(t, prev) != "running" || len(oldBinaries(bin)) != 0 {
+		t.Errorf("after a failed put-back: %v", oldBinaries(bin))
+	}
 }
 
 // A rollback puts .prev back: by one rename on macOS and Linux, and on Windows with the

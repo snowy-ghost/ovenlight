@@ -143,15 +143,28 @@ func TestTrialEnds(t *testing.T) {
 			t.Errorf("%s: a failure: %+v", name, st.Failed)
 		}
 	}
+
+	// One that can't be read now, rather than one that isn't a trial, stays for the next
+	// start.
+	dir, _ := trialRig(t, trialTo(t, "1.2.0", nsLatest))
+	path := filepath.Join(dir, updateTrialFile)
+	os.Remove(path)
+	if err := os.Mkdir(path, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if tr, exit := beginTrial(dir, "1.2.0", onWindows, time.Now); tr != nil || exit || !exists(path) {
+		t.Error("a trial that can't be read now went")
+	}
 }
 
 // The release must verify, with its own keys, the index that brought it: a canary index
 // for a canary, the published one otherwise. One it can't, or that names another
-// release, rolls back at its first start.
+// release, rolls back at its first start, which is counted first, so a verifier that
+// crashes rolls back at the next start without running again.
 func TestTrialIndex(t *testing.T) {
 	canary := trialTo(t, "1.2.0", nsCanary)
 	dir, _ := trialRig(t, canary)
-	if tr, _ := beginTrial(dir, "1.2.0", onWindows, time.Now); tr == nil {
+	if tr, _ := beginTrial(dir, "1.2.0", onWindows, time.Now); tr == nil || tr.verifyIndex() {
 		t.Error("a canary index was refused")
 	}
 	wrongNS := trialTo(t, "1.2.0", nsLatest)
@@ -162,13 +175,23 @@ func TestTrialIndex(t *testing.T) {
 	unsigned.Sig = nil
 	for name, rec := range map[string]updateTrial{"signed for another namespace": wrongNS, "in namespace file": file, "naming 1.2.1": other, "unsigned": unsigned} {
 		dir, installed := trialRig(t, rec)
-		if tr, exit := beginTrial(dir, "1.2.0", onWindows, time.Now); tr != nil || !exit {
+		tr, _ := beginTrial(dir, "1.2.0", onWindows, time.Now)
+		if tr == nil || readTrial(t, dir).Starts != 1 || !tr.verifyIndex() {
 			t.Errorf("%s: no rollback", name)
 			continue
 		}
 		if f := rolledBack(t, dir, installed); !strings.Contains(f.Error, "doesn't verify the index that brought it") {
 			t.Errorf("%s: %+v", name, f)
 		}
+	}
+	rec := trialTo(t, "1.2.1", nsLatest)
+	rec.Starts = 1
+	dir, installed := trialRig(t, rec)
+	if tr, exit := beginTrial(dir, "1.2.0", onWindows, time.Now); tr != nil || !exit {
+		t.Fatal("the start after a verifier that crashed went on")
+	}
+	if f := rolledBack(t, dir, installed); !strings.Contains(f.Error, "started again") {
+		t.Errorf("%+v", f)
 	}
 }
 

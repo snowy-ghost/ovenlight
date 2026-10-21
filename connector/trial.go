@@ -93,25 +93,32 @@ func startTrial() {
 		os.Exit(1)
 	}
 	serviceTrial = t
+	// The deadline runs before the new verifier does, so it catches a verifier that
+	// hangs, and the start is counted, so a second start catches one that crashes.
 	go t.watch()
+	if t.verifyIndex() {
+		os.Exit(1)
+	}
 }
 
 // beginTrial counts a start of version v as the service, given the state folder the
 // binary is in, and returns its trial when it's on one. A trial to another version ends:
 // the swap didn't finish, a rollback did, or an install script put another release in
-// place. So does one with nothing to roll back to. A second start, or an index the binary
-// can't verify, rolls back at once, and exit says the connector should then exit.
+// place. So does one with nothing to roll back to, or that isn't a trial record. One that
+// can't be read now stays for the next start. A second start rolls back at once, and exit
+// says the connector should then exit.
 func beginTrial(dir, v string, windows bool, now func() time.Time) (t *trial, exit bool) {
 	path := filepath.Join(dir, updateTrialFile)
 	data, err := jsonfile.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, false
 	}
-	t = &trial{dir: dir, now: now, windows: windows, served: map[string]bool{}}
-	if err == nil {
-		err = json.Unmarshal(data, &t.rec)
+	if err != nil {
+		log.Printf("updates: can't read the last update's trial: %v", err)
+		return nil, false
 	}
-	switch {
+	t = &trial{dir: dir, now: now, windows: windows, served: map[string]bool{}}
+	switch err := json.Unmarshal(data, &t.rec); {
 	case err != nil:
 		log.Printf("updates: the last update's trial ends, since it can't be read: %v", err)
 	case t.rec.To != v:
@@ -120,9 +127,6 @@ func beginTrial(dir, v string, windows bool, now func() time.Time) (t *trial, ex
 	case t.rec.Starts > 0:
 		return nil, t.rollback(fmt.Errorf("%s started again within its trial: it stopped or hung, or the computer restarted", v))
 	default:
-		if err := t.checkIndex(); err != nil {
-			return nil, t.rollback(err)
-		}
 		t.rec.Starts++
 		if err := jsonfile.Save(path, &t.rec); err != nil {
 			return nil, t.rollback(fmt.Errorf("%s can't count its start: %w", v, err))
@@ -137,6 +141,15 @@ func beginTrial(dir, v string, windows bool, now func() time.Time) (t *trial, ex
 func exists(path string) bool {
 	_, err := os.Lstat(path)
 	return err == nil
+}
+
+// verifyIndex rolls back when the release can't verify the index that brought it, and
+// reports whether the connector should then exit.
+func (t *trial) verifyIndex() bool {
+	if err := t.checkIndex(); err != nil {
+		return t.rollback(err)
+	}
+	return false
 }
 
 // checkIndex verifies the index that brought the release with this binary's own keys,
@@ -193,6 +206,10 @@ func (t *trial) watch() {
 func (t *trial) tick() bool {
 	now := t.now()
 	t.mu.Lock()
+	if t.ended {
+		t.mu.Unlock()
+		return true
+	}
 	if gap := now.Sub(t.last); gap >= 0 && gap <= 3*awakeTick {
 		t.awake += gap
 	}

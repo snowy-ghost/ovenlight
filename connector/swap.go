@@ -176,21 +176,28 @@ func linkAndRename(installed, next string) error {
 // a last one that fails puts .prev back.
 func renameAside(installed, next string) error {
 	bin := filepath.Dir(installed)
+	// A swap or rollback whose put-back failed left the running binary as .prev: it comes
+	// back first, and is never moved aside while nothing is at installed.
+	if !exists(installed) && exists(prevBinary(installed)) {
+		if err := renameRetry(prevBinary(installed), installed, renameWait); err != nil {
+			return err
+		}
+	}
 	old, _ := filepath.Glob(filepath.Join(bin, "ovenlight.old*.exe"))
 	for _, f := range old {
 		os.Remove(f) // still running, or held: it goes next time
 	}
 	prev := prevBinary(installed)
 	if _, err := os.Lstat(prev); err == nil {
-		if err := renameRetry(prev, oldBinary(bin)); err != nil {
+		if err := renameRetry(prev, oldBinary(bin), renameWait); err != nil {
 			return err
 		}
 	}
-	if err := renameRetry(installed, prev); err != nil {
+	if err := renameRetry(installed, prev, renameWait); err != nil {
 		return err
 	}
-	if err := renameRetry(next, installed); err != nil {
-		if perr := renameRetry(prev, installed); perr != nil {
+	if err := renameRetry(next, installed, renameWait); err != nil {
+		if perr := renameRetry(prev, installed, putBackWait); perr != nil {
 			log.Printf("updates: can't put %s back as %s: %v", prev, installed, perr)
 		}
 		return err
@@ -207,11 +214,11 @@ func restorePrev(installed string, windows bool) error {
 		return os.Rename(prev, installed)
 	}
 	aside := oldBinary(filepath.Dir(installed))
-	if err := renameRetry(installed, aside); err != nil {
+	if err := renameRetry(installed, aside, renameWait); err != nil {
 		return err
 	}
-	if err := renameRetry(prev, installed); err != nil {
-		if aerr := renameRetry(aside, installed); aerr != nil {
+	if err := renameRetry(prev, installed, renameWait); err != nil {
+		if aerr := renameRetry(aside, installed, putBackWait); aerr != nil {
 			log.Printf("updates: can't put %s back as %s: %v", aside, installed, aerr)
 		}
 		return err
@@ -224,17 +231,19 @@ func oldBinary(bin string) string {
 	return filepath.Join(bin, fmt.Sprintf("ovenlight.old-%d.exe", time.Now().UnixNano()))
 }
 
-// renameRetry renames from to to, trying again for a few seconds while something such as
-// antivirus holds either.
-func renameRetry(from, to string) error {
-	var err error
-	for range 50 {
-		if err = os.Rename(from, to); err == nil || errors.Is(err, os.ErrNotExist) {
+// renameWait is how long a rename on Windows is tried while something such as antivirus
+// holds a file, and putBackWait how long a rename that puts the running binary back at
+// the service's path is: until it's back, nothing is there to start.
+const renameWait, putBackWait = 5 * time.Second, 2 * time.Minute
+
+// renameRetry renames from to to, trying again for up to wait.
+func renameRetry(from, to string, wait time.Duration) error {
+	for end := time.Now().Add(wait); ; time.Sleep(100 * time.Millisecond) {
+		err := os.Rename(from, to)
+		if err == nil || errors.Is(err, os.ErrNotExist) || time.Now().After(end) {
 			return err
 		}
-		time.Sleep(100 * time.Millisecond)
 	}
-	return err
 }
 
 // syncDir flushes a folder's entries to disk, so a rename or a new file in it survives a
