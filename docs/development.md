@@ -82,9 +82,11 @@ app's side runs only in Xcode, locally and before shipping, never in CI, so a ch
 ### Releases
 
 ```sh
-scripts/release-connector.sh 1.0.0
+scripts/release-connector.sh 1.1.0 1.0.6
 ```
 
+It takes the version, the oldest secure one, and optionally `reinstallBelow`, the oldest
+version that may update to it by binary alone (by default the highest one signed so far).
 `--unsigned`, before the version, skips all signing, to test the rest.
 
 `release-connector.sh` writes the release to `build/release/`, replacing the one before:
@@ -96,9 +98,8 @@ scripts/release-connector.sh 1.0.0
   with `install.sh`, `uninstall.sh` and the systemd unit;
 - `ovenlight-connector-windows-amd64.zip` and `-windows-arm64.zip`: with `install.ps1`
   and `uninstall.ps1`, the binary and both scripts signed with Azure Artifact Signing;
-- `SHA256SUMS`, and `SHA256SUMS.sig`, its signature by git's SSH signing key
-  (`user.signingkey`), which must be one of the keys in
-  [allowed_signers](allowed_signers).
+- `SHA256SUMS`, the release's unsigned index `index.json`, and `commit`. It signs
+  nothing.
 
 Each archive holds an `ovenlight-connector-<version>` folder, with `LICENSE`, `NOTICE` and
 `THIRD_PARTY_NOTICES.txt`, the licenses of what that system's build links. The archive
@@ -116,36 +117,34 @@ Certificate Profile Signer role on the certificate profile that `WIN_PROFILE` in
 script names.
 
 Try the Windows build on a PC with Smart App Control on before publishing. Then tag the
-release and publish it:
+release, sign it on the Air with the release key, and publish it from the mini:
 
 ```sh
-git tag -s -m "Connector 1.0.0" connector-v1.0.0
-git push origin connector-v1.0.0
-scripts/publish-connector.sh 1.0.0 1.0.0
+git tag -s -m "Connector 1.1.0" connector-v1.1.0
+git push origin connector-v1.1.0
+scripts/sign-connector.sh 1.1.0
+scripts/publish-connector.sh 1.1.0
+scripts/sign-connector.sh --promote 1.1.0
+scripts/publish-connector.sh --promote 1.1.0
 ```
 
 The tag goes on `HEAD`, the clean commit on `origin/master` the release was built from.
-`publish-connector.sh` takes the version, then the oldest secure one, and uploads the
-release to the R2 bucket behind `https://downloads.ovenlight.app`, through `wrangler`
+`sign-connector.sh` runs on the Air and keeps what it signs in
+`~/Sync/ovenlight/releases/`. `publish-connector.sh <version>` uploads only the version's
+folder, `--promote` makes it the latest, `--pull` takes the live release back out, and
+`--resign` puts up the live index signed again, each after `sign-connector.sh` with the same
+option. Each script's header says what it checks. `scripts/test-connector-release.sh` dry-runs them all.
+Uploads go to the R2 bucket behind `https://downloads.ovenlight.app`, through `wrangler`
 (signed in with `npx wrangler@4.147.0 login`, or `CLOUDFLARE_API_TOKEN` and
 `CLOUDFLARE_ACCOUNT_ID`):
 
 - `connector/<version>/`: the release's files, never replaced;
 - `connector/latest/`: the same files, replaced by each release, which the install commands
   and download links in the docs point to;
-- `connector/latest.json`: `{"latest": "<version>", "secure": "<secure>"}`. `ovenlight doctor`
-  reads it to tell people about updates, and fails while they run a version older than
-  `secure`, so raise `secure` with any release that fixes a security problem.
-
-It stops unless it can read the published `latest.json`, which only the bucket's first
-release lacks: that one takes `--first` before the versions.
-
-If a release goes wrong, roll forward with a fixed one, raising `secure` if it fixes a
-security problem. `publish-connector.sh` won't move `latest` back, so restoring an older
-release is done by hand: upload `connector/<good version>/`'s files to `connector/latest/`
-with `latest/`'s `Cache-Control: public, max-age=300`, as `publish-connector.sh` puts them
-(a copy would keep the version's year-long cache), point `latest.json` at that version,
-then wait out the caches.
+- `connector/latest.json` and its signature `latest.json.sig`: the signed index, whose
+  `latest` and `secure` `ovenlight doctor` reads to tell people about updates. It fails
+  while they run a version older than `secure`, so raise `secure` with any release that
+  fixes a security problem.
 
 ## The iPhone app
 

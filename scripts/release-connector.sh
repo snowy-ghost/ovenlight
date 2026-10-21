@@ -5,22 +5,36 @@
 #   ovenlight-connector-linux-<arch>.tar.gz   amd64 and arm64
 #   ovenlight-connector-windows-<arch>.zip    amd64 and arm64, the binary and the PowerShell
 #                                             scripts signed with Azure Artifact Signing
-#   SHA256SUMS, SHA256SUMS.sig                their checksums, signed with ssh-keygen
+#   SHA256SUMS                                their checksums
+#   index.json                                the release's index, unsigned
+#   commit                                    the commit it was built from
 # Each archive holds an ovenlight-connector-<version> folder with the binary, what installs
 # it, the licenses and the notices of what it links. The archive names carry no version,
-# so the latest release has stable URLs; scripts/publish-connector.sh publishes it.
+# so the latest release has stable URLs. It signs nothing: scripts/sign-connector.sh signs
+# SHA256SUMS and the index on the Air, and scripts/publish-connector.sh publishes them.
 #
-#   scripts/release-connector.sh [--unsigned] <version>     e.g. 1.0.0
+#   scripts/release-connector.sh [--unsigned] <version> <secure> [<reinstallBelow>]
+#                                                                       e.g. 1.1.0 1.0.6
+#
+# <secure> is the oldest version without a known security problem: doctor fails on any
+# older one, and computers below it update without waiting. <reinstallBelow> is the oldest
+# version that may update to this one by binary alone, so a release that changes what the
+# install scripts install raises it. Neither is ever lowered. <reinstallBelow> defaults to
+# the highest in ~/Sync/ovenlight/releases, which the first release names itself.
 #
 # It builds with the Go version on connector/go.mod's go line, as CI does, and only a
 # clean HEAD on origin/master, checking that each binary carries that commit (go1.26
 # stamps none in a git worktree, so run it in a clone). --unsigned skips all signing and
-# notarization, and those checks, to test everything else. Notarization uses an App Store
+# notarization, and those checks, to test everything else, and writes no index. Only a dry
+# run's build (OVENLIGHT_RELEASE_DRY, in connector-release-lib.sh), which is unsigned and
+# has stand-ins for the binaries, has one. It refuses a binary that holds the test release
+# key in every mode, and outside a dry run any key in connector/testdata/releasekey, all of
+# whose private halves are public, so a build with the mock release keys can't go out.
+# Notarization uses an App Store
 # Connect API key named by ASC_KEY_ID, ASC_ISSUER_ID and ASC_KEY_PATH in the environment.
 # Over SSH, unlock the login keychain first. Windows signing uses jsign (brew install jsign)
 # and the Azure CLI, signed in (az login) as someone with the Artifact Signing Certificate
-# Profile Signer role on the profile below. SHA256SUMS is signed with git's SSH signing key
-# (user.signingkey), which must be listed in docs/allowed_signers.
+# Profile Signer role on the profile below.
 set -euo pipefail
 
 IDENTITY="Developer ID Application: Snowy Ghost LLC (A84T8TANK8)"
@@ -44,14 +58,56 @@ while [[ "${1:-}" == --* ]]; do
   esac
   shift
 done
-version="${1:?usage: release-connector.sh [--unsigned] <version>, e.g. 1.0.0}"
+usage="usage: release-connector.sh [--unsigned] <version> <secure> [<reinstallBelow>], e.g. 1.1.0 1.0.6"
+version="${1:?$usage}"
+secure="${2:?$usage}"
+reinstall="${3:-}"
 [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || { echo "version should look like 1.0.0, not $version" >&2; exit 1; }
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=connector-release-lib.sh
+. "$root/scripts/connector-release-lib.sh"
 conn="$root/connector"
 name="ovenlight-connector-$version"
-release="$root/build/release"
-signers="$root/docs/allowed_signers"
+# The keys no release may trust: the test key, and outside a dry run, whose stand-ins may
+# hold the mock release keys, every key whose private half is in connector/testdata/releasekey.
+if [ -n "$dry" ]; then
+  awk '{ print $2 }' "$conn/testdata/releasekey/test-key.pub" > "$tmp/public"
+else
+  cat /dev/null "$conn"/testdata/releasekey/*.pub | awk '{ print $2 }' > "$tmp/public"
+fi
+[ -s "$tmp/public" ] || refuse "no connector/testdata/releasekey/test-key.pub"
+
+# public <file>: refuses a file that holds one of those keys.
+public() {
+  if LC_ALL=C grep -qF -f "$tmp/public" "$1"; then
+    refuse "$1 holds a release key whose private half is public, in connector/testdata/releasekey"
+  fi
+}
+public "$conn/release_keys"
+
+# Only a build that can be signed gets an index: a real one, or a dry run's.
+indexed=true
+if [ -n "$dry" ]; then
+  $unsigned || refuse "a dry run builds only with --unsigned"
+elif $unsigned; then
+  indexed=false
+fi
+if $indexed; then
+  for v in "$version" "$secure" $reinstall; do
+    canonical "$v" || refuse "a release's versions look like 1.2.3, with no leading zeros or suffix, not $v"
+  done
+  if [ -z "$reinstall" ]; then
+    for f in "$records"/*/index.json; do
+      r="$(field reinstallBelow "$f")"
+      if [ -z "$reinstall" ] || below "$reinstall" "$r"; then reinstall="$r"; fi
+    done
+    [ -n "$reinstall" ] || refuse "$records has no release yet, so name the first one's reinstallBelow"
+    echo "reinstallBelow $reinstall, the highest in $records"
+  fi
+  atleast "$secure" "$version" || refuse "secure ($secure) is newer than the release ($version)"
+  atleast "$reinstall" "$version" || refuse "reinstallBelow ($reinstall) is newer than the release ($version)"
+fi
 
 # An Artifact Signing access token. az may return a cached one with minutes left, so it's
 # fetched again just before signing.
@@ -61,8 +117,12 @@ wintoken() { az account get-access-token --resource https://codesigning.azure.ne
 GOTOOLCHAIN="go$(awk '$1 == "go" { print $2; exit }' "$conn/go.mod")"
 export GOTOOLCHAIN
 
-# Check the tree and the credentials before minutes of building.
-if ! $unsigned; then
+# Check the tree and the credentials before minutes of building. A dry run's tree is clean
+# too, since sign-connector.sh checks the keys at its commit.
+if [ -n "$dry" ]; then
+  [ -z "$(git -C "$root" status --porcelain)" ] || refuse "the dry run's tree has uncommitted changes"
+  head="$(git -C "$root" rev-parse HEAD)"
+elif ! $unsigned; then
   if [ -n "$(git -C "$root" status --porcelain)" ]; then
     echo "the tree has uncommitted changes; commit them first (or pass --unsigned to test)" >&2
     exit 1
@@ -86,12 +146,6 @@ EOF
   : "${ASC_ISSUER_ID:?set ASC_ISSUER_ID to the issuer ID of that key}"
   : "${ASC_KEY_PATH:?set ASC_KEY_PATH to the .p8 file of that key}"
   [ -f "$ASC_KEY_PATH" ] || { echo "API key not found: $ASC_KEY_PATH" >&2; exit 1; }
-  sshkey="$(git -C "$root" config user.signingkey || true)"
-  sshkey="${sshkey/#\~/$HOME}"
-  if [ ! -f "$sshkey" ] || ! grep -qF " $(awk 'NR == 1 { print $2 }' "$sshkey")" "$signers"; then
-    echo "git's SSH signing key (user.signingkey, now \"$sshkey\") isn't in docs/allowed_signers" >&2
-    exit 1
-  fi
   command -v jsign > /dev/null || { echo "no jsign, to sign for Windows: brew install jsign" >&2; exit 1; }
   if ! wintoken > /dev/null; then
     echo "the Azure CLI can't sign in to Artifact Signing: brew install azure-cli, then az login" >&2
@@ -99,8 +153,6 @@ EOF
   fi
 fi
 
-tmp="$(mktemp -d)"
-trap 'rm -rf "$tmp"' EXIT
 # Archives wait here until every one is built, signed and notarized, so a failed run
 # leaves nothing in build/release.
 out="$tmp/out"
@@ -133,6 +185,30 @@ EOF
   fi
 }
 
+# build <binary> <env>...: go build in that environment. A dry run writes a stand-in instead,
+# which holds release_keys as the binary embeds it.
+build() {
+  local out="$1"
+  shift
+  if [ -n "$dry" ]; then
+    { printf '#!/bin/sh\n# A dry run'"'"'s stand-in for ovenlight %s, with its release keys:\n' "$version"
+      sed 's/^/# /' "$conn/release_keys"
+      printf 'echo %s\n' "$version"; } > "$out"
+    chmod +x "$out"
+    return
+  fi
+  (cd "$conn" && env "$@" go build -trimpath -tags "$BUILD_TAGS" -ldflags "-X main.releaseVersion=$version" -o "$out" .)
+}
+
+# notices <env>...: the notices of what that build links.
+notices() {
+  if [ -n "$dry" ]; then
+    echo "A dry run's stand-in."
+  else
+    env "$@" "$root/scripts/third-party-notices.sh" "$conn" -tags "$BUILD_TAGS"
+  fi
+}
+
 # Linux and Windows: static binaries, no cgo.
 for os in linux windows; do
   for arch in amd64 arm64; do
@@ -141,10 +217,10 @@ for os in linux windows; do
     mkdir -p "$dir"
     exe=ovenlight
     [ "$os" = windows ] && exe=ovenlight.exe
-    (cd "$conn" && CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" \
-      go build -trimpath -tags "$BUILD_TAGS" -ldflags "-X main.releaseVersion=$version" -o "$dir/$exe" .)
+    build "$dir/$exe" CGO_ENABLED=0 GOOS="$os" GOARCH="$arch"
     $unsigned || checkstamp "$dir/$exe"
-    CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" "$root/scripts/third-party-notices.sh" "$conn" -tags "$BUILD_TAGS" > "$dir/THIRD_PARTY_NOTICES.txt"
+    public "$dir/$exe"
+    notices CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" > "$dir/THIRD_PARTY_NOTICES.txt"
     if [ "$os" = linux ]; then
       mkdir -p "$dir/systemd"
       cp "$conn/install.sh" "$conn/uninstall.sh" "$dir/"
@@ -170,13 +246,17 @@ mkdir -p "$pkg/launchd"
 
 for arch in arm64 amd64; do
   echo "building ovenlight $version for $arch"
-  (cd "$conn" && CGO_ENABLED=1 GOOS=darwin GOARCH="$arch" \
-    CGO_CFLAGS="-O2 -g -mmacosx-version-min=$MACOS_MIN" CGO_LDFLAGS="-mmacosx-version-min=$MACOS_MIN" \
-    go build -trimpath -tags "$BUILD_TAGS" -ldflags "-X main.releaseVersion=$version" -o "$tmp/ovenlight-$arch" .)
+  build "$tmp/ovenlight-$arch" CGO_ENABLED=1 GOOS=darwin GOARCH="$arch" \
+    CGO_CFLAGS="-O2 -g -mmacosx-version-min=$MACOS_MIN" CGO_LDFLAGS="-mmacosx-version-min=$MACOS_MIN"
   $unsigned || checkstamp "$tmp/ovenlight-$arch"
-  CGO_ENABLED=1 GOOS=darwin GOARCH="$arch" "$root/scripts/third-party-notices.sh" "$conn" -tags "$BUILD_TAGS" > "$tmp/notices-$arch.txt"
+  public "$tmp/ovenlight-$arch"
+  notices CGO_ENABLED=1 GOOS=darwin GOARCH="$arch" > "$tmp/notices-$arch.txt"
 done
-lipo -create -output "$pkg/ovenlight" "$tmp/ovenlight-arm64" "$tmp/ovenlight-amd64"
+if [ -n "$dry" ]; then
+  cp "$tmp/ovenlight-arm64" "$pkg/ovenlight"
+else
+  lipo -create -output "$pkg/ovenlight" "$tmp/ovenlight-arm64" "$tmp/ovenlight-amd64"
+fi
 cmp -s "$tmp/notices-arm64.txt" "$tmp/notices-amd64.txt" ||
   { echo "arm64 and amd64 link different modules: merge their notices" >&2; exit 1; }
 cp "$tmp/notices-arm64.txt" "$pkg/THIRD_PARTY_NOTICES.txt"
@@ -207,9 +287,13 @@ pack "$tmp/macos" "ovenlight-connector-macos.tar.gz"
 
 (cd "$out" && shasum -a 256 ovenlight-connector-* > SHA256SUMS)
 cat "$out/SHA256SUMS"
-if ! $unsigned; then
-  ssh-keygen -Y sign -q -f "$sshkey" -n file "$out/SHA256SUMS"
-  ssh-keygen -Y verify -f "$signers" -I team@snowyghost.com -n file -s "$out/SHA256SUMS.sig" < "$out/SHA256SUMS"
+if $indexed; then
+  index "$version" "$secure" "$reinstall" 0 "$out/SHA256SUMS" > "$out/index.json"
+  cat "$out/index.json"
+  # A dry run's build says so, and only a dry run signs one.
+  echo "$head${dry:+ dry-run}" > "$out/commit"
+else
+  echo "no index: an --unsigned build is never signed"
 fi
 
 # Only this release, so nothing older is published with it.
