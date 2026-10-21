@@ -199,7 +199,8 @@ final class WebViewPool: ObservableObject {
 
 /// Navigation and UI delegate for one app's web view.
 @MainActor
-final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate {
+final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate,
+                             SFSafariViewControllerDelegate {
     fileprivate(set) var app: WebApp
     /// The node the app loads through, if any; the first navigation then waits for the gate.
     let node: MembershipNode?
@@ -757,8 +758,9 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
     }
 
     /// Past a few in a row, a page's dialog also offers to stop the rest (see `PageDialogs`).
-    private func presentPageDialog<Value>(_ alert: UIAlertController, answer: DialogAnswer<Value>) {
-        let offersStop = dialogs.next()
+    /// `offersStop` is given for one already counted: a sheet's ask (`presentPageSheet`).
+    private func presentPageDialog<Value>(_ alert: UIAlertController, answer: DialogAnswer<Value>, offersStop: Bool? = nil) {
+        let offersStop = offersStop ?? dialogs.next()
         if dialogs.stopped { return answer.fallBack() }
         if offersStop {
             alert.addAction(UIAlertAction(title: PageDialogs.stopTitle, style: .default) { [weak self] _ in
@@ -767,6 +769,20 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
             })
         }
         present(alert) { answer.fallBack() }
+    }
+
+    /// Ovenlight's own sheet for something the page did, which it can do without a tap,
+    /// counted with its dialogs: a page could raise one the moment the last one closed. Past a
+    /// few in a row, an ask naming the app and what it wants comes first, with the way to stop
+    /// the page's dialogs. `show` presents the sheet, and marks its close in the run.
+    private func presentPageSheet(ask title: String, _ message: String, goAhead: String, show: @escaping () -> Void) {
+        guard dialogs.next() else { return show() }
+        let answer = pageAnswer(fallback: false) { go in if go { show() } }
+        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in answer(false) })
+        alert.addAction(UIAlertAction(title: goAhead, style: .default) { _ in answer(true) })
+        raised = alert
+        presentPageDialog(alert, answer: answer, offersStop: true)
     }
 
     // MARK: Downloads
@@ -901,29 +917,45 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
 
     // MARK: Helpers
 
-    /// The "Open in Another App?" ask on screen or waiting for its turn.
-    private weak var openAsk: UIAlertController?
+    /// The ask or Safari view this page raised, on screen or waiting for its turn. One at a
+    /// time: a page's script can raise them without end.
+    private weak var raised: UIViewController?
 
     /// Does nothing while Ovenlight is locked, or while this page is kept off screen: a
     /// page's script can fake a link tap, and Safari would open over another app.
     func openExternally(_ url: URL) {
         guard OverlayPresenter.pageWindow != nil, webView?.window != nil else { return }
         if ["http", "https"].contains(url.scheme?.lowercased() ?? "") {
-            present(SFSafariViewController(url: url), orElse: {})
+            // A page that kept leaving for another site brought a new Safari view the moment
+            // the last one closed. None opens once the person stops the page's dialogs.
+            guard !dialogs.stopped, raised == nil else { return }
+            presentPageSheet(ask: "Open Another Website?", "\(app.name) wants to open \(NavigationPolicy.target(of: url)).",
+                             goAhead: "Open") { [weak self] in
+                guard let self else { return }
+                let safari = SFSafariViewController(url: url)
+                safari.delegate = self
+                raised = safari
+                present(safari) { [weak self] in self?.dialogs.closed() }
+            }
         } else if NavigationPolicy.asksBeforeOpening(url) {
-            // One ask at a time, counted with the page's dialogs: a script can click such a
-            // link without end, and its asks stacked until Ovenlight froze.
-            guard openAsk == nil else { return }
+            // Counted with the page's dialogs: a script can click such a link without end, and
+            // its asks stacked until Ovenlight froze.
+            guard raised == nil else { return }
             let answer = pageAnswer(fallback: false) { open in if open { UIApplication.shared.open(url) } }
             let alert = UIAlertController(title: "Open in Another App?",
                                           message: "\(app.name) wants to open \(NavigationPolicy.target(of: url)).", preferredStyle: .alert)
             alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in answer(false) })
             alert.addAction(UIAlertAction(title: "Open", style: .default) { _ in answer(true) })
-            openAsk = alert
+            raised = alert
             presentPageDialog(alert, answer: answer)
         } else {
             UIApplication.shared.open(url)
         }
+    }
+
+    /// The person closed a Safari view the page opened.
+    func safariViewControllerDidFinish(_ controller: SFSafariViewController) {
+        dialogs.closed()
     }
 
     /// Tells the person that their Reload, or a link they tapped, couldn't reach the app's
@@ -1048,10 +1080,12 @@ final class DialogAnswer<Value: Sendable>: @unchecked Sendable {
     }
 }
 
-/// A page's dialogs in a row, each within a second of the last one closing. Past three in a
-/// row, however long each was read, each offers to stop the page's dialogs, as Chrome does,
-/// so a page that asks in a loop can't trap the person. Once stopped, each is answered at
-/// once with its fallback, until the person reloads the app or opens it again.
+/// A page's dialogs in a row, each within a second of the last one closing: its alerts,
+/// confirms and prompts, and what it raises of Ovenlight's own (an ask, a Safari view). Past
+/// three in a row, however long each was read, each offers to stop the page's dialogs, as
+/// Chrome does, so a page that asks in a loop can't trap the person. Once stopped, each is
+/// answered at once with its fallback, and nothing more opens, until the person reloads the
+/// app or opens it again.
 struct PageDialogs {
     static let loopCount = 3
     static let gap: Duration = .seconds(1)

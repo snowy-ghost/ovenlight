@@ -155,7 +155,9 @@ None of this is required: an app without it is still listed, by name.
 - **Other websites**: a main-frame navigation to any other host opens in a Safari sheet,
   not in the app's view. `window.open` and `target=_blank` to the app's own host load in
   the same view; no second window opens. So sign-in flows that redirect through another
-  site, or rely on a popup and `window.opener`, don't return to the app.
+  site, or rely on a popup and `window.opener`, don't return to the app. Past three Safari
+  sheets in a row, Ovenlight asks before the next, and the person can stop the page's
+  dialogs, which stops these too until the app is reloaded or opened again.
 - **Other apps**: a page can't open `ovenlight://` links directly. Other apps open only
   from a link activated in the page's main frame, and Ovenlight first asks "Open in
   another app?" naming the link, except for `tel:`, `facetime:` and `facetime-audio:`,
