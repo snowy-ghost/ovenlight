@@ -28,10 +28,11 @@
 # notarization, and those checks, to test everything else, and writes no index. Only a dry
 # run's build (OVENLIGHT_RELEASE_DRY, in connector-release-lib.sh), which is unsigned and
 # has stand-ins for the binaries, has one. It refuses the test release key in every mode,
-# and outside a dry run any key in connector/testdata/releasekey, all of whose private
-# halves are public, in a binary, in connector/release_keys or in docs/allowed_signers,
-# which owners check releases with. So a build with the mock release keys can't go out, nor
-# one whose docs would let a mock key's signature pass. Notarization uses an App Store
+# and outside a dry run any key in connector/testdata/releasekey or
+# scripts/testdata/release-keys, all of whose private halves are public, in a binary, in
+# connector/release_keys or in docs/allowed_signers, which owners check releases with. So a
+# build with the mock release keys can't go out, nor one whose docs would let a fixture
+# key's signature pass. Notarization uses an App Store
 # Connect API key named by ASC_KEY_ID, ASC_ISSUER_ID and ASC_KEY_PATH in the environment.
 # Over SSH, unlock the login keychain first. Windows signing uses jsign (brew install jsign)
 # and the Azure CLI, signed in (az login) as someone with the Artifact Signing Certificate
@@ -71,18 +72,19 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 conn="$root/connector"
 name="ovenlight-connector-$version"
 # The keys no release may trust: the test key, and outside a dry run, whose stand-ins may
-# hold the mock release keys, every key whose private half is in connector/testdata/releasekey.
+# hold the mock release keys, every fixture key, as fixture() lists them.
 if [ -n "$dry" ]; then
   awk '{ print $2 }' "$conn/testdata/releasekey/test-key.pub" > "$tmp/public"
 else
-  cat /dev/null "$conn"/testdata/releasekey/*.pub | awk '{ print $2 }' > "$tmp/public"
+  cat /dev/null "$conn"/testdata/releasekey/*.pub "$root"/scripts/testdata/release-keys/*.pub |
+    awk '{ print $2 }' > "$tmp/public"
 fi
 [ -s "$tmp/public" ] || refuse "no connector/testdata/releasekey/test-key.pub"
 
 # public <file>: refuses a file that holds one of those keys.
 public() {
   if LC_ALL=C grep -qF -f "$tmp/public" "$1"; then
-    refuse "$1 holds a release key whose private half is public, in connector/testdata/releasekey"
+    refuse "$1 holds a release key whose private half is public, a fixture's"
   fi
 }
 public "$conn/release_keys"

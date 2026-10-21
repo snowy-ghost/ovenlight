@@ -435,6 +435,7 @@ refused "are signed with different keys" publish --promote 1.1.4
 
 fresh gates "what no release gets past"
 keyfolder air1 paper1
+ssh-keygen -q -t ed25519 -N '' -C stranger -f "$dry/private/stranger"
 { cat "$fixtures/air1.pub" "$fixtures/paper1.pub" "$root/connector/testdata/releasekey/test-key.pub"; } > "$repo/connector/release_keys"
 commit "the test key"
 refused "holds a release key whose private half is public" release 1.1.0 1.0.6 1.1.0
@@ -456,18 +457,23 @@ if [ -n "$mocks" ]; then
     "$repo/scripts/release-connector.sh" --unsigned 1.1.0 1.0.6 1.1.0
   # A key swap that leaves a mock key in docs/allowed_signers would let owners' own check pass
   # what its public private half signs, so a real build refuses that too.
-  cat "$fixtures/air1.pub" "$fixtures/paper1.pub" > "$repo/connector/release_keys"
+  cat "$dry/private/stranger.pub" > "$repo/connector/release_keys"
   # shellcheck disable=SC2086 # one path per word
   awk '{ print "team@snowyghost.com namespaces=\"file,ovenlight-latest\"", $1, $2 }' $mocks >> "$repo/docs/allowed_signers"
   commit "a mock key left in allowed_signers"
   refused "docs/allowed_signers holds a release key whose private half is public" env -u OVENLIGHT_RELEASE_DRY \
     HOME="$dry/home" "$repo/scripts/release-connector.sh" --unsigned 1.1.0 1.0.6 1.1.0
-  signers air1 paper1
 fi
+# So does one left with a dry run's fixture key, whose private half is public too.
+mkdir -p "$dry/home"
+cat "$dry/private/stranger.pub" > "$repo/connector/release_keys"
+signers air1
+refused "docs/allowed_signers holds a release key whose private half is public" env -u OVENLIGHT_RELEASE_DRY \
+  HOME="$dry/home" "$repo/scripts/release-connector.sh" --unsigned 1.1.0 1.0.6 1.1.0
+signers air1 paper1
 keys air1 paper1
 refused "a dry run builds only with --unsigned" "$repo/scripts/release-connector.sh" 1.1.0 1.0.6 1.1.0
 build 1.1.0 1.0.6 1.1.0
-ssh-keygen -q -t ed25519 -N '' -C stranger -f "$dry/private/stranger"
 refused "a dry run trusts only the fixture keys" sign stranger 1.1.0
 refused "a dry run signs with --key" env OVENLIGHT_RELEASE_DRY="$dry" "$repo/scripts/sign-connector.sh" 1.1.0
 refused "isn't a folder" env OVENLIGHT_RELEASE_DRY= "$repo/scripts/sign-connector.sh" --key "$dry/private/air1" 1.1.0
