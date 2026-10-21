@@ -692,7 +692,9 @@ object FileChoice {
 
     /**
      * [accept] is WebView's list (types, wildcards and `.ext` names); an empty one, or one with
-     * a name [mimeType] doesn't know, takes any file. The camera goes only where a photo or
+     * a name [mimeType] doesn't know, takes any file. So does one longer than a page needs: the
+     * types go to the picker in one binder transaction, which a page's 100,000 overflowed, a
+     * crash on every tap. The camera goes only where a photo or
      * video would do. [filesForMedia] offers files for every photo or video input, beside the
      * photo picker for images and in its place for video: before Android 11 the photo picker is
      * Play services' own, a module it downloads on first use, and where that can't download,
@@ -700,6 +702,7 @@ object FileChoice {
      */
     fun kind(accept: List<String>, capture: Boolean, mimeType: (String) -> String?, filesForMedia: Boolean = false): Kind {
         val tokens = accept.flatMap { it.split(',') }.map { it.trimmingWhitespace().lowercase() }.filter { it.isNotEmpty() }
+            .takeIf { it.size <= 100 && it.all { token -> token.length <= 255 } }.orEmpty()
         val types = tokens.map { if (it.startsWith(".")) mimeType(it.drop(1)) else it }
         val any = types.isEmpty() || types.any { it == null || it == "*/*" }
         val known = types.filterNotNull()

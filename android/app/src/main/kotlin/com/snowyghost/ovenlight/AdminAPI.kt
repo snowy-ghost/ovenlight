@@ -519,8 +519,11 @@ object AdminAPI {
     /** What iOS's `urlPathAllowed` keeps besides ASCII letters and digits, less `/`. */
     private const val PATH_ALLOWED = "!$&'()*+,-.:;=@_~"
 
-    /** The `{"error": "...", "code": "..."}` the connector answers with. */
-    fun errorMessage(data: ByteArray): String? = errorBody(data)?.error?.let(::connectorText)
+    /**
+     * The `{"error": "...", "code": "..."}` the connector answers with. One longer than a connector
+     * writes, which a sharer's could send to stall the phone drawing it, is left for the caller's own words.
+     */
+    fun errorMessage(data: ByteArray): String? = errorBody(data)?.error?.takeIf { it.length <= 1000 }?.let(::connectorText)
 
     /** A message the connector wrote, which marks commands with backticks as a terminal reads them: the phone leaves them out. */
     fun connectorText(text: String): String = text.replace("`", "")

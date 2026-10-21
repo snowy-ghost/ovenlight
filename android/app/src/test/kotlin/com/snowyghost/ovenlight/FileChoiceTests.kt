@@ -12,6 +12,14 @@ class FileChoiceTests {
     private fun choice(media: FileChoice.Kind.Media, documents: List<String>? = null) =
         FileChoice.Kind.Choice(media, documents?.let { FileChoice.Kind.Documents(it) })
 
+    @Test
+    fun testAnOverlongAcceptListTakesAnyFile() {
+        val any = FileChoice.Kind.Documents(listOf("*/*"))
+        assertEquals(any, kind(*Array(101) { "image/x-$it" }))
+        assertEquals(any, kind("image/" + "x".repeat(250)))
+        assertEquals(choice(FileChoice.Kind.Media(images = true, videos = false, single = null)), kind(*Array(100) { "image/x-$it" }))
+    }
+
     /** As WebKit's menu does: an image input offers the camera beside the photo picker. */
     @Test
     fun testAnImageInputOffersTheCameraAndThePhotoPicker() {
