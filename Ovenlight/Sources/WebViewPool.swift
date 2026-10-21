@@ -260,6 +260,8 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
     private var downloads: [ObjectIdentifier: (download: WKDownload, file: URL?, tapped: Bool)] = [:]
     /// Downloads agreed to that WebKit hasn't made yet, each holding its place under the cap.
     private var agreed = AgreedDownloads()
+    /// `<a download>` actions so far, so one answered late can tell a newer one came.
+    private var downloadActions = 0
     /// A brief message over the page, such as a download that failed; it goes by itself.
     @Published private(set) var notice: String?
     private var noticeTask: Task<Void, Never>?
@@ -490,9 +492,19 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
         case .allow where action.shouldPerformDownload:
             // `<a download>`, of the app's own pages or of a blob or data URL. Answered at once:
             // the page's next navigation (a `#fragment` change too) takes the question back, and
-            // the download with it.
+            // the download with it. While one agreed to hasn't become a download yet, the page
+            // is starting several at once and WebKit keeps only the last, so after a moment only
+            // the newest is agreed to.
             let source = (action.sourceFrame as WKFrameInfo?)?.securityOrigin.host
-            decisionHandler(mayDownload(url, from: source, tapped: Self.isTap(action)) ? .download : .cancel)
+            let tap = Self.isTap(action)
+            downloadActions += 1
+            guard agreed.count > 0 else { return decisionHandler(mayDownload(url, from: source, tapped: tap) ? .download : .cancel) }
+            let turn = downloadActions
+            Task { [weak self] in
+                try? await Task.sleep(for: AgreedDownloads.settle)
+                guard let self, turn == downloadActions else { return decisionHandler(.cancel) }
+                decisionHandler(mayDownload(url, from: source, tapped: tap) ? .download : .cancel)
+            }
         case .allow:
             decisionHandler(.allow)
         case .openExternally(let external):
@@ -1148,6 +1160,9 @@ struct PageDialogs {
 /// killed. Each holds a place under the cap until it becomes a download, or for `expiry`.
 struct AgreedDownloads {
     static let expiry: Duration = .seconds(30)
+    /// How long a download started while another is still being made waits, so only the
+    /// newest of a handler's several is agreed to.
+    static let settle: Duration = .milliseconds(100)
 
     private var agreed: [ContinuousClock.Instant] = []
     private let now: () -> ContinuousClock.Instant
