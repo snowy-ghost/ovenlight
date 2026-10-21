@@ -430,12 +430,12 @@ Stop and ask for these in plain words, one at a time, with the exact link or pla
 tap. Don't work around them. Doctor marks the checks only the person can fix with
 `"actor": "person"`, and with a `url` when there's a page for it.
 
-- **Start the connector.** When `ovenlight status` says it isn't running, it also says
-  how: the person runs the install script again, from the folder the connector came in
-  (or `connector/` in the repository), and if it keeps stopping, the reason is at the end
-  of the log that status names. Don't run `ovenlight run` yourself: a connector started
-  from your session stops with it. When status or doctor says to restart it (an app's
-  node lost its login), the person runs the command shown, too.
+- **Start the connector.** When `ovenlight status` says it isn't running, it also gives
+  the command that starts it, which the person runs in a terminal (on Windows, an
+  administrator PowerShell). If it keeps stopping, the reason is at the end of the log
+  that status names. Don't run `ovenlight run` yourself: a connector started from your
+  session stops with it. When status or doctor says to restart it (an app's node lost its
+  login), the person runs the command shown, too.
 - **A Tailscale account**, with MagicDNS and HTTPS Certificates turned on (admin console,
   DNS page).
 - **Store an API token**: the person runs `ovenlight auth set` in their own terminal and
