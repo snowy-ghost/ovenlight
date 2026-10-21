@@ -189,6 +189,8 @@ class PageEdges(
                 true
             }
             is NavigationPolicy.Decision.OpenExternally -> {
+                // WebView may name a redirect stopped here to the page's callbacks too ([skipped]).
+                stopped = decision.url to SystemClock.elapsedRealtime()
                 if (request.hasGesture()) openExternally(decision.url) else trip(decision.url)
                 true
             }
@@ -217,8 +219,8 @@ class PageEdges(
     }
 
     /**
-     * The address a stopped navigation opened outside, and when: one navigation reaches here
-     * from more than one callback, and opens once.
+     * The address a stopped navigation went to outside, and when: one navigation reaches here
+     * from shouldOverrideUrlLoading and more than one callback, and is decided once.
      */
     private var stopped: Pair<URI, Long>? = null
 
@@ -235,8 +237,9 @@ class PageEdges(
      * shouldOverrideUrlLoading never sees a POST, nor a page's own move to a blob: URL, so a
      * POST to another site, or a blob of another origin, gets this far. WebView reports one
      * as it starts, as it fails and as its page commits, in no fixed order. Each time it
-     * stops, the view goes back if it shows that page by then, and the address opens outside
-     * once, as iOS does, though here the request has already gone.
+     * stops, the view goes back if it shows that page by then, and the address goes once, as
+     * one of the page's own trips to another site ([trip]), as iOS does, though here the
+     * request has already gone.
      */
     private fun skipped(url: String?) {
         url ?: return
@@ -253,7 +256,7 @@ class PageEdges(
         val last = stopped
         if (decision is NavigationPolicy.Decision.OpenExternally && (last == null || last.first != decision.url || now - last.second > RETURN_MILLIS)) {
             stopped = decision.url to now
-            openExternally(decision.url)
+            trip(decision.url)
         }
     }
 
@@ -307,10 +310,10 @@ class PageEdges(
     private var onTrip = false
 
     /**
-     * A trip to another site the page took by itself, such as a sign-in's redirect: one at a
-     * time, none while a dialog shows or the last trip's tab is open. Each counts in the run with
-     * the page's dialogs, so a page that sends the person off again as each tab closes is asked
-     * about, with the way out, rather than opening a tab each time.
+     * A trip to another site no known tap started, such as a sign-in's redirect or a POST
+     * ([skipped]): one at a time, none while a dialog shows or the last trip's tab is open.
+     * Each counts in the run with the page's dialogs, so a page that sends the person off again
+     * as each tab closes is asked about, with the way out, rather than opening a tab each time.
      */
     private fun trip(url: URI) {
         if (quiet || onTrip || mutableDialog.value != null) return OvenlightLog.i("${app.host}: refused a trip to another site")

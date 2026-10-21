@@ -125,4 +125,25 @@ class PageLoopTests {
         go("https://example.com/?6")
         assertEquals("a reload or a reopen lifts it", 1, opened())
     }
+
+    /**
+     * WebView names a redirect to another site it was told to stop to the page's callbacks as
+     * well, and a POST only there: either way one navigation is one trip, and each goes as one,
+     * so the run, the way out and one tab at a time hold for them too.
+     */
+    @Test
+    fun testATripWebViewNamesTwiceOpensOnce() {
+        go("https://accounts.example.com/sign-in")
+        edges.pageStarted("https://accounts.example.com/sign-in")
+        edges.pageFinished("https://accounts.example.com/sign-in")
+        assertEquals("a sign-in's redirect opens once", 1, opened())
+        edges.pageStarted("https://example.com/post")
+        assertEquals("a POST is a trip, one at a time", 0, opened())
+
+        pass(5_000)
+        edges.inFront()
+        go("https://accounts.example.com/again", tapped = true)
+        edges.pageFinished("https://accounts.example.com/again")
+        assertEquals("a tapped one opens once too", 1, opened())
+    }
 }
