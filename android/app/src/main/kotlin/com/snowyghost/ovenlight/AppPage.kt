@@ -97,7 +97,7 @@ class AppPage(
     /** Its downloads, refetched on its route with its profile's cookies (PageDownloads.kt). */
     val downloads = PageDownloads(
         app.id, app.host, DownloadShelf.folder(context), scope,
-        mayStart = { shown && !pool.isLocked.value }, isLocked = { pool.isLocked.value },
+        mayStart = { shown && !pool.isLocked.value && !edges.quiet }, isLocked = { pool.isLocked.value },
         client = { PageDownloads.client(TailnetCore.client(routeKey), ProfileCookieJar(WebViewCompat.getProfile(view).cookieManager)) },
         freeBytes = { DownloadShelf.freeBytes(this.context.applicationContext) },
         busy = { busy ->
@@ -157,6 +157,10 @@ class AppPage(
         edges = PageEdges(
             app, view, this.context, scope, pool.isLocked, OvenlightApp.model.lifecycle, capture, isShown = { shown },
             home = { loadStart() },
+            stopDownloads = {
+                downloads.cancel()
+                DownloadShelf.drop(app.id)
+            },
         )
         view.webViewClient = Client()
         view.webChromeClient = edges.chrome

@@ -119,6 +119,8 @@ class PageEdges(
     private val isShown: () -> Boolean,
     /** Loads the app's start page again, through the same checks as its first load. */
     private val home: () -> Unit,
+    /** Stops the page's downloads under way and drops its waiting files, as the person stops the page ([quietDialogs]). */
+    private val stopDownloads: () -> Unit,
 ) {
     /** A dialog the page or Ovenlight shows over the page, one at a time. */
     sealed class Dialog {
@@ -322,43 +324,55 @@ class PageEdges(
         mutableDialog.value = dialog
     }
 
-    /** The page's dialogs in a row, each within [DIALOG_RUN_GAP_MILLIS] of the last one closing. */
+    /** The page's dialogs and download sheets in a row, each within [DIALOG_RUN_GAP_MILLIS] of the last one closing. */
     private var dialogRun = 0
     private var lastDialogClosed: Long? = null
 
     /**
-     * The person stopped this page's dialogs: each is answered with its fallback at once,
-     * until they reload the app or open it again ([allowDialogsAgain]). Nothing the page
-     * does itself (a reload of its own) lifts it.
+     * The person stopped this page: each of its dialogs is answered with its fallback at once,
+     * and none of its downloads starts ([PageDownloads]), until they reload the app or open it
+     * again ([allowDialogsAgain]). Nothing the page does itself (a reload of its own) lifts it.
      */
-    private var quiet = false
+    var quiet = false
+        private set
 
     /**
-     * A page's alert, confirm or prompt. Past [DIALOG_LOOP_COUNT] in a row, however long each
-     * was read, each offers "Don't let this app show more dialogs", as Chrome does, so a page
-     * that asks in a loop can't trap the person.
+     * Counts a page's dialog, or a download sheet, in the run: true past [DIALOG_LOOP_COUNT]
+     * in a row, however long each was read, when it offers "Don't let this app show more
+     * dialogs", as Chrome does, so a page that asks in a loop can't trap the person.
      */
-    private fun fromPage(make: (offersQuiet: Boolean) -> Dialog.FromPage) {
+    fun nextInRun(): Boolean {
         val now = SystemClock.elapsedRealtime()
         val closed = lastDialogClosed
         dialogRun = if (closed != null && now - closed < DIALOG_RUN_GAP_MILLIS) dialogRun + 1 else 1
-        val dialog = make(dialogRun > DIALOG_LOOP_COUNT)
+        return dialogRun > DIALOG_LOOP_COUNT
+    }
+
+    /** A page's dialog, or a download sheet, closed. */
+    fun closedInRun() {
+        lastDialogClosed = SystemClock.elapsedRealtime()
+    }
+
+    /** A page's alert, confirm or prompt. */
+    private fun fromPage(make: (offersQuiet: Boolean) -> Dialog.FromPage) {
+        val dialog = make(nextInRun())
         if (quiet) return dialog.dropped()
         show(dialog)
     }
 
     fun quietDialogs() {
         quiet = true
+        stopDownloads()
     }
 
-    /** The person reloaded the app, or it came back on screen (opened again, or unlocked): its page may show dialogs again. */
+    /** The person reloaded the app, or it came back on screen (opened again, or unlocked): its page may show dialogs and download again. */
     fun allowDialogsAgain() {
         quiet = false
     }
 
     /** The dialog closed: answered, dismissed or let go, it answers once. */
     fun dismiss(dialog: Dialog) {
-        if (dialog is Dialog.FromPage) lastDialogClosed = SystemClock.elapsedRealtime()
+        if (dialog is Dialog.FromPage) closedInRun()
         if (mutableDialog.value === dialog) mutableDialog.value = null
         dialog.dropped()
     }
@@ -923,11 +937,11 @@ private fun PageDialogText(message: String, below: @Composable () -> Unit = {}) 
     }
 }
 
-/** Chrome's way out of a page's dialog loop. */
+/** Chrome's way out of a page's dialog loop, on its dialogs and download sheets ([PageEdges.quietDialogs]). */
 @Composable
-private fun QuietChoice(checked: Boolean, onChange: (Boolean) -> Unit) {
+internal fun QuietChoice(checked: Boolean, modifier: Modifier = Modifier, onChange: (Boolean) -> Unit) {
     Row(
-        Modifier.fillMaxWidth().padding(top = 8.dp).heightIn(min = 48.dp).toggleable(checked, role = Role.Checkbox, onValueChange = onChange),
+        modifier.fillMaxWidth().padding(top = 8.dp).heightIn(min = 48.dp).toggleable(checked, role = Role.Checkbox, onValueChange = onChange),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Checkbox(checked = checked, onCheckedChange = null)
