@@ -172,16 +172,15 @@ case "$mode" in
 folder)
   [ -d "$release" ] || refuse "no build/release; run scripts/release-connector.sh $version"
   cd "$release"
-  for f in SHA256SUMS SHA256SUMS.sig; do
-    [ -f "$f" ] || refuse "no $f in build/release: build $version, then sign it"
-  done
+  [ -f SHA256SUMS ] || refuse "no SHA256SUMS in build/release: build $version"
+  sig="$records/$version/SHA256SUMS.sig"
+  [ -f "$sig" ] || refuse "no $sig: sign $version on the Air"
   # The release is what the signed SHA256SUMS lists, with or without Windows.
-  files="$(awk '{ print $2 }' SHA256SUMS) SHA256SUMS SHA256SUMS.sig"
+  files="$(awk '{ print $2 }' SHA256SUMS) SHA256SUMS"
   while read -r _ f; do checkarchive "$f"; done < SHA256SUMS
   shasum -a 256 -c --quiet SHA256SUMS
-  { [ -f "$records/$version/SHA256SUMS" ] && cmp -s SHA256SUMS "$records/$version/SHA256SUMS"; } ||
-    refuse "build/release isn't the build of $version that was signed"
-  verifyrule "$version" SHA256SUMS SHA256SUMS.sig file
+  cmp -s SHA256SUMS "$records/$version/SHA256SUMS" || refuse "build/release isn't the build of $version that was signed"
+  verifyrule "$version" SHA256SUMS "$sig" file
   # A version's files are cached as immutable, so they're never replaced by other ones. The
   # same files again finish a publish that failed partway.
   if fetch "connector/$version/SHA256SUMS" "$tmp/SHA256SUMS" && ! cmp -s "$tmp/SHA256SUMS" SHA256SUMS; then
@@ -191,6 +190,7 @@ folder)
   for f in $files; do
     put "connector/$version/$f" "$f" "public, max-age=31536000, immutable"
   done
+  put "connector/$version/SHA256SUMS.sig" "$sig" "public, max-age=31536000, immutable"
   echo "published $SITE/connector/$version/; latest.json names it once it's promoted"
   ;;
 

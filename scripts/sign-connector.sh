@@ -169,11 +169,6 @@ $(diff "$tmp/want" "$tmp/have" | sed -n 's/^</  missing/p; s/^>/  extra/p')"
   sign ovenlight-canary "$b/canary.json"
   echo "$commit" > "$b/commit"
   keep "$version" "$b"/{SHA256SUMS,SHA256SUMS.sig,index.json,commit,release_keys,canary.json,canary.json.sig}
-  if [ -n "$dry" ]; then
-    cp "$b/SHA256SUMS.sig" "$minirelease/"
-  else
-    scp -q "$b/SHA256SUMS.sig" "$minirelease/"
-  fi
   echo "signed: on the mini, scripts/publish-connector.sh $version, then the canary with $records/$version/canary.json"
   ;;
 
