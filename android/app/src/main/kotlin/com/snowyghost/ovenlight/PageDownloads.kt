@@ -27,11 +27,14 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -84,7 +87,7 @@ class PageDownloads(
     private val appHost: String,
     private val folder: File,
     private val scope: CoroutineScope,
-    /** The page is on screen and Ovenlight unlocked: only then may a download start. */
+    /** The page is on screen, Ovenlight unlocked, and the person hasn't stopped the page ([PageEdges.quiet]): only then may a download start. */
     private val mayStart: () -> Boolean,
     private val isLocked: () -> Boolean,
     /** A client through the proxy on the app's route key, with the profile's cookies. */
@@ -119,7 +122,7 @@ class PageDownloads(
     override fun onDownloadStart(url: String, userAgent: String?, contentDisposition: String?, mimetype: String?, contentLength: Long) {
         forgetStale()
         // Not deferred: a script's click would start one under the lock or another app.
-        if (!mayStart()) return log("refused a download while off screen or locked")
+        if (!mayStart()) return log("refused a download while off screen, locked or stopped")
         when (url.substringBefore(':').lowercase()) {
             "http", "https" -> {
                 // As Chromium writes it: java.net.URI refuses some of an app's own addresses.
@@ -183,7 +186,7 @@ class PageDownloads(
         }
     }
 
-    /** The page is going: its downloads stop, and their partial files go. */
+    /** The page is going, or the person stopped it: its downloads stop, and their partial files go. */
     fun cancel() {
         jobs.toList().forEach { it.cancel() }
         calls.forEach { it.cancel() }
@@ -245,7 +248,7 @@ class PageDownloads(
                 delay(CLICK_WAIT_MILLIS)
             }
             // The page may have gone off screen meanwhile, without Ovenlight leaving.
-            mayStart().also { if (!it) log("refused a download while off screen or locked") }
+            mayStart().also { if (!it) log("refused a download while off screen, locked or stopped") }
         }
         track(shownName, first = named) {
             val request = Request.Builder().url(url).apply { userAgent?.let { header("User-Agent", it) } }.build()
@@ -607,19 +610,22 @@ class ProfileCookieJar(private val cookies: CookieManager) : CookieJar {
  * Ovenlight's sheet for the app's oldest finished file, while its page is on screen: Save
  * through the system's create-document picker, Share through the Sharesheet, and Open for the
  * types [DownloadFiles] lets out. Every way out is the person's choice. Closing it, or taking
- * one, lets the next file show; the file stays on disk until the next launch.
+ * one, lets the next file show; the file stays on disk until the next launch. Each sheet counts
+ * in a run with the page's dialogs ([PageEdges.nextInRun]), so a page that refills the shelf as
+ * fast as the person closes sheets gets their way out too, which stops its downloads.
  */
 @Composable
 fun DownloadSheet(model: AppModel, page: AppPage) {
     val waiting by DownloadShelf.waiting.collectAsState()
     val download = waiting[page.app.id]?.firstOrNull() ?: return
     // Each file gets a sheet of its own, which shows itself as it comes.
-    key(download) { DownloadSheet(model, page.app, download) }
+    key(download) { DownloadSheet(model, page, download) }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun DownloadSheet(model: AppModel, app: WebApp, download: DownloadShelf.Download) {
+private fun DownloadSheet(model: AppModel, page: AppPage, download: DownloadShelf.Download) {
+    val app = page.app
     val context = LocalContext.current
     val sheet = rememberModalBottomSheetState()
     val scope = rememberCoroutineScope()
@@ -627,11 +633,22 @@ private fun DownloadSheet(model: AppModel, app: WebApp, download: DownloadShelf.
     val canOpen = remember { download.type != null && context.packageManager.resolveActivity(open(uri, download.type), PackageManager.MATCH_DEFAULT_ONLY) != null }
     val size = remember { Formatter.formatShortFileSize(context, download.file.length()) }
     val type = DownloadFiles.sharedType(download.type)
+    var offersQuiet by remember { mutableStateOf(false) }
+    var stopMore by remember { mutableStateOf(false) }
+    // Counted once it shows, not as it composes.
+    LaunchedEffect(Unit) { offersQuiet = page.edges.nextInRun() }
+    // However it closes: marked before the next file's sheet comes, and the page stopped if the
+    // person chose so, once this file has left the shelf, so a Save still finds it.
+    val close = {
+        page.edges.closedInRun()
+        DownloadShelf.remove(app.id, download)
+        if (stopMore) page.edges.quietDialogs()
+    }
     fun done(action: () -> Unit) {
         action()
-        scope.launch { sheet.hide() }.invokeOnCompletion { DownloadShelf.remove(app.id, download) }
+        scope.launch { sheet.hide() }.invokeOnCompletion { close() }
     }
-    ModalBottomSheet(onDismissRequest = { DownloadShelf.remove(app.id, download) }, sheetState = sheet, dragHandle = { SheetDragHandle() }) {
+    ModalBottomSheet(onDismissRequest = close, sheetState = sheet, dragHandle = { SheetDragHandle() }) {
         DownloadSheetContent(
             name = download.file.name,
             size = size,
@@ -658,7 +675,7 @@ private fun DownloadSheet(model: AppModel, app: WebApp, download: DownloadShelf.
                     context.startOrFalse(open(uri, openAs))
                 }
             },
-        )
+        ) { if (offersQuiet) QuietChoice(stopMore, Modifier.padding(horizontal = 16.dp)) { stopMore = it } }
     }
 }
 
@@ -699,8 +716,11 @@ private object SaveDocument {
 private fun open(uri: Uri, type: String) =
     Intent(Intent.ACTION_VIEW).setDataAndType(uri, type).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
 
+/** [below]: the way out, when the sheet offers it. */
 @Composable
-internal fun DownloadSheetContent(name: String, size: String, canOpen: Boolean, onSave: () -> Unit, onShare: () -> Unit, onOpen: () -> Unit) {
+internal fun DownloadSheetContent(
+    name: String, size: String, canOpen: Boolean, onSave: () -> Unit, onShare: () -> Unit, onOpen: () -> Unit, below: @Composable () -> Unit = {},
+) {
     Column(Modifier.navigationBarsPadding().padding(bottom = 8.dp)) {
         ListItem(
             // One line, shortened in the middle, so the real extension always shows.
@@ -713,5 +733,6 @@ internal fun DownloadSheetContent(name: String, size: String, canOpen: Boolean, 
         SheetRow(R.drawable.ic_download, stringResource(R.string.save), onSave)
         SheetRow(R.drawable.ic_share, stringResource(R.string.download_share), onShare)
         if (canOpen) SheetRow(R.drawable.ic_open_in_new, stringResource(R.string.open), onOpen)
+        below()
     }
 }

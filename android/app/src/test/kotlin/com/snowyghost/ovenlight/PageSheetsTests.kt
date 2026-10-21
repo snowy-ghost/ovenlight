@@ -1,18 +1,22 @@
 package com.snowyghost.ovenlight
 
 import android.Manifest
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.snowyghost.ovenlight.MediaCapturePolicy.MediaCaptureType
 import java.time.Duration
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -68,11 +72,25 @@ class PageSheetsTests {
         }
     }
 
+    /** Android only: a sheet in a run of them offers the page's way out, as its dialogs do. */
+    @Test
+    fun testASheetInARunOffersTheWayOut() {
+        var checked by mutableStateOf(false)
+        show {
+            DownloadSheetContent("note.txt", "18 B", canOpen = true, {}, {}, {}) {
+                QuietChoice(checked, Modifier.padding(horizontal = 16.dp)) { checked = it }
+            }
+        }
+        inEveryLook { assertShows("note.txt", "Save", "Share", "Open", "Don’t let this app show more dialogs") }
+        composeRule.onNodeWithText("Don’t let this app show more dialogs").performClick()
+        assertTrue(checked)
+    }
+
     @Test
     fun testThePromptNamesTheAppOrTheHostAsking() {
         val answers = mutableListOf<Boolean>()
         var prompt by mutableStateOf(PageCapture.Prompt(MediaCaptureType.Camera, null, DialogAnswer(false) { answers += it }))
-        show { CapturePromptDialog(capturePromptTitle(prompt, "Recipe Box"), prompt.answer::invoke) }
+        show { CapturePromptDialog(capturePromptTitle(prompt, "Recipe Box"), answer = prompt.answer::invoke) }
         inEveryLook { assertShows("Allow Recipe Box to use the camera?", "Allow", "Don’t allow") }
         composeRule.onNodeWithText("Allow").performClick()
         assertEquals("Allow does nothing at first, so a page's double tap can't land on it", emptyList<Boolean>(), answers)

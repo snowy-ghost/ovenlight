@@ -18,8 +18,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.core.content.ContextCompat
@@ -34,7 +38,7 @@ import kotlinx.coroutines.launch
 /**
  * One page's microphone and camera (iOS's requestMediaCapturePermissionFor, and its capture
  * stop). WebView has no prompt of its own, so Ovenlight asks, after Android's own runtime
- * permission, and remembers an Allow only for the page's current document. WebView can't stop a
+ * permission, and remembers an answer only for the page's current document. WebView can't stop a
  * stream either: on lock and on closing to the launcher the page script stops the tracks it
  * kept, and Ovenlight asks the system whether it still records or holds a camera until it lets
  * go, for up to two seconds. If it still does, a page granted capture since its last load is
@@ -52,6 +56,8 @@ class PageCapture(
      * refused for good, then true once Ovenlight holds them all.
      */
     private val permissions: (List<String>, (List<String>) -> Unit, (Boolean) -> Unit) -> Unit,
+    /** Whether Ovenlight holds this runtime permission now, without asking. */
+    private val holds: (String) -> Boolean,
     /** Whether Ovenlight still records or holds a camera ([CaptureMonitor]). */
     private val stillCapturing: () -> Boolean,
     /** Ends the page's view for good: the pool drops it. */
@@ -72,6 +78,23 @@ class PageCapture(
     /** What the person allowed in this document, by the origin that asked. */
     private val allowed = mutableMapOf<String, Set<String>>()
 
+    /**
+     * What the person refused in this document, whichever frame asked: on Ovenlight's question,
+     * and on Android's while Android still refuses it (Settings can allow it, as the refused
+     * notice says). A later request for any of it is refused at once, as WebKit does, so a page
+     * that asks again on each refusal can't keep the question, or the notice, coming.
+     */
+    private val denied = mutableSetOf<String>()
+    private val deniedByAndroid = mutableSetOf<String>()
+
+    /**
+     * What Android refused for good, turned off for Ovenlight, as this page asked: whatever
+     * document asks for it next is refused at once until Settings allows it or the page stops,
+     * since Android would refuse again without a word, and a page that reloads on each refusal
+     * would only keep its permission screen opening.
+     */
+    private val offInSettings = mutableSetOf<String>()
+
     /** Reaches the page script, which stops its tracks and its frames' (see [PageBridge]). */
     private var stopTracks: (() -> Unit)? = null
 
@@ -84,31 +107,44 @@ class PageCapture(
         val origin = request.origin
         fun decide() = MediaCapturePolicy.decide(type, origin.scheme.orEmpty(), origin.host.orEmpty(), app, ownersHosts(), isLocked(), isOnScreen())
         val decision = decide()
-        if (decision == PermissionDecision.Deny || pending != null) return request.deny()
+        if (decision == PermissionDecision.Deny || pending != null || refusedBefore(resources)) return request.deny()
         val key = origin.toString()
         // Without asking, only ever the microphone.
         val grant = if (decision == PermissionDecision.Grant) setOf(PermissionRequest.RESOURCE_AUDIO_CAPTURE) else resources
         val asked = decision == PermissionDecision.Grant || allowed[key]?.containsAll(resources) == true
         pending = request
         val refusedForGood = { denied: List<String> ->
+            offInSettings += denied
             refused.value = if (Manifest.permission.CAMERA in denied) MediaCaptureType.Camera else MediaCaptureType.Microphone
         }
         permissions(androidPermissions(resources), refusedForGood) { held ->
             if (pending !== request) return@permissions
-            if (!held || decide() == PermissionDecision.Deny) return@permissions finish(request, null)
+            if (decide() == PermissionDecision.Deny) return@permissions finish(request, null)
+            if (!held) {
+                deniedByAndroid += androidPermissions(resources)
+                return@permissions finish(request, null)
+            }
             if (asked) return@permissions finish(request, grant)
             mutablePrompt.value = Prompt(type, otherHost(origin.host), DialogAnswer(false) { allow ->
                 mutablePrompt.value = null
                 if (pending !== request) return@DialogAnswer
-                if (allow && decide() != PermissionDecision.Deny) {
-                    allowed[key] = allowed[key].orEmpty() + resources
-                    finish(request, resources)
-                } else {
-                    finish(request, null)
+                when {
+                    decide() == PermissionDecision.Deny -> finish(request, null)
+                    allow -> {
+                        allowed[key] = allowed[key].orEmpty() + resources
+                        finish(request, resources)
+                    }
+                    else -> {
+                        denied += resources
+                        finish(request, null)
+                    }
                 }
             })
         }
     }
+
+    private fun refusedBefore(resources: Set<String>): Boolean =
+        resources.any(denied::contains) || androidPermissions(resources).any { (it in deniedByAndroid || it in offInSettings) && !holds(it) }
 
     fun onPermissionRequestCanceled(request: PermissionRequest) {
         if (pending !== request) return
@@ -121,9 +157,11 @@ class PageCapture(
         stopTracks = stop
     }
 
-    /** A new document in the main frame: what was allowed, and its streams, went with the old one. */
+    /** A new document in the main frame: what was allowed or refused, and its streams, went with the old one. */
     fun documentChanged() {
         allowed.clear()
+        denied.clear()
+        deniedByAndroid.clear()
         stopTracks = null
         granted = false
         dropPending()
@@ -136,6 +174,9 @@ class PageCapture(
     fun stop() {
         stopTracks?.invoke()
         allowed.clear()
+        denied.clear()
+        deniedByAndroid.clear()
+        offInSettings.clear()
         refused.value = null
         dropPending()
         if (!granted) return
@@ -231,7 +272,7 @@ object RuntimePermissions {
      * launch, counts.
      */
     fun request(context: Context, permissions: List<String>, refusedForGood: (List<String>) -> Unit = {}, done: (Boolean) -> Unit) {
-        val missing = permissions.filter { ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED }
+        val missing = permissions.filterNot { holds(context, it) }
         if (missing.isEmpty()) return done(true)
         val activity = context.componentActivity() ?: return done(false)
         val store = PreferencesStore(context)
@@ -242,6 +283,8 @@ object RuntimePermissions {
             done(missing.all { result[it] == true })
         }
     }
+
+    fun holds(context: Context, permission: String) = ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
 
     /** Ovenlight's page in the phone's Settings, where its permissions are. */
     fun openSettings(context: Context) =
@@ -255,16 +298,30 @@ object RuntimePermissions {
  * good. Leaving the question unanswered denies.
  */
 @Composable
-fun CapturePrompt(page: AppPage, appName: String) {
-    val prompt by page.capture.prompt.collectAsState()
-    val refused by page.capture.refused.collectAsState()
+fun CapturePrompt(capture: PageCapture, edges: PageEdges, appName: String) {
+    val prompt by capture.prompt.collectAsState()
+    val refused by capture.refused.collectAsState()
     prompt?.let { open ->
         DisposableEffect(open) { onDispose { open.answer.dropped() } }
-        CapturePromptDialog(capturePromptTitle(open, appName), open.answer::invoke)
+        // In the run with the page's dialogs, counted as it shows and closed as it goes: a page
+        // that reloads and asks again as each is refused, so that no document remembers the
+        // refusal, is offered the way out.
+        var offersQuiet by remember(open) { mutableStateOf(false) }
+        var stopMore by remember(open) { mutableStateOf(false) }
+        LaunchedEffect(open) { offersQuiet = edges.nextInRun() }
+        DisposableEffect(open) { onDispose(edges::closedInRun) }
+        // One per question: Allow's wait ([GoAheadButton]) starts as it shows, not as it redraws.
+        val answer = remember(open) {
+            { allow: Boolean ->
+                if (stopMore) edges.quietDialogs()
+                open.answer(allow)
+            }
+        }
+        CapturePromptDialog(capturePromptTitle(open, appName), if (offersQuiet) ({ QuietChoice(stopMore) { stopMore = it } }) else null, answer)
     }
     refused?.let { type ->
         val context = LocalContext.current
-        val done = { page.capture.refused.value = null }
+        val done = { capture.refused.value = null }
         AlertDialog(
             onDismissRequest = done,
             title = { Text(stringResource(if (type == MediaCaptureType.Camera) R.string.capture_refused_camera else R.string.capture_refused_microphone)) },
@@ -294,13 +351,14 @@ internal fun capturePromptTitle(prompt: PageCapture.Prompt, appName: String): St
 }
 
 @Composable
-internal fun CapturePromptDialog(title: String, answer: (Boolean) -> Unit) {
+internal fun CapturePromptDialog(title: String, quiet: (@Composable () -> Unit)? = null, answer: (Boolean) -> Unit) {
     AlertDialog(
         onDismissRequest = { answer(false) },
         title = {
             Text(title)
             GuardedFromOverlays()
         },
+        text = quiet,
         confirmButton = { GoAheadButton(answer, stringResource(R.string.capture_allow)) { answer(true) } },
         dismissButton = { TextButton(onClick = { answer(false) }) { Text(stringResource(R.string.capture_dont_allow)) } },
     )
