@@ -215,8 +215,8 @@ that's only stopped starts again within a minute.
 
 The connector updates itself. Releases up to 1.0.9 don't: install a newer release [by
 hand](#install-a-release-by-hand) once, and from then on it does. It checks once a day,
-and installs a new release two days after it comes out, at a quiet moment in the night:
-once nothing has used your apps or the connector for 10 minutes. Each computer's night
+and installs a new release two days after it first sees it, at a quiet moment in the
+night: once nothing has used your apps or the connector for 10 minutes. Each computer's night
 starts at a time of its own between 02:00 and 04:00, and ends at 05:00, its own time. A
 release that fixes a security problem in yours goes in at the first quiet 10 minutes, day
 or night. On a computer that's never quiet, or asleep every night, it goes in at the start
@@ -236,10 +236,11 @@ the last update, one that failed, and whether yours has a known security problem
 anything. Only a release updates itself: from source, pull and run the install script
 again.
 
-- `ovenlight update off` stops installing updates. The connector still checks daily, and
-  `ovenlight doctor` still fails when your release has a known security problem, and warns
-  when no check has worked for seven days. Turn updates back on now and then: a connector
-  that misses a change of release keys can't check any more.
+- `ovenlight update off` stops installing updates. The connector still checks daily.
+  `ovenlight doctor` warns while updates are off, says so when no check has worked for
+  seven days, and still fails when your release has a known security problem. Turn updates
+  back on now and then: a connector that misses a change of release keys can't check any
+  more.
 - `ovenlight update on` turns them back on.
 
 ### Install a release by hand

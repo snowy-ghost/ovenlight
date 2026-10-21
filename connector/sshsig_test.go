@@ -84,7 +84,7 @@ func TestReleaseKeySignatures(t *testing.T) {
 	names, _ := filepath.Glob("testdata/update/index.json.release-*.sig")
 	keys := mustParseKeys(releaseKeysFile)
 	if len(keys) == 0 || len(names) != len(keys) {
-		t.Fatalf("%d release keys, %d signatures: run testdata/update/sign.sh", len(keys), len(names))
+		t.Fatalf("%d release keys, %d signatures: see Changing a release key in docs/development.md", len(keys), len(names))
 	}
 	var sigs [][]byte
 	for _, name := range names {

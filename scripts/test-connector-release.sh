@@ -48,6 +48,7 @@ fresh() {
   git -C "$repo" config user.name "dry run"
   git -C "$repo" config user.email dry-run@example.invalid
   git -C "$repo" config commit.gpgsign false
+  git -C "$repo" config tag.gpgsign false
   for k in "$fixtures"/*.pub; do
     k="$(basename "$k" .pub)"
     cp "$fixtures/$k" "$fixtures/$k.pub" "$dry/private/"
@@ -107,9 +108,12 @@ publish() { "$repo/scripts/publish-connector.sh" "$@"; }
 # Serials are seconds, and each must be above the last one signed.
 tick() { sleep 1; }
 
-# build <version> <secure> [<reinstallBelow>]; signfolder <version> <key>: the folder signed
-# and published.
-build() { run release "$@"; }
+# build <version> <secure> [<reinstallBelow>]: built and tagged; signfolder <version> <key>:
+# the folder signed and published.
+build() {
+  run release "$@"
+  git -C "$repo" tag -f -m "Connector $1" "connector-v$1" > /dev/null
+}
 signfolder() {
   run sign "$2" "$1"
   run publish "$1"
@@ -226,7 +230,16 @@ fresh canary "a failed canary before U's promote"
 keyfolder air1 paper1
 keys air1 paper1
 build 1.1.0 1.0.6 1.1.0
-signfolder 1.1.0 air1
+run sign air1 1.1.0
+# The folder goes up only once its tag is the commit it was built from.
+git -C "$repo" tag -d connector-v1.1.0 > /dev/null
+refused "the commit 1.1.0 was built from" publish 1.1.0
+commit "after 1.1.0"
+git -C "$repo" tag -m "Connector 1.1.0" connector-v1.1.0
+refused "the commit 1.1.0 was built from" publish 1.1.0
+git -C "$repo" tag -f -m "Connector 1.1.0" connector-v1.1.0 HEAD~1 > /dev/null
+run publish 1.1.0
+folder_is 1.1.0
 refused "no index matching 1.1.0/promote-*" publish --promote 1.1.0
 refused "isn't the live release (nothing is promoted)" sign air1 --pull 1.1.0
 refused "no index matching 1.1.0/pull-*" publish --pull 1.1.0
@@ -485,6 +498,16 @@ cat "$dry/private/stranger.pub" > "$repo/connector/release_keys"
 signers air1
 refused "docs/allowed_signers holds a release key whose private half is public" env -u OVENLIGHT_RELEASE_DRY \
   HOME="$dry/home" "$repo/scripts/release-connector.sh" --unsigned 1.1.0 1.0.6 1.1.0
+# And one left with a key in another namespace, such as an old git key. Comments and blank
+# lines aren't keys, so with them alone beside a release key it goes on, to a later refusal.
+{ echo "# a comment"; echo; awk '{ print "team@snowyghost.com namespaces=\"file\"", $1, $2 }' "$dry/private/stranger.pub"; } > "$repo/docs/allowed_signers"
+commit "an old git key left in allowed_signers"
+refused "lists a key in a namespace other than the release keys'" env -u OVENLIGHT_RELEASE_DRY \
+  HOME="$dry/home" "$repo/scripts/release-connector.sh" --unsigned 1.1.0 1.0.6 1.1.0
+{ echo "# a comment"; echo; awk '{ print "team@snowyghost.com namespaces=\"file,ovenlight-latest\"", $1, $2 }' "$dry/private/stranger.pub"; } > "$repo/docs/allowed_signers"
+commit "a release key and a comment"
+refused "secure (1.2.0) is newer than the release (1.1.0)" env -u OVENLIGHT_RELEASE_DRY \
+  HOME="$dry/home" "$repo/scripts/release-connector.sh" 1.1.0 1.2.0 1.1.0
 signers air1 paper1
 keys air1 paper1
 refused "a dry run builds only with --unsigned" "$repo/scripts/release-connector.sh" 1.1.0 1.0.6 1.1.0

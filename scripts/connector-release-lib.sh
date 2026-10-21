@@ -96,16 +96,9 @@ done | sort -t- -k2,2n)"
 newest="$(echo "$published" | tail -1)" # the live index
 promoted="$(for id in $published; do case "$id" in (*/promote-*) echo "${id%%/*}" ;; esac; done | sort -uV)"
 pulled="$(for id in $published; do case "$id" in (*/pull-*) echo "${id%%/*}" ;; esac; done | sort -uV)"
-has() {
-  local w
-  for w in $2; do
-    if [ "$w" = "$1" ]; then return 0; fi
-  done
-  return 1
-}
 kept=  # the promoted releases that weren't pulled, oldest first
 for v in $promoted; do
-  if ! has "$v" "$pulled"; then kept="$kept $v"; fi
+  if ! grep -qxF "$v" <<< "$pulled"; then kept="$kept $v"; fi
 done
 live="${kept##* }" # the newest of them
 
@@ -148,12 +141,10 @@ nodrop() {
   done
 }
 
-# fixture <blob>: whether a key is a fixture: a dry run's, the connector's test key, or a
-# mock release key.
-fixture() {
-  cat /dev/null "$root"/scripts/testdata/release-keys/*.pub "$root"/connector/testdata/releasekey/*.pub |
-    awk -v b="$1" '$2 == b { found = 1 } END { exit !found }'
-}
+# The fixture keys: a dry run's, the connector's test key and the mock release keys.
+# fixture <blob>: whether a key is one of them.
+cat /dev/null "$root"/scripts/testdata/release-keys/*.pub "$root"/connector/testdata/releasekey/*.pub > "$tmp/fixtures"
+fixture() { haskey "$1" "$tmp/fixtures"; }
 
 # trusted <keys>: refuses a key a run of this kind mustn't trust: in a dry run any but the
 # fixtures, otherwise any fixture.

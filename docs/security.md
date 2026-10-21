@@ -421,7 +421,9 @@ pulled release back to a computer that saw the pull. An index doesn't expire, so
 the server holds one back, `status` and `doctor` still show recent checks. The
 [verified steps](connector.md#check-a-download-first) for installing by hand check the
 same signed index, so they too take only a release once published as the latest, though
-not that it still is: an older index, with its release, passes them too.
+not that it still is: an older index, with its release, passes them too. They trust this
+repository's `allowed_signers`, so a change pushed to master changes what they accept:
+the connector itself trusts only the keys built into it.
 
 Once a day the connector fetches the signed index,
 `https://downloads.ovenlight.app/connector/latest.json`, and its signature,
@@ -455,13 +457,13 @@ replaces only the binary: never the install scripts, the service, the config or 
    with its node logged in, and to verify the signed index that brought it, with its own
    built-in keys. If it crashes, or doesn't do both in that time, the previous binary goes
    back and the update is tried again at the start of the next night, busy or not. One
-   that hangs so that its trial can't end goes back after 15 minutes awake. A restart
-   counts only when it's not a clean stop: on Windows, `Stop-ScheduledTask` sends none,
-   nor does shutting down or signing out of a work, school or domain account
-   ([connector.md](connector.md#update)).
+   that hangs so that its trial can't end goes back after 15 minutes awake. A restart of
+   the computer or the service starts the 10 minutes again, but on Windows,
+   `Stop-ScheduledTask`, and shutting down or signing out of a work, school or domain
+   account, count as a crash ([connector.md](connector.md#update)).
 
 A failure before the swap leaves the running connector as it was. `ovenlight status`
-shows any failure, and `doctor` warns once one release has failed three times in a row.
+shows a failed update of the release it installs next, and `doctor` warns once one release has failed three times in a row.
 
 `ovenlight update now --index <file>` installs the release a canary index names, at once.
 That is how we try a release on our own computer before publishing it
@@ -526,9 +528,9 @@ and `updates-off`, which `--purge` deletes too.
 ### What it sends
 
 Only the installed service of a release checks: a build from source never contacts
-downloads.ovenlight.app. The daily check's two GETs carry no cookies, query or
-identifiers, at the same minute each day, picked at random on the connector's first run. A
-failed check is tried again within the hour, and a new release checks as soon as it
+downloads.ovenlight.app. The daily check is two GETs with no cookies, query or
+identifiers. It comes at the same minute each day, picked at random when the updater first
+runs. A failed check is tried again within the hour, and a new release checks as soon as it
 starts. The check runs with updates off too, so the connector still knows when its release
 has a security problem. An update fetches the archive, whose name and folder show this
 computer's system (on Linux and Windows, its processor type too) and the version it
