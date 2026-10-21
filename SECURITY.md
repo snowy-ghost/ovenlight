@@ -20,10 +20,12 @@ and Android.
 
 ## How fixes reach you
 
-A connector fix comes as a new release, and `ovenlight doctor` then fails on any earlier
-release with the problem, saying what to install. A build from source doesn't check:
-pull and run the install script again for fixes. A fix to either phone app comes in an
-app update.
+A connector fix comes as a new release, which the connector installs on its own (one up to
+1.0.9 doesn't: install a newer release by hand once). It checks daily, and takes a
+security fix at its first quiet moment, without the two-day wait other releases have.
+`ovenlight doctor` fails on a release with a known security problem, even with updates
+off, and says what to do. A build from source doesn't update itself: pull and run the
+install script again for fixes. A fix to either phone app comes in an app update.
 
 [docs/security.md](docs/security.md) has the threat model, and what to do when something
 goes wrong.
