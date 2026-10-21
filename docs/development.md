@@ -155,15 +155,16 @@ ovenlight update now --index ~/Sync/ovenlight/releases/1.2.0/canary.json
 ```
 
 The folder goes up only once the `connector-v1.2.0` tag is the commit it was built from.
-The mini's connector must run the live release first: after a pull, or a canary that failed
-once its trial passed, it may still run a release that isn't live, so install the live one
-by hand from its folder. The live index must also be signed with a key the new release
-lists, so after a key change, `--resign` it first. The canary passes once the apps serve again and `ovenlight status` shows 1.2.0
-running with a check made since it started. A release that raises `reinstallBelow`
-passes once `update now` says it needs its install script, the mini installs it by hand
-from `connector/1.2.0/` ([connector.md](connector.md#install-a-release-by-hand)), and
-status shows a check made since. A release whose canary fails is never promoted: fix it
-under a new version, since a published folder never changes.
+The mini's connector must run the live release first: after a pull, or a canary that
+failed once its trial passed, it may still run a release that isn't live, so install the
+live one by hand from its folder. The live index must also be signed with a key the new
+release lists, so after a key change, `--resign` it first. The canary passes once the apps
+serve again and `ovenlight status` shows 1.2.0 running with a check made since it started.
+A release that raises `reinstallBelow` passes once `update now` says it needs its install
+script, the mini installs it by hand from `connector/1.2.0/`
+([connector.md](connector.md#install-a-release-by-hand)), and status shows a check made
+since. A release whose canary fails is never promoted: fix it under a new version, since a
+published folder never changes.
 
 Then promote it. Sign the promote on the Air:
 
