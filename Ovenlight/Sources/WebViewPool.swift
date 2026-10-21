@@ -712,19 +712,38 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
             alertRefused(device)
             return decisionHandler(.deny)
         }
-        decisionHandler(decision)
+        guard decision == .prompt else { return decisionHandler(decision) }
+        // Ovenlight asks rather than WebKit, so the question counts with the page's dialogs: a
+        // page that asked again as it reloaded on each refusal brought WebKit's straight back,
+        // since a refusal lasts only for the page's document. One at a time.
+        guard raised == nil else { return decisionHandler(.deny) }
+        let device = switch type {
+        case .camera: "the Camera"
+        case .microphone: "the Microphone"
+        default: "the Camera and Microphone"
+        }
+        let asker = Discovery.normalizedHost(origin.host) == Discovery.normalizedHost(app.host) ? app.name : "\(origin.host) in \(app.name)"
+        let answer = pageAnswer(fallback: false) { allow in decisionHandler(allow ? .grant : .deny) }
+        let alert = UIAlertController(title: "Allow \(asker) to Use \(device)?", message: nil, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "Don’t Allow", style: .cancel) { _ in answer(false) })
+        alert.addAction(UIAlertAction(title: "Allow", style: .default) { _ in answer(true) })
+        raised = alert
+        presentPageDialog(alert, answer: answer)
     }
 
-    /// One dialog for a camera or microphone the person refused Ovenlight in Settings.
+    /// One dialog for a camera or microphone the person refused Ovenlight in Settings, counted
+    /// with the page's dialogs like the question.
     private func alertRefused(_ device: String) {
-        guard !(topController is UIAlertController) else { return }
+        guard raised == nil, !(topController is UIAlertController) else { return }
+        let answer = pageAnswer(fallback: false) { settings in
+            if settings, let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+        }
         let alert = UIAlertController(title: "Ovenlight Can’t Use the \(device)",
                                       message: "Allow it in Settings, then try again in \(app.name).", preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "Not Now", style: .cancel))
-        alert.addAction(UIAlertAction(title: "Open Settings", style: .default) { _ in
-            if let settings = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(settings) }
-        })
-        present(alert, orElse: {})
+        alert.addAction(UIAlertAction(title: "Not Now", style: .cancel) { _ in answer(false) })
+        alert.addAction(UIAlertAction(title: "Open Settings", style: .default) { _ in answer(true) })
+        raised = alert
+        presentPageDialog(alert, answer: answer)
     }
 
     func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,
@@ -956,8 +975,8 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
 
     // MARK: Helpers
 
-    /// The ask or Safari view this page raised, on screen or waiting for its turn. One at a
-    /// time: a page's script can raise them without end.
+    /// The ask, camera alert or Safari view this page raised, on screen or waiting for its turn.
+    /// One at a time: a page's script can raise them without end.
     private weak var raised: UIViewController?
 
     /// Does nothing while Ovenlight is locked, or while this page is kept off screen: a
@@ -1120,11 +1139,11 @@ final class DialogAnswer<Value: Sendable>: @unchecked Sendable {
 }
 
 /// A page's dialogs in a row, each within a second of the last one closing: its alerts,
-/// confirms and prompts, and what it raises of Ovenlight's own (an ask, a Safari view, the
-/// share sheet). Past three in a row, however long each was read, each offers to stop the
-/// page's dialogs, as Chrome does, so a page that asks in a loop can't trap the person. Once
-/// stopped, each is answered at once with its fallback, and nothing more opens or downloads,
-/// until the person reloads the app or opens it again.
+/// confirms and prompts, and what it raises of Ovenlight's own (an ask, a camera or microphone
+/// question, a Safari view, the share sheet). Past three in a row, however long each was read,
+/// each offers to stop the page's dialogs, as Chrome does, so a page that asks in a loop can't
+/// trap the person. Once stopped, each is answered at once with its fallback, and nothing more
+/// opens or downloads, until the person reloads the app or opens it again.
 struct PageDialogs {
     static let loopCount = 3
     static let gap: Duration = .seconds(1)

@@ -151,7 +151,9 @@ None of this is required: an app without it is still listed, by name.
   in advance. An app loads only while its computer can be reached.
 - **Microphone**: the owner's own apps (discovered, or on one of the owner's machines),
   on their own origin, get it without a second prompt (iOS still asks once). The
-  camera, shared apps and any other app get WebKit's prompt. While
+  camera, shared apps and any other app get Ovenlight's own question. Past three
+  questions and dialogs in a row, the person can stop the page's dialogs, which refuses
+  its camera and microphone too until the app is reloaded or opened again. While
   Ovenlight is locked, no page gets either, and locking stops any stream already
   running.
 - **Other websites**: a main-frame navigation to any other host opens in a Safari sheet,
@@ -185,8 +187,7 @@ None of this is required: an app without it is still listed, by name.
 - **No service workers or offline copies.** WebView would run them, so Ovenlight's page
   script hides `navigator.serviceWorker`, as on iPhone.
 - **Microphone and camera**: the same rules as on iPhone, with Android's permission asked
-  once and Ovenlight's own prompt where iOS shows WebKit's. An Allow lasts for the page it
-  was given to.
+  once. An Allow lasts for the page it was given to.
 - **Other websites**: as on iPhone, except they open in a Custom Tab of the phone's
   browser. A form's POST to another site is already sent by the time Ovenlight sees it:
   the view goes back, and the address opens in the browser.
