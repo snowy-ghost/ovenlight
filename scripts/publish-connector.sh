@@ -230,17 +230,10 @@ pull)
   target="$(field latest "$idx")"
   [ "$target" != "$version" ] || refuse "$id names $version, the release it pulls"
   releaseindex "$target" "$(serialof "$id")" | cmp -s - "$idx" || refuse "$id isn't $target's index"
-  # Signed with the key of the index it replaces, so every computer that took that one can
-  # check it, or with one every computer it reaches holds (pullkeys).
   base="$(cat "$records/$id.base")"
-  k="$(signer "$idx" "$idx.sig" ovenlight-latest)"
-  [ -n "$k" ] || refuse "$id isn't signed by a key any release lists"
-  echo "$k" > "$tmp/signer"
-  if ! verify "$records/$base.json" "$records/$base.json.sig" ovenlight-latest "$tmp/signer"; then
-    for f in $(pullkeys "$version"); do
-      haskey "${k#* }" "$f" || refuse "$id isn't signed with the key of $base, the index it replaces, or one $f lists"
-    done
-  fi
+  signer "$idx" "$idx.sig" ovenlight-latest > "$tmp/signer"
+  [ -s "$tmp/signer" ] || refuse "$id isn't signed by a key any release lists"
+  pullsigned "$tmp/signer" "$base" "$version"
   verifyrule "$target" "$records/$target/SHA256SUMS" "$records/$target/SHA256SUMS.sig" file
   fetchrelease "$target"
   documented "$target" "$idx"

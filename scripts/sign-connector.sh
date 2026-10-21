@@ -192,14 +192,7 @@ pull)
     refuse "$version isn't the live release (${live:-nothing is promoted}): only the live one is pulled, and one that's no longer the latest is fixed forward"
   target="$(keptbelow "$version")"
   [ -n "$target" ] || refuse "nothing promoted before $version to go back to"
-  # Computers that took the live index can check a pull signed with its key, and every
-  # computer the pull reaches one that all their releases list.
-  if ! verify "$records/$newest.json" "$records/$newest.json.sig" ovenlight-latest "$tmp/signer"; then
-    for k in $(pullkeys "$version"); do
-      haskey "$kblob" "$k" ||
-        refuse "the live index, $newest, was signed with another key, and $k doesn't list this one"
-    done
-  fi
+  pullsigned "$tmp/signer" "$newest" "$version"
   verifyrule "$target" "$records/$target/SHA256SUMS" "$records/$target/SHA256SUMS.sig" file
   ordered "$now"
   releaseindex "$target" "$now" > "$tmp/pull-$now.json"

@@ -220,11 +220,18 @@ livekeys() {
   done
 }
 
-# pullkeys <version>: the release_keys of every computer a pull of the live release reaches:
-# updaters installing it (rulekeys), and those that took it or a pulled release above it
-# (livekeys). A key all of them list may sign the pull, such as the paper key once the Air
-# that signed the live index is lost.
-pullkeys() { rulekeys "$1"; livekeys; }
+# pullsigned <signer> <base> <version>: refuses a key for the pull of the live release that
+# didn't sign base, the index the pull replaces, unless the release_keys of every computer it
+# reaches list it: updaters installing the live release (rulekeys), and those that took it or
+# a pulled release above it (livekeys). That's the paper key once the Air that signed the
+# live index is lost.
+pullsigned() {
+  local f
+  verify "$records/$2.json" "$records/$2.json.sig" ovenlight-latest "$1" && return
+  for f in $(rulekeys "$3") $(livekeys); do
+    haskey "$(awk '{ print $2 }' "$1")" "$f" || refuse "the pull isn't signed with the key of $2, the index it replaces, and $f doesn't list its key"
+  done
+}
 
 # verifyrule <version> <file> <sig> <namespace>: refuses a signature the one rule doesn't accept.
 verifyrule() {
