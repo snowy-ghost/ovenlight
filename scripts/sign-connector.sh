@@ -22,8 +22,8 @@
 # connector/release_keys is exactly the two keys in ~/.ssh/ovenlight-release-keys/ plus the
 # key signing it, so the keys a release trusts never come from the commit alone.
 #
-# --key signs with a key other than the Touch ID handle, such as the paper backup, with its
-# public half beside it as <file>.pub.
+# --key signs with a key other than this Air's Touch ID handle, such as the paper backup or
+# another Touch ID key's handle, with its public half beside it as <file>.pub.
 set -euo pipefail
 
 HANDLE="$HOME/.ssh/id_ecdsa_sk_rk_ovenlight-release"
@@ -52,8 +52,10 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 if [ -z "$key" ]; then
   [ -z "$dry" ] || refuse "a dry run signs with --key and a fixture key, never the Touch ID key"
   key="$HANDLE"
-  export SSH_SK_PROVIDER=/usr/lib/ssh-keychain.dylib
 fi
+# A Touch ID handle, the default one or another given with --key, signs through macOS's
+# ssh-keychain.dylib.
+if [ -e /usr/lib/ssh-keychain.dylib ]; then export SSH_SK_PROVIDER=/usr/lib/ssh-keychain.dylib; fi
 [ -f "$key" ] && [ -f "$key.pub" ] || refuse "no $key, or no $key.pub beside it"
 awk 'NF >= 2 { print $1, $2; exit }' "$key.pub" > "$tmp/signer"
 kblob="$(awk '{ print $2 }' "$tmp/signer")"

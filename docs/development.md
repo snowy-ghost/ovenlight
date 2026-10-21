@@ -141,7 +141,7 @@ index's fields, the commit, the connector changes since the last release and
 `~/.ssh/ovenlight-release-keys/` plus the one signing. It signs `SHA256SUMS` and a canary
 index, `canary.json`, which only `ovenlight update now --index` takes, and keeps both in
 the release's folder in `~/Sync/ovenlight/releases/`. `--key <file>` signs with another
-key, such as the paper backup.
+key: the paper backup, or another Touch ID key, such as a new Air's, by its handle.
 
 Back on the mini, upload the version's folder, then try the release on the mini's own
 connector, the canary:
