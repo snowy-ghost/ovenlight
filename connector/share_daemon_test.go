@@ -1945,12 +1945,6 @@ func TestANameNeverGrantsAnotherPersonsDevices(t *testing.T) {
 	if len(other.Invite.Devices) != 0 || !reflect.DeepEqual(f.Devices[0].Tags, []string{guestTag}) || len(f.Keys) != keys+1 {
 		t.Fatalf("someone new reached Sam's device: %v, tags %v", other.Invite.Devices, f.Devices[0].Tags)
 	}
-	// Sam's phone can't spend the other person's invite, even holding its link.
-	link, _ = parseInviteLink(other.Link)
-	both := Identity{Tagged: true, Tags: []string{guestTag, policy.GuestTag("notes")}, DeviceID: "nSam"}
-	if code, out := claimApp(t, d, both, link.Key, notes); code != http.StatusForbidden || !strings.Contains(out["error"], "another guest") {
-		t.Errorf("claim from another person's device: %d %v", code, out)
-	}
 	waitFor(t, func() bool { return keyDeleted(d, res.Invite.ID) }, "Sam's spent key to be deleted")
 }
 

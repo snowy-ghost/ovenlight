@@ -103,8 +103,8 @@ any of the connector's shareable app nodes:
   once that reaches the network.
 
 A device belongs to one person, so it may claim only that person's invites. One
-exception settles who an invite is for when it's accepted: claimed through another app,
-an invite for someone who has never had a device (not even one since removed) becomes
+exception settles who an invite is for when it's accepted, at whichever app: an invite
+for someone who has never had a device (not even one since removed) becomes
 the device's person's, and the device gets the app under that person's name. Only that
 invite moves. The person invited keeps their other invites, each of which settles the
 same way when claimed, and drops out of the owner's lists once they have no invites

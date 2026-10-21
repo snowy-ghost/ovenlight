@@ -740,6 +740,7 @@ func TestPhoneMatchesErrorText(t *testing.T) {
 	}
 
 	d.sh.st.Invites = []Invite{sentInvite("i1", "Sam", "coach", "key-sam"), sentInvite("i2", "Kim", "coach", "key-kim")}
+	d.sh.st.Guests = []Guest{{DeviceID: "nKimOld", Person: "p-kim", Name: "Kim", App: "coach", RemovedAt: &t0}} // so Kim's invite stays Kim's
 	for i := range d.sh.st.Invites {
 		d.sh.st.Invites[i].Expires = time.Now().Add(time.Hour)
 	}

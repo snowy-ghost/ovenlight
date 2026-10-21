@@ -300,14 +300,14 @@ func (st *sharingState) claimInvite(keyHash, via string, apps []string, caller I
 	}
 	// A device belongs to one person, so a device already admitted to any app may take
 	// only that person's invites; otherwise it would spend someone else's. The invite
-	// stays usable. Through another app, though, an invite for someone who has never had
-	// a device becomes the device's person's: the owner invited them under a new name, or
-	// the person invited shares their phone. Only this invite moves. Each of that person's
+	// stays usable. An invite for someone who has never had a device, though, becomes the
+	// device's person's, whichever app it comes through: the owner invited them under a new
+	// name, or the person invited shares their phone. Only this invite moves. Each of that person's
 	// other invites moves only when its own key is claimed this way. A review invite never
 	// moves: it is for a store's reviewers, who join on fresh phones.
 	person := st.personOfDevice(caller.DeviceID)
 	settle := person != "" && person != inv.Person
-	if settle && (app == via || inv.Review || slices.ContainsFunc(st.Guests, func(o Guest) bool { return o.Person == inv.Person })) {
+	if settle && (inv.Review || slices.ContainsFunc(st.Guests, func(o Guest) bool { return o.Person == inv.Person })) {
 		return nil, nil, false, errOtherPerson
 	}
 	if st.removedFrom(caller.DeviceID, app) && !(person == inv.Person && slices.Contains(inv.Devices, caller.DeviceID)) {
@@ -319,7 +319,7 @@ func (st *sharingState) claimInvite(keyHash, via string, apps []string, caller I
 		return inv, g, false, nil
 	}
 	if settle {
-		inv.Person, inv.To = person, st.activeGuest(caller.DeviceID, via).Name
+		inv.Person, inv.To = person, st.people()[person]
 	}
 	st.Guests = append(st.Guests, Guest{DeviceID: caller.DeviceID, Person: cmp.Or(person, inv.Person), Name: inv.To, App: app,
 		DeviceName: caller.DeviceName, InviteID: inv.ID, ClaimedAt: now})

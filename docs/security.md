@@ -213,7 +213,7 @@ a node's key expires within 30 days.
 - A device belongs to one person. A device already admitted to any of your apps can only
   claim that person's invites; any other invite stays unused. The exception is an invite
   for someone who has never had a device, opened on a phone that holds another of your
-  apps but can't reach this one yet: Ovenlight claims it through that app's node, and the invite becomes the phone's
+  apps: Ovenlight claims it through that app's node when it can't reach this one yet, and the invite becomes the phone's
   person's. That covers inviting someone you already share with under a new name, and
   two people sharing one phone. Only that invite moves, and each key still opens only
   its own app, so holding one invite never grants another's app. Review invites never

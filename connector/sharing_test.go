@@ -145,9 +145,9 @@ func TestClaimInvite(t *testing.T) {
 	if _, _, fresh, err := st.claimInvite(hashKey("key-kim"), "coach", shareableApps, kimDev, t0.Add(inviteTTL+time.Minute)); err != nil || !fresh {
 		t.Errorf("claim within the grace period: %v", err)
 	}
-	// Kim's device holds coach now. An invite for someone else, presented from it, is
-	// refused and stays usable; one for Kim again (any case) is taken.
-	st.Invites = append(st.Invites, sentInvite("i3", "Lee", "coach", "key-lee"), sentInvite("i4", "KIM", "coach", "key-kim2"))
+	// Kim's device holds coach now. An invite for Sam, who has a device, presented from it,
+	// is refused and stays usable; one for Kim again (any case) is taken.
+	st.Invites = append(st.Invites, sentInvite("i3", "Sam", "coach", "key-lee"), sentInvite("i4", "KIM", "coach", "key-kim2"))
 	if _, _, _, err := st.claimInvite(hashKey("key-lee"), "coach", shareableApps, kimDev, t0); !errors.Is(err, errOtherPerson) {
 		t.Errorf("another person's invite from a guest device: %v", err)
 	}
@@ -304,10 +304,16 @@ func TestClaimThroughAnotherApp(t *testing.T) {
 		t.Errorf("Kim's invite changed: %+v", inv)
 	}
 
-	// The invite's own app, as before: a device of Sam's can't take Sam Lee's coach invite.
+	// At the invite's own app the rule is the same. A phone that still holds coach, as
+	// after Remove App on the phone, gets coach back and gains nothing, so Sam Lee's invite
+	// stays open. One that reaches notes for an open invite of Sam's settles Sam Lee's.
 	st = samOnCoach(sentInvite("i1", "Sam Lee", "coach", "k1"))
-	if _, _, _, err := claimed(st, "k1", t0); !errors.Is(err, errOtherPerson) || st.Invites[0].Person != "p-sam lee" {
-		t.Errorf("Sam Lee's coach invite: %v, %+v", err, st.Invites[0])
+	if _, g, fresh, err := claimed(st, "k1", t0); err != nil || fresh || g.App != "coach" || g.Person != "p-sam" || !reflect.DeepEqual(st.Invites[0], sentInvite("i1", "Sam Lee", "coach", "k1")) {
+		t.Errorf("Sam Lee's coach invite: %+v %v %v, %+v", g, fresh, err, st.Invites[0])
+	}
+	st = samOnCoach(sentInvite("i3", "Sam", "notes", "k3"), sentInvite("i1", "Sam Lee", "notes", "k1"))
+	if inv, g, fresh, err := st.claimInvite(hashKey("k1"), "notes", shareableApps, both, t0); err != nil || !fresh || g.Person != "p-sam" || g.Name != "Sam" || inv.Person != "p-sam" || inv.To != "Sam" {
+		t.Errorf("Sam Lee's notes invite at notes: %+v %+v %v %v", inv, g, fresh, err)
 	}
 
 	// Refused, and nothing moves: expired, canceled, used, for an app that isn't shareable,
