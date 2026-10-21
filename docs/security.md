@@ -454,9 +454,11 @@ replaces only the binary: never the install scripts, the service, the config or 
 6. The new release has 10 minutes of time awake to serve every app that was serving before,
    with its node logged in, and to verify the signed index that brought it, with its own
    built-in keys. If it crashes, or doesn't do both in that time, the previous binary goes
-   back and the update is tried again the next night. A clean stop, such as a restart of
-   the computer or of the service, starts the 10 minutes again. On Windows,
-   `Stop-ScheduledTask` ends the connector without a clean stop, so it counts as a crash.
+   back and the update is tried again at the start of the next night, busy or not. One
+   that hangs so that its trial can't end goes back after 15 minutes awake. A restart of
+   the computer starts the 10 minutes again, and so does a restart of the service on a Mac
+   or Linux. On Windows, `Stop-ScheduledTask` ends the connector without a clean stop, so
+   it counts as a crash, and so does signing out of a work, school or domain account.
 
 A failure before the swap leaves the running connector as it was. `ovenlight status`
 shows any failure, and `doctor` warns once one release has failed three times in a row.

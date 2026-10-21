@@ -16,7 +16,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -91,20 +90,18 @@ func TestReadIndex(t *testing.T) {
 		t.Error("a published index was read as a canary")
 	}
 
-	// The first index is held. The same bytes again are a verified check with nothing new.
-	if idx, fresh, err := checkIndex(nil, data, sig); err != nil || !fresh || idx.Latest != "1.1.1" {
-		t.Errorf("first: %v %v", fresh, err)
-	}
-	if idx, fresh, err := checkIndex(data, data, sig); err != nil || fresh || idx == nil {
-		t.Errorf("again: %v %v", fresh, err)
-	}
 	if _, _, err := checkIndex(nil, data, nil); err == nil {
 		t.Error("an unsigned index was taken")
 	}
 }
 
-func TestJudgeIndex(t *testing.T) {
+func TestCheckIndex(t *testing.T) {
+	useTestKey(t)
 	held := testIndex("1.2.0", "1.1.3", "1.1.0", 100, "")
+	check := func(held, data []byte) (bool, error) {
+		_, fresh, err := checkIndex(held, data, signIndex(t, data, nsLatest))
+		return fresh, err
+	}
 	for name, c := range map[string]struct {
 		data  []byte
 		fresh bool
@@ -119,21 +116,21 @@ func TestJudgeIndex(t *testing.T) {
 		"lower secure":                 {testIndex("1.2.1", "1.1.2", "1.1.0", 101, ""), false, false},
 		"lower reinstallBelow":         {testIndex("1.2.1", "1.1.3", "1.0.9", 101, ""), false, false},
 	} {
-		fresh, err := judgeIndex(held, c.data, mustIndex(t, c.data))
+		fresh, err := check(held, c.data)
 		if (err == nil) != c.ok || (c.ok && fresh != c.fresh) {
 			t.Errorf("%s: fresh %v, %v", name, fresh, err)
 		}
 	}
-	if fresh, err := judgeIndex(nil, held, mustIndex(t, held)); err != nil || !fresh {
+	if fresh, err := check(nil, held); err != nil || !fresh {
 		t.Errorf("nothing held: %v %v", fresh, err)
 	}
-	if _, err := judgeIndex([]byte("{}"), held, mustIndex(t, held)); err == nil {
+	if _, err := check([]byte("{}"), held); err == nil {
 		t.Error("judged against an unreadable index")
 	}
 }
 
 // A canary index takes every check but the serial, and only in its own namespace.
-func TestCheckCanary(t *testing.T) {
+func TestCanaryIndex(t *testing.T) {
 	useTestKey(t)
 	data, _ := os.ReadFile("testdata/update/index.json")
 	sig, _ := os.ReadFile("testdata/update/index.json.ovenlight-canary.sig")
@@ -147,12 +144,12 @@ func TestCheckCanary(t *testing.T) {
 		{testIndex("1.1.0", "1.0.7", "1.1.0", 1, ""), false},
 		{testIndex("1.1.1", "1.0.6", "1.1.1", 1, ""), false},
 	} {
-		if _, err := checkCanary(c.held, data, sig); (err == nil) != c.ok {
+		if _, _, err := readAgainst(c.held, data, sig, nsCanary); (err == nil) != c.ok {
 			t.Errorf("held %s: %v", c.held, err)
 		}
 	}
 	latest, _ := os.ReadFile("testdata/update/index.json.ovenlight-latest.sig")
-	if _, err := checkCanary(nil, data, latest); err == nil {
+	if _, _, err := readAgainst(nil, data, latest, nsCanary); err == nil {
 		t.Error("a published index was taken as a canary")
 	}
 }
@@ -200,15 +197,6 @@ func TestFirstSeen(t *testing.T) {
 	}
 }
 
-func TestDayTime(t *testing.T) {
-	if updateHour != time.Hour {
-		t.Skip("a compressed schedule")
-	}
-	if d := dayTime(time.Date(2026, 10, 21, 2, 30, 15, 0, time.Local)); d != 2*time.Hour+30*time.Minute+15*time.Second {
-		t.Error(d)
-	}
-}
-
 func TestDownloadArchive(t *testing.T) {
 	body := []byte("an archive")
 	sum := sha256.Sum256(body)
@@ -219,8 +207,6 @@ func TestDownloadArchive(t *testing.T) {
 			w.Write(body)
 		case "/redirect/1.2.0/" + archiveName():
 			http.Redirect(w, r, "/1.2.0/"+archiveName(), http.StatusFound)
-		case "/long/1.2.0/" + archiveName():
-			w.Header().Set("Content-Length", strconv.Itoa(maxArchiveBytes+1))
 		case "/longer/1.2.0/" + archiveName():
 			io.CopyN(w, zeros{}, maxArchiveBytes+1)
 		case "/slow/1.2.0/" + archiveName():
@@ -260,7 +246,6 @@ func TestDownloadArchive(t *testing.T) {
 		"no archive":      {context.Background(), srv.URL, mustIndex(t, []byte(`{"latest": "1.2.0", "secure": "1.1.0", "reinstallBelow": "1.1.0", "serial": 1}`))},
 		"not there":       {context.Background(), srv.URL, mustIndex(t, testIndex("1.2.1", "1.1.0", "1.1.0", 1, hex.EncodeToString(sum[:])))},
 		"a redirect":      {context.Background(), srv.URL + "/redirect", good},
-		"stated too long": {context.Background(), srv.URL + "/long", good},
 		"too long":        {context.Background(), srv.URL + "/longer", good},
 		"past a deadline": {ctx, srv.URL + "/slow", good},
 	} {
@@ -425,19 +410,5 @@ func TestExtractEntry(t *testing.T) {
 		if err := extractEntry(archive, zipped, name, out); err == nil {
 			t.Errorf("zip %v: extracted from no archive", zipped)
 		}
-	}
-}
-
-// extractBinary takes this system's binary, by name, out of this system's archive.
-func TestExtractBinary(t *testing.T) {
-	exe, next := "ovenlight", "ovenlight.next"
-	if runtime.GOOS == "windows" {
-		exe, next = "ovenlight.exe", "ovenlight.next.exe"
-	}
-	dir, bin := t.TempDir(), t.TempDir()
-	archive := writeArchive(t, dir, strings.HasSuffix(archiveName(), ".zip"), entry{name: "ovenlight-connector-1.2.0/" + exe, body: "the binary"})
-	out, err := extractBinary(archive, bin, "1.2.0")
-	if b, _ := os.ReadFile(out); err != nil || out != filepath.Join(bin, next) || string(b) != "the binary" {
-		t.Errorf("%s %q %v", out, b, err)
 	}
 }

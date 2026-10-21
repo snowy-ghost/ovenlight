@@ -38,8 +38,7 @@ type pendingSwap struct {
 // binary is in place: the updater records it as the version's failure and tries it again
 // the next night.
 func (d *daemon) swapIn(p pendingSwap) error {
-	checked, err := checkNext(p.Next, p.Version)
-	if err != nil {
+	if err := checkNext(p.Next, p.Version); err != nil {
 		return err
 	}
 	now := time.Now().Round(0)
@@ -61,12 +60,7 @@ func (d *daemon) swapIn(p pendingSwap) error {
 		replace = renameAside
 	}
 	installed := installedBinary(d.stateDir)
-	// What moves into place must be the file whose version was checked.
-	if info, serr := statFile(p.Next); serr != nil || !sameContent(info, checked) {
-		err = errors.New("the downloaded binary changed after its version check")
-	} else {
-		err = replace(installed, p.Next)
-	}
+	err := replace(installed, p.Next)
 	if err == nil {
 		_, err = os.Stat(installed) // the service's path, which the exit needs
 	}
@@ -79,30 +73,16 @@ func (d *daemon) swapIn(p pendingSwap) error {
 	return nil
 }
 
-// sameContent reports whether a and b are the same file, unchanged: a file replaced or
-// written into in between differs.
-func sameContent(a, b os.FileInfo) bool {
-	return os.SameFile(a, b) && a.Size() == b.Size() && a.ModTime().Equal(b.ModTime())
-}
-
-// statFile is the file at path as an open handle to it sees it, so it names that file
-// even once another is at path. Windows' os.Stat reads which file it is by its path only
-// when it's compared.
-func statFile(path string) (os.FileInfo, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	return f.Stat()
-}
+// notRunnable is how a failure of a release that can't start here begins, which doctor
+// recognises: installing it by hand fails the same way.
+const notRunnable = "doesn't run here"
 
 // versionWait bounds the version check of a downloaded binary. macOS checks a binary's
 // signature on its first run, which can take a while.
 const versionWait = time.Minute
 
 // nextVersion runs the binary at path with version and returns what it printed.
-var nextVersion = func(path string) (string, error) {
+func nextVersion(path string) (string, error) {
 	for try := 0; ; try++ {
 		ctx, cancel := context.WithTimeout(context.Background(), versionWait)
 		out, err := exec.CommandContext(ctx, path, "version").Output()
@@ -123,20 +103,16 @@ var nextVersion = func(path string) (string, error) {
 
 // checkNext runs the downloaded binary's version and requires exactly want, which
 // catches a binary that can't start here: a raised OS minimum, a broken signature, the
-// wrong architecture. It returns the file as checked.
-func checkNext(path, want string) (os.FileInfo, error) {
-	before, err := statFile(path)
-	if err != nil {
-		return nil, err
-	}
+// wrong architecture.
+func checkNext(path, want string) error {
 	out, err := nextVersion(path)
 	if err != nil {
-		return nil, fmt.Errorf("the downloaded %s doesn't run here: %w", want, err)
+		return fmt.Errorf("the downloaded %s %s: %w", want, notRunnable, err)
 	}
 	if out != want+"\n" {
-		return nil, fmt.Errorf("the downloaded %s says it's %q", want, clip(strings.TrimSpace(out), 40))
+		return fmt.Errorf("the downloaded %s says it's %q", want, clip(strings.TrimSpace(out), 40))
 	}
-	return before, nil
+	return nil
 }
 
 // prevBinary is the binary a rollback puts back: bin/ovenlight.prev, or
@@ -170,60 +146,76 @@ func linkAndRename(installed, next string) error {
 
 // renameAside puts next in place of installed on Windows, which renames a running .exe
 // but won't replace or delete one. The old binaries nothing runs go first, as
-// install.ps1 removes them. An older .prev moves aside (an older ovenlight mcp may still
-// run it), then the running binary becomes .prev, then next takes its place. Between
-// those last two renames installed is missing, so they follow each other directly, and
-// a last one that fails puts .prev back.
+// install.ps1 removes them, and an older .prev moves aside (an older ovenlight mcp may
+// still run it). Then moveIn makes the running binary .prev and puts next in its place.
 func renameAside(installed, next string) error {
-	bin := filepath.Dir(installed)
-	// A swap or rollback whose put-back failed left the running binary as .prev: it comes
-	// back first, and is never moved aside while nothing is at installed.
-	if !exists(installed) && exists(prevBinary(installed)) {
-		if err := renameRetry(prevBinary(installed), installed, renameWait); err != nil {
-			return err
-		}
+	bin, prev := filepath.Dir(installed), prevBinary(installed)
+	// A put-back still trying in the background has the running binary at .prev, which
+	// mustn't move aside.
+	if !exists(installed) {
+		return fmt.Errorf("%s isn't back in place yet", installed)
 	}
 	old, _ := filepath.Glob(filepath.Join(bin, "ovenlight.old*.exe"))
 	for _, f := range old {
 		os.Remove(f) // still running, or held: it goes next time
 	}
-	prev := prevBinary(installed)
-	if _, err := os.Lstat(prev); err == nil {
+	if exists(prev) {
 		if err := renameRetry(prev, oldBinary(bin), renameWait); err != nil {
 			return err
 		}
 	}
-	if err := renameRetry(installed, prev, renameWait); err != nil {
+	return moveIn(installed, next, prev)
+}
+
+// restorePrev puts .prev back in place of installed, the running binary, for a
+// rollback. On macOS and Linux one rename replaces it, so installed is never missing. On
+// Windows moveIn moves the running binary aside.
+func restorePrev(installed string, windows bool) error {
+	prev := prevBinary(installed)
+	if !windows {
+		return os.Rename(prev, installed)
+	}
+	return moveIn(installed, prev, oldBinary(filepath.Dir(installed)))
+}
+
+// moveIn puts from in place of installed, the running binary, which moves to aside, all
+// in one folder: Windows renames a running .exe but won't replace one. installed is
+// missing between those two renames, so whatever waits comes before them: both files are
+// opened for renaming, each tried again while something such as antivirus holds it, and
+// held, so the renames follow each other directly. When the second fails, the running
+// binary goes back, and a put-back that fails too keeps trying in the background for as
+// long as the process runs: until it's back, nothing is at the service's path to start.
+func moveIn(installed, from, aside string) error {
+	src, err := holdForRename(from, renameWait)
+	if err != nil {
 		return err
 	}
-	if err := renameRetry(next, installed, renameWait); err != nil {
-		if perr := renameRetry(prev, installed, putBackWait); perr != nil {
-			log.Printf("updates: can't put %s back as %s: %v", prev, installed, perr)
+	defer src.Close()
+	cur, err := holdForRename(installed, renameWait)
+	if err != nil {
+		return err
+	}
+	defer cur.Close()
+	if err := cur.rename(aside); err != nil {
+		return err
+	}
+	if err := src.rename(installed); err != nil {
+		if perr := cur.rename(installed); perr != nil {
+			log.Printf("updates: can't put %s back as %s yet: %v", aside, installed, perr)
+			go putBack(aside, installed)
 		}
 		return err
 	}
 	return nil
 }
 
-// restorePrev puts .prev back in place of installed, the running binary, for a
-// rollback. On macOS and Linux one rename replaces it, so installed is never missing. On
-// Windows the running binary moves aside first, and comes back if .prev can't move.
-func restorePrev(installed string, windows bool) error {
-	prev := prevBinary(installed)
-	if !windows {
-		return os.Rename(prev, installed)
-	}
-	aside := oldBinary(filepath.Dir(installed))
-	if err := renameRetry(installed, aside, renameWait); err != nil {
-		return err
-	}
-	if err := renameRetry(prev, installed, renameWait); err != nil {
-		if aerr := renameRetry(aside, installed, putBackWait); aerr != nil {
-			log.Printf("updates: can't put %s back as %s: %v", aside, installed, aerr)
+// putBack renames from to to, trying every second until something is at to.
+func putBack(from, to string) {
+	for !exists(to) {
+		if os.Rename(from, to) != nil {
+			time.Sleep(time.Second)
 		}
-		return err
 	}
-	return nil
 }
 
 // oldBinary is a new name for a binary moved aside on Windows, as install.ps1 names them.
@@ -232,9 +224,8 @@ func oldBinary(bin string) string {
 }
 
 // renameWait is how long a rename on Windows is tried while something such as antivirus
-// holds a file, and putBackWait how long a rename that puts the running binary back at
-// the service's path is: until it's back, nothing is there to start.
-const renameWait, putBackWait = 5 * time.Second, 2 * time.Minute
+// holds a file. Nothing has moved yet while it waits.
+const renameWait = 30 * time.Second
 
 // renameRetry renames from to to, trying again for up to wait.
 func renameRetry(from, to string, wait time.Duration) error {

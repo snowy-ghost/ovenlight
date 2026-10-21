@@ -116,7 +116,7 @@ func TestReleaseKeySignatures(t *testing.T) {
 func TestTestKeySignature(t *testing.T) {
 	index, _ := os.ReadFile("testdata/update/index.json")
 	sig, _ := os.ReadFile("testdata/update/index.json.ovenlight-latest.sig")
-	if err := verifySig(index, sig, nsLatest); (err == nil) != testKeyBuild {
-		t.Errorf("test-key build %v: %v", testKeyBuild, err)
+	if err := verifySig(index, sig, nsLatest); (err == nil) != (len(testKeys) > 0) {
+		t.Errorf("test-key build %v: %v", len(testKeys) > 0, err)
 	}
 }

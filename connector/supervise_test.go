@@ -1156,7 +1156,8 @@ func TestStartFix(t *testing.T) {
 		t.Errorf("runNote, default paths: %s", note)
 	}
 	fix := startFix(&paths{config: defaultConfigPath(), state: defaultStateDir()})
-	if !strings.Contains(fix, serviceCommands[runtime.GOOS].start) || !strings.Contains(fix, defaultLogPath()) ||
+	// The whole command, and only the command, in backticks, so it copies as it runs.
+	if !strings.Contains(fix, "`"+serviceCommands[runtime.GOOS].start+"`") || !strings.Contains(fix, defaultLogPath()) ||
 		strings.Contains(fix, "install script") || strings.Contains(fix, "ovenlight run") {
 		t.Errorf("default paths: %s", fix)
 	}
@@ -1174,7 +1175,7 @@ func TestServiceCommandsMatchDocs(t *testing.T) {
 	}
 	for goos, c := range serviceCommands {
 		for _, cmd := range []string{c.start, c.restart} {
-			if cmd = strings.TrimSuffix(cmd, " in an administrator PowerShell"); !strings.Contains(string(doc), "`"+cmd+"`") {
+			if !strings.Contains(string(doc), "`"+cmd+"`") {
 				t.Errorf("%s: docs/connector.md doesn't give %s", goos, cmd)
 			}
 		}

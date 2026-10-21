@@ -4,15 +4,18 @@ package main
 
 import (
 	"cmp"
+	_ "embed"
 	"os"
 	"time"
 )
 
-// testKeyBuild marks a build that trusts the test release key, for the end-to-end tests.
+// testKey is the test release key a build with this tag trusts, for the end-to-end tests.
 // Its private half is public in testdata/releasekey. Only such a build may fetch updates
 // from somewhere other than downloads.ovenlight.app or run on shorter intervals, and
 // scripts/release-connector.sh refuses a binary that contains the key.
-const testKeyBuild = true
+//
+//go:embed testdata/releasekey/test-key.pub
+var testKey string
 
 var testKeys = mustParseKeys(testKey)
 
@@ -20,8 +23,6 @@ var testKeys = mustParseKeys(testKey)
 // time the service starts it, right after its trial counts the start: the end-to-end
 // tests' rollback.
 var testCrash string
-
-const testKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFRYuu6sp1blc6PV9kSNS2YDhXeNBrwverfKrfyn8Pdv ovenlight test release key, public on purpose"
 
 // updateBase and updateHour come from the environment here, so the end-to-end tests can
 // serve releases themselves and run the updater's days in minutes. OVENLIGHT_UPDATE_BASE

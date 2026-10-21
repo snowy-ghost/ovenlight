@@ -40,7 +40,8 @@ func trialTo(t *testing.T, latest, namespace string) updateTrial {
 }
 
 // trialRig is a state folder just after the swap rec records: bin/ovenlight is the
-// release, "new", and .prev the binary before it, "old".
+// release, "new", .prev the binary before it, "old", and update.json holds the index
+// that brought it.
 func trialRig(t *testing.T, rec updateTrial) (dir, installed string) {
 	useTestKey(t)
 	dir = t.TempDir()
@@ -53,10 +54,16 @@ func trialRig(t *testing.T, rec updateTrial) (dir, installed string) {
 	if err := jsonfile.Save(filepath.Join(dir, updateTrialFile), &rec); err != nil {
 		t.Fatal(err)
 	}
+	if err := jsonfile.Save(filepath.Join(dir, updateStateFile), &updateState{Index: rec.Index}); err != nil {
+		t.Fatal(err)
+	}
 	return dir, installed
 }
 
 const onWindows = runtime.GOOS == "windows"
+
+// The tests' computer booted long before their swaps, unless a test says otherwise.
+func init() { sinceBoot = func() time.Duration { return 100000 * time.Hour } }
 
 // rolledBack checks that .prev is back and the trial gone, and returns the failure
 // recorded.
@@ -94,6 +101,60 @@ func TestTrialSecondStart(t *testing.T) {
 	if u := readUpdateView(dir, "1.1.5", true); u.Failure == nil {
 		t.Error("status doesn't show the rollback")
 	}
+}
+
+// A clean stop during the trial, such as the computer restarting, marks it, and the next
+// start begins it afresh. A start after that with no clean stop rolls back.
+func TestTrialCleanStop(t *testing.T) {
+	dir, installed := trialRig(t, trialTo(t, "1.2.0", nsLatest))
+	tr, _ := beginTrial(dir, "1.2.0", onWindows, time.Now)
+	tr.stopped()
+	if rec := readTrial(t, dir); !rec.Stopped || rec.Starts != 1 {
+		t.Fatalf("not marked: %+v", rec)
+	}
+	if tr, exit := beginTrial(dir, "1.2.0", onWindows, time.Now); tr == nil || exit {
+		t.Fatal("a start after a clean stop rolled back")
+	}
+	if rec := readTrial(t, dir); rec.Stopped || rec.Starts != 1 || readFile(t, installed) != "new" {
+		t.Fatalf("not afresh: %+v", rec)
+	}
+	if _, exit := beginTrial(dir, "1.2.0", onWindows, time.Now); !exit {
+		t.Fatal("a crash after it went on")
+	}
+	rolledBack(t, dir, installed)
+
+	// Once the trial is over, a stop leaves nothing behind.
+	dir, _ = trialRig(t, trialTo(t, "1.2.0", nsLatest))
+	tr, _ = beginTrial(dir, "1.2.0", onWindows, time.Now)
+	tr.end()
+	tr.stopped()
+	if exists(filepath.Join(dir, updateTrialFile)) {
+		t.Error("a stop after the trial wrote it again")
+	}
+}
+
+// Windows ends the connector at a restart with no clean stop, so a start after the
+// computer booted since the swap begins the trial afresh. With no boot, it rolls back.
+func TestTrialWindowsRestart(t *testing.T) {
+	defer func(f func() time.Duration) { sinceBoot = f }(sinceBoot)
+	dir, installed := trialRig(t, trialTo(t, "1.2.0", nsLatest))
+	beginTrial(dir, "1.2.0", true, time.Now)
+	sinceBoot = func() time.Duration { return time.Minute }
+	if tr, exit := beginTrial(dir, "1.2.0", true, time.Now); tr == nil || exit {
+		t.Fatal("a start after a restart rolled back")
+	}
+	if tr, exit := beginTrial(dir, "1.2.0", false, time.Now); tr != nil || !exit {
+		t.Fatal("a Mac or Linux start with no clean stop went on")
+	}
+	rolledBack(t, dir, installed)
+
+	dir, installed = trialRig(t, trialTo(t, "1.2.0", nsLatest))
+	beginTrial(dir, "1.2.0", true, time.Now)
+	sinceBoot = func() time.Duration { return 100000 * time.Hour }
+	if _, exit := beginTrial(dir, "1.2.0", true, time.Now); !exit {
+		t.Fatal("a start with no restart went on")
+	}
+	rolledBack(t, dir, installed)
 }
 
 // A rollback that a crash cut short after recording its failure doesn't count it again,
@@ -235,7 +296,7 @@ func TestTrialPasses(t *testing.T) {
 	}
 	tr, dir, installed := startTrialing(t, "coach")
 	d, _ := testDaemon(t)
-	d.upd = &updater{d: d, dir: dir, now: tr.clock.now}
+	d.upd = &updater{d: d, now: tr.clock.now}
 	tr.attach(d)
 	if tr.pass(3 * time.Minute) {
 		t.Fatal("over in 3 minutes")
@@ -253,10 +314,12 @@ func TestTrialPasses(t *testing.T) {
 	if len(tr.exits) != 0 || exists(filepath.Join(dir, updateTrialFile)) || readFile(t, installed) != "new" || tr.running() {
 		t.Error("didn't pass")
 	}
-	want := updateEvent{From: "1.1.5", To: "1.2.0", At: at(0, 2, 30)}
-	st, _ := loadUpdateState(dir)
-	if u := d.upd.st.Updated; u == nil || *u != want || st.Updated == nil || *st.Updated != want {
-		t.Errorf("%+v %+v", d.upd.st.Updated, st.Updated)
+	// Compared field by field: a time read back from JSON has another location.
+	st, _ := loadUpdateState(d.stateDir) // the updater's, which holds the record
+	for _, u := range []*updateEvent{d.upd.st.Updated, st.Updated} {
+		if u == nil || u.From != "1.1.5" || u.To != "1.2.0" || !u.At.Equal(at(0, 2, 30)) {
+			t.Errorf("%+v", u)
+		}
 	}
 }
 
@@ -295,6 +358,39 @@ func TestTrialDeadline(t *testing.T) {
 	tr.pass(10 * time.Minute)
 	if len(tr.exits) != 0 || readFile(t, installed) != "new" || exists(filepath.Join(dir, updateTrialFile)) {
 		t.Error("an unpublished app failed the trial")
+	}
+}
+
+// A release that deadlocks its daemon blocks tick, and the backstop still rolls it back:
+// it takes neither the daemon's locks nor the updater's.
+func TestTrialBackstop(t *testing.T) {
+	tr, dir, installed := startTrialing(t, "coach")
+	d, _ := testDaemon(t)
+	d.upd = &updater{d: d, now: time.Now}
+	tr.attach(d)
+	d.mu.Lock()
+	d.upd.mu.Lock()
+	defer d.upd.mu.Unlock()
+	defer d.mu.Unlock()
+	defer func(tick, quiet, after time.Duration) { awakeTick, quietFor, backstopAfter = tick, quiet, after }(awakeTick, quietFor, backstopAfter)
+	awakeTick, quietFor, backstopAfter = time.Millisecond, 20*time.Millisecond, 10*time.Millisecond
+	tr.now = time.Now
+	ticked := make(chan bool, 1)
+	go func() { ticked <- tr.pass(time.Minute) }() // stuck on d.mu, as the release's own trial is
+	done := make(chan struct{})
+	go tr.backstop(func() { close(done) })
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the backstop didn't end the trial")
+	}
+	if f := rolledBack(t, dir, installed); f.Version != "1.2.0" || !strings.Contains(f.Error, "didn't end its trial") {
+		t.Errorf("%+v", f)
+	}
+	select {
+	case <-ticked:
+		t.Error("tick wasn't stuck")
+	default:
 	}
 }
 

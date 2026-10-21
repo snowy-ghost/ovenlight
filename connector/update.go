@@ -42,7 +42,7 @@ func archiveName() string {
 	return "ovenlight-connector-" + name
 }
 
-// semver reads "1.2.3", without a pre-release part, and only as vstring writes it.
+// semver reads "1.2.3", without a pre-release part or a leading zero.
 func semver(s string) ([3]int, bool) {
 	var v [3]int
 	parts := strings.Split(s, ".")
@@ -58,8 +58,6 @@ func semver(s string) ([3]int, bool) {
 	}
 	return v, true
 }
-
-func vstring(v [3]int) string { return fmt.Sprintf("%d.%d.%d", v[0], v[1], v[2]) }
 
 func less(a, b [3]int) bool {
 	for i := range a {
@@ -115,66 +113,37 @@ func parseIndex(data []byte) (*updateIndex, error) {
 	return &idx, nil
 }
 
-// checkIndex reads a fetched latest.json and its signature, and judges it against the
-// index held (nil before the first), which is local state and never checked again. The
+// readAgainst reads an index and its signature in namespace, and judges it against the
+// index held (nil before the first), which is local state and never checked again: it
+// can't lower the held index's secure or reinstallBelow, whatever the scripts allowed. It
+// returns the held index too, parsed.
+func readAgainst(held, data, sig []byte, namespace string) (idx, h *updateIndex, err error) {
+	if idx, err = readIndex(data, sig, namespace); err != nil || held == nil {
+		return idx, nil, err
+	}
+	if h, err = parseIndex(held); err != nil {
+		return nil, nil, err
+	}
+	if less(idx.secure, h.secure) || less(idx.below, h.below) {
+		return nil, nil, errors.New("the index lowers secure or reinstallBelow")
+	}
+	return idx, h, nil
+}
+
+// checkIndex reads a fetched latest.json and its signature against the index held. The
 // same bytes are a verified check with nothing new. A higher serial replaces the held
-// index (fresh), unless it lowers secure or reinstallBelow, whatever the scripts allowed.
-// Anything else is refused, and isn't a verified check.
+// index (fresh). Anything else is refused, and isn't a verified check.
 func checkIndex(held, data, sig []byte) (idx *updateIndex, fresh bool, err error) {
-	if idx, err = readIndex(data, sig, nsLatest); err != nil {
+	idx, h, err := readAgainst(held, data, sig, nsLatest)
+	switch {
+	case err != nil:
 		return nil, false, err
+	case bytes.Equal(data, held):
+		return idx, false, nil
+	case h != nil && idx.Serial <= h.Serial:
+		return nil, false, errors.New("the index is older than the one held")
 	}
-	if fresh, err = judgeIndex(held, data, idx); err != nil {
-		return nil, false, err
-	}
-	return idx, fresh, nil
-}
-
-// judgeIndex is checkIndex's rules, for an index already read.
-func judgeIndex(held, data []byte, idx *updateIndex) (fresh bool, err error) {
-	if held == nil {
-		return true, nil
-	}
-	if bytes.Equal(data, held) {
-		return false, nil
-	}
-	h, err := parseIndex(held)
-	if err != nil {
-		return false, err
-	}
-	if idx.Serial <= h.Serial {
-		return false, errors.New("the index is older than the one held")
-	}
-	if err := notLower(h, idx); err != nil {
-		return false, err
-	}
-	return true, nil
-}
-
-// checkCanary reads a canary index and its signature for update now --index, with every
-// check but the serial: it can't lower the held index's secure or reinstallBelow either.
-// It applies once and is never held.
-func checkCanary(held, data, sig []byte) (*updateIndex, error) {
-	idx, err := readIndex(data, sig, nsCanary)
-	if err != nil || held == nil {
-		return idx, err
-	}
-	h, err := parseIndex(held)
-	if err == nil {
-		err = notLower(h, idx)
-	}
-	if err != nil {
-		return nil, err
-	}
-	return idx, nil
-}
-
-// notLower refuses an index that lowers the held index's secure or reinstallBelow.
-func notLower(held, idx *updateIndex) error {
-	if less(idx.secure, held.secure) || less(idx.below, held.below) {
-		return errors.New("the index lowers secure or reinstallBelow")
-	}
-	return nil
+	return idx, true, nil
 }
 
 // updateTarget is the release idx names for a connector at version v, and when it's due:
@@ -232,7 +201,7 @@ func fetchIndex(ctx context.Context, base string) (data, sig []byte, err error) 
 
 // fetchSmall reads a file of at most maxIndexBytes.
 func fetchSmall(ctx context.Context, url string) ([]byte, error) {
-	resp, err := get(ctx, url, maxIndexBytes)
+	resp, err := get(ctx, url)
 	if err != nil {
 		return nil, err
 	}
@@ -244,8 +213,8 @@ func fetchSmall(ctx context.Context, url string) ([]byte, error) {
 	return b, err
 }
 
-// get fetches url, refusing anything but a 200 and a stated length over max.
-func get(ctx context.Context, url string, max int64) (*http.Response, error) {
+// get fetches url, refusing anything but a 200. Its caller caps what it reads.
+func get(ctx context.Context, url string) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
@@ -254,9 +223,9 @@ func get(ctx context.Context, url string, max int64) (*http.Response, error) {
 	if err != nil {
 		return nil, err
 	}
-	if resp.StatusCode != http.StatusOK || resp.ContentLength > max {
+	if resp.StatusCode != http.StatusOK {
 		resp.Body.Close()
-		return nil, fmt.Errorf("%s: %s, %d bytes", url, resp.Status, resp.ContentLength)
+		return nil, fmt.Errorf("%s: %s", url, resp.Status)
 	}
 	return resp, nil
 }
@@ -282,7 +251,7 @@ func downloadArchive(ctx context.Context, base, bin string, idx *updateIndex) (s
 	defer cancel()
 	h := sha256.New()
 	var n int64
-	resp, err := get(ctx, base+"/"+idx.Latest+"/"+name, maxArchiveBytes)
+	resp, err := get(ctx, base+"/"+idx.Latest+"/"+name)
 	if err == nil {
 		n, err = io.Copy(io.MultiWriter(f, h), io.LimitReader(resp.Body, maxArchiveBytes+1))
 		resp.Body.Close()

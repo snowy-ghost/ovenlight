@@ -74,19 +74,25 @@ func startFix(p *paths) string {
 		return fmt.Sprintf("No connector is running for --config %s and --state %s. The connector the person installed uses the default paths, "+
 			"so nothing for these paths is served until the person runs a connector with them; an agent must not start one itself", p.config, p.state)
 	}
-	return "Start it with " + serviceCommands[runtime.GOOS].start + ". If it starts but keeps stopping, the reason is at the end of " + defaultLogPath()
+	return serviceFix("Start it", serviceCommands[runtime.GOOS].start) + ". If it starts but keeps stopping, the reason is at the end of " + defaultLogPath()
 }
 
 // serviceCommands start and restart the installed connector on each OS, as
-// docs/connector.md gives them. Starting also undoes the stops it describes. They name
-// the service, never the install script: an older release's script would bring back a
-// connector that doesn't update itself.
-var serviceCommands = map[string]struct{ start, restart string }{
-	"darwin": {"launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.snowyghost.ovenlight.connector.plist",
-		"launchctl kickstart -k gui/$(id -u)/com.snowyghost.ovenlight.connector"},
-	"linux": {"systemctl --user enable --now ovenlight", "systemctl --user restart ovenlight"},
-	"windows": {"Enable-ScheduledTask ovenlight; Start-ScheduledTask ovenlight in an administrator PowerShell",
-		"Stop-ScheduledTask ovenlight; Start-ScheduledTask ovenlight in an administrator PowerShell"},
+// docs/connector.md gives them, and say where they run. Starting also undoes the stops it
+// describes, and on macOS starts an agent that's already loaded. They name the service,
+// never the install script: an older release's script would bring back a connector that
+// doesn't update itself.
+var serviceCommands = map[string]struct{ start, restart, where string }{
+	"darwin": {"launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.snowyghost.ovenlight.connector.plist || launchctl kickstart gui/$(id -u)/com.snowyghost.ovenlight.connector",
+		"launchctl kickstart -k gui/$(id -u)/com.snowyghost.ovenlight.connector", ""},
+	"linux":   {"systemctl --user enable --now ovenlight", "systemctl --user restart ovenlight", ""},
+	"windows": {"Enable-ScheduledTask ovenlight; Start-ScheduledTask ovenlight", "Stop-ScheduledTask ovenlight; Start-ScheduledTask ovenlight", " in an administrator PowerShell"},
+}
+
+// serviceFix is a fix that runs command, one of serviceCommands: "Start it with `...`",
+// with where it runs outside the backticks, so the command copies whole.
+func serviceFix(verb, command string) string {
+	return verb + serviceCommands[runtime.GOOS].where + " with `" + command + "`"
 }
 
 type paths struct {
@@ -535,7 +541,7 @@ func restartLoginFix(p *paths) string {
 		return fmt.Sprintf("The connector running for --config %s and --state %s isn't the installed one: whoever started it stops it and starts it again; "+
 			"an agent must not start one itself. Then ovenlight status shows the link", p.config, p.state)
 	}
-	return "Restart the connector with " + serviceCommands[runtime.GOOS].restart + ". Then ovenlight status shows the link"
+	return serviceFix("Restart the connector", serviceCommands[runtime.GOOS].restart) + ". Then ovenlight status shows the link"
 }
 
 // checkRetired refuses to publish a slug the config doesn't list while sharing.json still
@@ -991,7 +997,7 @@ func cmdStatus(args []string) error {
 			mode = " (DEV control server)"
 		}
 		fmt.Printf("Connector: running, pid %d, version %s%s\n", out.PID, orDash(out.DaemonVersion), mode)
-		for _, line := range updateLines(out.Update, out.DaemonVersion) {
+		for _, line := range updateLines(out.Update, out.DaemonVersion, time.Now()) {
 			fmt.Println("  " + line)
 		}
 		processes := map[string]ProcessStatus{}

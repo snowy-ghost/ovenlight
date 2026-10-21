@@ -32,13 +32,20 @@ var (
 	// quietFor without a request is a quiet moment, and a swap waits as long after the
 	// connector starts or wakes, so its apps are serving when the trial records them.
 	quietFor = 10 * updateMinute
-	// awakeTick is how often the updater notes that it's awake: 10 seconds.
+	// awakeTick is how often a trial adds up its time awake: 10 seconds.
 	awakeTick = updateHour / 360
 )
 
 // The night, on dayTime's clock, when a quiet connector takes an update that isn't a
-// security fix.
+// security fix. Each computer's starts later by up to two hours, by its daily minute
+// (nightOf), so computers spread out, and fewer swap as the OS restarts for its own
+// updates.
 const nightStart, nightEnd = 2 * time.Hour, 5 * time.Hour
+
+// nightOf is when the night starts for the computer whose daily check is at minute.
+func nightOf(minute int) time.Duration {
+	return nightStart + time.Duration(minute%120)*time.Minute
+}
 
 // updateState is update.json. Only the connector writes it, and only uninstall --purge
 // deletes it. Fields are added, never renamed or reinterpreted (docs/protocol.md).
@@ -133,8 +140,6 @@ func selfUpdating(v string, service bool, exe, installed string) bool {
 // clock with the times update.json keeps.
 type updater struct {
 	d    *daemon
-	dir  string // the state folder
-	bin  string // the connector's bin folder
 	base string // where releases come from: updateBase
 	v    string // the running version
 	now  func() time.Time
@@ -144,20 +149,28 @@ type updater struct {
 	st    updateState
 	ready string // the release extracted into next, waiting for its moment
 	next  string
-
-	awakeMu        sync.Mutex
-	awake, lastRan time.Time // since when it has been up and awake, and its last tick
+	// awake is since when the connector has been up and awake, and lastRan when the
+	// updater last looked.
+	awake, lastRan time.Time
 }
 
-func newUpdater(d *daemon) (*updater, error) {
+// newUpdater starts the updater from update.json. One it can't read would stop updates
+// for good, so it's kept aside as update.json.bad and the updater starts afresh: its first
+// check fetches the index again.
+func newUpdater(d *daemon) *updater {
 	st, err := loadUpdateState(d.stateDir)
 	if err != nil {
-		return nil, err
+		path := filepath.Join(d.stateDir, updateStateFile)
+		log.Printf("updates: %v; it's kept as %s.bad, and the updater starts afresh", err, updateStateFile)
+		if err := os.Rename(path, path+".bad"); err != nil {
+			log.Printf("updates: %v", err)
+		}
+		st = &updateState{}
 	}
-	u := &updater{d: d, dir: d.stateDir, bin: filepath.Dir(installedBinary(d.stateDir)), base: updateBase, v: version(),
+	u := &updater{d: d, base: updateBase, v: version(),
 		now: func() time.Time { return time.Now().Round(0) }, swap: d.swapIn, st: *st}
 	u.start()
-	return u, nil
+	return u
 }
 
 // start sets up the record on the first run, and has a version's first run check at once,
@@ -171,25 +184,20 @@ func (u *updater) start() {
 	if u.st.CheckedBy != u.v {
 		u.st.NextCheck = time.Time{}
 	}
+	// A rollback happens before the connector's log is open, so the release put back says so.
+	if f := u.st.Failed; f != nil {
+		cur, okC := semver(u.v)
+		if fv, okF := semver(f.Version); okC && okF && less(cur, fv) {
+			log.Printf("updates: updating to %s failed on %s: %s", f.Version, when(f.At), f.Error)
+		}
+	}
 	u.save()
 }
 
-// run polls every minute until stop is closed, and notes every awakeTick that it's awake.
+// run polls every minute until stop is closed.
 func (u *updater) run(stop <-chan struct{}) {
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() { <-stop; cancel() }()
-	go func() {
-		t := time.NewTicker(awakeTick)
-		defer t.Stop()
-		for {
-			select {
-			case <-stop:
-				return
-			case <-t.C:
-				u.noteAwake(u.now())
-			}
-		}
-	}()
 	t := time.NewTicker(updateMinute)
 	defer t.Stop()
 	for {
@@ -202,20 +210,16 @@ func (u *updater) run(stop <-chan struct{}) {
 	}
 }
 
-// noteAwake notes a tick at now. One that comes long after the last, or before it, means
-// the computer slept (or its clock moved) in between, and it has been awake only since.
-func (u *updater) noteAwake(now time.Time) {
-	u.awakeMu.Lock()
-	defer u.awakeMu.Unlock()
-	if gap := now.Sub(u.lastRan); gap > 3*awakeTick || gap < 0 {
+// noteAwake notes that the updater runs at now, and returns since when the connector has
+// been up and awake. A poll that comes three minutes after the last, or before it, means
+// the computer slept (or its clock moved) in between, and it has been awake only since. A
+// poll that held u.mu that long looks the same, which only delays a swap. Go's timers stop
+// while the computer sleeps, so only the wall clock shows a sleep. u.mu is held.
+func (u *updater) noteAwake(now time.Time) time.Time {
+	if gap := now.Sub(u.lastRan); gap > 3*updateMinute || gap < 0 {
 		u.awake = now
 	}
 	u.lastRan = now
-}
-
-func (u *updater) awakeSince() time.Time {
-	u.awakeMu.Lock()
-	defer u.awakeMu.Unlock()
 	return u.awake
 }
 
@@ -229,8 +233,16 @@ func (u *updater) poll(ctx context.Context) {
 		return
 	}
 	now := u.now()
+	u.noteAwake(now)
 	if u.st.NextCheck.After(now.Add(updateDay + updateHour)) {
 		u.st.NextCheck = now // the clock was set back
+	}
+	// Times noted while the clock ran ahead would hold the wait and the retry back as long.
+	if u.st.Seen.After(now) {
+		u.st.Seen = now
+	}
+	if f := u.st.Failed; f != nil && f.At.After(now) {
+		f.At = now
 	}
 	if !now.Before(u.st.NextCheck) {
 		u.check(ctx)
@@ -275,13 +287,13 @@ func (u *updater) check(ctx context.Context) (data, sig []byte, idx *updateIndex
 
 // advance downloads the release the index held names once it's due, and swaps it in at
 // its moment, after a fresh fetch of the index that still names it. updates-off is read
-// before each.
+// before the download, and before the swap once that fetch is done.
 func (u *updater) advance(ctx context.Context) {
 	now := u.now()
 	p := planUpdate(&u.st, u.v)
 	// Nothing is downloaded or swapped during the last update's trial, which may need the
 	// record.
-	if p.target == "" || now.Before(p.after) || updatesOff(u.dir) || u.d.onTrial() {
+	if p.target == "" || now.Before(p.after) || updatesOff(u.d.stateDir) || u.d.onTrial() {
 		return
 	}
 	if u.ready != p.target {
@@ -291,7 +303,7 @@ func (u *updater) advance(ctx context.Context) {
 		return // its swap comes at a later poll
 	}
 	// A fetch that failed waits for its retry, as the daily check does.
-	if !swapNow(now, p, u.d.lastRequestTime(), u.awakeSince()) || (u.st.CheckError != "" && now.Before(u.st.NextCheck)) || updatesOff(u.dir) {
+	if !swapNow(now, p, u.d.lastRequestTime(), u.awake) || (u.st.CheckError != "" && now.Before(u.st.NextCheck)) {
 		return
 	}
 	data, sig, idx, err := u.check(ctx)
@@ -302,18 +314,23 @@ func (u *updater) advance(ctx context.Context) {
 		log.Printf("updates: the index no longer names %s, so it isn't installed", p.target)
 		return
 	}
+	// The fetch can take a minute: updates may have gone off meanwhile.
+	if updatesOff(u.d.stateDir) {
+		return
+	}
 	u.apply(pendingSwap{Version: p.target, Next: u.next, Index: data, Sig: sig, Namespace: nsLatest})
 }
 
 // download fetches idx's latest release and takes its binary out into bin/ovenlight.next.
 func (u *updater) download(ctx context.Context, idx *updateIndex) error {
 	u.ready = ""
-	archive, err := downloadArchive(ctx, u.base, u.bin, idx)
+	bin := filepath.Dir(installedBinary(u.d.stateDir))
+	archive, err := downloadArchive(ctx, u.base, bin, idx)
 	if err != nil {
 		return err
 	}
 	defer os.Remove(archive)
-	next, err := extractBinary(archive, u.bin, idx.Latest)
+	next, err := extractBinary(archive, bin, idx.Latest)
 	if err != nil {
 		return err
 	}
@@ -349,7 +366,7 @@ func (st *updateState) noteFailure(version string, at time.Time, err error) {
 }
 
 func (u *updater) save() {
-	if err := jsonfile.Save(filepath.Join(u.dir, updateStateFile), &u.st); err != nil {
+	if err := jsonfile.Save(filepath.Join(u.d.stateDir, updateStateFile), &u.st); err != nil {
 		log.Printf("updates: saving %s: %v", updateStateFile, err)
 	}
 }
@@ -365,7 +382,7 @@ const updateNowWait = downloadTimeout + 5*time.Minute
 func (u *updater) updateNow(ctx context.Context, data, sig []byte) (string, error) {
 	u.mu.Lock()
 	defer u.mu.Unlock()
-	if updatesOff(u.dir) {
+	if updatesOff(u.d.stateDir) {
 		return "", errors.New("updates are off: ovenlight update on turns them back on")
 	}
 	if u.d.exitBegun.Load() {
@@ -374,7 +391,9 @@ func (u *updater) updateNow(ctx context.Context, data, sig []byte) (string, erro
 	if u.d.onTrial() {
 		return "", fmt.Errorf("%s is still on its trial, which ends %s after it started: try again then", u.v, quietFor)
 	}
-	idx, err := checkCanary(u.st.Index, data, sig)
+	// Every check but the serial: a canary index can't lower the held index's secure or
+	// reinstallBelow either.
+	idx, _, err := readAgainst(u.st.Index, data, sig, nsCanary)
 	if err != nil {
 		return "", fmt.Errorf("the connector doesn't take this index: %w", err)
 	}
@@ -386,14 +405,15 @@ func (u *updater) updateNow(ctx context.Context, data, sig []byte) (string, erro
 	case target == "":
 		return "", fmt.Errorf("the index names %s, and the connector runs %s: it never installs the same or an older release", idx.Latest, u.v)
 	}
-	if up := u.now().Sub(u.awakeSince()); up < quietFor {
+	now := u.now()
+	if up := now.Sub(u.noteAwake(now)); up < quietFor {
 		return "", fmt.Errorf("the connector has been up and awake for %s, and swaps only after %s, once its apps are serving: try again in %s",
 			up.Round(time.Second), quietFor, (quietFor - up).Round(time.Second))
 	}
 	if err := u.download(ctx, idx); err != nil {
 		return "", fmt.Errorf("downloading %s: %w", idx.Latest, err)
 	}
-	if updatesOff(u.dir) {
+	if updatesOff(u.d.stateDir) {
 		return "", errors.New("updates were turned off: ovenlight update on turns them back on")
 	}
 	u.ready = "" // the loop downloads its own target again
@@ -411,32 +431,38 @@ type updatePlan struct {
 	idx       *updateIndex
 	target    string
 	after, by time.Time
-	security  bool // the running version is below secure
+	night     time.Duration // when this computer's night starts (nightOf)
+	security  bool          // the running version is below secure
 	script    bool
 }
 
-// planUpdate is the update st's index names for version v, as updateTarget times it. A
-// version that failed is tried again the next night (the first 02:00 at least an hour
-// after it failed). One still waiting a day after it's due goes at the next 02:00, or as
-// soon as the connector runs after that.
+// planUpdate is the update st's index names for version v, as updateTarget times it. One
+// still waiting a day after it's due goes at the start of the next night, or as soon as
+// the connector runs after that. A version that failed is tried again the next night (the
+// first start of one at least an hour after it failed), busy or not.
 func planUpdate(st *updateState, v string) updatePlan {
 	idx, err := parseIndex(st.Index)
 	if err != nil {
 		return updatePlan{}
 	}
-	p := updatePlan{idx: idx}
+	cur, ok := semver(v)
+	p := updatePlan{idx: idx, night: nightOf(st.Minute), security: ok && less(cur, idx.secure)}
 	var due time.Time
 	if p.target, due, p.script = updateTarget(v, idx, st.Seen); p.target == "" {
 		return p
 	}
-	cur, _ := semver(v)
-	p.security = less(cur, idx.secure)
+	p.after, p.by = due, nextAt(due.Add(updateDay), p.night)
+	// A retry that comes later moves both: a computer that's never quiet takes it that
+	// night too.
 	if f := st.Failed; f != nil && f.Version == p.target {
-		if retry := nextAt(f.At.Add(updateHour), nightStart); retry.After(due) {
-			due = retry
+		retry := nextAt(f.At.Add(updateHour), p.night)
+		if retry.After(p.after) {
+			p.after = retry
+		}
+		if retry.After(p.by) {
+			p.by = retry
 		}
 	}
-	p.after, p.by = due, nextAt(due.Add(updateDay), nightStart)
 	return p
 }
 
@@ -451,16 +477,18 @@ func swapNow(now time.Time, p updatePlan, lastRequest, awake time.Time) bool {
 	case !now.Before(p.by):
 		return true
 	}
-	return now.Sub(lastRequest) >= quietFor && (p.security || night(now))
+	return now.Sub(lastRequest) >= quietFor && (p.security || p.inNight(now))
 }
 
-func night(t time.Time) bool {
+// inNight reports whether t is in this computer's night, from p.night to nightEnd.
+func (p updatePlan) inNight(t time.Time) bool {
 	d := dayTime(t)
-	return d >= nightStart && d < nightEnd
+	return d >= p.night && d < nightEnd
 }
 
 // nextAt is the first time from t on whose time of day, on dayTime's clock, is at. On a
-// night the clocks change it can be an hour off.
+// night the clocks change it can be an hour off. The time zone is the one the connector
+// started in: a change of zone takes effect when it next starts.
 func nextAt(t time.Time, at time.Duration) time.Time {
 	wait := (at - dayTime(t) + 24*time.Hour) % (24 * time.Hour)
 	return t.Add(wait / (time.Hour / updateHour))
@@ -487,14 +515,23 @@ type updateView struct {
 	// binary.
 	NeedsScript bool           `json:"needsInstallScript,omitempty"`
 	LastUpdate  *updateEvent   `json:"lastUpdate,omitempty"`
-	Failure     *updateFailure `json:"failure,omitempty"` // an update to a release newer than the running one that failed
+	Failure     *updateFailure `json:"failure,omitempty"` // a failed update to the release it installs next
+	// BelowSecure is set when the running release has a security problem: it's below Secure.
+	BelowSecure bool `json:"belowSecure,omitempty"`
 
-	security bool      // the running version is below Secure
-	since    time.Time // when the updater first ran here
+	since time.Time // when the updater first ran here
 }
 
 // when is a time as status and doctor show it.
 func when(t time.Time) string { return t.Local().Format("2 Jan 15:04") }
+
+// installs says when Pending installs on its own, as status and doctor put it.
+func (u *updateView) installs(now time.Time) string {
+	if !now.Before(u.InstallBy) {
+		return "installs on its own as soon as it can"
+	}
+	return fmt.Sprintf("installs on its own at a quiet moment from %s, and by %s even if busy", when(u.InstallAfter), when(u.InstallBy))
+}
 
 // daemonUpdate is readUpdateView for the connector that sent reply, and its version: with
 // none running, for this binary.
@@ -516,19 +553,17 @@ func readUpdateView(stateDir, v string, self bool) *updateView {
 		return u
 	}
 	u.LastCheck, u.CheckError, u.LastUpdate, u.since = st.Checked, st.CheckError, st.Updated, st.Since
-	cur, ok := semver(v)
-	if f := st.Failed; f != nil {
-		if fv, okF := semver(f.Version); okF && ok && less(cur, fv) {
-			u.Failure = f
-		}
-	}
 	p := planUpdate(st, v)
 	if p.idx == nil {
 		return u
 	}
-	u.Latest, u.Secure, u.NeedsScript, u.security = p.idx.Latest, p.idx.Secure, p.script, ok && less(cur, p.idx.secure)
+	u.Latest, u.Secure, u.NeedsScript, u.BelowSecure = p.idx.Latest, p.idx.Secure, p.script, p.security
 	if p.target != "" {
 		u.Pending, u.InstallAfter, u.InstallBy = p.target, p.after, p.by
+		// Only the release it would install: one the index no longer names was pulled.
+		if f := st.Failed; f != nil && f.Version == p.target {
+			u.Failure = f
+		}
 	}
 	return u
 }

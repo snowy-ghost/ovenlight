@@ -555,42 +555,48 @@ func updateFinding(u *updateView, v string, running bool, now time.Time) *Check 
 	warn := func(msg, fix string) {
 		stuck = &Check{ID: "update", Status: statusWarn, Message: msg, Fix: fix, Actor: actorPerson}
 	}
+	stale := u.SelfUpdating && now.Sub(last) > updateStale
+	failed := u.Failure != nil && u.Failure.Count >= failuresToWarn
 	switch {
 	case u.Off:
-		warn("updates are off, so the connector installs no release on its own", "Turn them back on with `ovenlight update on`")
+		msg := "updates are off, so the connector installs no release on its own"
+		if stale {
+			msg += ", and no update check has worked for 7 days, so it can't tell when its release has a security problem"
+		}
+		warn(msg, "Turn them back on with `ovenlight update on`")
 	case u.NeedsScript:
 		warn(fmt.Sprintf("%s needs its install script: an update replaces only the binary, and %s is too old for that", u.Latest, v), byHand(u.Latest))
-	case u.Failure != nil && u.Failure.Count >= failuresToWarn:
+	case failed && strings.Contains(u.Failure.Error, notRunnable):
+		warn(fmt.Sprintf("%s doesn't run on this computer, so updating to it has failed %d times in a row: %s", u.Failure.Version, u.Failure.Count, u.Failure.Error),
+			"It most likely needs a newer version of the operating system. Once that's installed, the connector installs "+u.Failure.Version+" on its own the next night")
+	case failed:
 		warn(fmt.Sprintf("updating to %s has failed %d times in a row, last on %s: %s", u.Failure.Version, u.Failure.Count, when(u.Failure.At), u.Failure.Error),
 			"It tries again each night. "+byHand(u.Failure.Version))
 	case running && !u.SelfUpdating:
 		warn("the running connector isn't the installed service, so it doesn't update itself",
-			"Stop the connector started by hand, and start the installed one with "+serviceCommands[runtime.GOOS].start)
-	case u.SelfUpdating && now.Sub(last) > updateStale:
+			serviceFix("Stop the connector started by hand, and start the installed one", serviceCommands[runtime.GOOS].start))
+	case stale:
 		msg := "no update check has worked for 7 days"
 		if u.CheckError != "" {
 			msg += ": " + u.CheckError
 		}
-		warn(msg, "Check that this computer reaches downloads.ovenlight.app: its network connection, and any firewall or proxy")
-	}
-	installs := ""
-	if u.Pending != "" {
-		installs = fmt.Sprintf("it installs %s on its own at a quiet moment from %s, and by %s at the latest", u.Pending, when(u.InstallAfter), when(u.InstallBy))
+		warn(msg, "Check that this computer reaches downloads.ovenlight.app: its network connection, and any firewall or proxy. "+
+			"If it does, install the latest release with the verified steps in "+installDocs)
 	}
 	switch {
-	case u.security:
+	case u.BelowSecure:
 		c := &Check{ID: "update", Status: statusFail, Message: fmt.Sprintf("the connector, %s, has a security problem fixed in %s", v, u.Secure)}
 		if stuck != nil {
 			c.Message += "; " + stuck.Message
 			c.Fix, c.Actor = stuck.Fix, actorPerson
-		} else if installs != "" {
-			c.Fix = "Nothing to do: " + installs
+		} else if u.Pending != "" {
+			c.Fix = "Nothing to do: " + u.Pending + " " + u.installs(now)
 		}
 		return c
 	case stuck != nil:
 		return stuck
-	case installs != "":
-		return &Check{ID: "update", Status: statusOK, Message: u.Pending + " is out, and " + installs}
+	case u.Pending != "":
+		return &Check{ID: "update", Status: statusOK, Message: u.Pending + " is out, and " + u.installs(now)}
 	case u.Latest == "":
 		return &Check{ID: "update", Status: statusOK, Message: "no update check has worked yet"}
 	}

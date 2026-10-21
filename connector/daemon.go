@@ -28,7 +28,6 @@ type daemon struct {
 	configPath string
 	stateDir   string
 	dev        devOptions
-	service    bool // started as the installed service (run --service), the only connector that updates itself
 	sh         *sharing
 	procs      *supervisors // the apps' own processes, for apps published with --run
 
@@ -101,22 +100,16 @@ func runDaemon(configPath, stateDir string, dev devOptions, service bool) error 
 		ln.Close()
 		return err
 	}
-	d := &daemon{configPath: configPath, stateDir: stateDir, dev: dev, service: service, sh: sh, nodes: map[string]*appNode{},
-		procs: newSupervisors(appLogDir(stateDir))}
-	if service {
-		d.trial = serviceTrial
-	}
+	d := &daemon{configPath: configPath, stateDir: stateDir, dev: dev, sh: sh, nodes: map[string]*appNode{},
+		procs: newSupervisors(appLogDir(stateDir)), trial: serviceTrial}
 	log.Printf("Ovenlight connector starting (config %s, state %s)", configPath, stateDir)
 	if dev.ControlURL != "" {
 		log.Printf("DEV MODE: control server %s", dev.ControlURL)
 	}
 	if exe, err := os.Executable(); err == nil && selfUpdating(version(), service, exe, installedBinary(stateDir)) {
-		if d.upd, err = newUpdater(d); err != nil {
-			log.Printf("updates: %v; the connector doesn't update itself until it can", err)
-		} else {
-			log.Printf("updates: checking daily (off: %v)", updatesOff(stateDir))
-			go d.upd.run(d.stopping())
-		}
+		d.upd = newUpdater(d)
+		log.Printf("updates: checking daily (off: %v)", updatesOff(stateDir))
+		go d.upd.run(d.stopping())
 	}
 	go d.serveControl(ln)
 	go d.syncLoop()
@@ -140,6 +133,10 @@ func runDaemon(configPath, stateDir string, dev devOptions, service bool) error 
 				continue
 			}
 			log.Printf("%v: shutting down", sig)
+			// The computer restarting, or the service restarted, isn't the release failing.
+			if d.trial != nil {
+				d.trial.stopped()
+			}
 		case why := <-d.exiting():
 			log.Printf("%s: shutting down, for the service to start the connector again", why)
 			// A shutdown that hangs mustn't keep the service from starting the binary in bin.

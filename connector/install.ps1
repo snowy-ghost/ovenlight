@@ -65,7 +65,9 @@ if (Test-Path $prebuilt) {
   if ($LASTEXITCODE) { Fail 'go build failed' }
 }
 
-# If anything below fails, the old connector, still installed, starts again.
+# If anything below fails, the old connector, still installed, starts again: moved back
+# first if it was moved aside.
+$aside = $null
 try {
   # A running binary can't be replaced: stop the connector, disabled so a minute's try
   # doesn't start it again meanwhile (registering it again enables it).
@@ -86,7 +88,10 @@ try {
   # One tick apart, so the names differ.
   $ticks = [DateTime]::Now.Ticks
   if (Test-Path $prev) { Move-Item $prev (Join-Path $binDir "ovenlight.old-$ticks.exe") }
-  if (Test-Path $bin) { Move-Item $bin (Join-Path $binDir "ovenlight.old-$($ticks + 1).exe") }
+  if (Test-Path $bin) {
+    $aside = Join-Path $binDir "ovenlight.old-$($ticks + 1).exe"
+    Move-Item $bin $aside
+  }
   Move-Item $new $bin -Force
 
   $run = 'run --service --log "{0}" --config "{1}" --state "{2}"' -f $log, $config, $support
@@ -118,6 +123,7 @@ try {
     -Action $action -Trigger $triggers -Principal $principal -Settings $settings -Force | Out-Null
   Start-ScheduledTask -TaskName $task
 } catch {
+  if ($aside -and -not (Test-Path $bin)) { Move-Item $aside $bin }
   if ($existing) {
     Enable-ScheduledTask -TaskName $task | Out-Null
     Start-ScheduledTask -TaskName $task
