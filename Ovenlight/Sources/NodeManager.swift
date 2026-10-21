@@ -456,10 +456,10 @@ final class MembershipNode: ObservableObject {
         WebViewPool.shared.discardStaleRoutes()
     }
 
-    /// The MagicDNS suffix of the network the node is in, read from the node now.
-    func magicDNSSuffix() async -> String? {
+    /// The node's status, read from the node now rather than at the last poll.
+    func currentStatus() async -> TailnetStatus? {
         guard let node, let data = try? await node.statusJSON() else { return nil }
-        return TailnetStatus.decode(data)?.tailnet?.magicDNSSuffix
+        return TailnetStatus.decode(data)
     }
 
     /// Logs the node out of its network, closes it and deletes its state. The web views it

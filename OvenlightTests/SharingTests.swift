@@ -340,7 +340,7 @@ final class GuestCleanupTests: XCTestCase {
         XCTAssertEqual(AdminAPI.errorMessage(refusal("owner_only", "for the owner only")), "for the owner only")
 
         let request = Claim.request(for: InviteLink(control: URL(string: "https://c.example")!, key: "tskey-1", owner: "R", app: "a",
-                                                    invite: "i", host: echo, name: "E", to: ""))
+                                                    invite: "i", host: echo, name: "E", to: ""), at: echo)
         XCTAssertEqual(request.url?.absoluteString, "https://\(echo)/__ovenlight/claim")
         XCTAssertEqual(request.httpMethod, "POST")
         XCTAssertEqual(try JSONDecoder().decode([String: String].self, from: request.httpBody!), ["key": "tskey-1"])
@@ -494,6 +494,46 @@ final class GuestCleanupTests: XCTestCase {
         for _ in 1..<PeerAbsence.pollsToEnd { _ = absence.record([notes]) }
         _ = absence.record([])
         XCTAssertEqual(absence.record([notes]), [], "back in the list starts over")
+    }
+
+    /// A phone that joined under another name doesn't reach the new invite's host, so it
+    /// claims through the owner's other apps it does reach, and at the invite's host last.
+    func testAClaimGoesThroughAnotherAppOnlyWhenItsHostIsAbsent() throws {
+        let coach = "coach.taildef456.ts.net"
+        let invite = InviteLink(control: URL(string: "https://c.example")!, key: "k", owner: "Riley", app: "recipes",
+                                invite: "i", host: "recipes.taildef456.ts.net", name: "Recipes", to: "Sam Lee")
+        let apps = [notes, echo, "Coach.taildef456.ts.net.", "gone.taildef456.ts.net"]
+        XCTAssertEqual(Claim.hosts(for: invite, apps: apps, in: try status(peers: [echo: false, notes: true, coach: true])),
+                       [coach, notes, echo, invite.host], "online first, and none the node doesn't reach")
+        XCTAssertEqual(Claim.hosts(for: invite, apps: apps, in: try status(peers: [echo: true, invite.host: false])), [invite.host],
+                       "listed offline isn't absent")
+        XCTAssertEqual(Claim.hosts(for: invite, apps: apps, in: try status(peers: [echo: true, invite.host: true])), [invite.host])
+        XCTAssertEqual(Claim.hosts(for: invite, apps: [invite.host], in: try status(peers: [echo: true])), [invite.host], "no other app")
+        XCTAssertEqual(Claim.hosts(for: invite, apps: apps, in: try status(peers: ["other.taildef456.ts.net": true])), [invite.host],
+                       "no other app among the peers")
+        XCTAssertEqual(Claim.hosts(for: invite, apps: apps, in: try status("Starting", peers: [echo: true])), [invite.host])
+        XCTAssertEqual(Claim.hosts(for: invite, apps: apps, in: nil), [invite.host])
+    }
+
+    /// After a claim through another app, the app waits for its host to join the peers.
+    func testAClaimThroughAnotherAppWaitsForItsHost() async throws {
+        let before = try status(peers: [echo: true])
+        let after = try status(peers: [echo: true, notes: false])
+        var reads = 0
+        let came = await Claim.waitForHost(notes, every: .milliseconds(1)) {
+            reads += 1
+            return reads == 1 ? nil : reads < 4 ? before : after
+        }
+        XCTAssertTrue(came, "listed, even offline")
+        XCTAssertEqual(reads, 4)
+
+        reads = 0
+        let never = await Claim.waitForHost(notes, timeout: .milliseconds(10), every: .milliseconds(1)) {
+            reads += 1
+            return before
+        }
+        XCTAssertFalse(never)
+        XCTAssertEqual(reads, 11, "once more at the timeout")
     }
 
     /// A sleeping computer's apps aren't probed, so their tiles say Offline at once rather

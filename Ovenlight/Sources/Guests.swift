@@ -141,8 +141,40 @@ enum Claim {
         return invite.isNetwork(suffix) ? .inNetwork : .elsewhere(leave: registeredNow)
     }
 
-    static func request(for invite: InviteLink) -> URLRequest {
-        var request = URLRequest(url: URL(string: "https://\(invite.host)\(path)")!)
+    /// Where a claim is posted, in turn until one answers: the invite's host. When the node's
+    /// peers don't list it (see `GuestProbe.absentHosts`), as when the invite names someone
+    /// other than the person this device joined as, the membership's other apps the peers
+    /// list go first, online before offline, since the connector settles an invite through
+    /// any app its guest reaches (docs/protocol.md). A node that just joined has no other apps.
+    static func hosts(for invite: InviteLink, apps: [String], in status: TailnetStatus?) -> [String] {
+        let others = Set(apps.map(Discovery.normalizedHost)).subtracting([invite.host])
+        guard let status, GuestProbe.absentHosts(others.union([invite.host]), in: status)?.contains(invite.host) == true else {
+            return [invite.host]
+        }
+        let listed = status.peers.filter { others.contains(Discovery.normalizedHost($0.dnsName)) }
+        return (listed.filter(\.online) + listed.filter { !$0.online }).map { Discovery.normalizedHost($0.dnsName) } + [invite.host]
+    }
+
+    /// How long a claim through another app waits for the invite's host to join the peers,
+    /// which it does once the connector's retag of this device reaches the network.
+    static let hostWait: Duration = .seconds(30)
+
+    /// Reads the node's status until `host` is among its peers, for up to `timeout`; whether
+    /// it came.
+    @discardableResult
+    static func waitForHost(_ host: String, timeout: Duration = hostWait, every interval: Duration = .milliseconds(500),
+                            status: () async -> TailnetStatus?) async -> Bool {
+        var waited = Duration.zero
+        while true {
+            if await status()?.peers.contains(where: { Discovery.normalizedHost($0.dnsName) == host }) == true { return true }
+            guard waited < timeout else { return false }
+            try? await Task.sleep(for: interval)
+            waited += interval
+        }
+    }
+
+    static func request(for invite: InviteLink, at host: String) -> URLRequest {
+        var request = URLRequest(url: URL(string: "https://\(host)\(path)")!)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try? JSONEncoder().encode(["key": invite.key])
@@ -392,7 +424,8 @@ final class GuestManager: ObservableObject {
         }
         // The key must have put the node in the network the invite names; a link that
         // pairs someone's app with another network's key would otherwise claim there.
-        let suffix = await node.magicDNSSuffix()
+        let status = await node.currentStatus()
+        let suffix = status?.tailnet?.magicDNSSuffix
         switch Claim.landing(of: invite, suffix: suffix, registeredNow: !wasJoined) {
         case .inNetwork:
             break
@@ -405,8 +438,17 @@ final class GuestManager: ObservableObject {
         }
         store.update(membershipID) { $0.joined = true }
 
+        let apps = (registry?.apps ?? []).filter { $0.membershipID == membershipID }.map(\.host)
+        let hosts = Claim.hosts(for: invite, apps: apps, in: status)
+        if hosts.first != invite.host {
+            log.notice("\(invite.host, privacy: .public) isn't among the peers, claiming through \(hosts.dropLast().joined(separator: ", "), privacy: .public)")
+        }
         phases[inviteID] = .claiming
-        let outcome = await claim(invite, through: node)
+        let outcome = await claim(invite, at: hosts, through: node)
+        // After a claim through another app, the app can open once its host joins the peers.
+        if case .claimed = outcome, hosts.first != invite.host {
+            await Claim.waitForHost(invite.host) { await node.currentStatus() }
+        }
         guard pendingInvite(inviteID, in: membershipID) != nil else {
             phases[inviteID] = nil // canceled while claiming; nothing is added
             return
@@ -466,26 +508,27 @@ final class GuestManager: ObservableObject {
         return .failure(.network)
     }
 
-    /// Posts the invite's key to the app's connector. Right after joining, the connector
-    /// may not know the device yet, so connection failures and "Unknown caller" retry for up
-    /// to `Claim.budget` in all (docs/protocol.md), each try with a new session from the node,
-    /// which may have been replaced meanwhile. The budget is kept on a clock that stops while
-    /// the phone sleeps, and a try always follows a wait, so a suspension by itself doesn't
-    /// fail the claim.
-    private func claim(_ invite: InviteLink, through node: MembershipNode) async -> Claim.Step {
+    /// Posts the invite's key to the app's connector, at each of `hosts` in turn until one
+    /// answers (see `Claim.hosts`). Right after joining, the connector may not know the device
+    /// yet, so connection failures and "Unknown caller" retry for up to `Claim.budget` in all
+    /// (docs/protocol.md), each try with a new session from the node, which may have been
+    /// replaced meanwhile. The budget is kept on a clock that stops while the phone sleeps,
+    /// and a try always follows a wait, so a suspension by itself doesn't fail the claim.
+    private func claim(_ invite: InviteLink, at hosts: [String], through node: MembershipNode) async -> Claim.Step {
         let clock = SuspendingClock()
         let deadline = clock.now.advanced(by: Claim.budget)
         var attempt = 0
         while true {
-            let timeout = Claim.tryTimeout(left: clock.now.duration(to: deadline)) / .seconds(1)
-            if let session = node.makeSession(timeout: timeout, resource: timeout) {
+            for host in hosts {
+                let timeout = Claim.tryTimeout(left: clock.now.duration(to: deadline)) / .seconds(1)
+                guard let session = node.makeSession(timeout: timeout, resource: timeout) else { break }
                 defer { session.invalidateAndCancel() }
-                if let (data, response) = try? await session.cappedData(for: Claim.request(for: invite)),
-                   let http = response as? HTTPURLResponse {
-                    let step = Claim.interpret(status: http.statusCode, header: http.value(forHTTPHeaderField: ConnectorError.header), body: data)
-                    if step != .retry { return step }
-                    log.info("claim answered \(http.statusCode), trying again")
-                }
+                guard let (data, response) = try? await session.cappedData(for: Claim.request(for: invite, at: host)),
+                      let http = response as? HTTPURLResponse else { continue }
+                let step = Claim.interpret(status: http.statusCode, header: http.value(forHTTPHeaderField: ConnectorError.header), body: data)
+                if step != .retry { return step }
+                log.info("claim answered \(http.statusCode), trying again")
+                break
             }
             guard let wait = Claim.wait(after: attempt, left: clock.now.duration(to: deadline)) else { return .retry }
             try? await Task.sleep(for: wait, clock: clock)
