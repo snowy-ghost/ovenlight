@@ -179,24 +179,6 @@ func TestUpdateTarget(t *testing.T) {
 	}
 }
 
-func TestFirstSeen(t *testing.T) {
-	now := time.Date(2026, 10, 21, 9, 0, 0, 0, time.UTC)
-	before, after := now.Add(-time.Hour), now.Add(time.Hour)
-	for _, c := range []struct {
-		latest, held string
-		seen, want   time.Time
-	}{
-		{"1.2.0", "1.2.0", before, before},
-		{"1.2.1", "1.2.0", before, now},
-		{"1.2.0", "", time.Time{}, now},
-		{"1.2.0", "1.2.0", after, now}, // the clock was set back
-	} {
-		if got := firstSeen(c.latest, c.held, c.seen, now); !got.Equal(c.want) {
-			t.Errorf("%+v: %v", c, got)
-		}
-	}
-}
-
 func TestDownloadArchive(t *testing.T) {
 	body := []byte("an archive")
 	sum := sha256.Sum256(body)

@@ -164,16 +164,6 @@ func updateTarget(v string, idx *updateIndex, seen time.Time) (target string, du
 	return idx.Latest, seen.Add(48 * updateHour), false
 }
 
-// firstSeen is when this computer first saw latest named, given when it first saw the
-// release named before it (held at heldSeen): now for a release it hasn't seen, and when
-// heldSeen is after now, since a clock set back must not hold an update for long.
-func firstSeen(latest, held string, heldSeen, now time.Time) time.Time {
-	if latest != held || heldSeen.After(now) {
-		return now
-	}
-	return heldSeen
-}
-
 // dayTime is t's local time of day on the updater's clock. A test-key build may shorten
 // the updater's hour, and with it the day, which still runs from 00:00 to 24:00.
 func dayTime(t time.Time) time.Duration {

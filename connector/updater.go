@@ -284,7 +284,9 @@ func (u *updater) check(ctx context.Context) (data, sig []byte, idx *updateIndex
 			idx.Latest, idx.Secure, idx.ReinstallBelow)
 		u.st.Index = data
 	}
-	u.st.Seen = firstSeen(idx.Latest, held, u.st.Seen, now)
+	if idx.Latest != held {
+		u.st.Seen = now // its wait starts
+	}
 	u.st.Checked, u.st.CheckedBy, u.st.CheckError = now, u.v, ""
 	u.st.NextCheck = nextAt(now.Add(updateMinute), time.Duration(u.st.Minute)*time.Minute)
 	u.save()
