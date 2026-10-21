@@ -62,7 +62,7 @@ func (d *daemon) swapIn(p pendingSwap) error {
 	}
 	installed := installedBinary(d.stateDir)
 	// What moves into place must be the file whose version was checked.
-	if info, serr := os.Stat(p.Next); serr != nil || !sameContent(info, checked) {
+	if info, serr := statFile(p.Next); serr != nil || !sameContent(info, checked) {
 		err = errors.New("the downloaded binary changed after its version check")
 	} else {
 		err = replace(installed, p.Next)
@@ -83,6 +83,18 @@ func (d *daemon) swapIn(p pendingSwap) error {
 // written into in between differs.
 func sameContent(a, b os.FileInfo) bool {
 	return os.SameFile(a, b) && a.Size() == b.Size() && a.ModTime().Equal(b.ModTime())
+}
+
+// statFile is the file at path as an open handle to it sees it, so it names that file
+// even once another is at path. Windows' os.Stat reads which file it is by its path only
+// when it's compared.
+func statFile(path string) (os.FileInfo, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return f.Stat()
 }
 
 // versionWait bounds the version check of a downloaded binary. macOS checks a binary's
@@ -113,7 +125,7 @@ var nextVersion = func(path string) (string, error) {
 // catches a binary that can't start here: a raised OS minimum, a broken signature, the
 // wrong architecture. It returns the file as checked.
 func checkNext(path, want string) (os.FileInfo, error) {
-	before, err := os.Stat(path)
+	before, err := statFile(path)
 	if err != nil {
 		return nil, err
 	}
