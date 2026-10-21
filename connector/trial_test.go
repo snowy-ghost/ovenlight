@@ -253,10 +253,12 @@ func TestTrialPasses(t *testing.T) {
 	if len(tr.exits) != 0 || exists(filepath.Join(dir, updateTrialFile)) || readFile(t, installed) != "new" || tr.running() {
 		t.Error("didn't pass")
 	}
-	want := updateEvent{From: "1.1.5", To: "1.2.0", At: at(0, 2, 30)}
+	// Compared field by field: a time read back from JSON has another location.
 	st, _ := loadUpdateState(dir)
-	if u := d.upd.st.Updated; u == nil || *u != want || st.Updated == nil || *st.Updated != want {
-		t.Errorf("%+v %+v", d.upd.st.Updated, st.Updated)
+	for _, u := range []*updateEvent{d.upd.st.Updated, st.Updated} {
+		if u == nil || u.From != "1.1.5" || u.To != "1.2.0" || !u.At.Equal(at(0, 2, 30)) {
+			t.Errorf("%+v", u)
+		}
 	}
 }
 
