@@ -91,18 +91,35 @@ in: [app-contract.md](app-contract.md#discovery-name-icon-and-color).
 ### `POST /__ovenlight/claim`
 
 A guest device binds itself to an invite. Body: `{"key": "<the invite's auth key>"}`.
-The connector matches the key's SHA-256 against its open invites, and the calling device
-must already carry the app's guest tag: either it joined with that key, or the owner
-added the tag to a device the person already has. Claiming again from the same device is
-harmless. A review invite admits up to 10 devices, and every other invite one.
+The connector matches the key's SHA-256 against its open invites. The claim may arrive at
+any of the connector's shareable app nodes:
+
+- At the invite's own app, the calling device must already carry the app's guest tag:
+  either it joined with that key, or the owner added the tag to a device the person
+  already has.
+- At another app, the device must already be a guest there, with a claim on that app.
+  The invite is checked and claimed as at its own app. The connector then adds the
+  invite's app's guest tag to the device, and the app's node appears among its peers
+  once that reaches the network.
+
+A device belongs to one person, so it may claim only that person's invites. One
+exception settles who an invite is for when it's accepted: claimed through another app,
+an invite for someone who has never had a device (not even one since removed) becomes
+the device's person's, and the device gets the app under that person's name. Only that
+invite moves. The person invited keeps their other invites, each of which settles the
+same way when claimed, and drops out of the owner's lists once they have no invites
+left. A review invite never settles.
+
+Claiming again from the same device is harmless. A review invite admits up to 10
+devices, and every other invite one.
 
 | Status | Code | Error text | Meaning |
 | --- | --- | --- | --- |
-| 200 | | | claimed: `{"name", "userId", "app", "appName", "owner"}` |
+| 200 | | | claimed: `{"name", "userId", "app", "appName", "owner"}`, naming the invite's app |
 | 400 | `bad_request` | | no key in the body |
-| 403 | `not_invited` | not invited | unknown, expired, canceled or removed |
+| 403 | `not_invited` | not invited | unknown, expired, canceled or removed, or claimed through an app the device doesn't hold |
 | 403 | `used_elsewhere` | this invite was already used by another device | |
-| 403 | `other_person` | not invited: this device already belongs to another guest | a device belongs to one person, so it may claim only that person's invites |
+| 403 | `other_person` | not invited: this device already belongs to another guest | the invite is for someone else |
 | 405 | `bad_request` | POST only | not a POST |
 | 500 | `internal` | the connector couldn't record the claim; try again in a moment | always this text, whatever failed |
 
@@ -243,8 +260,15 @@ invite. It expires after 7 days (90 days for a review invite).
    for up to 25 seconds; the invite is then kept for Try Again.
 
 A second invite from the same owner (same control server and network) reuses the node
-and only claims. Accepted invites are saved until claimed, so a relaunch finishes an
-interrupted join.
+and only claims. The node may not reach the invite's app yet: the invite's host is
+absent when the node is connected and has a network map that doesn't list the host at
+all (a host listed as offline is present). Ovenlight then claims through the hosts of
+that owner's other apps on the phone instead, online ones first, one at a time until
+one gives an answer other than a failure to connect, and reads that answer as above.
+After a 200 it waits up to about 30 seconds for the invite's host to appear, as the
+connector tags the device, then adds the app as any claim does. With no other host
+reachable, it claims at the invite's host as before. Accepted invites are saved until
+claimed, so a relaunch finishes an interrupted join.
 
 ## When sharing ends, on the phone
 

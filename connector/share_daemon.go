@@ -419,7 +419,8 @@ func (d *daemon) deleteInviteKey(ctx context.Context, api controlAPI, inv Invite
 
 const claimReadTimeout = 10 * time.Second
 
-// handleClaim binds the calling guest device to the invite whose key it presents.
+// handleClaim binds the calling guest device to the invite whose key it presents, for app,
+// whose node it reached, or for another shareable app (see claimInvite).
 func (d *daemon) handleClaim(w http.ResponseWriter, r *http.Request, caller Identity, app App) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, codeBadRequest, "POST only")
@@ -434,8 +435,20 @@ func (d *daemon) handleClaim(w http.ResponseWriter, r *http.Request, caller Iden
 		writeError(w, http.StatusBadRequest, codeBadRequest, `send {"key": "<the invite's auth key>"}`)
 		return
 	}
+	cfg := d.config()
+	var apps []string
+	for _, a := range cfg.Apps {
+		if a.Shareable {
+			apps = append(apps, a.Slug)
+		}
+	}
+	keyHash := hashKey(body.Key)
 	d.sh.mu.Lock()
-	inv, g, fresh, err := d.sh.st.claimInvite(hashKey(body.Key), app.Slug, caller, time.Now())
+	var was Invite // as it was, to log a claim that settles who it's for
+	if p := d.sh.st.inviteByKey(keyHash); p != nil {
+		was = *p
+	}
+	inv, g, fresh, err := d.sh.st.claimInvite(keyHash, app.Slug, apps, caller, time.Now())
 	var invCopy Invite
 	var guestCopy Guest
 	var retagNeeded bool
@@ -463,7 +476,12 @@ func (d *daemon) handleClaim(w http.ResponseWriter, r *http.Request, caller Iden
 		return
 	}
 	if fresh {
-		log.Printf("[%s] %s (%s, %s) claimed invite %s", app.Slug, guestCopy.Name, caller.DeviceName, caller.DeviceID, invCopy.ID)
+		if invCopy.Person != was.Person {
+			log.Printf("[%s] invite %s for %q claimed by %s (%s) through %s: now %s's", invCopy.App, invCopy.ID, was.To, caller.DeviceName,
+				caller.DeviceID, app.Slug, guestCopy.Name)
+		} else {
+			log.Printf("[%s] %s (%s, %s) claimed invite %s", invCopy.App, guestCopy.Name, caller.DeviceName, caller.DeviceID, invCopy.ID)
+		}
 		// The key is spent if this device joined with it. If it joined with another
 		// one, deleting this key keeps it from adding a second device. A review
 		// invite's reusable key stays until its last device claims.
@@ -482,8 +500,9 @@ func (d *daemon) handleClaim(w http.ResponseWriter, r *http.Request, caller Iden
 			}
 		}()
 	}
-	writeJSON(w, http.StatusOK, claimView{Name: guestCopy.Name, UserID: guestCopy.UserID(), App: app.Slug, AppName: app.Name,
-		Owner: d.config().OwnerLabel})
+	claimed, _ := cfg.Find(invCopy.App)
+	writeJSON(w, http.StatusOK, claimView{Name: guestCopy.Name, UserID: guestCopy.UserID(), App: claimed.Slug, AppName: claimed.Name,
+		Owner: cfg.OwnerLabel})
 }
 
 // ---------- guests ----------

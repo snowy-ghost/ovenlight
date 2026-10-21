@@ -1677,6 +1677,45 @@ func TestClaimTagsTheDeviceForTheOtherOpenInvite(t *testing.T) {
 	}, "the spent key to be deleted")
 }
 
+// The owner invites Sam to notes under a new name, so Sam's phone, which holds coach,
+// can't reach notes: Ovenlight claims through coach. The invite becomes Sam's, the key is
+// deleted, the device is tagged for notes, and the owner's list shows Sam alone.
+func TestClaimThroughAnotherAppSettlesThePerson(t *testing.T) {
+	d, f := testDaemon(t)
+	addApp(d, App{Name: "Notes", Slug: "notes", Port: 4318, Shareable: true})
+	coachTag, notesTag := policy.GuestTag("coach"), policy.GuestTag("notes")
+	res, _ := d.createInvite(guestRef{To: "Sam"}, "coach", "terminal", false)
+	link, _ := parseInviteLink(res.Link)
+	_, sam := claim(t, d, samDev, link.Key)
+	waitFor(t, func() bool { return keyDeleted(d, res.Invite.ID) }, "the coach key to be deleted")
+	f.Mu.Lock()
+	f.Devices = []tsapi.Device{{ID: "9", NodeID: "nSam", Tags: []string{coachTag}, Authorized: true}}
+	f.Mu.Unlock()
+
+	res, err := d.createInvite(guestRef{To: "Sam Lee"}, "notes", "terminal", false)
+	if err != nil || len(res.Invite.Devices) != 0 {
+		t.Fatalf("invite Sam Lee: %+v %v", res.Invite, err)
+	}
+	link, _ = parseInviteLink(res.Link)
+	if code, out := claim(t, d, samDev, link.Key); code != 200 || out["app"] != "notes" || out["appName"] != "Notes" || out["name"] != "Sam" || out["userId"] != sam["userId"] {
+		t.Fatalf("claim notes through coach: %d %v", code, out)
+	}
+	waitFor(t, func() bool {
+		f.Mu.Lock()
+		defer f.Mu.Unlock()
+		return reflect.DeepEqual(f.Devices[0].Tags, []string{coachTag, notesTag})
+	}, "the device to be tagged for notes")
+	waitFor(t, func() bool { return keyDeleted(d, res.Invite.ID) }, "the notes key to be deleted")
+
+	list := d.guestList()
+	if len(list.Guests) != 2 || len(list.Invites) != 0 || list.Guests[1].Name != "Sam" || list.Guests[1].Person != list.Guests[0].Person {
+		t.Errorf("guests %+v, invites %+v", list.Guests, list.Invites)
+	}
+	if g := d.sh.guestFor("nSam", "notes"); g == nil || g.InviteID != res.Invite.ID {
+		t.Errorf("notes guest = %+v", g)
+	}
+}
+
 // Canceling an invite takes back the tag it gave an existing device.
 func TestCancelUntagsTheExistingDevice(t *testing.T) {
 	d, f := testDaemon(t)
