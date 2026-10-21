@@ -40,8 +40,9 @@ in `connector/go.mod`.
   the connector runs).
 - **Global flags.** Commands take `--config <file>` and `--state <dir>`.
 - **The service.** The launchd agent, systemd unit and scheduled task start
-  `ovenlight run --service`, the only connector that updates itself (`selfUpdating` in
-  `connector/updater.go`, [security.md](security.md#updates)).
+  `ovenlight run --service`, the only connector that updates itself, and only in a
+  release build (`selfUpdating` in `connector/updater.go`,
+  [security.md](security.md#updates)).
 - **The building guide.** `ovenlight guide` and the MCP `guide` tool serve
   `connector/building-apps.md`, a copy of [building-apps.md](building-apps.md) that Go
   can embed. After editing the doc, run `go generate` in `connector/`; a test fails
@@ -141,9 +142,9 @@ scripts/sign-connector.sh 1.1.0
 It copies the build's `SHA256SUMS` and index from `~/src/ovenlight/build/release` on the
 mini and prints what it signs: the index's fields, the commit, the connector changes since
 the last release and `SHA256SUMS`. It refuses a commit whose `connector/release_keys`
-isn't the two keys in `~/.ssh/ovenlight-release-keys/` (and the signing key, when `--key`
-names another). It signs `SHA256SUMS` and a canary index, `canary.json`, which only
-`ovenlight update now --index` takes, and keeps both in the release's folder in
+isn't the two keys in `~/.ssh/ovenlight-release-keys/` plus the key signing it, when that
+folder doesn't hold it. It signs `SHA256SUMS` and a canary index, `canary.json`, which
+only `ovenlight update now --index` takes, and keeps both in the release's folder in
 `~/Sync/ovenlight/releases/`. `--key <file>` signs with another key: the paper backup, or
 another Touch ID key, such as a new Air's, by its handle.
 
