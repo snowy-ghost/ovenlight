@@ -37,8 +37,8 @@ var docs = []struct{ name, summary string }{
 	{"building-apps", "Building an app that works and feels native in Ovenlight, for coding agents and people."},
 	{"app-contract", "What an app behind Ovenlight must do and may rely on."},
 	{"security", "The threat model, the tailnet policy change, logging and privacy."},
-	{"protocol", "How the iPhone app and the connector talk."},
-	{"development", "Building the iPhone app, tests, local development, shipping and forking."},
+	{"protocol", "How Ovenlight and the connector talk."},
+	{"development", "Building the iPhone and Android apps, tests, local development, shipping and forking."},
 }
 
 var md = goldmark.New(goldmark.WithExtensions(extension.GFM))
@@ -143,7 +143,7 @@ func run() error {
 	// Every page for search engines, the docs included. The join page isn't one: it's an invite's.
 	var sitemap strings.Builder
 	sitemap.WriteString("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n")
-	pages := []string{"/", "/docs", "/support", "/privacy"}
+	pages := []string{"/", "/docs", "/support", "/privacy", "/privacy/android"}
 	for _, p := range all {
 		pages = append(pages, "/docs/"+p.Name)
 	}

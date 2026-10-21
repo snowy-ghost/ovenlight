@@ -6,15 +6,13 @@
 
 <p align="center">
   <strong>Cooking up apps with AI? Serve them to the people you made them for, and no one else.</strong><br>
-  Your web apps run on your own computer, stay off the internet and open on iPhone behind Face&nbsp;ID.
+  Your web apps run on your own computer, stay off the internet and open on your phone, behind Face&nbsp;ID or your fingerprint.
 </p>
 
 <p align="center">
-  <a href="https://apps.apple.com/app/id6817561066"><picture>
-    <source media="(prefers-color-scheme: dark)" srcset="site/images/app-store-badge-white.svg">
-    <img src="site/images/app-store-badge-black.svg" width="150" height="50" alt="Download on the App Store">
-  </picture></a><br>
-  <sub>Got an invite? Install Ovenlight, then open your link again. Here's
+  <a href="https://apps.apple.com/app/id6817561066"><img align="absmiddle" src="site/images/app-store-badge-black.svg" width="150" height="50" alt="Download on the App Store"></a>
+  <a href="https://play.google.com/store/apps/details?id=com.snowyghost.ovenlight"><img align="absmiddle" src="site/images/google-play-badge.png" width="194" height="75" alt="Get it on Google Play"></a><br>
+  <sub>Got an invite? Install Ovenlight, then open your invite link again. Here's
   <a href="https://ovenlight.app/privacy#inviter">what the person who invited you sees</a>.</sub>
 </p>
 
@@ -43,7 +41,7 @@
 
 You built a small web app for your family, your garden or your book club, maybe in an
 afternoon with a coding agent, and it runs on your own computer. Ovenlight puts it on your
-iPhone and on the iPhone of anyone you invite, and it opens wherever the phone is online,
+phone and on the phone of anyone you invite, and it opens wherever the phone is online,
 at home or away. It takes a computer that stays on, with Ovenlight's connector installed,
 and a Tailscale account of your own (free for personal use). The people you share with
 need only Ovenlight.
@@ -64,9 +62,9 @@ Once your computer is [set up](#get-started) and your agent
 - **Friends join with a link and a tap.** A friend installs Ovenlight, opens your invite
   and taps Join, with no account and nothing to sign in to. The app arrives marked with
   your name.
-- **Share one app, not your computer.** A friend's iPhone reaches only the apps you shared
+- **Share one app, not your computer.** A friend's phone reaches only the apps you shared
   with it, and none of your other devices. When you stop sharing, their access ends at
-  once, and the app and its data leave their iPhone the next time Ovenlight connects.
+  once, and the app and its data leave their phone the next time Ovenlight connects.
 - **Nothing to deploy, no login to build.** The app stays on your computer, off the
   internet. Ovenlight's connector, a program that runs beside it, gives it an HTTPS
   address in your Tailscale network and tells it who is calling. Any web app that serves
@@ -76,13 +74,13 @@ Once your computer is [set up](#get-started) and your agent
   send from inside it. Inviting people is up to you: Ovenlight gives the agent no tool for
   it.
 - **It opens like an app.** Full screen, from its own icon, in a launcher that works like
-  your Home Screen, with its storage kept apart from the others. One Face ID unlock opens
-  them all.
+  your phone's home screen, with its storage kept apart from the others. One unlock, with
+  Face&nbsp;ID or your fingerprint, opens them all.
 - **Private, free and open source.** There's no Ovenlight account, no analytics and no
   ads. Phones reach your computer over a Tailscale connection built into Ovenlight, never
-  through servers of ours. No phone needs a VPN or the Tailscale app. The iPhone app and
-  the connector are free, under the Apache License 2.0. It's made by Dimitri Cole at
-  [Snowy Ghost](https://snowyghost.com).
+  through servers of ours. No phone needs a VPN or the Tailscale app. The iPhone and
+  Android apps and the connector are free, under the Apache License 2.0. It's made
+  by Dimitri Cole at [Snowy Ghost](https://snowyghost.com).
 
 ## Why not a VPN, a tunnel or the cloud?
 
@@ -102,8 +100,8 @@ Once your computer is [set up](#get-started) and your agent
 ```mermaid
 %%{init: {"flowchart": {"wrappingWidth": 400}}}%%
 flowchart LR
-  you["Your iPhone"] --> rb & cc
-  sam["Sam's iPhone"] -- "invited to Recipe Box" --> rb
+  you["Your phone"] --> rb & cc
+  sam["Sam's phone"] -- "invited to Recipe Box" --> rb
   subgraph computer["Your computer, running the connector"]
     rb["Recipe Box<br>recipe-box.your-tailnet.ts.net"]
     cc["Chore Chart<br>chore-chart.your-tailnet.ts.net"]
@@ -117,8 +115,10 @@ flowchart LR
   guests and serves the MCP tools your coding agent uses.
 - **The iPhone app** (in [`Ovenlight/`](Ovenlight)) carries its own Tailscale node, built
   with TailscaleKit. It finds the apps you publish and opens them.
+- **The Android app** (in [`android/`](android)) does the same, with a Tailscale node built
+  from Tailscale's tsnet.
 
-When you share an app, your friend's iPhone joins your tailnet as a guest device.
+When you share an app, your friend's phone joins your tailnet as a guest device.
 [Security](#security) says what it can reach and how that's enforced.
 
 ## What you need
@@ -128,9 +128,10 @@ When you share an app, your friend's iPhone joins your tailnet as a guest device
   Windows 11 PC. A laptop must stay open, since closing its lid puts it to sleep, and
   Windows sleeps when idle until you
   [turn that off](docs/connector.md#what-the-computer-needs).
-- **An iPhone with iOS 18.1 or later** and Ovenlight from the
-  [App Store](https://apps.apple.com/app/id6817561066), for you and for everyone you share
-  with.
+- **An iPhone with iOS 18.1 or later, or a phone with Android 10 or later,** and
+  Ovenlight from the [App Store](https://apps.apple.com/app/id6817561066) or
+  [Google Play](https://play.google.com/store/apps/details?id=com.snowyghost.ovenlight), for
+  you and for everyone you share with.
 - **A Tailscale account**, for you only. The people you share with need none, and no phone
   or computer needs the Tailscale app. Tailscale's free Personal plan is for
   non-commercial use, so a business needs one of
@@ -139,8 +140,9 @@ When you share an app, your friend's iPhone joins your tailnet as a guest device
   includes a set number and charges for more ([details](docs/connector.md#share-an-app)).
 
 [docs/connector.md](docs/connector.md#what-the-computer-needs) says how the connector runs
-on each system, including on a Mac without a display. To build the iPhone app yourself, see
-[docs/development.md](docs/development.md#the-iphone-app). Headscale is supported for
+on each system, including on a Mac without a display. To build either app yourself, see
+docs/development.md ([iPhone](docs/development.md#the-iphone-app),
+[Android](docs/development.md#the-android-app)). Headscale is supported for
 [development](docs/development.md#local-headscale) only.
 
 ## Get started
@@ -248,11 +250,11 @@ ovenlight publish --port 4317 --name "Recipe Box" --run 'npm start'
 No app yet? `ovenlight new "Family List" --dir ~/src` writes a starter app (a shared list
 everyone can add to) and says how to run and publish it.
 
-### 4. Open it on your iPhone
+### 4. Open it on your phone
 
-In Ovenlight, choose Use My Own Computers, tap Connect and sign in with the same Tailscale
-account. If you've already joined someone else's app, Use My Own Computers is in Settings,
-under the ••• button. If your tailnet has device approval on, approve the iPhone and the
+In Ovenlight, choose Use my own computers, tap Connect and sign in with the same Tailscale
+account. If you've already joined someone else's app, Use my own computers is in Settings,
+under the More button. If your tailnet has device approval on, approve the phone and the
 app (listed as `recipe-box`) in the
 [admin console](https://console.tailscale.com/admin/machines). Your apps then appear on
 their own. If one doesn't, run `ovenlight doctor` on the computer.
@@ -323,13 +325,13 @@ ovenlight share recipe-box --to "Sam"
 ```
 
 It prints a link, a QR code and a message to send. Sam installs Ovenlight, opens the link
-on their iPhone and taps Join. An invite works once, on one iPhone, and expires after 7
-days. You can also share from your iPhone: touch and hold one of your apps, then choose
+on their phone and taps Join. An invite works once, on one phone, and expires after 7
+days. You can also share from your phone: touch and hold one of your apps, then choose
 Share.
 
 `ovenlight guests` lists who has access, when each guest last opened your apps, and the
 open invites. `ovenlight revoke Sam` removes Sam from every app at once. From inside the app, Sam can send you a note and a
-screenshot with Send Feedback, and `ovenlight feedback` lists what arrives.
+screenshot with Send feedback, and `ovenlight feedback` lists what arrives.
 [docs/connector.md](docs/connector.md#share-an-app) covers the rest, such as token expiry,
 removing someone from one app and unpublishing a shareable app, and
 [docs/security.md](docs/security.md#the-policy-change) explains the policy change.
@@ -389,27 +391,27 @@ what an app must do to stay safe.
   may rely on.
 - [docs/security.md](docs/security.md): the threat model, the tailnet policy change,
   logging and privacy.
-- [docs/protocol.md](docs/protocol.md): how the iPhone app and the connector talk.
-- [docs/development.md](docs/development.md): building the iPhone app, tests, local
-  development, shipping and forking.
+- [docs/protocol.md](docs/protocol.md): how Ovenlight and the connector talk.
+- [docs/development.md](docs/development.md): building the iPhone and Android apps, tests,
+  local development, shipping and forking.
 
 ## License
 
-Snowy Ghost LLC licenses Ovenlight, this version and every earlier one, under the
-[Apache License 2.0](LICENSE); see also [NOTICE](NOTICE). The iPhone app and the connector
-include third-party code under their own licenses, listed in each release's
+Snowy Ghost LLC licenses Ovenlight, this version and every earlier one, under the [Apache
+License 2.0](LICENSE); see also [NOTICE](NOTICE). The iPhone and Android apps
+and the connector include third-party code under their own licenses, listed in each release's
 `THIRD_PARTY_NOTICES.txt` and in the app under Settings, Acknowledgements.
 
 Snowy Ghost LLC also licenses two things under [MIT-0](https://spdx.org/licenses/MIT-0.html),
 in every version, so apps built from them carry no conditions from us: the starter app
 that `ovenlight new` writes (`connector/starter`), and the code samples in
 [docs/building-apps.md](docs/building-apps.md), which `ovenlight guide` prints. The App
-Store badge in `site/images` is Apple's artwork, used under Apple's terms.
+Store badge in `site/images` is Apple's artwork, used under Apple's terms, and the Google Play
+badge is Google's, used under Google's.
 
 Ovenlight and the Ovenlight icon are trademarks of Snowy Ghost LLC. The licenses above give
 no right to use them except to say where the software comes from, so a changed version you
-distribute needs its own name and icon. Ovenlight works with Tailscale and isn't
-affiliated with Tailscale Inc.
+distribute needs its own name and icon.
 
 ## Contributing
 
@@ -419,4 +421,6 @@ open pull requests: describe the change you'd like in an issue.
 <sub>Apple, the Apple logo, App Store, Face ID, iPhone, Mac and macOS are trademarks of
 Apple Inc., registered in the U.S. and other countries and regions. IOS is a trademark or
 registered trademark of Cisco in the U.S. and other countries and is used under
-license.</sub>
+license. Android, Google Play and the Google Play logo are trademarks of Google LLC.
+Tailscale is a trademark of Tailscale Inc. Ovenlight is made by Snowy Ghost and is not
+affiliated with or endorsed by Tailscale.</sub>

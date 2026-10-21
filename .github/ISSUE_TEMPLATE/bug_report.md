@@ -24,4 +24,4 @@ Report security problems by email instead, as SECURITY.md says.
 
 - `ovenlight version`:
 - Ovenlight app (Settings, Version):
-- The computer's OS, and iOS:
+- The computer's OS, and the phone's (iOS or Android version):

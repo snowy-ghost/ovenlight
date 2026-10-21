@@ -8,7 +8,7 @@
 - `project.yml`, `Ovenlight/`, `OvenlightTests/`: the iPhone app.
 - `android/`: the Android app. `scripts/build-android-core.sh` builds its Go core,
   `android/core/`, into the library the app links.
-- `scripts/build-tailscalekit.sh`: builds the embedded Tailscale library.
+- `scripts/build-tailscalekit.sh`: builds the iPhone app's embedded Tailscale library.
 - `scripts/release-connector.sh`: builds a connector release, and
   `scripts/publish-connector.sh` publishes it.
 - `design/icon/generate.py`: writes the iPhone and Android app icons, the Google Play
@@ -74,8 +74,9 @@ connector restarting, reinstall and `uninstall --purge`. On Linux it also runs `
 `go vet` and `govulncheck` for darwin/arm64 with cgo off, a check that
 `scripts/third-party-notices.sh` still finds a license kept below a module's root, and the
 end-to-end test against Headscale. It also renders the docs with `scripts/sitedocs`,
-which fails on a link or `#anchor` that goes nowhere. The iPhone app's side of the wire
-files runs only in Xcode, locally and before shipping, never in CI, so a change to
+which fails on a link or `#anchor` that goes nowhere. Its `android` job checks the Android
+app, its side of the wire files included ([Android tests](#android-tests)). The iPhone
+app's side runs only in Xcode, locally and before shipping, never in CI, so a change to
 `testdata/wire/` must also pass the [iPhone app's tests](#tests-1).
 
 ### Releases
@@ -161,11 +162,15 @@ output is gitignored and cached; `--force` rebuilds. It needs Go, and fetches th
 `go1.27.2` toolchain itself. On top of upstream it:
 
 - builds with the `ts_omit_debug` tag, which drops the node's debug LocalAPI, pprof and
-  debug HTTP handlers, `ts_omit_peerapiserver` and `ts_omit_cachenetmap` (the script says
-  why), and `ts_omit_webclient`, which leaves out Tailscale's web client and the font and
-  JavaScript bundle it embeds;
-- turns off log upload to `log.tailscale.com` from a Go `init`, for every node the app
-  runs, guests' included;
+  debug HTTP handlers, with `ts_omit_peerapiserver` and `ts_omit_cachenetmap` (the script
+  says why), and with `ts_omit_webclient`, which leaves out Tailscale's web client and the
+  font and JavaScript bundle it embeds;
+- turns off log upload to `log.tailscale.com`, and the log files tsnet would keep in each
+  node's folder, from a Go `init`, for every node the app runs, guests' included;
+- serves each node's loopback SOCKS5 port with a proxy of its own from
+  `scripts/libtailscale`, which dials only the node's peers and the internet by the
+  Android core's rules ([security.md](security.md#on-the-phone)), and runs its tests
+  before each build;
 - raises `golang.org/x` modules past libtailscale's own when they have security fixes;
 - adds a privacy manifest to the framework, which Apple requires of a framework that
   calls a required-reason API.
@@ -242,7 +247,7 @@ Sign Ovenlight in to the first with `-authKey`, and open the second owner's invi
   invite this iPhone accepted (`tailscale/<membership ID>`, listed in
   `memberships.json`). Each has its own loopback proxy, state, reachability and random
   device name, and each shared app's data store goes through its membership's node.
-  Which node carries an app of your own is in [security.md](security.md#on-the-iphone):
+  Which node carries an app of your own is in [security.md](security.md#on-the-phone):
   `Routing.isOnOwnersTailnet` decides, `Routing.mayLoad` checks the route before every
   probe and load, and `WebViewPool.discardStaleRoutes` closes the views whose route
   changed.
@@ -254,28 +259,28 @@ Sign Ovenlight in to the first with `-authKey`, and open the second owner's invi
   after the node is ready and the app's host answers a probe through the current proxy
   (`AppLoadGate`). After about 10 seconds the app shows "Can't Reach \<App>" with Try
   Again. When the network lists the app's computer as offline (believed by a guest's node
-  only once its network has listed a peer online), it shows that at once,
-  keeps trying quietly while it's on screen, and opens as soon as the computer answers.
-  Launcher tiles dim with a badge while their computer isn't answering, or is listed
-  offline, which is never probed. When the connector answers but the app itself isn't
-  running (a 502 with the code `unavailable`), the first page is tried a few more times,
-  then Ovenlight says the app isn't responding rather than showing the connector's text.
+  only once its network has listed a peer online), it shows that at once, keeps trying
+  quietly while it's on screen, and opens as soon as the computer answers. Launcher tiles
+  dim with a badge while their computer isn't answering, or is listed offline, which the
+  launcher doesn't probe. When the connector answers but the app itself isn't running (a
+  502 with the code `unavailable`), the first page is tried a few more times, then
+  Ovenlight says the app isn't responding rather than showing the connector's text.
 - **The open app** starts below a band at the top, the status bar's height plus the
   handle's 20 points (`AppChrome.handleHeight`), painted in the page's header color: its
   `theme-color`, else its background, and before the first load the one remembered from
   the last (`StatusBarTint`). The status bar's text takes the tone that reads on what is
   under it: iOS 26 and later choose it, and before that `StatusBarTone` sets it from the
-  band. A page with `viewport-fit=cover` runs to the bottom and side edges; any other
+  band. A page with `viewport-fit=cover` runs to the bottom and side edges. Any other
   stays inside the side safe areas. The one piece of native chrome is a small capsule at
   the top with the way home and the app's menu. It starts tucked up under the status bar,
   leaving its handle in the band (the first time, it shows with a one-time tip about the
   handle until the tip is closed). Before the app has loaded, its sign-in, approval and
   error screens each have Back to Apps. Tapping the band or pulling down at the top of the
-  page brings it back; with no status bar above the band (a phone on its side, the iPhone
+  page brings it back. With no status bar above the band (a phone on its side, the iPhone
   Duo's cover), the handle's tap reaches 44 points down at its middle. Tapping the status
   bar scrolls the page to the top, as iOS does, and leaves the chrome alone. Ovenlight
   removes WebRTC from every frame of every page (`WebViewPool.noWebRTC`).
-- **Lock.** What locking holds back is in [security.md](security.md#on-the-iphone);
+- **Lock.** What locking holds back is in [security.md](security.md#on-the-phone).
   `WebViewPool.stopCapture` ends the microphone and camera streams already running.
 - **Permissions.** Besides the camera (scanning invite codes, and pages when allowed) and
   the microphone (pages), Ovenlight asks to add to the photo library, for Save to Photos
@@ -383,6 +388,17 @@ reviewer is still a guest or has an open invite, another review invite needs
 Revoke it after the review: `ovenlight revoke "App Review"`. `share --cancel <id>` only
 stops more devices from claiming it: those that have keep the app until revoked.
 
+Google Play's review needs a review invite of its own, for another person such as
+`--to "Play Review"`, so revoking one store's reviewers leaves the other's. Paste its link
+and notes into Play Console, under App content, Sign-in details. Play expects them to keep
+working and reviews any change to them, so make the next one with `--review --existing`
+well before the invite expires or its 10 places are used up (a device that leaves or is
+removed keeps its place). Once the new details are live and no review still uses the old
+link, run `ovenlight revoke` with the old invite's ID (`share` printed it, and
+`ovenlight guests --json` shows it as `inviteId` on each device that claimed it). That
+removes the devices that claimed it and cancels it if it's still open. Revoking by the
+person's name would end the new invite too.
+
 ## Shipping
 
 Build TailscaleKit first (`scripts/build-tailscalekit.sh`), then archive and upload with
@@ -416,3 +432,132 @@ app the site lists, so in a fork's build, or one without the entitlement, an inv
 in Messages or scanned with the Camera opens the join page, whose Open in Ovenlight hands
 it over as `ovenlight://join?...`. Pasted under More, Join with Invite, or scanned there,
 an invite opens in either form.
+
+## The Android app
+
+The Android app is native Kotlin and Jetpack Compose, in `android/`. It follows the iPhone
+app's structure: most Swift files have a Kotlin twin of the same name (`NodeManager.kt`
+for `NodeManager.swift`), and the iPhone tests are ported under their own names. It runs
+on Android 10 (API 29) or later and opens apps in Android System WebView 144 or later, the
+first that gives every web view its safe areas. On an older WebView it asks for an update
+and opens no app.
+
+Building it needs JDK 21 (`JAVA_HOME`), Go, and the Android SDK (`ANDROID_HOME`) with the
+platform, build tools and NDK that `android/gradle.properties` names. From the
+repository's root:
+
+```sh
+android/gradlew -p android :app:assembleDebug
+```
+
+### The Android Tailscale library
+
+`android/core` is a Go module over Tailscale's tsnet, with Tailscale pinned in its
+`go.mod` and Go in `scripts/build-android-core.sh`. It runs one node per network, as the
+iPhone app does, and the local proxy that every page and every native request goes through.
+`scripts/build-android-core.sh` binds it with gomobile into
+`android/app/libs/ovenlight-core.aar`, gitignored and cached (`--force` rebuilds), with
+the licenses of what it links beside it for Acknowledgements. Gradle runs the script
+before every build: for arm64-v8a only in a debug build, and for arm64-v8a, armeabi-v7a
+and x86_64 when a release or bundle task is asked for, so a debug build runs only on an
+arm64 phone or emulator (such as one on an Apple silicon computer). It builds with the
+`ts_omit_debug`, `ts_omit_peerapiserver` and `ts_omit_cachenetmap` tags, links for 16 KB
+pages, and turns off log upload, and the log files tsnet would keep for it, for every
+node.
+
+### Android tests
+
+From the repository's root:
+
+```sh
+android/gradlew -p android :app:lintDebug :app:testDebugUnitTest
+go -C android/core test ./...
+android/scripts/test-parity.sh
+```
+
+The JVM tests run the screens under Robolectric, and
+`testDecodesEveryGoldenFileFromTheConnector` decodes every file in
+`connector/testdata/wire/`: a new file fails it until it has a case there.
+`test-parity.sh` fails when an iPhone test has no Android twin of the same name, outside
+a short list of exclusions, each with its reason. It reads the iPhone tests from
+`origin/app-1.0.2`, or the ref that `OVENLIGHT_SWIFT_SPEC` names. CI runs all three, with
+`go vet` and `govulncheck` for the core, a release bundle and `verify-bundle.sh` (see
+[Shipping on Google Play](#shipping-on-google-play)).
+
+The device tests need an emulator or phone with WebView 144 or later:
+`android/gradlew -p android :app:connectedDebugAndroidTest`. `android/e2e/e2e.sh` runs
+whole scenarios against a local Headscale and a dev connector, on the emulators that
+`android/scripts/avds.sh` keeps. Its header lists them.
+
+### Debug launch extras
+
+Debug builds take extras on `adb shell am start -n com.snowyghost.ovenlight/.MainActivity`,
+as the iPhone app takes launch arguments:
+
+- `--es controlURL <url> --es authKey <key>` signs the owner's node in to a local
+  Headscale with a key.
+- `--es joinInvite <link>` opens an invite.
+- `--es openApp <name>` opens an app. `ovenlight://open?app=<name>` does the same in any
+  build, and so does `ovenlight://open?id=<app ID>`, which home screen shortcuts use.
+  Both wait for the unlock.
+- `--ez lockNow true` locks Ovenlight.
+- `--ez sharingFixture true` fills in sample sharing data for screenshots.
+- `--ez fakeOldWebView true` shows the screen that asks for a WebView update.
+
+`DebugLaunch.kt` lists the rest, including the lab that first checked the proxy and
+profiles. As on iPhone, debug builds also accept an `http` control server on loopback in
+invites. To reach a Headscale on your own computer from an emulator, forward its port
+with `adb reverse`. Debug builds trust one more certificate authority, for the
+certificates `ovenlight run --dev-tls-cert` serves: `test-ca/ca.pem` beside the SDK
+folder, which `e2e.sh` makes, or else a throwaway one.
+
+### How the Android app differs
+
+- **One proxy.** Every page and every request of Ovenlight's own (probes, claims, the
+  admin API, feedback, downloads, through OkHttp) goes through one password-protected
+  proxy in the Go core (`android/core/proxy.go`, `TailnetCore.kt`), and each app has its
+  own WebView profile. [security.md](security.md#on-the-phone) says what it refuses, and
+  [On Android](security.md#on-android) how it's guarded.
+- **The lock** is Android's biometric prompt: a fingerprint or face, or the screen lock.
+  Android 10's prompt can't fall back to the screen lock, so there a button opens the
+  screen lock's own screen, at once when no fingerprint or face is enrolled
+  (`UnlockPrompt.kt`). The lock screen is a window of its own (`LockWindow` in
+  `MainActivity.kt`).
+- **Coming and going.** A trip out that hands something back (the sign-in tab, a picker,
+  the lock's prompt) keeps nodes and pages running for five minutes. Any other departure,
+  or a trip out past five minutes, pauses polling and pages' timers, and after a minute
+  closes every node, whose state stays on disk. Coming back starts them again
+  (`AppLifecycle.kt`).
+- **Tailscale's sign-in and Machines page** open in a Custom Tab, in the phone's browser,
+  since Google refuses sign-ins inside web views. A Custom Tabs session keeps Ovenlight
+  running behind the tab in the browser, so it comes back by itself once the phone is
+  approved.
+- **Invites** open Ovenlight as App Links (the site's `assetlinks.json`), as
+  `ovenlight://join` links with the fields in the query or the fragment, pasted, or
+  scanned in Ovenlight with CameraX and ZXing.
+- **Pages.** Back goes back in the page, then to the launcher. The page script is
+  `assets/page.js`. [app-contract.md](app-contract.md#in-the-android-app) says what it and
+  downloads do.
+
+### Shipping on Google Play
+
+`android/gradlew -p android --no-configuration-cache :app:bundleRelease` builds the
+release bundle, for all three ABIs, signed with the upload key (PKCS12, alias `upload`)
+when `PLAY_UPLOAD_KEYSTORE` names its file and `PLAY_UPLOAD_PASSWORD` holds its password.
+`android/scripts/verify-bundle.sh` checks the bundle: the target SDK, every native library
+aligned for 16 KB pages, the license notices, no advertising ID or media permissions, the
+camera and microphone not required, WebView's metrics and Safe Browsing off, and nothing
+backed up or moved to a new phone. Play signs what reaches phones with Play App Signing,
+and gives every upload its `versionCode`: the Gradle Play Publisher plugin, on only when
+`PLAY_CREDENTIALS` names a service account's key, asks Play for one past the highest on
+any track.
+
+### Forking the Android app
+
+To build and sign your own copy, change `applicationId` in `android/app/build.gradle.kts`,
+`AppLinks` in `Support.kt`, the App Link host in `AndroidManifest.xml` and
+`InviteLink.kt`, the invite host in `connector/invite.go`, and the package in
+`site/join.js`'s `intent:` link, and serve your own `assetlinks.json` with your signing
+key. On Android 12 and later, an App Link opens only an app whose key the site lists, so
+in a fork's build an invite opens the join page, whose Open in Ovenlight opens the app
+that `site/join.js` names.

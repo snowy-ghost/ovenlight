@@ -1,9 +1,10 @@
 # Building apps for Ovenlight
 
 Ovenlight opens web apps that run on the person's own computer, full screen on their
-iPhone, behind Face ID. The connector (`ovenlight`) puts each app on its own HTTPS address
-in the person's Tailscale network (their tailnet) and tells the app who is calling. An app
-can be shared with friends and family, who get that one app and nothing else.
+phone (an iPhone or an Android phone), behind its lock. The connector (`ovenlight`) puts
+each app on its own HTTPS address in the person's Tailscale network (their tailnet) and
+tells the app who is calling. An app can be shared with friends and family, who get that
+one app and nothing else.
 
 `ovenlight guide` and the MCP `guide` tool print this guide. When `ovenlight` isn't on
 `PATH`, the command is `~/Library/Application\ Support/ovenlight/bin/ovenlight` on a Mac,
@@ -26,7 +27,7 @@ Ovenlight already does them, or they break inside it.
   the caller's identity, set by the connector. Use it (and guard the port, below).
   `check` warns when `/` leads to a password login.
 - **Sign in with Google, Apple or any OAuth provider.** The sign-in page opens in a
-  Safari sheet and never returns to the app.
+  browser on top of Ovenlight and never returns to the app.
 - **A cloud database, Docker, a cloud deploy, a domain, TLS.** The app runs on the
   computer, the connector does HTTPS, and the people using it number one to ten.
 
@@ -277,8 +278,9 @@ anything that matters on the server.
 
 ## Make it feel native
 
-Ovenlight shows each app in a full-screen web view (WebKit, iOS 18.1 or later, iPhone,
-portrait and landscape) with no browser bar.
+Ovenlight shows each app in a full-screen web view with no browser bar, in portrait and
+landscape: WebKit on an iPhone with iOS 18.1 or later, and Android System WebView
+(Chromium) 144 or later on Android 10 or later.
 
 **The head.**
 
@@ -320,9 +322,12 @@ stays out while its one-time tip shows, and always while VoiceOver or TalkBack i
 - Put no controls in the top center of the page (120 by 28 points): taps there can go to
   the handle.
 
-**Navigation.** Swiping from the left edge goes back, as in Safari. Give each screen a
-real history entry (links, `history.pushState`, or `#/route` hashes) so it goes back a
-screen, not out of the app, and keep your own horizontal swipes away from the edges.
+**Navigation.** Back goes back: a swipe from the left edge on iPhone, as in Safari, and
+the back gesture (from either edge) or button on Android. Give each screen a real history
+entry (links, `history.pushState`, or `#/route` hashes) so it goes back a screen, not out
+of the app, and keep your own horizontal swipes away from the edges. On Android, Back
+skips a screen the person never tapped on before the page moved on by itself (Chromium's
+rule), so add an entry as the person moves to a screen, not on load.
 
 **Status bar and color.** The status bar's text turns light or dark to read on your
 header's color. Support both modes with `prefers-color-scheme` (a `theme-color` for each,
@@ -331,18 +336,21 @@ the page is pulled down. Ovenlight remembers the `theme-color` of the last page 
 showed (its background without one), for light and dark mode, and paints the top with it
 while the app next opens.
 
-**Type.** Use the system font at the reader's Dynamic Type size, and size the rest in
-`rem` so it scales:
+**Type.** Use the system font at the reader's text size, and size the rest in `rem` so it
+scales. On iPhone, `-apple-system-body` follows Dynamic Type. Android's WebView ignores it
+and uses the plain font before it, and scales the text by the phone's font size on its
+own:
 
 ```css
-html { font: -apple-system-body; }
+html { font: 17px/1.35 system-ui, sans-serif; font: -apple-system-body; }
 input, textarea, select { font-size: max(16px, 1rem); }  /* under 16px, iOS zooms in on focus */
 ```
 
 **Inputs.** Native controls (`<input type="date">`, `<select>`,
-`<input type="checkbox" switch>`) bring iOS pickers and switches, and
-`<input type="file" accept="image/*">` offers the camera. `alert`, `confirm` and `prompt`
-show as native alerts titled with the app's name.
+`<input type="checkbox" switch>`) bring the phone's own pickers and switches (Android's
+WebView shows a `switch` as a plain checkbox), and `<input type="file" accept="image/*">`
+offers the camera. `alert`, `confirm` and `prompt` show as native alerts titled with the
+app's name.
 
 **Icon and color.** A web manifest gives the app its icon and color in Ovenlight:
 `theme_color`, and in `icons` a 512 by 512 PNG. Use relative URLs: the connector reads
@@ -354,27 +362,39 @@ chooses Refresh Icon.
 
 **Downloads.** A link with `download` (to the app's own address, or a `blob:` or `data:`
 URL the page made) and a page load answered with `Content-Disposition: attachment` open
-the share sheet, where the person saves or sends the file.
+the share sheet, where the person saves or sends the file. On Android they open
+Ovenlight's own Save, Share and Open sheet (a PDF too), and Ovenlight fetches the file
+again as a GET with the page's cookies: serve downloads from GET links that answer the
+same twice, never from a form's POST. A `blob:` file may be up to 32 MB, a `data:` URL up
+to 2 MB.
 
 **Telling it runs in Ovenlight.** The user agent ends in `Ovenlight/<version>`. Use it
 only to adjust presentation: anyone can send that string.
+
+**Android's page script.** On Android, Ovenlight adds a small script to every frame,
+before the page's own. It hides service workers, WebRTC, and the speech and barcode APIs
+listed below, and wraps `getUserMedia`, `URL.createObjectURL` and clicks on
+`<a download>`, so it can stop streams and save files. Don't replace those yourself.
 
 ## What doesn't work
 
 - **Notifications.** No Web Push and no Notification API.
 - **Popups and `window.opener`.** `window.open` and `target="_blank"` to the app's own
-  address load in the same view; any other site opens in a Safari sheet.
+  address load in the same view; any other site opens in a browser on top of Ovenlight.
 - **Service workers and offline copies.** Ovenlight doesn't run them: assume the app is
   online.
 - **WebRTC.** It isn't available: Ovenlight removes it from pages, since its traffic would
   go around Ovenlight's connection to the computer. Don't build calls or peer-to-peer
   features.
-- **Location.** Ovenlight doesn't ask iOS for location, so `navigator.geolocation`
+- **Location.** Ovenlight doesn't ask the phone for location, so `navigator.geolocation`
   always fails with a permission error.
+- **Speech recognition and barcode detection.** On Android, `SpeechRecognition` and
+  `BarcodeDetector` aren't available.
 
-The microphone and camera work. iOS asks once; the owner's own apps then get the
-microphone without a second prompt, while the camera and shared apps get WebKit's
-prompt. Nothing gets either while Ovenlight is locked.
+The microphone and camera work. The phone asks once whether Ovenlight may use them. The
+owner's own apps then get the microphone without a second prompt, while for the camera,
+and in shared apps, the person is asked first. Nothing gets either while Ovenlight is
+locked.
 
 ## The loop
 
@@ -428,9 +448,9 @@ tap. Don't work around them. Doctor marks the checks only the person can fix wit
   new one.
 - **Allow a protected folder** when a Mac asks (see Keep it running); after Don't
   Allow, it's in System Settings > Privacy & Security > Files and Folders.
-- **Connect the iPhone.** Install Ovenlight from the App Store, choose Use My Own
-  Computers, then Connect, and sign in with the same Tailscale account. If the tailnet has
-  device approval on, approve the iPhone in the admin console (Machines).
+- **Connect the phone.** Install Ovenlight from the App Store or Google Play, choose Use My
+  Own Computers, then Connect, and sign in with the same Tailscale account. If the tailnet
+  has device approval on, approve the phone in the admin console (Machines).
 - **Change a shared app.** Once an app is shareable, only the person can change its
   port, command or folder, or unpublish it, in a terminal. Give them the command the
   error prints.

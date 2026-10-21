@@ -229,12 +229,12 @@ link. Without a stored API credential, each app's sign-in expires on your tailne
 expiry schedule (180 days by default), and `doctor` warns 30 days ahead; with one, the
 connector turns key expiry off.
 
-On your iPhone, open Ovenlight, choose Use My Own Computers, tap Connect, and sign in with
+On your phone, open Ovenlight, choose Use My Own Computers, tap Connect, and sign in with
 the same Tailscale account. If you've already joined someone else's app, Use My Own
-Computers is in Settings, under the ••• button. If your tailnet has device approval on,
-approve the iPhone in the admin console. An app you signed in with a login link waits
+Computers is in Settings, under the More button. If your tailnet has device approval on,
+approve the phone in the admin console. An app you signed in with a login link waits
 there for approval too, listed by its slug. Ovenlight then finds your published apps by
-itself. Add App, under the ••• button, also takes an app's address, but only one on your
+itself. Add App, under the More button, also takes an app's address, but only one on your
 own tailnet; apps on other people's computers come by invite.
 
 `ovenlight help` lists the commands, and most take `-h` for their flags. `status`,
@@ -297,10 +297,10 @@ stops running it, and so does `unpublish`.
 
 `unpublish` stops serving an app. Its node stays in your tailnet, offline, so publishing
 it again needs no new login; a shareable app's node is deleted instead (see
-[Share an app](#share-an-app)). On your iPhone, an unpublished app's tile stays until you
+[Share an app](#share-an-app)). On your phone, an unpublished app's tile stays until you
 remove it (touch and hold it, then choose Remove App): discovery adds apps but never
 removes one. Once you remove an app, discovery doesn't add it back, even when you publish
-it again; Add App, under the ••• button, adds it by its address.
+it again; Add App, under the More button, adds it by its address.
 
 ## Share an app
 
@@ -359,10 +359,10 @@ It prints a link, a QR code and a message to send. The other sharing commands:
   ([development.md](development.md#app-review-invites)).
 
 An invite link works once and expires after 7 days (a review invite's works on up to 10
-devices for 90 days). Your friend's iPhone joins without waiting for your approval, even
+devices for 90 days). Your friend's phone joins without waiting for your approval, even
 if your tailnet has device approval on ([security.md](security.md#invites) says why). You
-can also share apps and remove guests in Ovenlight on your iPhone: touch and hold one of
-your apps, or open People & Sharing under the ••• button.
+can also share apps and remove guests in Ovenlight on your phone: touch and hold one of
+your apps, or open People & Sharing under the More button.
 
 Revoking takes effect at once on the connector. As soon as the guest's phone notices it's
 no longer in your tailnet, it removes the app and its data. If the guest still has another
@@ -400,7 +400,7 @@ Without a backup, first delete the old computer's app nodes in the admin console
 invite points at the old name. Then publish each app again and send new invites; existing
 guests lose access.
 
-On a new or restored iPhone, your own apps come back once you tap Connect again. Apps
+On a new or restored phone, your own apps come back once you tap Connect again. Apps
 shared with you don't move: ask for a new invite.
 
 ## Uninstall

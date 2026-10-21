@@ -1,6 +1,6 @@
 # Protocol
 
-How the Ovenlight iPhone app and the connector talk. Everything runs over the tailnet,
+How Ovenlight and the connector talk. Everything runs over the tailnet,
 through the phone's embedded node, to an app's node:
 
 - **Port 443**: the app, plus a few paths the connector answers itself.
@@ -175,9 +175,10 @@ Open invites are the `invites` of `GET /v1/guests`. A review invite stays among 
 route or method gets a JSON 404 `not_found`.
 
 `POST /v1/invites` answers `{"invite": {...}, "link", "appLink", "appName", "owner",
-"devices", "tagErrors", "message"}`: `link` is the universal link and `appLink`
-the same invite as `ovenlight://join?...`. `message` is the text to send, with the link
-in it, as `ovenlight share` prints it. All three carry the key and are shown once.
+"devices", "tagErrors", "message"}`: `link` is the universal link (an App Link on
+Android) and `appLink` the same invite as `ovenlight://join?...`. `message` is the text
+to send, with the link in it, as `ovenlight share` prints it. All three carry the key
+and are shown once.
 `message` is the only invite wording the phone sends: it composes none of its own, and
 without `message` it sends just the link.
 `devices` names the person's devices that can now reach the app, and `tagErrors` those
@@ -205,6 +206,12 @@ to a server, so the key never reaches the website. It opens Ovenlight when it's
 installed; otherwise the page offers Open in Ovenlight (the second form) and a way to
 get the app. `ovenlight share` prints only the first, since any app on the phone may
 claim the `ovenlight://` scheme. `POST /v1/invites` answers both.
+On Android, Open in Ovenlight hands the fields over as
+`intent://join#<fields>#Intent;scheme=ovenlight;package=com.snowyghost.ovenlight;end`,
+which reaches Ovenlight as `ovenlight://join#<fields>`. Naming the package keeps any other
+app from taking the invite, and the fragment keeps the key out of the system log, which on
+Android 10 to 12 records a custom-scheme link's query. Ovenlight on Android takes the
+fields from either part.
 The fields are form-encoded (`+` is a space) and may come in any order: the connector
 sorts them by name.
 

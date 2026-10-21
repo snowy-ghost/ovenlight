@@ -222,10 +222,11 @@ a node's key expires within 30 days.
 
 Ovenlight never asks you to approve a guest's phone. Guests join under random device
 names, so you couldn't tell whose phone was waiting, and approving it would be a rubber
-stamp. What protects you is the invite: it works once, for 7 days, and only for one app,
-since the policy lets its guest tag reach that app alone. You can remove anyone at any
-time. If a stranger uses a forwarded link first, the invite doesn't work for the guest you
-invited, and your guest list shows who joined with it, so you can remove them.
+stamp. What protects you is the invite: it works once, for 7 days (a review invite, on
+up to 10 devices for 90 days), and only for one app, since the policy lets its guest tag
+reach that app alone. You can remove anyone at any time. If a stranger uses a forwarded
+link first, a single-use invite doesn't work for the guest you invited, and your guest
+list shows who joined with it, so you can remove them.
 
 ## Revocation
 
@@ -377,9 +378,10 @@ use too.
   service, as the Tailscale app does. tsnet may open a NAT-PMP or UPnP port mapping on
   your router for direct connections, and its peer and UDP listeners bind to all
   interfaces.
-- **The iPhone app** doesn't upload logs: its embedded Tailscale library is built with
-  log upload turned off, for the owner's node and every guest's
-  ([development.md](development.md#tailscalekit)).
+- **Ovenlight on the phone** doesn't upload logs: its embedded Tailscale library is built
+  with log upload turned off, for the owner's node and every guest's, on iPhone
+  ([development.md](development.md#tailscalekit)) and on Android
+  ([development.md](development.md#the-android-tailscale-library)).
 - `ovenlight doctor`, in a release build (not a pre-release), reads
   `https://downloads.ovenlight.app/connector/latest.json` to say when a newer connector is
   out and to fail when this one has a security problem a newer one fixes. It is a plain
@@ -440,48 +442,68 @@ untrusted data: that output holds what requests sent the app, which a guest, or 
 website open in this computer's browser, can choose. A screenshot can't be fenced, so the
 agent is told that it is an image its sender chose, and any text in it is data.
 
-## On the iPhone
+## On the phone
 
-- Face ID (or the passcode) locks the whole app once it keeps anything: an app, an
+- The whole app locks behind the phone's own unlock (Face ID or the passcode on iPhone, a
+  fingerprint, face or the screen lock on Android) once it keeps anything: an app, an
   invite or a node. It locks again after a set time in the background (a minute by
-  default), and is asked again before creating an invite and removing a guest. On an iPhone with no passcode there is nothing to ask for: Ovenlight
-  stays open, says so in Settings, and those confirmations pass.
-- Add App takes only an address on the owner's own tailnet, and none before the owner
-  has signed in, so a new app comes from the owner's own computers or from an invite.
-  An app of your own goes through the owner's node only when its host is on the owner's
-  own tailnet (its MagicDNS suffix, remembered from the node's status). Any other
-  address, such as an app from a tailnet the owner was signed in to before, is refused:
-  it shows Can't Reach and sends nothing, not even a probe, and Ovenlight never looks
-  its name up in public DNS or loads it outside the tailnet. Only debug builds load an app
-  at `localhost` directly, for screenshots of a local demo. The owner's node only ever
+  default), or never once it's turned off in Settings, which asks for the unlock first.
+  The unlock is asked for again before creating an invite and removing a guest. On a
+  phone with no passcode or screen lock there is nothing to ask for: Ovenlight stays
+  open, says so in Settings, and those confirmations pass.
+- Add App takes only an address on the owner's own tailnet, and none before the owner has
+  signed in, so a new app comes from the owner's own computers or from an invite. An app
+  of your own goes through the owner's node only when its host is on the owner's own
+  tailnet (its MagicDNS suffix, remembered from the node's status). Any other address,
+  such as an app from a tailnet the owner was signed in to before, is refused: it shows
+  Can't Reach and sends nothing, not even a probe, and Ovenlight never looks its name up
+  in public DNS or loads it outside the tailnet. Only the iPhone's debug builds load an
+  app at `localhost` directly, for screenshots of a local demo. The owner's node only ever
   carries names on that known tailnet. Until the tailnet is known, a `*.ts.net` app is
   routed to the owner's node and waits behind Sign In, loading nothing. The route is
   checked before every probe and load, and a view whose route changed is made again
-  through the right node, or refused. A change of the remembered tailnet closes every
-  view whose route it changed. Sign Out and Stop Using My Own Computers forget it, close
-  every view that went through the owner's node, kept in the background or not, and
-  remove the apps found on the owner's computers with their data. A Sign Out cut short by
-  a quit finishes at the next launch. A closed view's data store is set to a proxy that
-  refuses every connection, as is a refused app's, and the app loads again through its
-  route, at once if it's on screen. A shared app always goes through its owner's guest
-  node.
-- Pages have no WebRTC. Its traffic wouldn't go through the node's proxy: through a TURN
-  relay a page could reach any address it names, the phone's own network included. A
-  script at the start of every document, in every frame, removes it, and WebKit runs it in
-  a frame's first `about:blank` document too, as the frame is made. From iOS 27.1, pages
-  can use WebTransport. The rules that block loads to the phone's own loopback and network
-  addresses don't cover it, but the data store's SOCKS5 proxy does, and every release
-  route sets that proxy (its node's, or one that refuses every connection). A route
-  without one would need WebTransport removed, as WebRTC is.
+  through the right node, or refused. A change of the remembered tailnet closes every view
+  whose route it changed. Sign Out and Stop Using My Own Computers forget it, close every
+  view that went through the owner's node, kept in the background or not, and remove the
+  apps found on the owner's computers with their data. A Sign Out cut short by a quit
+  finishes at the next launch. A closed view can't connect again, and neither can a
+  refused app's (on iPhone, its data store is set to a proxy that refuses every
+  connection, and on Android, its route is cleared). The closed view's app loads again
+  through its route, at once if it's on screen. A shared app always goes through its
+  owner's guest node.
+- Through Ovenlight's proxy, pages reach only a node's peers and the internet. A name in a
+  tailnet resolves only among that node's peers, never in public DNS. Any other address
+  must be on the internet: the proxy refuses the phone itself, its local networks, the
+  network's public address, other tailnets and the ranges that aren't globally reachable,
+  NAT64 and IPv4-mapped forms included (on iPhone and on Android 10, NAT64 under the
+  well-known prefix only, since neither gives Ovenlight the network's own), unless the
+  address is one of the node's peers. So no page reaches the phone's own network, or the
+  router in front of it, through Ovenlight. On iPhone, WebKit sends a load to one of the
+  phone's own addresses straight out, past the proxy. Content rules block loopback,
+  private and link-local IP literals (outside Tailscale's fd7a:115c:a1e0::/48), but not
+  the phone's other addresses, so a page can still reach the phone itself at one of those,
+  such as a public address, a carrier's in 100.64.0.0/10 or another VPN's.
+- Ovenlight takes WebRTC away from pages. Its traffic wouldn't go through Ovenlight's
+  proxy: through a TURN relay a page could reach any address it names, the phone's own
+  network included. A script at the start of every document, in every frame, removes it.
+  On iPhone, WebKit runs it in a frame's first `about:blank` document too, as the frame is
+  made. On Android it doesn't run there: it strips a new `about:blank` frame as it's made,
+  but a page that sets out to can still find WebRTC in a frame's first, empty document,
+  before the frame's own page loads.
+- From iOS 27.1, pages on iPhone can use WebTransport. The content rules don't cover it,
+  but the data store's SOCKS5 proxy does, and every release route sets that proxy (its
+  node's, or one that refuses every connection). A route without one would need
+  WebTransport removed, as WebRTC is.
 - While Ovenlight is locked, no page gets the microphone or camera, and an app that an
   `ovenlight://open` link asks for waits for the unlock. Locking also stops any
   microphone or camera stream already running in an open app, on screen or kept in the
   background. Nor does a page kept in the background get them: closing an app to the
   launcher stops its streams, and it can't start one until it's on screen again.
 - An app's downloads come only from its own host (or a blob or data URL its pages made),
-  none while Ovenlight is locked, and leave Ovenlight only through the share sheet. The
-  files wait in Ovenlight's temporary folder until the next launch, shared or cancelled,
-  since AirDrop may still be sending, but go at once with their app or its data.
+  none while Ovenlight is locked, and leave Ovenlight only through the share sheet (on
+  Android, Ovenlight's Save, Share and Open). The files stay in Ovenlight's temporary
+  folder until the next launch, since a share may still be sending. Files not yet offered
+  go at once with their app or its data.
 - The owner's admin calls go through the owner's own node to each connector's port 8443.
   The phone holds no API credentials. It asks only the owner's own machines: peers of
   the owner's own user, or tagged `tag:ovenlight-app-*`, on the owner's own tailnet (not
@@ -491,16 +513,77 @@ agent is told that it is an image its sender chose, and any text in it is data.
   (`ovenlight-` and six random characters), so no name or key ties its guest devices
   together. Two owners comparing notes could still match them: each sees when Ovenlight
   is open on the phone (its guest node comes online and checks in with their apps), and
-  its public IP address and iOS version.
+  its public IP address and operating system (on iPhone, its iOS version too).
+- Ovenlight builds Tailscale without its peer API server. Through it, a device of the same
+  user, which an invite's sender can arrange, could ask the phone to look up names on the
+  phone's own networks: its router, Private DNS or a company's DNS.
 - Node state and the membership list are excluded from backups, so node keys never come
-  back on another phone.
+  back on another phone. On Android, nothing of Ovenlight's is backed up or moved to a new
+  phone.
+
+### On Android
+
+- **One proxy.** Android has one proxy setting for every web view in an app, so the
+  embedded Tailscale library runs one HTTP CONNECT proxy on `127.0.0.1`, and every
+  request of every app's pages, and of Ovenlight itself, goes through it, with no
+  fallback to a direct connection. Other apps on the phone can reach its port, so it
+  answers only a CONNECT, and only with the secret Ovenlight makes at each launch. A
+  page's web view answers the proxy's challenge with its app's own route key, which
+  names the node that carries it, and a key with no route is refused. The page itself
+  never sees the secret. If the proxy ever stops, Ovenlight stops too, so no other app can
+  take the port.
+- **Each app apart.** Each app has its own WebView profile, with its own cookies,
+  storage and cache. Data that ends (Leave, Remove, a revoke) is wiped at once, and its
+  profile deleted by the next launch. Pages run in WebView's sandboxed renderer process,
+  apart from Ovenlight's own, and a renderer that dies doesn't take Ovenlight with it:
+  its pages are made again. WebView hands Ovenlight every message a page writes to its
+  console, whole, so a page can run Ovenlight out of memory: a denial of service, nothing
+  more. Safe Browsing is off in app views. Their pages come only from apps on tailnets
+  Ovenlight knows, but a page can still embed another site's frames, scripts and images,
+  which load unchecked. A page that navigates to another site opens it in the browser,
+  which keeps its own Safe Browsing.
+- **The lock** is a window of its own above everything Ovenlight shows, pickers and
+  menus a page opened included, and under it no page is in the window at all. Its clock
+  runs from the moment Ovenlight's screen goes, even for a file picker or Tailscale's
+  sign-in tab, unlike on iPhone, since Android can't tell someone still in a picker from
+  someone who left. A file picked meanwhile reaches the page only after the unlock.
+  Recents shows no picture of Ovenlight.
+- **Microphone and camera.** WebView can't stop a stream it handed out. On lock and when
+  an app closes to the launcher, Ovenlight's page script stops the tracks it saw, and if
+  the phone still records or holds a camera two seconds later, Ovenlight closes any
+  page granted either since it last loaded.
+- **Downloads.** Android doesn't say which frame started a download, so one from an
+  `http` or `https` address is checked by that address alone: a frame from another site
+  can start a download from the app's own host. Ovenlight fetches it again through the
+  proxy with the app's cookies, following no redirect, and it ends up in that app's own
+  Save, Share and Open sheet. Open hands another app only PDFs, images, audio, video and
+  plain text, never HTML, SVG, XML or an app package.
+- **Home screen shortcuts.** Add to Home screen, in an app's touch-and-hold menu, pins a
+  shortcut that carries only the app's ID and opens it through the lock. Removing the app
+  disables its shortcut, which keeps its name and icon on the home screen until the person
+  removes it, since Android gives apps no way to unpin one. Ovenlight publishes no dynamic
+  shortcuts, which would list apps on its icon outside the lock.
+- **Links.** On Android 12 and later, an invite link opens Ovenlight only when the site's
+  `assetlinks.json` lists the key that signed it. On Android 10 and 11, an app that isn't
+  listed can still be offered in the system's chooser. The join page's Open in Ovenlight
+  names Ovenlight's package, since another app can claim the `ovenlight://` scheme. A page
+  can't hand Ovenlight an invite directly: an invite link opens the join page in the
+  browser, where the person decides, and an `ovenlight://` link is refused. Nor can a page
+  open `android-app:`, `file:` or `content:` links, and an `intent:` link is stripped of
+  whatever could aim it elsewhere and, like any link to another app, asked about first.
 
 ## If something goes wrong
 
 - **An invite link leaked.** If it's still open, `ovenlight share --cancel <id>`
   withdraws it (`ovenlight guests` lists open invites). If someone else used it,
   `ovenlight guests` lists the phone that joined: remove it with
-  `ovenlight revoke <device ID>` and send a new invite.
+  `ovenlight revoke <device ID>` and send a new invite. A review link keeps admitting
+  devices after one is removed ([Invites](#invites)), so for a leaked one, open or not,
+  run `ovenlight revoke <invite ID>` (`ovenlight guests` lists the ID while the invite is
+  open, and `--json` shows it on each device that claimed it). That removes every device
+  that claimed it and cancels it if it's still open. Delete any device that joined
+  without claiming, which `ovenlight guests --sync` lists, in the admin console
+  (Machines), then make a new review invite.
 - **An app's login link leaked.** Whoever opens a pending login link first and signs in
   gets that app's node, in their own tailnet. If it's still pending, sign in with it
   yourself at once. If someone beat you to it, `ovenlight status` shows the app at an
@@ -513,7 +596,7 @@ agent is told that it is an image its sender chose, and any text in it is data.
   console (Settings, Keys; for an OAuth client, Trust credentials) and store a new one
   with `ovenlight auth set`. Then check your tailnet policy, devices and keys for changes
   you didn't make.
-- **A lost or stolen iPhone.** Your own: delete its node, an untagged `ovenlight-` device
+- **A lost or stolen phone.** Your own: delete its node, an untagged `ovenlight-` device
   of yours, in the admin console (Machines), then look in `ovenlight guests` for invites
   and guests you didn't make. A guest's: `ovenlight revoke <device ID>`, then invite them
   again on their new phone.
