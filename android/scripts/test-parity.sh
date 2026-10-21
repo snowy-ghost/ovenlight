@@ -5,12 +5,12 @@
 #
 #   android/scripts/test-parity.sh
 #
-# The tests are read from the iPhone release the port follows, not this branch's own copy:
-# OVENLIGHT_SWIFT_SPEC names it, origin/app-1.0.2 until 1.0.2 is on master.
+# The Swift tests are read from the commit OVENLIGHT_SWIFT_SPEC names, this tree's HEAD by
+# default.
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/../.." && pwd)"
-spec="${OVENLIGHT_SWIFT_SPEC:-origin/app-1.0.2}"
+spec="${OVENLIGHT_SWIFT_SPEC:-HEAD}"
 
 # Swift tests with no Kotlin twin, each with its reason.
 excluded() {
