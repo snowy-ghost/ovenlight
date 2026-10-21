@@ -121,6 +121,8 @@ final class InviteLinkTests: XCTestCase {
         XCTAssertEqual(InviteLink.label("Bank\u{202E}nigoL\u{202C} \u{2066}Pay\u{2069}\u{200F}\u{200B}\u{FEFF}"), "BanknigoL Pay",
                        "bidi controls and invisible characters go")
         XCTAssertEqual(InviteLink.label(String(repeating: family, count: 30))?.count, InviteLink.maxLabel, "counted as people see them")
+        let marked = InviteLink.label("G" + String(repeating: "\u{301}", count: 100_000) + "arden")
+        XCTAssertEqual(marked?.unicodeScalars.count, InviteLink.maxLabel * 16, "a character's marks are read only so far")
     }
 
     func testControlServerAndNetwork() throws {

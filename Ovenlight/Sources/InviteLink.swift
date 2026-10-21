@@ -155,11 +155,12 @@ struct InviteLink: Codable, Equatable, Hashable {
         return try parse(url, allowLocalHTTP: allowLocalHTTP)
     }
 
-    /// A display label: trimmed, without control characters, at most 64 characters.
+    /// A display label: trimmed, without control characters, at most 64 characters. A character
+    /// can carry any number of combining marks, so only 16 scalars a character are read.
     static func label(_ text: String?) -> String? {
         guard let text else { return nil }
-        let cleaned = String(text.unicodeScalars.filter { !isHidden($0) })
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let visible = text.unicodeScalars.lazy.filter { !isHidden($0) }.prefix(maxLabel * 16)
+        let cleaned = String(String.UnicodeScalarView(visible)).trimmingCharacters(in: .whitespacesAndNewlines)
         return cleaned.isEmpty ? nil : String(cleaned.prefix(maxLabel))
     }
 

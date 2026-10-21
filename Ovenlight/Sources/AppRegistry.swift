@@ -339,8 +339,11 @@ final class AppRegistry: ObservableObject {
 }
 
 extension Color {
+    /// Every theme color is read here, on each draw: a string longer than a color can be is
+    /// refused before it costs anything.
     init?(hex: String?) {
-        guard var hex = hex?.trimmingCharacters(in: .whitespaces) else { return nil }
+        guard let text = hex, text.utf8.count <= 16 else { return nil }
+        var hex = text.trimmingCharacters(in: .whitespaces)
         if hex.hasPrefix("#") { hex.removeFirst() }
         if hex.count == 3 { hex = hex.map { "\($0)\($0)" }.joined() }
         guard hex.count == 6, let value = UInt32(hex, radix: 16) else { return nil }
