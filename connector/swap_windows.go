@@ -3,7 +3,6 @@ package main
 import (
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -26,11 +25,6 @@ func restartedSince(at, now time.Time) bool { return now.Add(-sinceBoot()).After
 // still run it). Then moveIn makes the running binary .prev and puts next in its place.
 func replaceBinary(installed, next string) error {
 	bin, prev := filepath.Dir(installed), prevBinary(installed)
-	// A put-back still trying in the background has the running binary at .prev, which
-	// mustn't move aside.
-	if !exists(installed) {
-		return fmt.Errorf("%s isn't back in place yet", installed)
-	}
 	old, _ := filepath.Glob(filepath.Join(bin, "ovenlight.old*.exe"))
 	for _, f := range old {
 		os.Remove(f) // still running, or held: it goes next time
@@ -59,8 +53,8 @@ func restorePrev(installed string) error {
 // missing between those two renames, so whatever waits comes before them: both files are
 // opened for renaming, each tried again while something such as antivirus holds it, and
 // held, so the renames follow each other directly. When the second fails, the running
-// binary goes back, and a put-back that fails too keeps trying in the background for as
-// long as the process runs: until it's back, nothing is at the service's path to start.
+// binary goes back through its handle, tried every second until something is at the
+// service's path again, since until then there's nothing there for the service to start.
 func moveIn(installed, from, aside string) error {
 	src, err := holdForRename(from, renameWait)
 	if err != nil {
@@ -76,22 +70,12 @@ func moveIn(installed, from, aside string) error {
 		return err
 	}
 	if err := src.rename(installed); err != nil {
-		if perr := cur.rename(installed); perr != nil {
-			log.Printf("updates: can't put %s back as %s yet: %v", aside, installed, perr)
-			go putBack(aside, installed)
+		for cur.rename(installed) != nil && !exists(installed) {
+			time.Sleep(time.Second)
 		}
 		return err
 	}
 	return nil
-}
-
-// putBack renames from to to, trying every second until something is at to.
-func putBack(from, to string) {
-	for !exists(to) {
-		if os.Rename(from, to) != nil {
-			time.Sleep(time.Second)
-		}
-	}
 }
 
 // oldBinary is a new name for a binary moved aside on Windows, as install.ps1 names them.

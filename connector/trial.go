@@ -128,14 +128,16 @@ func beginTrial(dir, v string, now func() time.Time) (t *trial, exit bool) {
 	case !exists(prevBinary(installedBinary(dir))):
 		log.Printf("updates: %s has nothing to roll back to, so its trial ends", v)
 	case t.rec.Starts > 0 && !restartedSince(t.rec.Started, now()):
-		return nil, t.rollback(fmt.Errorf("%s started again within its trial: it crashed, hung or was killed", v))
+		t.rollback(fmt.Errorf("%s started again within its trial: it crashed, hung or was killed", v))
+		return nil, true
 	default:
 		if t.rec.Starts > 0 {
 			log.Printf("updates: Windows restarted during %s's trial, which starts again", v)
 		}
 		t.rec.Starts, t.rec.Started = 1, now()
 		if err := jsonfile.Save(path, &t.rec); err != nil {
-			return nil, t.rollback(fmt.Errorf("%s can't count its start: %w", v, err))
+			t.rollback(fmt.Errorf("%s can't count its start: %w", v, err))
+			return nil, true
 		}
 		t.last = now()
 		return t, false
@@ -162,9 +164,9 @@ func (t *trial) verifyIndex() bool {
 		err = fmt.Errorf("it names %s", idx.Latest)
 	}
 	if err != nil {
-		return t.rollback(fmt.Errorf("%s doesn't verify the index that brought it: %w", t.rec.To, err))
+		t.rollback(fmt.Errorf("%s doesn't verify the index that brought it: %w", t.rec.To, err))
 	}
-	return false
+	return err != nil
 }
 
 // attach gives the trial the daemon once it's up, serving its control socket.
@@ -250,9 +252,8 @@ func (t *trial) tick() bool {
 		return false
 	}
 	if err := t.failure(d); err != nil {
-		if t.rollback(err) {
-			t.exit("rolled back to " + t.rec.From)
-		}
+		t.rollback(err)
+		t.exit("rolled back to " + t.rec.From)
 		return true
 	}
 	// The trial ends before the update is recorded: a crash in between keeps the release,
@@ -292,8 +293,8 @@ func (t *trial) backstop(exit func()) {
 	}
 }
 
-// giveUp is backstop's rollback. It writes the failure to update.json itself, puts .prev
-// back, and returns once a binary is at the service's path, for the service to start it.
+// giveUp is backstop's rollback. It writes the failure to update.json itself, and puts
+// .prev back.
 func (t *trial) giveUp() {
 	why := fmt.Errorf("%s didn't end its trial within %s: it hung", t.rec.To, quietFor+backstopAfter)
 	log.Printf("updates: rolling back from %s to %s: %v", t.rec.To, t.rec.From, why)
@@ -301,9 +302,6 @@ func (t *trial) giveUp() {
 		log.Printf("updates: recording the failure of %s: %v", t.rec.To, err)
 	}
 	t.restore()
-	for !exists(installedBinary(t.dir)) {
-		time.Sleep(time.Second) // a put-back still trying in the background
-	}
 }
 
 // failure is why the trial fails at its deadline, or nil when it passes. An app
@@ -332,14 +330,14 @@ func (t *trial) failure(d *daemon) error {
 func servesLoggedIn(s NodeStatus) bool { return s.State == "serving" && s.Backend == "Running" }
 
 // rollback records why the release failed in update.json, puts .prev back in place of
-// the binary on trial, and ends the trial. It reports whether the connector should exit.
-func (t *trial) rollback(why error) bool {
+// the binary on trial, and ends the trial. The connector should then exit.
+func (t *trial) rollback(why error) {
 	log.Printf("updates: rolling back from %s to %s: %v", t.rec.To, t.rec.From, why)
 	// The failure first, so the release waits for the next night.
 	if err := t.record(t.failed(why)); err != nil {
 		log.Printf("updates: recording the failure of %s: %v", t.rec.To, err)
 	}
-	return t.restore()
+	t.restore()
 }
 
 // failed records why the release failed. A crash after it's recorded starts the release
@@ -352,19 +350,18 @@ func (t *trial) failed(why error) func(*updateState) {
 	}
 }
 
-// restore puts .prev back in place of the binary on trial, and ends the trial. It reports
-// whether the connector should exit so the service starts what's in place, which is once
-// bin/ovenlight exists.
-func (t *trial) restore() bool {
+// restore puts .prev back in place of the binary on trial, and ends the trial. Either way
+// a binary is at the service's path once it returns, for the service to start once the
+// connector exits.
+func (t *trial) restore() {
 	installed := installedBinary(t.dir)
 	// A crash once .prev is back starts it, and it ends the trial, which isn't its own.
 	if err := restorePrev(installed); err != nil {
 		// The trial stays, so the next start tries again.
 		log.Printf("updates: can't put %s back: %v", prevBinary(installed), err)
-		return exists(installed)
+		return
 	}
 	t.end()
-	return true
 }
 
 // end removes the trial.

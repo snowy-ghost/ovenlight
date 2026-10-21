@@ -53,18 +53,6 @@ func TestRenameAside(t *testing.T) {
 	if readFile(t, installed) != "running" || exists(prev) {
 		t.Error("something moved")
 	}
-
-	// A put-back still trying left the running binary as .prev and nothing at installed:
-	// nothing moves, and putBack brings it back.
-	os.Rename(installed, prev)
-	writeFile(t, next, "new")
-	if err := replaceBinary(installed, next); err == nil || readFile(t, prev) != "running" || len(oldBinaries(bin)) != 0 {
-		t.Errorf("during a put-back: %v, %v", err, oldBinaries(bin))
-	}
-	putBack(prev, installed)
-	if readFile(t, installed) != "running" || exists(prev) {
-		t.Error("not put back")
-	}
 }
 
 // A rollback puts .prev back, with the running binary moved aside first, and back when
