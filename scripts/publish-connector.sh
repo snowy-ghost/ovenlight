@@ -119,14 +119,17 @@ fetchrelease() {
   (cd "$tmp/files" && shasum -a 256 -c --quiet SHA256SUMS) || refuse "connector/$1/ doesn't match its SHA256SUMS"
 }
 
-# documented <version>: refuses files for latest/ that master's docs/allowed_signers, which
-# owners check them with, doesn't verify.
+# documented <version> <index>: refuses files for latest/, and the index for latest.json,
+# that master's docs/allowed_signers, which owners check them with, doesn't verify.
 documented() {
   if [ -z "$dry" ]; then git -C "$root" fetch -q origin master; fi
   git -C "$root" show "$master:docs/allowed_signers" > "$tmp/allowed_signers"
   ssh-keygen -Y verify -f "$tmp/allowed_signers" -I team@snowyghost.com -n file \
     -s "$tmp/files/SHA256SUMS.sig" < "$tmp/files/SHA256SUMS" > /dev/null 2>&1 ||
     refuse "$master's docs/allowed_signers doesn't verify $1's SHA256SUMS, which owners check latest/ with: add its key back first"
+  ssh-keygen -Y verify -f "$tmp/allowed_signers" -I team@snowyghost.com -n ovenlight-latest \
+    -s "$2.sig" < "$2" > /dev/null 2>&1 ||
+    refuse "$master's docs/allowed_signers doesn't verify $2, which owners check latest.json with: add its key first"
 }
 
 # newestof <pattern>: the newest index signed whose name matches.
@@ -209,7 +212,7 @@ promote)
   verifyrule "$version" "$records/$version/SHA256SUMS" "$records/$version/SHA256SUMS.sig" file
   verifyrule "$version" "$idx" "$idx.sig" ovenlight-latest
   fetchrelease "$version"
-  documented "$version"
+  documented "$version" "$idx"
   if ! begin "$id"; then
     abovereleased "$version"
     ordered "$(serialof "$id")" "$id"
@@ -240,7 +243,7 @@ pull)
   fi
   verifyrule "$target" "$records/$target/SHA256SUMS" "$records/$target/SHA256SUMS.sig" file
   fetchrelease "$target"
-  documented "$target"
+  documented "$target" "$idx"
   if ! begin "$id"; then
     [ "$version" = "$live" ] || refuse "$version isn't the live release (${live:-nothing is promoted})"
     [ "$target" = "$(keptbelow "$version")" ] || refuse "$id goes back to $target, not $(keptbelow "$version")"
@@ -265,7 +268,7 @@ resign)
   k="$(signer "$idx" "$idx.sig" ovenlight-latest)"
   # latest/ goes up again, so a promote cut short before it can't leave a mix of releases.
   fetchrelease "$version"
-  documented "$version"
+  documented "$version" "$idx"
   if ! begin "$id"; then
     [ "$version" = "$live" ] || refuse "$id is for $version, and the live release is ${live:-none}"
     based "$id"

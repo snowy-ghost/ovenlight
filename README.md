@@ -355,10 +355,10 @@ removing someone from one app and unpublishing a shareable app, and
   caller sends and sets its own from Tailscale.
 - **Signed releases.** The connector installs only an update signed with a release key
   built into it, never on the download server's word
-  ([how updates work](docs/security.md#updates)). Each release's checksums are signed
-  too, with keys listed in this repository
-  ([how to verify](docs/connector.md#from-a-release)). Its Windows program and scripts are
-  signed by Snowy Ghost LLC.
+  ([how updates work](docs/security.md#updates)). You can check a download against the
+  same signed index, with the keys listed in this repository
+  ([how to verify](docs/connector.md#check-a-download-first)). Its Windows program and
+  scripts are signed by Snowy Ghost LLC.
 
 Out of scope: anything running as you on the computer, such as a coding agent with a shell
 or one of your apps, can do what you can, including reading the Tailscale API credential

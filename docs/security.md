@@ -418,7 +418,10 @@ One thing: a signature by one of the release keys built into the binary
 downloads.ovenlight.app could hold updates and pulls back, but could install only a release
 we signed and published as the latest, and couldn't skip the two-day wait or bring a
 pulled release back to a computer that saw the pull. An index doesn't expire, so while
-the server holds one back, `status` and `doctor` still show recent checks.
+the server holds one back, `status` and `doctor` still show recent checks. The
+[verified steps](connector.md#check-a-download-first) for installing by hand check the
+same signed index, so they too take only a release once published as the latest, though
+not whether it was pulled since.
 
 Once a day the connector fetches the signed index,
 `https://downloads.ovenlight.app/connector/latest.json`, and its signature,

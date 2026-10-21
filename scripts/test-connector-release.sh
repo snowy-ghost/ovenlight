@@ -355,8 +355,16 @@ refused "four weeks and four days" publish --promote 1.1.3
 forge 1.1.1 resign air2 1.1.1
 refused "four weeks and four days" publish --resign
 backdate 33
-# The live index re-signed with the new key before the canary, then the promote and a pull.
-resign air2 1.1.1
+# The live index re-signed with the new key before the canary, once master's
+# docs/allowed_signers, which owners check latest.json with, lists that key. Then the promote
+# and a pull.
+signers air1 paper1
+tick
+run sign air2 --resign
+refused "which owners check latest.json with" publish --resign
+signers air1 paper1 air2
+run publish --resign
+latest_is 1.1.1 air2
 promote 1.1.3 air2
 signers air2 paper1
 tick
