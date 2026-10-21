@@ -16,7 +16,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -208,8 +207,6 @@ func TestDownloadArchive(t *testing.T) {
 			w.Write(body)
 		case "/redirect/1.2.0/" + archiveName():
 			http.Redirect(w, r, "/1.2.0/"+archiveName(), http.StatusFound)
-		case "/long/1.2.0/" + archiveName():
-			w.Header().Set("Content-Length", strconv.Itoa(maxArchiveBytes+1))
 		case "/longer/1.2.0/" + archiveName():
 			io.CopyN(w, zeros{}, maxArchiveBytes+1)
 		case "/slow/1.2.0/" + archiveName():
@@ -249,7 +246,6 @@ func TestDownloadArchive(t *testing.T) {
 		"no archive":      {context.Background(), srv.URL, mustIndex(t, []byte(`{"latest": "1.2.0", "secure": "1.1.0", "reinstallBelow": "1.1.0", "serial": 1}`))},
 		"not there":       {context.Background(), srv.URL, mustIndex(t, testIndex("1.2.1", "1.1.0", "1.1.0", 1, hex.EncodeToString(sum[:])))},
 		"a redirect":      {context.Background(), srv.URL + "/redirect", good},
-		"stated too long": {context.Background(), srv.URL + "/long", good},
 		"too long":        {context.Background(), srv.URL + "/longer", good},
 		"past a deadline": {ctx, srv.URL + "/slow", good},
 	} {

@@ -201,7 +201,7 @@ func fetchIndex(ctx context.Context, base string) (data, sig []byte, err error) 
 
 // fetchSmall reads a file of at most maxIndexBytes.
 func fetchSmall(ctx context.Context, url string) ([]byte, error) {
-	resp, err := get(ctx, url, maxIndexBytes)
+	resp, err := get(ctx, url)
 	if err != nil {
 		return nil, err
 	}
@@ -213,8 +213,8 @@ func fetchSmall(ctx context.Context, url string) ([]byte, error) {
 	return b, err
 }
 
-// get fetches url, refusing anything but a 200 and a stated length over max.
-func get(ctx context.Context, url string, max int64) (*http.Response, error) {
+// get fetches url, refusing anything but a 200. Its caller caps what it reads.
+func get(ctx context.Context, url string) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
@@ -223,9 +223,9 @@ func get(ctx context.Context, url string, max int64) (*http.Response, error) {
 	if err != nil {
 		return nil, err
 	}
-	if resp.StatusCode != http.StatusOK || resp.ContentLength > max {
+	if resp.StatusCode != http.StatusOK {
 		resp.Body.Close()
-		return nil, fmt.Errorf("%s: %s, %d bytes", url, resp.Status, resp.ContentLength)
+		return nil, fmt.Errorf("%s: %s", url, resp.Status)
 	}
 	return resp, nil
 }
@@ -251,7 +251,7 @@ func downloadArchive(ctx context.Context, base, bin string, idx *updateIndex) (s
 	defer cancel()
 	h := sha256.New()
 	var n int64
-	resp, err := get(ctx, base+"/"+idx.Latest+"/"+name, maxArchiveBytes)
+	resp, err := get(ctx, base+"/"+idx.Latest+"/"+name)
 	if err == nil {
 		n, err = io.Copy(io.MultiWriter(f, h), io.LimitReader(resp.Body, maxArchiveBytes+1))
 		resp.Body.Close()
