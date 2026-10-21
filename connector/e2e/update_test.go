@@ -34,8 +34,8 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-// hour is the updater's hour here: a day of two minutes, whose night (02:00 to 05:00) is
-// 15 seconds of each.
+// hour is the updater's hour here: a day of two minutes, whose night (from 02:00, later by
+// the daily minute modulo 120, to 05:00) is up to 15 seconds of each.
 const hour = 5 * time.Second
 
 // updateRig is the installed connector and the release server.
@@ -410,8 +410,9 @@ func TestUpdate(t *testing.T) {
 		if st.Updated.At.Sub(st.Seen) < 48*hour {
 			t.Errorf("%s: seen %v, installed %v: no two-day wait", v, st.Seen, st.Updated.At)
 		}
-		if d := dayTime(st.Updated.At); d < 2*time.Hour || d >= 5*time.Hour {
-			t.Errorf("%s: installed at %v on the updater's clock, outside the night", v, d)
+		night := 2*time.Hour + time.Duration(st.Minute%120)*time.Minute
+		if d := dayTime(st.Updated.At); d < night || d >= 5*time.Hour {
+			t.Errorf("%s: installed at %v on the updater's clock, outside the night from %v", v, d, night)
 		}
 		r.runningVersion(v)
 		from = v

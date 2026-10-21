@@ -37,8 +37,15 @@ var (
 )
 
 // The night, on dayTime's clock, when a quiet connector takes an update that isn't a
-// security fix.
+// security fix. Each computer's starts later by up to two hours, by its daily minute
+// (nightOf), so computers spread out, and fewer swap as the OS restarts for its own
+// updates.
 const nightStart, nightEnd = 2 * time.Hour, 5 * time.Hour
+
+// nightOf is when the night starts for the computer whose daily check is at minute.
+func nightOf(minute int) time.Duration {
+	return nightStart + time.Duration(minute%120)*time.Minute
+}
 
 // updateState is update.json. Only the connector writes it, and only uninstall --purge
 // deletes it. Fields are added, never renamed or reinterpreted (docs/protocol.md).
@@ -425,30 +432,31 @@ type updatePlan struct {
 	idx       *updateIndex
 	target    string
 	after, by time.Time
-	security  bool // the running version is below secure
+	night     time.Duration // when this computer's night starts (nightOf)
+	security  bool          // the running version is below secure
 	script    bool
 }
 
 // planUpdate is the update st's index names for version v, as updateTarget times it. One
-// still waiting a day after it's due goes at the next 02:00, or as soon as the connector
-// runs after that. A version that failed is tried again the next night (the first 02:00
-// at least an hour after it failed), busy or not.
+// still waiting a day after it's due goes at the start of the next night, or as soon as
+// the connector runs after that. A version that failed is tried again the next night (the
+// first start of one at least an hour after it failed), busy or not.
 func planUpdate(st *updateState, v string) updatePlan {
 	idx, err := parseIndex(st.Index)
 	if err != nil {
 		return updatePlan{}
 	}
 	cur, ok := semver(v)
-	p := updatePlan{idx: idx, security: ok && less(cur, idx.secure)}
+	p := updatePlan{idx: idx, night: nightOf(st.Minute), security: ok && less(cur, idx.secure)}
 	var due time.Time
 	if p.target, due, p.script = updateTarget(v, idx, st.Seen); p.target == "" {
 		return p
 	}
-	p.after, p.by = due, nextAt(due.Add(updateDay), nightStart)
+	p.after, p.by = due, nextAt(due.Add(updateDay), p.night)
 	// A retry that comes later moves both: a computer that's never quiet takes it that
 	// night too.
 	if f := st.Failed; f != nil && f.Version == p.target {
-		retry := nextAt(f.At.Add(updateHour), nightStart)
+		retry := nextAt(f.At.Add(updateHour), p.night)
 		if retry.After(p.after) {
 			p.after = retry
 		}
@@ -470,16 +478,18 @@ func swapNow(now time.Time, p updatePlan, lastRequest, awake time.Time) bool {
 	case !now.Before(p.by):
 		return true
 	}
-	return now.Sub(lastRequest) >= quietFor && (p.security || night(now))
+	return now.Sub(lastRequest) >= quietFor && (p.security || p.inNight(now))
 }
 
-func night(t time.Time) bool {
+// inNight reports whether t is in this computer's night, from p.night to nightEnd.
+func (p updatePlan) inNight(t time.Time) bool {
 	d := dayTime(t)
-	return d >= nightStart && d < nightEnd
+	return d >= p.night && d < nightEnd
 }
 
 // nextAt is the first time from t on whose time of day, on dayTime's clock, is at. On a
-// night the clocks change it can be an hour off.
+// night the clocks change it can be an hour off. The time zone is the one the connector
+// started in: a change of zone takes effect when it next starts.
 func nextAt(t time.Time, at time.Duration) time.Time {
 	wait := (at - dayTime(t) + 24*time.Hour) % (24 * time.Hour)
 	return t.Add(wait / (time.Hour / updateHour))

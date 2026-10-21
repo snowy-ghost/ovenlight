@@ -374,7 +374,7 @@ func TestUpdaterWaitsTwoDays(t *testing.T) {
 
 	dir := t.TempDir()
 	tu := newTestUpdater(t, srv, dir, "1.1.5", at(0, 9, 0), false)
-	tu.st.Minute = 9 * 60
+	tu.st.Minute = 10 * 60 // its night starts at 02:00
 	tu.pollAt(at(0, 9, 0))
 	n := srv.count(archive)
 	tu.pollAt(at(2, 8, 59))
@@ -411,9 +411,11 @@ func TestSwapNow(t *testing.T) {
 		t.Skip("a compressed schedule")
 	}
 	due := at(0, 9, 0)
-	p := updatePlan{target: "1.2.0", after: due, by: nextAt(due.Add(updateDay), nightStart)}
+	p := updatePlan{target: "1.2.0", after: due, by: nextAt(due.Add(updateDay), nightStart), night: nightStart}
 	sec := p
 	sec.security = true
+	later := p // the night of a computer whose daily check is at 09:00
+	later.night = nightOf(9 * 60)
 	long := at(-1, 0, 0) // awake, or the last request, long ago
 	for _, c := range []struct {
 		name             string
@@ -435,6 +437,10 @@ func TestSwapNow(t *testing.T) {
 		{"a day late, busy, at 02:00", p, at(2, 2, 0), at(2, 2, 0), long, true},
 		{"a day late, started after 02:00", p, at(2, 9, 10), at(2, 9, 10), at(2, 9, 0), true},
 		{"a day late, started 5 minutes ago", p, at(2, 9, 5), at(2, 9, 5), at(2, 9, 0), false},
+		{"before a later night", later, at(1, 2, 59), long, long, false},
+		{"a later night", later, at(1, 3, 0), long, long, true},
+		{"a later night, late", later, at(1, 4, 59), long, long, true},
+		{"after a later night", later, at(1, 5, 0), long, long, false},
 	} {
 		if got := swapNow(c.now, c.p, c.last, c.awake); got != c.want {
 			t.Errorf("%s: %v", c.name, got)
@@ -447,7 +453,7 @@ func readyAt(t *testing.T, realSwap bool) (*releaseServer, *testUpdater, []byte)
 	srv := newReleaseServer(t)
 	data := srv.publish("1.2.0", "1.1.0", "1.1.0", 100)
 	tu := newTestUpdater(t, srv, t.TempDir(), "1.1.5", at(0, 9, 0), realSwap)
-	tu.st.Minute = 9 * 60
+	tu.st.Minute = 10 * 60 // its night starts at 02:00
 	tu.pollAt(at(0, 9, 0))
 	tu.pollAt(at(2, 9, 0))
 	if tu.ready != "1.2.0" {
@@ -600,7 +606,7 @@ func TestUpdaterClockRanAhead(t *testing.T) {
 	srv := newReleaseServer(t)
 	srv.publish("1.2.0", "1.1.0", "1.1.0", 100)
 	tu = newTestUpdater(t, srv, t.TempDir(), "1.1.5", at(0, 9, 0), false)
-	tu.st.Minute = 9 * 60
+	tu.st.Minute = 10 * 60 // its night starts at 02:00
 	tu.pollAt(at(0, 9, 0))
 	tu.st.Seen = at(9, 9, 0)
 	tu.pollAt(at(0, 9, 1))
