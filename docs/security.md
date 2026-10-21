@@ -22,6 +22,9 @@ Ovenlight is built so that:
   `Host`, sends no CORS headers, and gives a request without identity headers the owner's
   rights only from its own pages
   ([app-contract.md](app-contract.md#guard-requests-that-come-straight-to-the-port)).
+- **Only a signed release updates the connector.** It installs only a release that an
+  index signed with one of its built-in release keys names and checksums, so the download
+  server can hold updates back but can't choose what runs ([Updates](#updates)).
 
 Out of scope: anything running as you on the computer, a coding agent with a shell included,
 can do what you can. A tailnet admin can change the policy, and an app that listens on a
@@ -393,11 +396,6 @@ use too.
   with log upload turned off, for the owner's node and every guest's, on iPhone
   ([development.md](development.md#tailscalekit)) and on Android
   ([development.md](development.md#the-android-tailscale-library)).
-- `ovenlight doctor`, in a release build (not a pre-release), reads
-  `https://downloads.ovenlight.app/connector/latest.json` to say when a newer connector is
-  out and to fail when this one has a security problem a newer one fixes. It is a plain
-  GET with no cookies, query or identifiers; nothing else in the connector contacts
-  ovenlight.app or its subdomains.
 - `ovenlight run` clears the environment variables that would set tsnet's login, control
   server or log target, unless `OVENLIGHT_DEV=1`. The apps it runs never get them from
   your login shell.
@@ -405,6 +403,129 @@ use too.
   public Certificate Transparency logs, so anyone can look up its
   `<slug>.<tailnet>.ts.net` name. Every invite link carries that name too. Choose app
   names and slugs you don't mind people seeing.
+
+## Updates
+
+The installed connector updates itself ([connector.md](connector.md#update) has when, and
+how to turn it off). Only a release build started by its service (`run --service`), from
+the connector's bin folder, does. A build from source, a pre-release and an `ovenlight run`
+in a terminal never update themselves.
+
+### What it trusts
+
+One thing: a signature by one of the release keys built into the binary
+(`connector/release_keys`). Not TLS, and not the download server. Whoever took over
+downloads.ovenlight.app could hold updates and pulls back, but could install only a release
+we signed and published as the latest, and couldn't skip the two-day wait or bring a
+pulled release back to a computer that saw the pull. An index doesn't expire, so while
+the server holds one back, `status` and `doctor` still show recent checks.
+
+Once a day the connector fetches the signed index,
+`https://downloads.ovenlight.app/connector/latest.json`, and its signature,
+`latest.json.sig`. The index names the latest release, the oldest without a known
+security problem (`secure`), the oldest that may update by binary alone
+(`reinstallBelow`), when it was signed (`serial`), and the SHA-256 of each of the latest
+release's archives. The connector accepts it only when it is signed in the namespace
+`ovenlight-latest` by a built-in key, and it is either the index the connector already
+holds or one with a higher serial that lowers neither `secure` nor `reinstallBelow`.
+[allowed_signers](allowed_signers) has the command to check it yourself.
+
+It installs only the release the index names, never an older one. That release is due two
+days after this computer first saw it named, or at once when the running release is
+below `secure`. Below `reinstallBelow` it installs nothing, and `ovenlight status` and
+`ovenlight doctor` say to install that release with its install script, since an update
+replaces only the binary: never the install scripts, the service, the config or the state.
+
+### How it installs
+
+1. It downloads this system's archive from `connector/<version>/`, within 30 minutes and
+   128 MB, and opens it only once its SHA-256 matches the index.
+2. It takes out one file, `ovenlight-connector-<version>/ovenlight` (`ovenlight.exe` on
+   Windows), by its exact name, and nothing else.
+3. It runs that binary's `version` and requires the version the index names.
+4. When the update's moment comes, it fetches the index again, and goes on only if it still
+   names that release. So a computer that gets the pull at any point in the two days
+   doesn't install the pulled release.
+5. It records a trial, keeps the running binary as `ovenlight.prev` (`ovenlight.prev.exe`
+   on Windows), puts the new one in its place and exits. The service starts the new one.
+6. The new release has 10 minutes of time awake to serve every app that was serving before,
+   with its node logged in, and to verify the signed index that brought it, with its own
+   built-in keys. If it crashes or runs out of time, the previous binary goes back and the
+   update is tried again the next night.
+
+A failure before the swap leaves the running connector as it was. `ovenlight status`
+shows any failure, and `doctor` warns once one release has failed three times in a row.
+
+`ovenlight update now --index <file>` installs the release a canary index names, at once.
+That is how we try a release on our own computer before publishing it
+([development.md](development.md#releases)). A canary index is signed in its own
+namespace, `ovenlight-canary`, by a built-in key, and can't lower `secure` or
+`reinstallBelow` either. The connector never accepts one from `latest.json`, takes one only
+over its control socket, and applies it once without keeping it as the index it holds.
+
+### The release keys
+
+Two keys sign releases: one in a Mac's Secure Enclave, which signs only with Touch ID, and
+a backup printed on paper, kept in two places and off every computer until it signs the
+release that replaces it. Their
+public halves are built into the connector and listed in [allowed_signers](allowed_signers),
+and the connector trusts no other key: not our Apple Developer ID, and nothing fetched at
+update time.
+
+A release is built on one Mac from a commit on this repository's master branch, and signed
+on another. Touch ID approves a signature but doesn't show what is signed, so the signing
+script prints the commit, the index and the checksums first. It signs only a commit whose
+`connector/release_keys` lists exactly the keys that Mac keeps, so the keys a release
+trusts never come from the commit alone. Even so, a signature vouches for what is on master
+and for the Mac that built it, and no more. Whoever can sign a release, or get code onto
+master and through that Mac, can run code on your computer within days, as
+you, beside your Tailscale API credential, and on Windows with administrator rights.
+`ovenlight update off` opts out.
+
+When one key is lost, the next release, signed with the other, replaces it. If both were
+lost, installed connectors would keep running but never update again: `doctor` warns
+after seven days without a verified check, and each owner would install a new release by
+hand once. A computer that makes no check during the four weeks a release bringing in a
+new key stays the latest can't verify the releases after it, and needs that one install by
+hand too.
+
+### The files it keeps
+
+In the state directory (connector.md's [table](connector.md#what-it-installs) has it for
+each system):
+
+- `update.json`: the index accepted last, when this computer first saw its latest release
+  named, the last check, the last update and the last failure.
+- `updates-off`: there while updates are off.
+- `update-trial.json`: an update's trial, while the new release proves itself.
+
+In its `bin` folder, beside the connector's binary:
+
+- `ovenlight.download`: an archive while it downloads, deleted once the binary is out.
+- `ovenlight.next` (`ovenlight.next.exe` on Windows): the new binary, waiting for its
+  moment.
+- `ovenlight.prev` (`ovenlight.prev.exe`): the binary before the last update, for a
+  rollback.
+- On Windows, `ovenlight.old-<number>.exe`: older binaries moved aside, deleted once
+  nothing runs them.
+
+Only you can read them, as with the rest of the state directory. The install scripts
+remove a trial and `ovenlight.prev` before they install, so the connector they install is
+never rolled back. The uninstall scripts remove all but `update.json` and `updates-off`,
+which `--purge` deletes too.
+
+### What it sends
+
+The daily check is two plain GETs, of `latest.json` and `latest.json.sig`, with no
+cookies, query or identifiers, at the same minute each day, picked at random on the
+connector's first run. A failed check is tried again within the hour, and a new release
+checks as soon as it starts. The check runs with updates off too, so the connector still
+knows when its release has a security problem. An update fetches the archive, whose name
+and folder show this computer's system (on Linux and Windows, its processor type too) and
+the version it installs, and fetches the index once more just before it installs. Like
+any request, each shows downloads.ovenlight.app the computer's IP address. Nothing else in
+the connector contacts ovenlight.app or its subdomains, and `ovenlight doctor` fetches
+nothing.
 
 ## The MCP server
 

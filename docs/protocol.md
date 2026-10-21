@@ -47,8 +47,9 @@ rollback runs the old binary on files the new one wrote. So the control socket a
 file in the config and state folders follow these rules too: add fields and commands, and
 never rename, move or reinterpret one. An older binary drops the fields it doesn't know
 when it rewrites a file, so data whose loss matters goes in a file of its own, as
-`commands.json` sits beside `config.json`. `ovenlight version` prints exactly the bare
-version, since every installed updater checks a new binary with it.
+`commands.json` sits beside `config.json` and `updates-off` beside `update.json`.
+`ovenlight version` prints exactly the bare version, since every installed updater checks
+a new binary with it.
 
 ## Errors
 
