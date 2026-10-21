@@ -14,6 +14,7 @@ import (
 	"runtime"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -47,7 +48,16 @@ type daemon struct {
 	apiMu     sync.Mutex
 	apiClient controlAPI
 	apiFinger string
+
+	upd *updater // nil unless the connector updates itself (see selfUpdating)
+	// lastRequest is when the last request through an app node, the admin API or the
+	// control socket started, in Unix nanoseconds: the updater swaps at a quiet moment.
+	lastRequest atomic.Int64
 }
+
+func (d *daemon) noteRequest() { d.lastRequest.Store(time.Now().UnixNano()) }
+
+func (d *daemon) lastRequestTime() time.Time { return time.Unix(0, d.lastRequest.Load()) }
 
 func socketPath(stateDir string) string { return filepath.Join(stateDir, "ovenlight.sock") }
 
@@ -89,6 +99,14 @@ func runDaemon(configPath, stateDir string, dev devOptions, service bool) error 
 	log.Printf("Ovenlight connector starting (config %s, state %s)", configPath, stateDir)
 	if dev.ControlURL != "" {
 		log.Printf("DEV MODE: control server %s", dev.ControlURL)
+	}
+	if exe, err := os.Executable(); err == nil && selfUpdating(version(), service, exe, installedBinary(stateDir)) {
+		if d.upd, err = newUpdater(d); err != nil {
+			log.Printf("updates: %v; the connector doesn't update itself until it can", err)
+		} else {
+			log.Printf("updates: checking daily (off: %v)", updatesOff(stateDir))
+			go d.upd.run(d.stopping())
+		}
 	}
 	go d.serveControl(ln)
 	go d.syncLoop()
@@ -343,6 +361,9 @@ type controlRequest struct {
 	App      string `json:"app,omitempty"`
 	// Review asks share for a review invite (terminal only).
 	Review bool `json:"review,omitempty"`
+	// Index and Sig are the canary index update-now applies, and its signature.
+	Index []byte `json:"index,omitempty"`
+	Sig   []byte `json:"sig,omitempty"`
 }
 
 type controlReply struct {
@@ -367,6 +388,8 @@ type controlReply struct {
 	// EnvError is why the login shell's environment can't be read for the apps' commands,
 	// while it never has been, so they run with the connector's own.
 	EnvError string `json:"envError,omitempty"`
+	// SelfUpdating is set when the connector updates itself (see selfUpdating).
+	SelfUpdating bool `json:"selfUpdating,omitempty"`
 }
 
 // listenControl clears a stale socket and listens. The caller holds lockStateDir, so no
@@ -401,13 +424,25 @@ func (d *daemon) serveControl(ln net.Listener) {
 
 func (d *daemon) handleControl(conn net.Conn) {
 	defer conn.Close()
+	d.noteRequest()
 	conn.SetDeadline(time.Now().Add(3 * time.Minute)) // make-shareable waits for a login
 	var req controlRequest
 	if err := json.NewDecoder(bufio.NewReader(conn)).Decode(&req); err != nil {
 		return
 	}
-	reply := controlReply{OK: true, PID: os.Getpid(), Version: version(), Dev: d.dev.ControlURL != ""}
+	reply := controlReply{OK: true, PID: os.Getpid(), Version: version(), Dev: d.dev.ControlURL != "", SelfUpdating: d.upd != nil}
 	switch req.Cmd {
+	case "update-now":
+		if d.upd == nil {
+			reply = controlReply{Error: "this connector doesn't update itself: only a release build the service runs from the connector's bin folder does"}
+			break
+		}
+		conn.SetDeadline(time.Now().Add(updateNowWait))
+		msg, err := d.upd.updateNow(context.Background(), req.Index, req.Sig)
+		if err != nil {
+			reply = controlReply{Error: err.Error()}
+		}
+		reply.Message = msg
 	case "reload":
 		if err := d.reload(); err != nil {
 			reply = controlReply{Error: err.Error()}

@@ -30,6 +30,10 @@ var latestURL = releaseBase + "/latest.json"
 // (updateBase).
 const releaseBase = "https://downloads.ovenlight.app/connector"
 
+// installDocs has the verified install steps, for a release that needs its install script
+// and for an owner who installs one by hand.
+const installDocs = "https://github.com/snowy-ghost/ovenlight/blob/master/docs/connector.md#update"
+
 // updateCheck says when a newer release is out, and fails when this one has a security
 // hole fixed since. A development or pre-release build, or a file it can't read, checks
 // nothing.

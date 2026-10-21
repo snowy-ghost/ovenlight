@@ -40,6 +40,8 @@ Usage:
   ovenlight version
   ovenlight guide                                 how to build apps for Ovenlight, for coding agents
   ovenlight run                                   run the connector (its background service does this)
+  ovenlight update off|on                         stop installing updates, or start again (it checks daily either way)
+  ovenlight update now --index <file>             install the release a canary index names, at once (testing a release)
 
 Sharing (one-time setup: auth set, then publish --slug <slug> --shareable, which records you as the owner):
   ovenlight auth set [--oauth-client-id <id>]     reads the secret from stdin
@@ -131,7 +133,7 @@ func main() {
 		"run": cmdRun, "publish": cmdPublish, "unpublish": cmdUnpublish, "status": cmdStatus, "doctor": cmdDoctor, "check": cmdCheck,
 		"auth": cmdAuth, "setup-sharing": cmdSetupSharing, "share": cmdShare, "guests": cmdGuests,
 		"revoke": cmdRevoke, "feedback": cmdFeedback, "mcp": cmdMCP, "logs": cmdLogs,
-		"new": cmdNew, "guide": cmdGuide, "restart": cmdRestart,
+		"new": cmdNew, "guide": cmdGuide, "restart": cmdRestart, "update": cmdUpdate,
 		"version": func([]string) error { fmt.Println(version()); return nil },
 	}
 	cmd, args := os.Args[1], os.Args[2:]

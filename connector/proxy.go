@@ -129,6 +129,9 @@ func fromThisSite(r *http.Request, name string) bool {
 // invite, serves ovenlight.json itself and proxies everything else to the app with
 // verified identity headers.
 func (n *appNode) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if n.host != nil {
+		n.host.noteRequest()
+	}
 	start := time.Now()
 	rec := &statusRecorder{ResponseWriter: w}
 	var c caller
