@@ -32,7 +32,7 @@ var (
 	// quietFor without a request is a quiet moment, and a swap waits as long after the
 	// connector starts or wakes, so its apps are serving when the trial records them.
 	quietFor = 10 * updateMinute
-	// awakeTick is how often the updater notes that it's awake: 10 seconds.
+	// awakeTick is how often a trial adds up its time awake: 10 seconds.
 	awakeTick = updateHour / 360
 )
 
@@ -144,9 +144,9 @@ type updater struct {
 	st    updateState
 	ready string // the release extracted into next, waiting for its moment
 	next  string
-
-	awakeMu        sync.Mutex
-	awake, lastRan time.Time // since when it has been up and awake, and its last tick
+	// awake is since when the connector has been up and awake, and lastRan when the
+	// updater last looked.
+	awake, lastRan time.Time
 }
 
 func newUpdater(d *daemon) (*updater, error) {
@@ -174,22 +174,10 @@ func (u *updater) start() {
 	u.save()
 }
 
-// run polls every minute until stop is closed, and notes every awakeTick that it's awake.
+// run polls every minute until stop is closed.
 func (u *updater) run(stop <-chan struct{}) {
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() { <-stop; cancel() }()
-	go func() {
-		t := time.NewTicker(awakeTick)
-		defer t.Stop()
-		for {
-			select {
-			case <-stop:
-				return
-			case <-t.C:
-				u.noteAwake(u.now())
-			}
-		}
-	}()
 	t := time.NewTicker(updateMinute)
 	defer t.Stop()
 	for {
@@ -202,20 +190,16 @@ func (u *updater) run(stop <-chan struct{}) {
 	}
 }
 
-// noteAwake notes a tick at now. One that comes long after the last, or before it, means
-// the computer slept (or its clock moved) in between, and it has been awake only since.
-func (u *updater) noteAwake(now time.Time) {
-	u.awakeMu.Lock()
-	defer u.awakeMu.Unlock()
-	if gap := now.Sub(u.lastRan); gap > 3*awakeTick || gap < 0 {
+// noteAwake notes that the updater runs at now, and returns since when the connector has
+// been up and awake. A poll that comes three minutes after the last, or before it, means
+// the computer slept (or its clock moved) in between, and it has been awake only since. A
+// poll that held u.mu that long looks the same, which only delays a swap. Go's timers stop
+// while the computer sleeps, so only the wall clock shows a sleep. u.mu is held.
+func (u *updater) noteAwake(now time.Time) time.Time {
+	if gap := now.Sub(u.lastRan); gap > 3*updateMinute || gap < 0 {
 		u.awake = now
 	}
 	u.lastRan = now
-}
-
-func (u *updater) awakeSince() time.Time {
-	u.awakeMu.Lock()
-	defer u.awakeMu.Unlock()
 	return u.awake
 }
 
@@ -229,6 +213,7 @@ func (u *updater) poll(ctx context.Context) {
 		return
 	}
 	now := u.now()
+	u.noteAwake(now)
 	if u.st.NextCheck.After(now.Add(updateDay + updateHour)) {
 		u.st.NextCheck = now // the clock was set back
 	}
@@ -291,7 +276,7 @@ func (u *updater) advance(ctx context.Context) {
 		return // its swap comes at a later poll
 	}
 	// A fetch that failed waits for its retry, as the daily check does.
-	if !swapNow(now, p, u.d.lastRequestTime(), u.awakeSince()) || (u.st.CheckError != "" && now.Before(u.st.NextCheck)) {
+	if !swapNow(now, p, u.d.lastRequestTime(), u.awake) || (u.st.CheckError != "" && now.Before(u.st.NextCheck)) {
 		return
 	}
 	data, sig, idx, err := u.check(ctx)
@@ -392,7 +377,8 @@ func (u *updater) updateNow(ctx context.Context, data, sig []byte) (string, erro
 	case target == "":
 		return "", fmt.Errorf("the index names %s, and the connector runs %s: it never installs the same or an older release", idx.Latest, u.v)
 	}
-	if up := u.now().Sub(u.awakeSince()); up < quietFor {
+	now := u.now()
+	if up := now.Sub(u.noteAwake(now)); up < quietFor {
 		return "", fmt.Errorf("the connector has been up and awake for %s, and swaps only after %s, once its apps are serving: try again in %s",
 			up.Round(time.Second), quietFor, (quietFor - up).Round(time.Second))
 	}

@@ -175,21 +175,21 @@ func newTestUpdater(t *testing.T, srv *releaseServer, dir, v string, start time.
 	return tu
 }
 
-// pass moves the clock on by d, awake all along.
+// pass moves the clock on by d, awake all along, with the updater looking every minute.
 func (tu *testUpdater) pass(d time.Duration) {
 	for end := tu.clock.t.Add(d); tu.clock.t.Before(end); {
-		tu.clock.t = tu.clock.t.Add(awakeTick)
-		if tu.clock.t.After(end) {
+		if tu.clock.t = tu.clock.t.Add(updateMinute); tu.clock.t.After(end) {
 			tu.clock.t = end
 		}
+		tu.mu.Lock()
 		tu.noteAwake(tu.clock.t)
+		tu.mu.Unlock()
 	}
 }
 
-// sleep moves the clock on to t with the computer asleep, then polls.
+// sleepUntil moves the clock on to t with the computer asleep, then polls.
 func (tu *testUpdater) sleepUntil(t time.Time) {
 	tu.clock.t = t
-	tu.noteAwake(t)
 	tu.poll(context.Background())
 }
 
@@ -624,19 +624,16 @@ func TestNoteAwake(t *testing.T) {
 	u := &updater{}
 	start := at(0, 9, 0)
 	u.awake, u.lastRan = start, start
-	u.noteAwake(start.Add(awakeTick))
-	u.noteAwake(start.Add(3 * awakeTick))
-	if !u.awakeSince().Equal(start) {
-		t.Error("ticks on time")
+	u.noteAwake(start.Add(updateMinute))
+	if !u.noteAwake(start.Add(4 * updateMinute)).Equal(start) {
+		t.Error("polls on time")
 	}
-	slept := start.Add(10 * awakeTick)
-	u.noteAwake(slept)
-	if !u.awakeSince().Equal(slept) {
+	slept := start.Add(10 * updateMinute)
+	if !u.noteAwake(slept).Equal(slept) {
 		t.Error("a gap")
 	}
 	back := slept.Add(-time.Minute)
-	u.noteAwake(back)
-	if !u.awakeSince().Equal(back) {
+	if !u.noteAwake(back).Equal(back) {
 		t.Error("a clock set back")
 	}
 }
