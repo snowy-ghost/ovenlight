@@ -462,7 +462,28 @@ func TestTrialWedgedUpdater(t *testing.T) {
 	if !tr.giveUp() {
 		t.Fatal("the backstop didn't roll back")
 	}
-	rolledBack(t, dir, installed)
+	if f := rolledBack(t, dir, installed); !strings.Contains(f.Error, "didn't end its trial within 15 minutes") {
+		t.Errorf("%+v", f)
+	}
+}
+
+// The backstop records the failure through the updater when it's free, and keeps its
+// lock until the exit, so no save of the updater's comes after it.
+func TestTrialGiveUpThroughUpdater(t *testing.T) {
+	tr, dir, installed := startTrialing(t, "coach")
+	d, _ := testDaemon(t)
+	d.stateDir = dir
+	d.upd = &updater{d: d, now: time.Now}
+	tr.attach(d)
+	if !tr.giveUp() {
+		t.Fatal("the backstop didn't roll back")
+	}
+	if d.upd.mu.TryLock() {
+		t.Error("the updater's lock was let go")
+	}
+	if rolledBack(t, dir, installed); d.upd.st.Failed == nil {
+		t.Error("not recorded through the updater")
+	}
 }
 
 // During the last update's trial the updater downloads and swaps nothing, and once a swap

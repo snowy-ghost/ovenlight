@@ -327,8 +327,8 @@ func (t *trial) backstop(exit func()) {
 	}
 }
 
-// giveUp is backstop's rollback. It writes the failure to update.json itself, and puts
-// .prev back. It reports whether it rolled back: not once the trial has ended.
+// giveUp is backstop's rollback. It records the failure, and puts .prev back. It reports
+// whether it rolled back: not once the trial has ended.
 func (t *trial) giveUp() bool {
 	t.mu.Lock()
 	ended := t.ended
@@ -337,9 +337,14 @@ func (t *trial) giveUp() bool {
 	if ended {
 		return false
 	}
-	why := fmt.Errorf("%s didn't end its trial within %s: it hung", t.rec.To, quietFor+backstopAfter)
+	why := fmt.Errorf("%s didn't end its trial within %s: it hung", t.rec.To, humanDuration(quietFor+backstopAfter))
 	log.Printf("updates: rolling back from %s to %s: %v", t.rec.To, t.rec.From, why)
-	if err := recordFile(t.dir, t.failed(why)); err != nil {
+	// Through the updater when it's free, and holding its lock until the exit, so no save
+	// of its own comes after this one. Otherwise in the file.
+	if d := t.daemon(); d != nil && d.upd != nil && d.upd.mu.TryLock() {
+		t.failed(why)(&d.upd.st)
+		d.upd.save()
+	} else if err := recordFile(t.dir, t.failed(why)); err != nil {
 		log.Printf("updates: recording the failure of %s: %v", t.rec.To, err)
 	}
 	t.restore()
