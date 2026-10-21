@@ -219,9 +219,10 @@ day, and installs a new release two days after it comes out, at a quiet moment i
 night: once nothing has used your apps or the connector for 10 minutes. Each computer's
 night starts at a time of its own between 02:00 and 04:00, and ends at 05:00, its own
 time. A release that fixes a security problem in yours goes in at the first quiet 10
-minutes, day or night. On a computer that's never quiet, or asleep every night, an update
-still waiting a day after it was due goes in at the start of the next night, busy or not,
-once the connector has been running and awake for 10 minutes. Installing restarts the
+minutes, day or night. On a computer that's never quiet, or asleep every night, a security
+fix goes in at the start of the next night, busy or not, as does any other update still
+waiting a day after it was due, once the connector has been running and awake for 10
+minutes. Installing restarts the
 connector, so the apps it runs stop and open connections drop for a few seconds (about 10
 on Linux, up to a minute on Windows). If the new release doesn't serve your apps again
 within 10 minutes, the connector goes back to the one before, and tries again at the start

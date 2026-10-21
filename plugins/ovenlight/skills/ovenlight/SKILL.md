@@ -36,9 +36,9 @@ The `ovenlight` connector on that computer publishes each app and tells it who i
 4. **You can't share an app.** When the person wants to share, tell them the steps from
    the guide and let them do it.
 5. **The connector updates itself.** When `status` shows a failed update, tell the
-   person what failed, in plain words: it tries again the next night. A release waiting
-   its turn needs nothing from either of you. When `doctor`'s `update` check gives a fix,
-   pass it on. A release to install by hand, including one an older connector's `doctor`
-   names with a download link, goes in with the verified install steps in
+   person what failed, in plain words. With updates on, it tries again the next night, and
+   a release waiting its turn needs nothing from either of you. When `doctor`'s `update`
+   check gives a fix, pass it on. A release to install by hand, including one an older
+   connector's `doctor` names with a download link, goes in with the verified install steps in
    https://github.com/snowy-ghost/ovenlight/blob/master/docs/connector.md#check-a-download-first.
    Offer those, never a bare download.
