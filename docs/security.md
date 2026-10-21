@@ -421,7 +421,7 @@ pulled release back to a computer that saw the pull. An index doesn't expire, so
 the server holds one back, `status` and `doctor` still show recent checks. The
 [verified steps](connector.md#check-a-download-first) for installing by hand check the
 same signed index, so they too take only a release once published as the latest, though
-not whether it was pulled since.
+not that it still is: an older index, with its release, passes them too.
 
 Once a day the connector fetches the signed index,
 `https://downloads.ovenlight.app/connector/latest.json`, and its signature,
@@ -455,10 +455,10 @@ replaces only the binary: never the install scripts, the service, the config or 
    with its node logged in, and to verify the signed index that brought it, with its own
    built-in keys. If it crashes, or doesn't do both in that time, the previous binary goes
    back and the update is tried again at the start of the next night, busy or not. One
-   that hangs so that its trial can't end goes back after 15 minutes awake. A restart of
-   the computer starts the 10 minutes again, and so does a restart of the service on a Mac
-   or Linux. On Windows, `Stop-ScheduledTask` ends the connector without a clean stop, so
-   it counts as a crash, and so does signing out of a work, school or domain account.
+   that hangs so that its trial can't end goes back after 15 minutes awake. A restart
+   counts only when it's not a clean stop: on Windows, `Stop-ScheduledTask` sends none,
+   nor does shutting down or signing out of a work, school or domain account
+   ([connector.md](connector.md#update)).
 
 A failure before the swap leaves the running connector as it was. `ovenlight status`
 shows any failure, and `doctor` warns once one release has failed three times in a row.
@@ -525,16 +525,16 @@ and `updates-off`, which `--purge` deletes too.
 
 ### What it sends
 
-The daily check is two plain GETs, of `latest.json` and `latest.json.sig`, with no
-cookies, query or identifiers, at the same minute each day, picked at random on the
-connector's first run. A failed check is tried again within the hour, and a new release
-checks as soon as it starts. The check runs with updates off too, so the connector still
-knows when its release has a security problem. An update fetches the archive, whose name
-and folder show this computer's system (on Linux and Windows, its processor type too) and
-the version it installs, and fetches the index once more just before it installs. Like
-any request, each shows downloads.ovenlight.app the computer's IP address. Nothing else in
-the connector contacts ovenlight.app or its subdomains, and `ovenlight doctor` fetches
-nothing.
+Only the installed service of a release checks: a build from source never contacts
+downloads.ovenlight.app. The daily check's two GETs carry no cookies, query or
+identifiers, at the same minute each day, picked at random on the connector's first run. A
+failed check is tried again within the hour, and a new release checks as soon as it
+starts. The check runs with updates off too, so the connector still knows when its release
+has a security problem. An update fetches the archive, whose name and folder show this
+computer's system (on Linux and Windows, its processor type too) and the version it
+installs, and fetches the index once more just before it installs. Like any request, each
+shows downloads.ovenlight.app the computer's IP address. Nothing else in the connector
+contacts ovenlight.app or its subdomains, and `ovenlight doctor` fetches nothing.
 
 ## The MCP server
 
