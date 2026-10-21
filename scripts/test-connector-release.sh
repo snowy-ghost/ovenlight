@@ -208,7 +208,11 @@ build 1.1.1 1.0.6
 pass "U+1 takes U's reinstallBelow"
 signfolder 1.1.1 air1
 untouched
+# What a promote publishes comes from the canary index signed on the Air.
+sed -i '' 's/"secure": "1.0.6"/"secure": "1.1.0"/' "$dry/sync/releases/1.1.0/index.json"
 promote 1.1.0 air1
+[ "$(field secure "$dry/bucket/connector/latest.json")" = 1.0.6 ] || fail "the promote took secure from index.json"
+pass "the promote takes secure from the signed canary index, not index.json"
 promote 1.1.1 air1
 pull 1.1.1 air1 1.1.0
 build 1.1.1 1.0.6
