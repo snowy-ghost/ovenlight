@@ -63,12 +63,13 @@ type trial struct {
 	now  func() time.Time
 	exit func(why string) // ends the connector after a rollback
 
-	mu     sync.Mutex
-	d      *daemon // once it's up
-	served map[string]bool
-	awake  time.Duration
-	last   time.Time
-	ended  bool
+	mu       sync.Mutex
+	d        *daemon // once it's up
+	served   map[string]bool
+	awake    time.Duration
+	last     time.Time
+	ended    bool
+	givingUp bool // backstop is rolling back, and tick leaves the trial to it
 }
 
 // startTrial reads the trial beside the running binary, first thing in main. A start it
@@ -251,7 +252,17 @@ func (t *trial) tick() bool {
 	if !due {
 		return false
 	}
-	if err := t.failure(d); err != nil {
+	err := t.failure(d)
+	t.mu.Lock()
+	givingUp := t.givingUp
+	if err == nil && !givingUp {
+		t.ended = true // at once, so the backstop can't begin rolling a pass back
+	}
+	t.mu.Unlock()
+	if givingUp {
+		return true
+	}
+	if err != nil {
 		t.rollback(err)
 		t.exit("rolled back to " + t.rec.From)
 		return true
@@ -286,22 +297,31 @@ func (t *trial) backstop(exit func()) {
 			return
 		}
 		if awake >= quietFor+backstopAfter {
-			t.giveUp()
-			exit()
+			if t.giveUp() {
+				exit()
+			}
 			return
 		}
 	}
 }
 
 // giveUp is backstop's rollback. It writes the failure to update.json itself, and puts
-// .prev back.
-func (t *trial) giveUp() {
+// .prev back. It reports whether it rolled back: not once the trial has ended.
+func (t *trial) giveUp() bool {
+	t.mu.Lock()
+	ended := t.ended
+	t.givingUp = !ended
+	t.mu.Unlock()
+	if ended {
+		return false
+	}
 	why := fmt.Errorf("%s didn't end its trial within %s: it hung", t.rec.To, quietFor+backstopAfter)
 	log.Printf("updates: rolling back from %s to %s: %v", t.rec.To, t.rec.From, why)
 	if err := recordFile(t.dir, t.failed(why)); err != nil {
 		log.Printf("updates: recording the failure of %s: %v", t.rec.To, err)
 	}
 	t.restore()
+	return true
 }
 
 // failure is why the trial fails at its deadline, or nil when it passes. An app

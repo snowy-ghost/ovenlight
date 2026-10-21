@@ -364,6 +364,37 @@ func TestTrialBackstop(t *testing.T) {
 	}
 }
 
+// Only one of the backstop and a late tick ends the trial: a tick once the backstop has
+// begun leaves the trial to it, and the backstop rolls nothing back once a tick passed.
+func TestTrialBackstopOrTick(t *testing.T) {
+	if updateHour != time.Hour {
+		t.Skip("a compressed schedule")
+	}
+	serving := func(tr *trialing) *daemon {
+		d, _ := testDaemon(t)
+		d.upd = &updater{d: d, now: tr.clock.now}
+		d.nodes["coach"].serving = true
+		tr.attach(d)
+		return d
+	}
+	tr, dir, _ := startTrialing(t, "coach")
+	d := serving(tr)
+	tr.givingUp = true
+	if !tr.pass(10*time.Minute) || d.upd.st.Updated != nil || !exists(filepath.Join(dir, updateTrialFile)) {
+		t.Error("a tick passed the trial the backstop is rolling back")
+	}
+
+	tr, dir, installed := startTrialing(t, "coach")
+	serving(tr)
+	tr.pass(10 * time.Minute)
+	if tr.giveUp() || readFile(t, installed) != "new" {
+		t.Error("the backstop rolled back a trial that passed")
+	}
+	if st, _ := loadUpdateState(dir); st.Failed != nil {
+		t.Errorf("%+v", st.Failed)
+	}
+}
+
 // During the last update's trial the updater downloads and swaps nothing, and once a swap
 // has begun the exit, it does nothing more.
 func TestUpdaterWaitsForTheTrial(t *testing.T) {
