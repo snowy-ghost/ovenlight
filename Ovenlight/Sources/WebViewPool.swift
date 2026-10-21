@@ -264,6 +264,7 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
     /// and whether a round trip to the page's process is out for it.
     private var newestDownload: DialogAnswer<Bool>?
     private var waitingForPage = false
+    private var navigations = PageNavigations()
     /// A brief message over the page, such as a download that failed; it goes by itself.
     @Published private(set) var notice: String?
     private var noticeTask: Task<Void, Never>?
@@ -459,6 +460,9 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
         guard routeIsCurrent(), nodeMayCarry else { return }
         loadError = nil
         guard let webView else { return }
+        // WebKit can't tell Ovenlight's loads from the page's own, so the page's count starts
+        // over instead (see `PageNavigations`), and Reload always loads.
+        navigations = PageNavigations()
         if webView.url != nil {
             webView.reload()
         } else {
@@ -489,8 +493,18 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
                  decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void) {
         guard let url = action.request.url else { return decisionHandler(.allow) }
         let isMainFrame = action.targetFrame?.isMainFrame ?? true
+        let decision = NavigationPolicy.decide(url: url, appHost: app.host, isMainFrame: isMainFrame, tapped: Self.isTap(action))
+        // The page's own loads only: not a download, and not a tap or Back, which go as fast as
+        // the person does. Refused, the page stays as it is, as in Chrome.
+        if isMainFrame, decision == .allow, !action.shouldPerformDownload, !Self.isTap(action),
+           action.navigationType != .backForward, !navigations.next() {
+            if navigations.count == PageNavigations.limit + 1 {
+                Self.log.notice("\(self.app.host, privacy: .public): over \(PageNavigations.limit) navigations in \(PageNavigations.window), refusing them")
+            }
+            return decisionHandler(.cancel)
+        }
         if isMainFrame { tapped = Self.isTap(action) }
-        switch NavigationPolicy.decide(url: url, appHost: app.host, isMainFrame: isMainFrame, tapped: Self.isTap(action)) {
+        switch decision {
         case .allow where action.shouldPerformDownload:
             // `<a download>`, of the app's own pages or of a blob or data URL. Answered at once:
             // the page's next navigation (a `#fragment` change too) takes the question back, and
@@ -575,6 +589,7 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
         gateTask?.cancel()
         gateTask = Task { [weak self] in
             guard (try? await Task.sleep(for: .seconds(delay))) != nil, let self, routeIsCurrent(), nodeMayCarry else { return }
+            navigations = PageNavigations()
             webView?.load(URLRequest(url: app.startURL))
         }
     }
@@ -1217,6 +1232,37 @@ struct AgreedDownloads {
     private mutating func dropExpired() {
         let at = now()
         agreed.removeAll { $0.duration(to: at) >= Self.expiry }
+    }
+}
+
+/// The page's own navigations, capped as Chromium caps a page's (its `NavigationRateLimiter`):
+/// past `limit`, each is refused until `window` has gone by since the count began, and then the
+/// count starts over. WebKit has no cap, and does work on Ovenlight's
+/// main thread for each page that loads, so a page that reloaded itself without end (a sign-in
+/// redirect between two paths, say) froze the app.
+struct PageNavigations {
+    static let limit = 200
+    static let window: Duration = .seconds(10)
+
+    /// Every navigation counted since the count began, refused ones too.
+    private(set) var count = 0
+    private var since: ContinuousClock.Instant
+    private let now: () -> ContinuousClock.Instant
+
+    init(now: @escaping () -> ContinuousClock.Instant = { .now }) {
+        self.now = now
+        since = now()
+    }
+
+    /// Counts a navigation; false when it's refused.
+    mutating func next() -> Bool {
+        count += 1
+        guard count > Self.limit else { return true }
+        let at = now()
+        guard since.duration(to: at) > Self.window else { return false }
+        since = at
+        count = 1
+        return true
     }
 }
 

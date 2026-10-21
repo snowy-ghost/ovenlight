@@ -162,6 +162,25 @@ final class NavigationPolicyTests: XCTestCase {
         let long = URL(string: "shortcuts://run-shortcut?name=" + String(repeating: "x", count: 100))!
         XCTAssertEqual(NavigationPolicy.target(of: long).count, 82, "quoted and cut short")
     }
+
+    func testAPageGets200NavigationsIn10Seconds() {
+        var now = ContinuousClock.now
+        var navigations = PageNavigations(now: { now })
+        for _ in 0..<200 { XCTAssertTrue(navigations.next()) }
+        XCTAssertFalse(navigations.next(), "the 201st in 10 seconds")
+        now += .seconds(10)
+        XCTAssertFalse(navigations.next(), "refused until 10 seconds have gone by")
+        now += .milliseconds(1)
+        XCTAssertTrue(navigations.next(), "then the count starts over")
+        for _ in 1..<200 { XCTAssertTrue(navigations.next()) }
+        XCTAssertFalse(navigations.next())
+
+        navigations = PageNavigations(now: { now })
+        for _ in 0..<1000 {
+            now += .milliseconds(100)
+            XCTAssertTrue(navigations.next(), "ten a second is never refused")
+        }
+    }
 }
 
 final class MediaCapturePolicyTests: XCTestCase {

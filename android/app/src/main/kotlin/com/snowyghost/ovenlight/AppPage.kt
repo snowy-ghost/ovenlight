@@ -16,6 +16,7 @@ import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.webkit.WebViewCompat
 import com.snowyghost.ovenlight.core.Core
+import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -142,6 +143,7 @@ class AppPage(
 
     /** The page's latest main-frame navigation came from a gesture, not the page itself. */
     private var tapped = false
+    private val navigations = PageNavigations()
     private var gateJob: Job? = null
     private var destroyed = false
     private var shown = false
@@ -404,8 +406,17 @@ class AppPage(
     @SuppressLint("MissingOnRenderProcessGone")
     private inner class Client : WebViewClient() {
         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+            val overridden = edges.shouldOverrideUrlLoading(request)
+            // The page's own loads only: WebView never asks about Ovenlight's or Back, and a tap
+            // carries a gesture. Refused, the page stays as it is, as in Chrome.
+            if (!overridden && request.isForMainFrame && !request.hasGesture() && !navigations.next()) {
+                if (navigations.count == PageNavigations.LIMIT + 1) {
+                    OvenlightLog.i("${app.host}: over ${PageNavigations.LIMIT} navigations in ${PageNavigations.window}, refusing them")
+                }
+                return true
+            }
             if (request.isForMainFrame) tapped = request.hasGesture()
-            return edges.shouldOverrideUrlLoading(request)
+            return overridden
         }
 
         override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
@@ -489,5 +500,34 @@ class AppPage(
             WebViewClient.ERROR_FAILED_SSL_HANDSHAKE, WebViewClient.ERROR_TIMEOUT, WebViewClient.ERROR_PROXY_AUTHENTICATION,
             WebViewClient.ERROR_CONNECT, WebViewClient.ERROR_HOST_LOOKUP, WebViewClient.ERROR_IO,
         )
+    }
+}
+
+/**
+ * The page's own navigations, capped as Chromium caps them (its NavigationRateLimiter): past
+ * [LIMIT], each is refused until [window] has gone by since the count began, and then the count
+ * starts over. Chromium leaves `location.reload()` out, and a page that reloaded itself without end
+ * (a sign-in redirect between two paths, say) kept Ovenlight's main thread too busy to open its
+ * menu.
+ */
+class PageNavigations(private val clock: TimeSource = TimeSource.Monotonic) {
+    /** Every navigation counted since the count began, refused ones too. */
+    var count = 0
+        private set
+    private var since = clock.markNow()
+
+    /** Counts a navigation; false when it's refused. */
+    fun next(): Boolean {
+        count += 1
+        if (count <= LIMIT) return true
+        if (since.elapsedNow() <= window) return false
+        since = clock.markNow()
+        count = 1
+        return true
+    }
+
+    companion object {
+        const val LIMIT = 200
+        val window = 10.seconds
     }
 }
