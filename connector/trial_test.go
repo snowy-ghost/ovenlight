@@ -188,6 +188,30 @@ func TestTrialEnds(t *testing.T) {
 	}
 }
 
+// While another connector holds the state folder, a start changes nothing: it's run
+// --service by hand, which then fails on the lock.
+func TestTrialLocked(t *testing.T) {
+	for _, starts := range []int{0, 1} {
+		rec := trialTo(t, "1.2.0", nsLatest)
+		rec.Starts, rec.Started = starts, at(0, 2, 31)
+		dir, installed := trialRig(t, rec)
+		lock, err := lockStateDir(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if tr, exit := beginTrial(dir, "1.2.0", time.Now); tr != nil || exit {
+			t.Errorf("%d starts: went on", starts)
+		}
+		lock.Close()
+		if got := readTrial(t, dir); got.Starts != starts || readFile(t, installed) != "new" {
+			t.Errorf("%d starts: changed %+v", starts, got)
+		}
+		if st, _ := loadUpdateState(dir); st.Failed != nil {
+			t.Errorf("%d starts: %+v", starts, st.Failed)
+		}
+	}
+}
+
 // The release must verify, with its own keys, the index that brought it: a canary index
 // for a canary, the published one otherwise. One it can't, or that names another
 // release, rolls back at its first start, which is counted first, so a verifier that
