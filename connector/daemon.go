@@ -107,12 +107,9 @@ func runDaemon(configPath, stateDir string, dev devOptions, service bool) error 
 		log.Printf("DEV MODE: control server %s", dev.ControlURL)
 	}
 	if exe, err := os.Executable(); err == nil && selfUpdating(version(), service, exe, installedBinary(stateDir)) {
-		if d.upd, err = newUpdater(d); err != nil {
-			log.Printf("updates: %v; the connector doesn't update itself until it can", err)
-		} else {
-			log.Printf("updates: checking daily (off: %v)", updatesOff(stateDir))
-			go d.upd.run(d.stopping())
-		}
+		d.upd = newUpdater(d)
+		log.Printf("updates: checking daily (off: %v)", updatesOff(stateDir))
+		go d.upd.run(d.stopping())
 	}
 	go d.serveControl(ln)
 	go d.syncLoop()

@@ -149,15 +149,23 @@ type updater struct {
 	awake, lastRan time.Time
 }
 
-func newUpdater(d *daemon) (*updater, error) {
+// newUpdater starts the updater from update.json. One it can't read would stop updates
+// for good, so it's kept aside as update.json.bad and the updater starts afresh: its first
+// check fetches the index again.
+func newUpdater(d *daemon) *updater {
 	st, err := loadUpdateState(d.stateDir)
 	if err != nil {
-		return nil, err
+		path := filepath.Join(d.stateDir, updateStateFile)
+		log.Printf("updates: %v; it's kept as %s.bad, and the updater starts afresh", err, updateStateFile)
+		if err := os.Rename(path, path+".bad"); err != nil {
+			log.Printf("updates: %v", err)
+		}
+		st = &updateState{}
 	}
 	u := &updater{d: d, dir: d.stateDir, bin: filepath.Dir(installedBinary(d.stateDir)), base: updateBase, v: version(),
 		now: func() time.Time { return time.Now().Round(0) }, swap: d.swapIn, st: *st}
 	u.start()
-	return u, nil
+	return u
 }
 
 // start sets up the record on the first run, and has a version's first run check at once,
@@ -170,6 +178,13 @@ func (u *updater) start() {
 	}
 	if u.st.CheckedBy != u.v {
 		u.st.NextCheck = time.Time{}
+	}
+	// A rollback happens before the connector's log is open, so the release put back says so.
+	if f := u.st.Failed; f != nil {
+		cur, okC := semver(u.v)
+		if fv, okF := semver(f.Version); okC && okF && less(cur, fv) {
+			log.Printf("updates: updating to %s failed on %s: %s", f.Version, when(f.At), f.Error)
+		}
 	}
 	u.save()
 }
@@ -216,6 +231,13 @@ func (u *updater) poll(ctx context.Context) {
 	u.noteAwake(now)
 	if u.st.NextCheck.After(now.Add(updateDay + updateHour)) {
 		u.st.NextCheck = now // the clock was set back
+	}
+	// Times noted while the clock ran ahead would hold the wait and the retry back as long.
+	if u.st.Seen.After(now) {
+		u.st.Seen = now
+	}
+	if f := u.st.Failed; f != nil && f.At.After(now) {
+		f.At = now
 	}
 	if !now.Before(u.st.NextCheck) {
 		u.check(ctx)
@@ -407,28 +429,33 @@ type updatePlan struct {
 	script    bool
 }
 
-// planUpdate is the update st's index names for version v, as updateTarget times it. A
-// version that failed is tried again the next night (the first 02:00 at least an hour
-// after it failed). One still waiting a day after it's due goes at the next 02:00, or as
-// soon as the connector runs after that.
+// planUpdate is the update st's index names for version v, as updateTarget times it. One
+// still waiting a day after it's due goes at the next 02:00, or as soon as the connector
+// runs after that. A version that failed is tried again the next night (the first 02:00
+// at least an hour after it failed), busy or not.
 func planUpdate(st *updateState, v string) updatePlan {
 	idx, err := parseIndex(st.Index)
 	if err != nil {
 		return updatePlan{}
 	}
-	p := updatePlan{idx: idx}
+	cur, ok := semver(v)
+	p := updatePlan{idx: idx, security: ok && less(cur, idx.secure)}
 	var due time.Time
 	if p.target, due, p.script = updateTarget(v, idx, st.Seen); p.target == "" {
 		return p
 	}
-	cur, _ := semver(v)
-	p.security = less(cur, idx.secure)
+	p.after, p.by = due, nextAt(due.Add(updateDay), nightStart)
+	// A retry that comes later moves both: a computer that's never quiet takes it that
+	// night too.
 	if f := st.Failed; f != nil && f.Version == p.target {
-		if retry := nextAt(f.At.Add(updateHour), nightStart); retry.After(due) {
-			due = retry
+		retry := nextAt(f.At.Add(updateHour), nightStart)
+		if retry.After(p.after) {
+			p.after = retry
+		}
+		if retry.After(p.by) {
+			p.by = retry
 		}
 	}
-	p.after, p.by = due, nextAt(due.Add(updateDay), nightStart)
 	return p
 }
 
@@ -479,7 +506,7 @@ type updateView struct {
 	// binary.
 	NeedsScript bool           `json:"needsInstallScript,omitempty"`
 	LastUpdate  *updateEvent   `json:"lastUpdate,omitempty"`
-	Failure     *updateFailure `json:"failure,omitempty"` // an update to a release newer than the running one that failed
+	Failure     *updateFailure `json:"failure,omitempty"` // a failed update to the release it installs next
 
 	security bool      // the running version is below Secure
 	since    time.Time // when the updater first ran here
@@ -508,19 +535,17 @@ func readUpdateView(stateDir, v string, self bool) *updateView {
 		return u
 	}
 	u.LastCheck, u.CheckError, u.LastUpdate, u.since = st.Checked, st.CheckError, st.Updated, st.Since
-	cur, ok := semver(v)
-	if f := st.Failed; f != nil {
-		if fv, okF := semver(f.Version); okF && ok && less(cur, fv) {
-			u.Failure = f
-		}
-	}
 	p := planUpdate(st, v)
 	if p.idx == nil {
 		return u
 	}
-	u.Latest, u.Secure, u.NeedsScript, u.security = p.idx.Latest, p.idx.Secure, p.script, ok && less(cur, p.idx.secure)
+	u.Latest, u.Secure, u.NeedsScript, u.security = p.idx.Latest, p.idx.Secure, p.script, p.security
 	if p.target != "" {
 		u.Pending, u.InstallAfter, u.InstallBy = p.target, p.after, p.by
+		// Only the release it would install: one the index no longer names was pulled.
+		if f := st.Failed; f != nil && f.Version == p.target {
+			u.Failure = f
+		}
 	}
 	return u
 }

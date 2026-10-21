@@ -40,7 +40,8 @@ func trialTo(t *testing.T, latest, namespace string) updateTrial {
 }
 
 // trialRig is a state folder just after the swap rec records: bin/ovenlight is the
-// release, "new", and .prev the binary before it, "old".
+// release, "new", .prev the binary before it, "old", and update.json holds the index
+// that brought it.
 func trialRig(t *testing.T, rec updateTrial) (dir, installed string) {
 	useTestKey(t)
 	dir = t.TempDir()
@@ -51,6 +52,9 @@ func trialRig(t *testing.T, rec updateTrial) (dir, installed string) {
 	writeFile(t, installed, "new")
 	writeFile(t, prevBinary(installed), "old")
 	if err := jsonfile.Save(filepath.Join(dir, updateTrialFile), &rec); err != nil {
+		t.Fatal(err)
+	}
+	if err := jsonfile.Save(filepath.Join(dir, updateStateFile), &updateState{Index: rec.Index}); err != nil {
 		t.Fatal(err)
 	}
 	return dir, installed

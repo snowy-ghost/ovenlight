@@ -563,17 +563,62 @@ func TestUpdaterSwapFailure(t *testing.T) {
 	if srv.count(archive) != n {
 		t.Error("tried again the same night")
 	}
+	// It's tried again the next night, busy or not: a computer that's never quiet would
+	// otherwise take it only every other night.
 	u := readUpdateView(tu.dir, "1.1.5", true)
-	if u.Failure == nil || u.Pending != "1.2.0" || !u.InstallAfter.Equal(at(4, 2, 0)) || !u.InstallBy.Equal(at(5, 2, 0)) {
+	if u.Failure == nil || u.Pending != "1.2.0" || !u.InstallAfter.Equal(at(4, 2, 0)) || !u.InstallBy.Equal(at(4, 2, 0)) {
 		t.Errorf("%+v", u)
 	}
-	tu.pollAt(at(4, 2, 0))
-	tu.pollAt(at(4, 2, 1))
+	tu.busyAt(at(4, 2, 0))
+	tu.busyAt(at(4, 2, 1))
 	if srv.count(archive) != n+1 || tu.st.Failed.Count != 2 {
 		t.Errorf("the next night: %d downloads, %+v", srv.count(archive)-n, tu.st.Failed)
 	}
 	if u := readUpdateView(tu.dir, "1.2.0", true); u.Failure != nil {
 		t.Error("a failure of the running version is shown")
+	}
+	// Once the index no longer names it, a pull, its failure isn't shown.
+	srv.publish("1.1.9", "1.1.0", "1.1.0", 101)
+	tu.st.NextCheck = time.Time{}
+	tu.pollAt(at(4, 9, 0))
+	if u := readUpdateView(tu.dir, "1.1.5", true); u.Failure != nil || u.Pending != "1.1.9" {
+		t.Errorf("after a pull: %+v", u)
+	}
+}
+
+// Times noted while the clock ran ahead don't hold the wait or a retry back.
+func TestUpdaterClockRanAhead(t *testing.T) {
+	_, tu, _ := readyAt(t, false)
+	tu.st.Failed = &updateFailure{Version: "1.2.0", At: at(9, 2, 30), Error: "earlier", Count: 1}
+	tu.pollAt(at(2, 9, 30)) // the failure is now at most, so it's tried again the next night
+	tu.pollAt(at(3, 2, 30))
+	if len(tu.swaps) != 1 {
+		t.Errorf("a failure noted ahead held the retry back: %+v", tu.st.Failed)
+	}
+
+	srv := newReleaseServer(t)
+	srv.publish("1.2.0", "1.1.0", "1.1.0", 100)
+	tu = newTestUpdater(t, srv, t.TempDir(), "1.1.5", at(0, 9, 0), false)
+	tu.st.Minute = 9 * 60
+	tu.pollAt(at(0, 9, 0))
+	tu.st.Seen = at(9, 9, 0)
+	tu.pollAt(at(0, 9, 1))
+	if !tu.st.Seen.Equal(at(0, 9, 1)) {
+		t.Errorf("seen %v", tu.st.Seen)
+	}
+}
+
+// An update.json that can't be read is kept aside, and the updater starts afresh.
+func TestUpdaterUnreadableRecord(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, updateStateFile)
+	writeFile(t, path, "{")
+	u := newUpdater(&daemon{stateDir: dir})
+	if u == nil || readFile(t, path+".bad") != "{" || u.st.Since.IsZero() {
+		t.Fatal("not started afresh")
+	}
+	if st, err := loadUpdateState(dir); err != nil || st.Since.IsZero() {
+		t.Errorf("update.json: %+v %v", st, err)
 	}
 }
 
