@@ -304,6 +304,39 @@ func TestTrialDeadline(t *testing.T) {
 	}
 }
 
+// A release that deadlocks its daemon blocks tick, and the backstop still rolls it back:
+// it takes neither the daemon's locks nor the updater's.
+func TestTrialBackstop(t *testing.T) {
+	tr, dir, installed := startTrialing(t, "coach")
+	d, _ := testDaemon(t)
+	d.upd = &updater{d: d, dir: dir, now: time.Now}
+	tr.attach(d)
+	d.mu.Lock()
+	d.upd.mu.Lock()
+	defer d.upd.mu.Unlock()
+	defer d.mu.Unlock()
+	defer func(tick, quiet, after time.Duration) { awakeTick, quietFor, backstopAfter = tick, quiet, after }(awakeTick, quietFor, backstopAfter)
+	awakeTick, quietFor, backstopAfter = time.Millisecond, 20*time.Millisecond, 10*time.Millisecond
+	tr.now = time.Now
+	ticked := make(chan bool, 1)
+	go func() { ticked <- tr.pass(time.Minute) }() // stuck on d.mu, as the release's own trial is
+	done := make(chan struct{})
+	go tr.backstop(func() { close(done) })
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the backstop didn't end the trial")
+	}
+	if f := rolledBack(t, dir, installed); f.Version != "1.2.0" || !strings.Contains(f.Error, "didn't end its trial") {
+		t.Errorf("%+v", f)
+	}
+	select {
+	case <-ticked:
+		t.Error("tick wasn't stuck")
+	default:
+	}
+}
+
 // During the last update's trial the updater downloads and swaps nothing, and once a swap
 // has begun the exit, it does nothing more.
 func TestUpdaterWaitsForTheTrial(t *testing.T) {

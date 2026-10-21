@@ -54,7 +54,8 @@ var serviceTrial *trial
 // as the service. It runs quietFor of time awake from the start, before flag parsing, so
 // a release that hangs while starting is caught too. It passes when the daemon is up,
 // every app recorded at the swap has served again with its node logged in, and the
-// binary has verified the index that brought it. Otherwise .prev comes back.
+// binary has verified the index that brought it. Otherwise .prev comes back, and a
+// release that deadlocks its daemon, so the trial can't end, is caught by backstop.
 type trial struct {
 	rec     updateTrial
 	dir     string // the state folder, the binary's bin/..
@@ -96,6 +97,7 @@ func startTrial() {
 	// The deadline runs before the new verifier does, so it catches a verifier that
 	// hangs, and the start is counted, so a second start catches one that crashes.
 	go t.watch()
+	go t.backstop(func() { os.Exit(1) })
 	if t.verifyIndex() {
 		os.Exit(1)
 	}
@@ -143,18 +145,10 @@ func exists(path string) bool {
 	return err == nil
 }
 
-// verifyIndex rolls back when the release can't verify the index that brought it, and
-// reports whether the connector should then exit.
+// verifyIndex verifies the index that brought the release with this binary's own keys,
+// which proves its verifier and keys before it's kept, with no network involved. One it
+// can't rolls back, and it reports whether the connector should then exit.
 func (t *trial) verifyIndex() bool {
-	if err := t.checkIndex(); err != nil {
-		return t.rollback(err)
-	}
-	return false
-}
-
-// checkIndex verifies the index that brought the release with this binary's own keys,
-// which proves its verifier and keys before it's kept, with no network involved.
-func (t *trial) checkIndex() error {
 	var idx *updateIndex
 	err := errors.New("no index of the latest release or a canary")
 	if t.rec.Namespace == nsLatest || t.rec.Namespace == nsCanary {
@@ -164,9 +158,9 @@ func (t *trial) checkIndex() error {
 		err = fmt.Errorf("it names %s", idx.Latest)
 	}
 	if err != nil {
-		return fmt.Errorf("%s doesn't verify the index that brought it: %w", t.rec.To, err)
+		return t.rollback(fmt.Errorf("%s doesn't verify the index that brought it: %w", t.rec.To, err))
 	}
-	return nil
+	return false
 }
 
 // attach gives the trial the daemon once it's up, serving its control socket.
@@ -200,9 +194,18 @@ func (t *trial) watch() {
 	}
 }
 
+// awakeFor is the time awake between two ticks: none when a sleep, or a clock change,
+// left a gap. Go's timers stop while the computer sleeps, so only the wall clock shows it.
+func awakeFor(last, now time.Time) time.Duration {
+	if gap := now.Sub(last); gap >= 0 && gap <= 3*awakeTick {
+		return gap
+	}
+	return 0
+}
+
 // tick notes the recorded apps that serve, logged in, and adds the time since the last
-// tick to the time awake, unless a sleep (or a clock change) left a gap. Once that's
-// quietFor, the trial passes or rolls back. It reports whether the trial is over.
+// tick to the time awake. Once that's quietFor, the trial passes or rolls back. It
+// reports whether the trial is over.
 func (t *trial) tick() bool {
 	now := t.now()
 	t.mu.Lock()
@@ -210,9 +213,7 @@ func (t *trial) tick() bool {
 		t.mu.Unlock()
 		return true
 	}
-	if gap := now.Sub(t.last); gap >= 0 && gap <= 3*awakeTick {
-		t.awake += gap
-	}
+	t.awake += awakeFor(t.last, now)
 	t.last = now
 	d, due := t.d, t.awake >= quietFor
 	t.mu.Unlock()
@@ -244,6 +245,47 @@ func (t *trial) tick() bool {
 	return true
 }
 
+// backstopAfter is how long past quietFor of time awake the backstop gives a trial that
+// hasn't ended. A tick that ends the trial waits a minute at most, for an update check.
+var backstopAfter = quietFor / 2
+
+// backstop ends a trial that tick can't: a release that deadlocks its daemon blocks tick
+// on the daemon's locks or the updater's, and its own trial would never end. It adds up
+// time awake as tick does, takes none of those locks, and calls exit once it has rolled
+// back.
+func (t *trial) backstop(exit func()) {
+	var awake time.Duration
+	last := t.now()
+	tick := time.NewTicker(awakeTick)
+	defer tick.Stop()
+	for range tick.C {
+		now := t.now()
+		awake, last = awake+awakeFor(last, now), now
+		if !t.running() {
+			return
+		}
+		if awake >= quietFor+backstopAfter {
+			t.giveUp()
+			exit()
+			return
+		}
+	}
+}
+
+// giveUp is backstop's rollback. It writes the failure to update.json itself, puts .prev
+// back, and returns once a binary is at the service's path, for the service to start it.
+func (t *trial) giveUp() {
+	why := fmt.Errorf("%s didn't end its trial within %s: it hung", t.rec.To, quietFor+backstopAfter)
+	log.Printf("updates: rolling back from %s to %s: %v", t.rec.To, t.rec.From, why)
+	if err := recordFile(t.dir, t.failed(why)); err != nil {
+		log.Printf("updates: recording the failure of %s: %v", t.rec.To, err)
+	}
+	t.putBack()
+	for !exists(installedBinary(t.dir)) {
+		time.Sleep(time.Second) // a put-back still trying in the background
+	}
+}
+
 // failure is why the trial fails at its deadline, or nil when it passes. An app
 // unpublished since the swap needn't serve.
 func (t *trial) failure(d *daemon) error {
@@ -270,19 +312,30 @@ func (t *trial) failure(d *daemon) error {
 func servesLoggedIn(s NodeStatus) bool { return s.State == "serving" && s.Backend == "Running" }
 
 // rollback records why the release failed in update.json, puts .prev back in place of
-// the binary on trial, and ends the trial. It reports whether the connector should exit
-// so the service starts what's in place, which is once bin/ovenlight exists.
+// the binary on trial, and ends the trial. It reports whether the connector should exit.
 func (t *trial) rollback(why error) bool {
 	log.Printf("updates: rolling back from %s to %s: %v", t.rec.To, t.rec.From, why)
-	// The failure first, so the release waits for the next night. A crash after it starts
-	// the release again, and its second start rolls back without counting it twice.
-	if err := t.record(func(st *updateState) {
+	// The failure first, so the release waits for the next night.
+	if err := t.record(t.failed(why)); err != nil {
+		log.Printf("updates: recording the failure of %s: %v", t.rec.To, err)
+	}
+	return t.putBack()
+}
+
+// failed records why the release failed. A crash after it's recorded starts the release
+// again, and its second start rolls back without counting it twice.
+func (t *trial) failed(why error) func(*updateState) {
+	return func(st *updateState) {
 		if f := st.Failed; f == nil || f.Version != t.rec.To || f.At.Before(t.rec.At) {
 			st.noteFailure(t.rec.To, t.now(), why)
 		}
-	}); err != nil {
-		log.Printf("updates: recording the failure of %s: %v", t.rec.To, err)
 	}
+}
+
+// putBack puts .prev back in place of the binary on trial, and ends the trial. It reports
+// whether the connector should exit so the service starts what's in place, which is once
+// bin/ovenlight exists.
+func (t *trial) putBack() bool {
 	installed := installedBinary(t.dir)
 	// A crash once .prev is back starts it, and it ends the trial, which isn't its own.
 	if err := restorePrev(installed, t.windows); err != nil {
@@ -315,10 +368,15 @@ func (t *trial) record(change func(*updateState)) error {
 		u.save()
 		return nil
 	}
-	st, err := loadUpdateState(t.dir)
+	return recordFile(t.dir, change)
+}
+
+// recordFile changes update.json in the state folder dir.
+func recordFile(dir string, change func(*updateState)) error {
+	st, err := loadUpdateState(dir)
 	if err != nil {
 		return err
 	}
 	change(st)
-	return jsonfile.Save(filepath.Join(t.dir, updateStateFile), st)
+	return jsonfile.Save(filepath.Join(dir, updateStateFile), st)
 }
