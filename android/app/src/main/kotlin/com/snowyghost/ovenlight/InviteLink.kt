@@ -188,11 +188,14 @@ data class InviteLink(
             return parse(uri(match.value) ?: throw ParseError.NotAnInvite, allowLocalHTTP)
         }
 
-        /** A display label: trimmed, without control characters, at most 64 characters as people see them. */
+        /**
+         * A display label: trimmed, without control characters, at most 64 characters as people see them. A
+         * character can carry any number of combining marks, so only 16 code points a character are read.
+         */
         fun label(text: String?): String? {
             if (text == null) return null
             val visible = StringBuilder()
-            text.codePoints().filter { !isHidden(it) }.forEach { visible.appendCodePoint(it) }
+            text.codePoints().filter { !isHidden(it) }.limit(maxLabel * 16L).forEach { visible.appendCodePoint(it) }
             val cleaned = visible.toString().trimmingWhitespaceAndNewlines()
             return if (cleaned.isEmpty()) null else cleaned.graphemePrefix(maxLabel)
         }
