@@ -249,23 +249,34 @@ var (
 	errOtherPerson = errors.New("not invited: this device already belongs to another guest")
 )
 
-// claimInvite binds a guest device to the invite whose key it presents. Only the device
-// that joined with the single-use key can have that key, so the key's hash is the
-// proof. A reusable key (a review invite's) takes up to reviewInviteDevices devices
-// before it is used up. Claiming again from the same device is harmless; fresh reports
-// a new claim.
-func (st *sharingState) claimInvite(keyHash, app string, caller Identity, now time.Time) (inv *Invite, g *Guest, fresh bool, err error) {
-	if caller.DeviceID == "" || !caller.Tagged || !slices.Contains(caller.Tags, policy.GuestTag(app)) {
-		return nil, nil, false, errNotInvited
-	}
+// inviteByKey is the invite whose key has this hash, or nil.
+func (st *sharingState) inviteByKey(keyHash string) *Invite {
 	for i := range st.Invites {
 		if st.Invites[i].KeyHash != "" && st.Invites[i].KeyHash == keyHash {
-			inv = &st.Invites[i]
+			return &st.Invites[i]
 		}
 	}
-	if inv == nil || inv.App != app {
+	return nil
+}
+
+// claimInvite binds a guest device to the invite whose key it presents, through the node
+// of the app via. Only the device that joined with the single-use key can have that key,
+// so the key's hash is the proof. A reusable key (a review invite's) takes up to
+// reviewInviteDevices devices before it is used up. Claiming again from the same device
+// is harmless; fresh reports a new claim.
+//
+// The invite's app must be one of apps, the shareable ones. The claim may come through
+// another of them that the device holds: Ovenlight reuses a phone's node for the owner's
+// next invite, and when that invite names someone new, the node can't reach its app yet.
+func (st *sharingState) claimInvite(keyHash, via string, apps []string, caller Identity, now time.Time) (inv *Invite, g *Guest, fresh bool, err error) {
+	if caller.DeviceID == "" || !caller.Tagged || !slices.Contains(caller.Tags, policy.GuestTag(via)) {
 		return nil, nil, false, errNotInvited
 	}
+	inv = st.inviteByKey(keyHash)
+	if inv == nil || !slices.Contains(apps, inv.App) || (inv.App != via && st.activeGuest(caller.DeviceID, via) == nil) {
+		return nil, nil, false, errNotInvited
+	}
+	app := inv.App
 	// A device that claimed this invite and still holds the app may claim again, however
 	// the invite ended since: a retry after an answer that never arrived.
 	if g := st.activeGuest(caller.DeviceID, app); g != nil && g.InviteID == inv.ID {
@@ -289,9 +300,14 @@ func (st *sharingState) claimInvite(keyHash, app string, caller Identity, now ti
 	}
 	// A device belongs to one person, so a device already admitted to any app may take
 	// only that person's invites; otherwise it would spend someone else's. The invite
-	// stays usable.
+	// stays usable. An invite for someone who has never had a device, though, becomes the
+	// device's person's, whichever app it comes through: the owner invited them under a new
+	// name, or the person invited shares their phone. Only this invite moves. Each of that person's
+	// other invites moves only when its own key is claimed this way. A review invite never
+	// moves: it is for a store's reviewers, who join on fresh phones.
 	person := st.personOfDevice(caller.DeviceID)
-	if person != "" && person != inv.Person {
+	settle := person != "" && person != inv.Person
+	if settle && (inv.Review || slices.ContainsFunc(st.Guests, func(o Guest) bool { return o.Person == inv.Person })) {
 		return nil, nil, false, errOtherPerson
 	}
 	if st.removedFrom(caller.DeviceID, app) && !(person == inv.Person && slices.Contains(inv.Devices, caller.DeviceID)) {
@@ -301,6 +317,9 @@ func (st *sharingState) claimInvite(keyHash, app string, caller Identity, now ti
 	// device it was meant for (Add a Device, with the link opened on the old one).
 	if g = st.activeGuest(caller.DeviceID, app); g != nil {
 		return inv, g, false, nil
+	}
+	if settle {
+		inv.Person, inv.To = person, st.people()[person]
 	}
 	st.Guests = append(st.Guests, Guest{DeviceID: caller.DeviceID, Person: cmp.Or(person, inv.Person), Name: inv.To, App: app,
 		DeviceName: caller.DeviceName, InviteID: inv.ID, ClaimedAt: now})

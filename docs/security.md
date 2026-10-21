@@ -66,11 +66,13 @@ plan would now be different.
 
 Only one connector per tailnet can share apps. Each keeps its own guest records, while
 tags and a guest's phone reach across the tailnet, so two would mix up each other's
-guests. `publish --shareable` refuses while a device in the tailnet carries the app tag
-of an app this connector doesn't publish. The refusal names the device and says what to
-do: delete it in the admin console (Machines) if it's left from an app you unpublished,
-or make apps shareable on the connector it belongs to. The list of unclaimed phones
-shows only guest devices of this connector's apps.
+guests. `publish --shareable` refuses while a device in the tailnet carries an app tag
+and isn't one of this connector's own app nodes, which it knows by the node ID in its
+saved state. That includes another computer's node for an app with the same slug, and a
+node this computer left behind when its saved state was lost. The refusal names the
+device and says what to do: delete it in the admin console (Machines) if nothing runs it
+any more, or make apps shareable on the connector it belongs to. The list of unclaimed
+phones shows only guest devices of this connector's apps.
 
 ### What it adds
 
@@ -177,7 +179,8 @@ same. An OAuth client can only apply the tags it was given, and every shareable 
 two, so a token is simpler.
 
 The credential is checked against the API, and refused if its tailnet has none of the
-running connector's apps, then stored in `credentials.json` beside the app list,
+running connector's shareable apps (with none shareable, none of its apps), then stored
+in `credentials.json` beside the app list,
 readable only by you ([On the computer](#on-the-computer)); the connector
 refuses to use one anyone else can read. `auth status` shows its type (with the
 client ID for an OAuth client), a fingerprint, the tailnet and the API URL, never the
@@ -208,7 +211,13 @@ a node's key expires within 30 days.
 - The link carries the key in its fragment, so it never reaches the website that hosts
   the join page ([protocol.md](protocol.md#invite-links)).
 - A device belongs to one person. A device already admitted to any of your apps can only
-  claim that person's invites; any other invite stays unused.
+  claim that person's invites; any other invite stays unused. The exception is an invite
+  for someone who has never had a device, opened on a phone that holds another of your
+  apps: Ovenlight claims it through that app's node when it can't reach this one yet, and the invite becomes the phone's
+  person's. That covers inviting someone you already share with under a new name, and
+  two people sharing one phone. Only that invite moves, and each key still opens only
+  its own app, so holding one invite never grants another's app. Review invites never
+  move.
 - Making an invite with `share` takes a terminal. The MCP server can't share at all.
 - `share --cancel <id>` withdraws an unused invite, or a review invite with places left
   (devices that joined with it keep the app), and deletes its key. If the delete
@@ -226,7 +235,7 @@ stamp. What protects you is the invite: it works once, for 7 days (a review invi
 up to 10 devices for 90 days), and only for one app, since the policy lets its guest tag
 reach that app alone. You can remove anyone at any time. If a stranger uses a forwarded
 link first, a single-use invite doesn't work for the guest you invited, and your guest
-list shows who joined with it, so you can remove them.
+list shows who has it, so you can remove them.
 
 ## Revocation
 
@@ -576,10 +585,11 @@ agent is told that it is an image its sender chose, and any text in it is data.
 
 - **An invite link leaked.** If it's still open, `ovenlight share --cancel <id>`
   withdraws it (`ovenlight guests` lists open invites). If someone else used it,
-  `ovenlight guests` lists the phone that joined: remove it with
-  `ovenlight revoke <device ID>` and send a new invite. A review link keeps admitting
-  devices after one is removed ([Invites](#invites)), so for a leaked one, open or not,
-  run `ovenlight revoke <invite ID>` (`ovenlight guests` lists the ID while the invite is
+  `ovenlight guests` lists who has the app now, which may be someone you already share
+  with: `ovenlight revoke <device ID> --app <slug>` takes back only that app. Then send a
+  new invite. A review link keeps admitting devices after one is removed
+  ([Invites](#invites)), so for a leaked one, open or not, run
+  `ovenlight revoke <invite ID>` (`ovenlight guests` lists the ID while the invite is
   open, and `--json` shows it on each device that claimed it). That removes every device
   that claimed it and cancels it if it's still open. Delete any device that joined
   without claiming, which `ovenlight guests --sync` lists, in the admin console

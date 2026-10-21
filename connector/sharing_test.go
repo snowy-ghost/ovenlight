@@ -25,6 +25,9 @@ var (
 	guestTag = policy.GuestTag("coach")
 )
 
+// The shareable apps the claim tests' invites are for.
+var shareableApps = []string{"coach", "notes", "echo"}
+
 var (
 	t0      = time.Date(2026, 9, 28, 12, 0, 0, 0, time.UTC)
 	samDev  = Identity{Tagged: true, Tags: []string{guestTag}, DeviceID: "nSam", DeviceName: "sam-iphone"}
@@ -99,25 +102,25 @@ func TestGuestHeaders(t *testing.T) {
 func TestClaimInvite(t *testing.T) {
 	st := sharingState{Invites: []Invite{sentInvite("i1", "Sam", "coach", "key-sam"), sentInvite("i2", "Kim", "coach", "key-kim")}}
 
-	if _, _, _, err := st.claimInvite(hashKey("wrong"), "coach", samDev, t0); !errors.Is(err, errNotInvited) {
+	if _, _, _, err := st.claimInvite(hashKey("wrong"), "coach", shareableApps, samDev, t0); !errors.Is(err, errNotInvited) {
 		t.Errorf("wrong key: %v", err)
 	}
-	if _, _, _, err := st.claimInvite(hashKey("key-sam"), "notes", samDev, t0); !errors.Is(err, errNotInvited) {
+	if _, _, _, err := st.claimInvite(hashKey("key-sam"), "notes", shareableApps, samDev, t0); !errors.Is(err, errNotInvited) {
 		t.Errorf("key for another app: %v", err)
 	}
-	if _, _, _, err := st.claimInvite(hashKey("key-sam"), "coach", ownerID, t0); !errors.Is(err, errNotInvited) {
+	if _, _, _, err := st.claimInvite(hashKey("key-sam"), "coach", shareableApps, ownerID, t0); !errors.Is(err, errNotInvited) {
 		t.Errorf("untagged caller: %v", err)
 	}
 
-	inv, g, fresh, err := st.claimInvite(hashKey("key-sam"), "coach", samDev, t0)
+	inv, g, fresh, err := st.claimInvite(hashKey("key-sam"), "coach", shareableApps, samDev, t0)
 	if err != nil || !fresh || g.Name != "Sam" || g.DeviceID != "nSam" || inv.State != inviteClaimed || inv.ClaimedBy != "nSam" {
 		t.Fatalf("claim: %+v %+v %v %v", inv, g, fresh, err)
 	}
 	// Same device again: fine, not fresh. Another device with the same key: refused.
-	if _, _, fresh, err := st.claimInvite(hashKey("key-sam"), "coach", samDev, t0); err != nil || fresh {
+	if _, _, fresh, err := st.claimInvite(hashKey("key-sam"), "coach", shareableApps, samDev, t0); err != nil || fresh {
 		t.Errorf("repeat claim: fresh=%v err=%v", fresh, err)
 	}
-	if _, _, _, err := st.claimInvite(hashKey("key-sam"), "coach", kimDev, t0); !errors.Is(err, errInviteUsed) {
+	if _, _, _, err := st.claimInvite(hashKey("key-sam"), "coach", shareableApps, kimDev, t0); !errors.Is(err, errInviteUsed) {
 		t.Errorf("stolen key: %v", err)
 	}
 	if len(st.Guests) != 1 {
@@ -126,26 +129,26 @@ func TestClaimInvite(t *testing.T) {
 
 	// Removed, then presenting the spent key again doesn't bring the guest back.
 	st.removeGuests(match(t, &st, "Sam", ""), "test", t0)
-	if _, _, _, err := st.claimInvite(hashKey("key-sam"), "coach", samDev, t0); !errors.Is(err, errNotInvited) {
+	if _, _, _, err := st.claimInvite(hashKey("key-sam"), "coach", shareableApps, samDev, t0); !errors.Is(err, errNotInvited) {
 		t.Errorf("claim after removal: %v", err)
 	}
 
 	// Past expiry plus grace: refused. Canceled: refused.
-	if _, _, _, err := st.claimInvite(hashKey("key-kim"), "coach", kimDev, t0.Add(inviteTTL+claimGrace+time.Minute)); !errors.Is(err, errNotInvited) {
+	if _, _, _, err := st.claimInvite(hashKey("key-kim"), "coach", shareableApps, kimDev, t0.Add(inviteTTL+claimGrace+time.Minute)); !errors.Is(err, errNotInvited) {
 		t.Errorf("expired: %v", err)
 	}
 	st.Invites[1].State = inviteCanceled
-	if _, _, _, err := st.claimInvite(hashKey("key-kim"), "coach", kimDev, t0); !errors.Is(err, errNotInvited) {
+	if _, _, _, err := st.claimInvite(hashKey("key-kim"), "coach", shareableApps, kimDev, t0); !errors.Is(err, errNotInvited) {
 		t.Errorf("canceled: %v", err)
 	}
 	st.Invites[1].State = inviteSent
-	if _, _, fresh, err := st.claimInvite(hashKey("key-kim"), "coach", kimDev, t0.Add(inviteTTL+time.Minute)); err != nil || !fresh {
+	if _, _, fresh, err := st.claimInvite(hashKey("key-kim"), "coach", shareableApps, kimDev, t0.Add(inviteTTL+time.Minute)); err != nil || !fresh {
 		t.Errorf("claim within the grace period: %v", err)
 	}
-	// Kim's device holds coach now. An invite for someone else, presented from it, is
-	// refused and stays usable; one for Kim again (any case) is taken.
-	st.Invites = append(st.Invites, sentInvite("i3", "Lee", "coach", "key-lee"), sentInvite("i4", "KIM", "coach", "key-kim2"))
-	if _, _, _, err := st.claimInvite(hashKey("key-lee"), "coach", kimDev, t0); !errors.Is(err, errOtherPerson) {
+	// Kim's device holds coach now. An invite for Sam, who has a device, presented from it,
+	// is refused and stays usable; one for Kim again (any case) is taken.
+	st.Invites = append(st.Invites, sentInvite("i3", "Sam", "coach", "key-lee"), sentInvite("i4", "KIM", "coach", "key-kim2"))
+	if _, _, _, err := st.claimInvite(hashKey("key-lee"), "coach", shareableApps, kimDev, t0); !errors.Is(err, errOtherPerson) {
 		t.Errorf("another person's invite from a guest device: %v", err)
 	}
 	if st.Invites[2].State != inviteSent || st.Invites[2].ClaimedBy != "" {
@@ -153,7 +156,7 @@ func TestClaimInvite(t *testing.T) {
 	}
 	// Kim's invite again, from the device that already holds coach: fine, and the invite
 	// stays for another device of Kim's.
-	if _, g, fresh, err := st.claimInvite(hashKey("key-kim2"), "coach", kimDev, t0); err != nil || fresh || g.Name != "Kim" || len(st.Guests) != 2 {
+	if _, g, fresh, err := st.claimInvite(hashKey("key-kim2"), "coach", shareableApps, kimDev, t0); err != nil || fresh || g.Name != "Kim" || len(st.Guests) != 2 {
 		t.Errorf("second invite for the same person: %+v %v %v, guests %d", g, fresh, err, len(st.Guests))
 	}
 	if st.Invites[3].State != inviteSent {
@@ -170,7 +173,7 @@ func TestClaimInvite(t *testing.T) {
 	if got := st.guestTags("nKim"); !reflect.DeepEqual(got, []string{policy.GuestTag("notes")}) {
 		t.Errorf("after removal from coach Kim's device is tagged %v", got)
 	}
-	if _, _, _, err := st.claimInvite(hashKey("key-kim2"), "coach", kimDev, t0); !errors.Is(err, errNotInvited) {
+	if _, _, _, err := st.claimInvite(hashKey("key-kim2"), "coach", shareableApps, kimDev, t0); !errors.Is(err, errNotInvited) {
 		t.Errorf("a removed device claimed coach again: %v", err)
 	}
 	if hashKey("key-kim") == "key-kim" || len(hashKey("x")) != 64 {
@@ -188,10 +191,10 @@ func TestClaimReviewInvite(t *testing.T) {
 		return Identity{Tagged: true, Tags: []string{guestTag}, DeviceID: fmt.Sprint("n", i), DeviceName: fmt.Sprint("review-", i)}
 	}
 	for i := range reviewInviteDevices - 1 {
-		if _, _, fresh, err := st.claimInvite(hashKey("key-review"), "coach", dev(i), t0); err != nil || !fresh {
+		if _, _, fresh, err := st.claimInvite(hashKey("key-review"), "coach", shareableApps, dev(i), t0); err != nil || !fresh {
 			t.Fatalf("claim %d: %v %v", i, fresh, err)
 		}
-		if _, _, fresh, err := st.claimInvite(hashKey("key-review"), "coach", dev(i), t0); err != nil || fresh {
+		if _, _, fresh, err := st.claimInvite(hashKey("key-review"), "coach", shareableApps, dev(i), t0); err != nil || fresh {
 			t.Fatalf("claim %d again: %v %v", i, fresh, err)
 		}
 	}
@@ -200,18 +203,18 @@ func TestClaimReviewInvite(t *testing.T) {
 	}
 	// The first device is taken off coach: it can't claim again, and its place stays taken.
 	st.removeGuests(match(t, &st, "n0", "coach"), "owner", t0)
-	if _, _, _, err := st.claimInvite(hashKey("key-review"), "coach", dev(0), t0); !errors.Is(err, errNotInvited) {
+	if _, _, _, err := st.claimInvite(hashKey("key-review"), "coach", shareableApps, dev(0), t0); !errors.Is(err, errNotInvited) {
 		t.Errorf("a removed device claimed again: %v", err)
 	}
 	last := reviewInviteDevices - 1
-	inv, _, fresh, err := st.claimInvite(hashKey("key-review"), "coach", dev(last), t0)
+	inv, _, fresh, err := st.claimInvite(hashKey("key-review"), "coach", shareableApps, dev(last), t0)
 	if err != nil || !fresh || inv.State != inviteClaimed || inv.ClaimedBy != dev(last).DeviceID || len(st.spentKeys()) != 1 {
 		t.Fatalf("last claim: %+v %v %v", inv, fresh, err)
 	}
-	if _, _, _, err := st.claimInvite(hashKey("key-review"), "coach", dev(last+1), t0); !errors.Is(err, errInviteUsed) {
+	if _, _, _, err := st.claimInvite(hashKey("key-review"), "coach", shareableApps, dev(last+1), t0); !errors.Is(err, errInviteUsed) {
 		t.Errorf("one device too many: %v", err)
 	}
-	if _, g, fresh, err := st.claimInvite(hashKey("key-review"), "coach", dev(1), t0); err != nil || fresh || g.DeviceID != "n1" {
+	if _, g, fresh, err := st.claimInvite(hashKey("key-review"), "coach", shareableApps, dev(1), t0); err != nil || fresh || g.DeviceID != "n1" {
 		t.Errorf("a device that claimed, once the invite is used up: %+v %v %v", g, fresh, err)
 	}
 }
@@ -223,16 +226,148 @@ func TestClaimAgainAfterTheInviteEnded(t *testing.T) {
 		review := sentInvite("r1", "App Review", "coach", "key-review")
 		review.Review, review.Reusable = true, true
 		st := sharingState{Invites: []Invite{review}}
-		if _, _, fresh, err := st.claimInvite(hashKey("key-review"), "coach", samDev, t0); err != nil || !fresh {
+		if _, _, fresh, err := st.claimInvite(hashKey("key-review"), "coach", shareableApps, samDev, t0); err != nil || !fresh {
 			t.Fatalf("claim: %v %v", fresh, err)
 		}
 		st.Invites[0].State = state
-		if _, g, fresh, err := st.claimInvite(hashKey("key-review"), "coach", samDev, t0.Add(reviewInviteTTL+claimGrace+time.Hour)); err != nil || fresh || g.DeviceID != "nSam" {
+		if _, g, fresh, err := st.claimInvite(hashKey("key-review"), "coach", shareableApps, samDev, t0.Add(reviewInviteTTL+claimGrace+time.Hour)); err != nil || fresh || g.DeviceID != "nSam" {
 			t.Errorf("%s: claiming again: %+v %v %v", state, g, fresh, err)
 		}
-		if _, _, _, err := st.claimInvite(hashKey("key-review"), "coach", kimDev, t0); !errors.Is(err, errNotInvited) {
+		if _, _, _, err := st.claimInvite(hashKey("key-review"), "coach", shareableApps, kimDev, t0); !errors.Is(err, errNotInvited) {
 			t.Errorf("%s: another device: %v", state, err)
 		}
+	}
+}
+
+// A phone that holds coach claims an invite to another app through coach's node, which
+// its node reaches. An invite for its person admits it as on the app's own node. One for
+// someone who has never had a device becomes its person's. Anyone else's stays unused.
+func TestClaimThroughAnotherApp(t *testing.T) {
+	notesTag, echoTag := policy.GuestTag("notes"), policy.GuestTag("echo")
+	samOnCoach := func(invites ...Invite) *sharingState {
+		return &sharingState{Guests: []Guest{{DeviceID: "nSam", Person: "p-sam", Name: "Sam", App: "coach", InviteID: "i0"}}, Invites: invites}
+	}
+	claimed := func(st *sharingState, key string, at time.Time) (*Invite, *Guest, bool, error) {
+		return st.claimInvite(hashKey(key), "coach", shareableApps, samDev, at)
+	}
+
+	// Sam's own invite: admitted as Sam, the invite used up, the device given notes' tag.
+	st := samOnCoach(sentInvite("i1", "Sam", "notes", "k1"))
+	inv, g, fresh, err := claimed(st, "k1", t0)
+	if err != nil || !fresh || g.App != "notes" || g.Person != "p-sam" || g.Name != "Sam" || inv.State != inviteClaimed || inv.ClaimedBy != "nSam" {
+		t.Fatalf("Sam's invite: %+v %+v %v %v", inv, g, fresh, err)
+	}
+	if got := st.guestTags("nSam"); !reflect.DeepEqual(got, []string{guestTag, notesTag}) {
+		t.Errorf("Sam's device is tagged %v", got)
+	}
+	if _, _, fresh, err := claimed(st, "k1", t0); err != nil || fresh {
+		t.Errorf("claiming again: %v %v", fresh, err)
+	}
+	if _, _, _, err := st.claimInvite(hashKey("k1"), "coach", shareableApps, kimDev, t0); !errors.Is(err, errNotInvited) {
+		t.Errorf("a device that holds no app: %v", err)
+	}
+
+	// Two invites for "Sam Lee", who has never had a device: each one opened on Sam's
+	// phone becomes Sam's, and the guest record carries Sam's name.
+	st = samOnCoach(sentInvite("i1", "Sam Lee", "notes", "k1"), sentInvite("i2", "Sam Lee", "echo", "k2"))
+	inv, g, fresh, err = claimed(st, "k1", t0)
+	if err != nil || !fresh || g.App != "notes" || g.Person != "p-sam" || g.Name != "Sam" || inv.Person != "p-sam" || inv.To != "Sam" || inv.State != inviteClaimed {
+		t.Fatalf("settle: %+v %+v %v %v", inv, g, fresh, err)
+	}
+	if inv := st.Invites[1]; inv.Person != "p-sam lee" || inv.To != "Sam Lee" || inv.State != inviteSent {
+		t.Errorf("Sam Lee's other invite moved: %+v", inv)
+	}
+	if _, _, fresh, err := claimed(st, "k1", t0); err != nil || fresh {
+		t.Errorf("claiming the settled invite again: %v %v", fresh, err)
+	}
+	both := Identity{Tagged: true, Tags: []string{guestTag, notesTag}, DeviceID: "nSam", DeviceName: "sam-iphone"}
+	if _, g, fresh, err := st.claimInvite(hashKey("k2"), "notes", shareableApps, both, t0); err != nil || !fresh || g.App != "echo" || g.Person != "p-sam" || g.Name != "Sam" {
+		t.Fatalf("Sam Lee's second invite: %+v %v %v", g, fresh, err)
+	}
+	if got := st.people(); !reflect.DeepEqual(got, map[string]string{"p-sam": "Sam"}) {
+		t.Errorf("people = %v", got)
+	}
+	if got := st.guestTags("nSam"); !reflect.DeepEqual(got, []string{guestTag, echoTag, notesTag}) {
+		t.Errorf("Sam's device is tagged %v", got)
+	}
+
+	// Kim has a device elsewhere, even one removed: Kim's invite stays Kim's.
+	st = samOnCoach(sentInvite("i1", "Kim", "notes", "k1"))
+	st.Guests = append(st.Guests, Guest{DeviceID: "nKim", Person: "p-kim", Name: "Kim", App: "coach"})
+	for range 2 {
+		if _, _, _, err := claimed(st, "k1", t0); !errors.Is(err, errOtherPerson) {
+			t.Errorf("Kim's invite: %v", err)
+		}
+		st.removeGuests(match(t, st, "nKim", ""), "owner", t0)
+	}
+	if inv := st.Invites[0]; inv.Person != "p-kim" || inv.State != inviteSent {
+		t.Errorf("Kim's invite changed: %+v", inv)
+	}
+
+	// At the invite's own app the rule is the same. A phone that still holds coach, as
+	// after Remove App on the phone, gets coach back and gains nothing, so Sam Lee's invite
+	// stays open. One that reaches notes for an open invite of Sam's settles Sam Lee's.
+	st = samOnCoach(sentInvite("i1", "Sam Lee", "coach", "k1"))
+	if _, g, fresh, err := claimed(st, "k1", t0); err != nil || fresh || g.App != "coach" || g.Person != "p-sam" || !reflect.DeepEqual(st.Invites[0], sentInvite("i1", "Sam Lee", "coach", "k1")) {
+		t.Errorf("Sam Lee's coach invite: %+v %v %v, %+v", g, fresh, err, st.Invites[0])
+	}
+	st = samOnCoach(sentInvite("i3", "Sam", "notes", "k3"), sentInvite("i1", "Sam Lee", "notes", "k1"))
+	if inv, g, fresh, err := st.claimInvite(hashKey("k1"), "notes", shareableApps, both, t0); err != nil || !fresh || g.Person != "p-sam" || g.Name != "Sam" || inv.Person != "p-sam" || inv.To != "Sam" {
+		t.Errorf("Sam Lee's notes invite at notes: %+v %+v %v %v", inv, g, fresh, err)
+	}
+
+	// Refused, and nothing moves: expired, canceled, used, for an app that isn't shareable,
+	// from a device the owner took off notes, or through an app the device doesn't hold.
+	refusals := []struct {
+		name string
+		want error
+		edit func(*sharingState)
+		at   time.Time
+	}{
+		{"expired", errNotInvited, func(*sharingState) {}, t0.Add(inviteTTL + claimGrace + time.Minute)},
+		{"canceled", errNotInvited, func(st *sharingState) { st.Invites[0].State = inviteCanceled }, t0},
+		{"used", errInviteUsed, func(st *sharingState) { st.Invites[0].State = inviteClaimed }, t0},
+		{"not shareable", errNotInvited, func(st *sharingState) { st.Invites[0].App = "games" }, t0},
+		{"removed from notes", errNotInvited, func(st *sharingState) {
+			st.Guests = append(st.Guests, Guest{DeviceID: "nSam", Person: "p-sam", Name: "Sam", App: "notes", RemovedAt: &t0})
+		}, t0},
+		{"removed from coach", errNotInvited, func(st *sharingState) { st.removeGuests([]int{0}, "owner", t0) }, t0},
+	}
+	for _, to := range []string{"Sam", "Sam Lee"} {
+		for _, c := range refusals {
+			st := samOnCoach(sentInvite("i1", to, "notes", "k1"))
+			c.edit(st)
+			before, guests := st.Invites[0], len(st.Guests)
+			if _, _, _, err := claimed(st, "k1", c.at); !errors.Is(err, c.want) || !reflect.DeepEqual(st.Invites[0], before) || len(st.Guests) != guests {
+				t.Errorf("%s, for %s: %v, invite %+v", c.name, to, err, st.Invites[0])
+			}
+		}
+	}
+
+	// A review invite through another app takes one of its places and stays open while
+	// others remain. One for someone else never moves, even someone who never had a device.
+	review := sentInvite("r1", "Sam", "notes", "kr")
+	review.Review, review.Reusable = true, true
+	st = samOnCoach(review)
+	if inv, _, fresh, err := claimed(st, "kr", t0); err != nil || !fresh || inv.State != inviteSent || len(st.claimants("r1")) != 1 {
+		t.Errorf("review invite: %+v %v %v", inv, fresh, err)
+	}
+	newcomer := review
+	newcomer.To, newcomer.Person = "App Review", "p-app review"
+	st = samOnCoach(newcomer)
+	if _, _, _, err := claimed(st, "kr", t0); !errors.Is(err, errOtherPerson) || !reflect.DeepEqual(st.Invites[0], newcomer) || len(st.Guests) != 1 {
+		t.Errorf("someone new's review invite: %v, %+v", err, st.Invites[0])
+	}
+	// With its places taken on notes' own node, the phone's claim through coach is refused.
+	st = samOnCoach(review)
+	for i := range reviewInviteDevices {
+		dev := Identity{Tagged: true, Tags: []string{notesTag}, DeviceID: fmt.Sprint("n", i)}
+		if _, _, _, err := st.claimInvite(hashKey("kr"), "notes", shareableApps, dev, t0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, _, _, err := claimed(st, "kr", t0); !errors.Is(err, errInviteUsed) {
+		t.Errorf("a used-up review invite: %v", err)
 	}
 }
 
@@ -676,7 +811,7 @@ func TestRemovedDeviceCantClaimAnInviteThatListedIt(t *testing.T) {
 		Invites: []Invite{inv},
 	}
 	dev := Identity{Tagged: true, Tags: []string{policy.GuestTag("coach")}, DeviceID: "nSam"}
-	if _, _, _, err := st.claimInvite(hashKey("k1"), "coach", dev, t0); err != errNotInvited {
+	if _, _, _, err := st.claimInvite(hashKey("k1"), "coach", shareableApps, dev, t0); err != errNotInvited {
 		t.Errorf("claim = %v, want %v", err, errNotInvited)
 	}
 }

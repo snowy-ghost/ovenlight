@@ -29,6 +29,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/snowy-ghost/ovenlight/connector/internal/jsonfile"
+	"github.com/snowy-ghost/ovenlight/connector/internal/tsapi"
+	"github.com/snowy-ghost/ovenlight/connector/internal/tsapi/tsapitest"
 	"tailscale.com/health"
 	"tailscale.com/ipn/ipnstate"
 )
@@ -711,7 +713,7 @@ func TestShareableNodeLoginIsRepublish(t *testing.T) {
 // device" and "another guest" say why a claim failed, "owner only" that the connector is
 // someone else's. Builds after 2 read the codes instead. Change neither without the app.
 func TestPhoneMatchesErrorText(t *testing.T) {
-	d, _ := testDaemon(t)
+	d, f := testDaemon(t)
 	n := d.nodes["coach"]
 	n.setOwner(d.cfg.Owner)
 	refused := func(who Identity, path, words, code string) {
@@ -738,9 +740,11 @@ func TestPhoneMatchesErrorText(t *testing.T) {
 	}
 
 	d.sh.st.Invites = []Invite{sentInvite("i1", "Sam", "coach", "key-sam"), sentInvite("i2", "Kim", "coach", "key-kim")}
+	d.sh.st.Guests = []Guest{{DeviceID: "nKimOld", Person: "p-kim", Name: "Kim", App: "coach", RemovedAt: &t0}} // so Kim's invite stays Kim's
 	for i := range d.sh.st.Invites {
 		d.sh.st.Invites[i].Expires = time.Now().Add(time.Hour)
 	}
+	f.Keys = []tsapitest.FakeKey{{Key: tsapi.Key{ID: "ki1"}}} // Sam's key, which the claim deletes
 	claimRefused := func(who Identity, key, words, code string) {
 		t.Helper()
 		if status, out := claim(t, d, who, key); status != http.StatusForbidden || !strings.Contains(out["error"], words) || out["code"] != code {
@@ -973,6 +977,7 @@ func TestNoLoginLinkSaysWhy(t *testing.T) {
 		n := newAppNode(app, t.TempDir(), devOptions{}, nil)
 		if before != nil {
 			n.applyStatus(before)
+			n.setServing(true, "") // tsnet keeps serving once the login is gone
 		}
 		st := &ipnstate.Status{BackendState: "NeedsLogin", Self: self}
 		if loginErr != "" {
@@ -1012,17 +1017,18 @@ func TestNoLoginLinkSaysWhy(t *testing.T) {
 	if c := check(shared, st); c.Fix != reshareCommand("coach") {
 		t.Errorf("refused, shareable: %+v", c)
 	}
-	// Once the node has run, or its key has expired, nothing blames the network, and the
-	// owner's node says to restart the connector, which asks for a link as it starts.
+	// Once the node has run (and served), or its key has expired, nothing blames the
+	// network, and the owner's node says to restart the connector, which asks for a link as
+	// it starts.
 	running := &ipnstate.Status{BackendState: "Running", Self: &ipnstate.PeerStatus{InNetworkMap: true}}
 	for name, tc := range map[string]struct {
 		before *ipnstate.Status
 		self   *ipnstate.PeerStatus
-	}{"ran": {running, fresh}, "expired": {nil, &ipnstate.PeerStatus{Expired: true}}} {
+	}{"ran": {running, &ipnstate.PeerStatus{DNSName: "coach.tail1.ts.net."}}, "expired": {nil, &ipnstate.PeerStatus{Expired: true}}} {
 		for _, loginErr := range []string{"", refused} {
 			_, st := waited(app, tc.before, tc.self, loginErr)
 			c := check(app, st)
-			if st.NoServer || !st.Restart || st.LoginErr != loginErr || c.Status != statusFail || c.Actor != actorPerson || c.Fix != restartLoginFix(installed) {
+			if st.NoServer || !st.Restart || st.LoginErr != loginErr || st.URL != "" || c.Status != statusFail || c.Actor != actorPerson || c.Fix != restartLoginFix(installed) {
 				t.Errorf("%s %q: %+v %+v", name, loginErr, st, c)
 			}
 		}

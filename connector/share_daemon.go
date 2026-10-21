@@ -381,7 +381,7 @@ func (d *daemon) cancelInvite(id string) (Invite, error) {
 		if api, err := d.api(); err == nil {
 			ctx, cancel := apiContext()
 			defer cancel()
-			if inv.KeyID != "" && d.deleteInviteKey(ctx, api, inv) == nil {
+			if inv.KeyID != "" && d.deleteInviteKey(ctx, api, inv, false) == nil {
 				inv.KeyID = ""
 			}
 			// Devices given this app's tag for the invite lose it again.
@@ -394,10 +394,14 @@ func (d *daemon) cancelInvite(id string) (Invite, error) {
 
 // deleteInviteKey deletes the key of an invite that can't be used any more and clears
 // its KeyID, so the sync retries only the ones that failed. A key already gone counts as
-// deleted.
-func (d *daemon) deleteInviteKey(ctx context.Context, api controlAPI, inv Invite) error {
-	if err := api.DeleteKey(ctx, inv.KeyID); err != nil && !tsapi.IsNotFound(err) {
-		log.Printf("invite %s is %s, but deleting its key %s failed (retried every few minutes): %v", inv.ID, inv.State, inv.KeyID, err)
+// deleted only for the sync, which first checks the credential against the device list
+// (see anchorNodes): another tailnet answers 404 for a key that still works. That 404 goes
+// unlogged, since Tailscale drops a single-use key itself as its device joins.
+func (d *daemon) deleteInviteKey(ctx context.Context, api controlAPI, inv Invite, fromSync bool) error {
+	if err := api.DeleteKey(ctx, inv.KeyID); err != nil && !(fromSync && tsapi.IsNotFound(err)) {
+		if !tsapi.IsNotFound(err) {
+			log.Printf("invite %s is %s, but deleting its key %s failed (retried every few minutes): %v", inv.ID, inv.State, inv.KeyID, err)
+		}
 		return err
 	}
 	d.sh.mu.Lock()
@@ -415,7 +419,8 @@ func (d *daemon) deleteInviteKey(ctx context.Context, api controlAPI, inv Invite
 
 const claimReadTimeout = 10 * time.Second
 
-// handleClaim binds the calling guest device to the invite whose key it presents.
+// handleClaim binds the calling guest device to the invite whose key it presents, for app,
+// whose node it reached, or for another shareable app (see claimInvite).
 func (d *daemon) handleClaim(w http.ResponseWriter, r *http.Request, caller Identity, app App) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, codeBadRequest, "POST only")
@@ -430,8 +435,20 @@ func (d *daemon) handleClaim(w http.ResponseWriter, r *http.Request, caller Iden
 		writeError(w, http.StatusBadRequest, codeBadRequest, `send {"key": "<the invite's auth key>"}`)
 		return
 	}
+	cfg := d.config()
+	var apps []string
+	for _, a := range cfg.Apps {
+		if a.Shareable {
+			apps = append(apps, a.Slug)
+		}
+	}
+	keyHash := hashKey(body.Key)
 	d.sh.mu.Lock()
-	inv, g, fresh, err := d.sh.st.claimInvite(hashKey(body.Key), app.Slug, caller, time.Now())
+	var was Invite // as it was, to log a claim that settles who it's for
+	if p := d.sh.st.inviteByKey(keyHash); p != nil {
+		was = *p
+	}
+	inv, g, fresh, err := d.sh.st.claimInvite(keyHash, app.Slug, apps, caller, time.Now())
 	var invCopy Invite
 	var guestCopy Guest
 	var retagNeeded bool
@@ -459,7 +476,12 @@ func (d *daemon) handleClaim(w http.ResponseWriter, r *http.Request, caller Iden
 		return
 	}
 	if fresh {
-		log.Printf("[%s] %s (%s, %s) claimed invite %s", app.Slug, guestCopy.Name, caller.DeviceName, caller.DeviceID, invCopy.ID)
+		if invCopy.Person != was.Person {
+			log.Printf("[%s] invite %s for %q claimed by %s (%s) through %s: now %s's", invCopy.App, invCopy.ID, was.To, caller.DeviceName,
+				caller.DeviceID, app.Slug, guestCopy.Name)
+		} else {
+			log.Printf("[%s] %s (%s, %s) claimed invite %s", invCopy.App, guestCopy.Name, caller.DeviceName, caller.DeviceID, invCopy.ID)
+		}
 		// The key is spent if this device joined with it. If it joined with another
 		// one, deleting this key keeps it from adding a second device. A review
 		// invite's reusable key stays until its last device claims.
@@ -471,15 +493,16 @@ func (d *daemon) handleClaim(w http.ResponseWriter, r *http.Request, caller Iden
 			ctx, cancel := apiContext()
 			defer cancel()
 			if invCopy.KeyID != "" && invCopy.State == inviteClaimed {
-				d.deleteInviteKey(ctx, api, invCopy)
+				d.deleteInviteKey(ctx, api, invCopy, false)
 			}
 			if retagNeeded {
 				d.retag(ctx, api, []string{caller.DeviceID})
 			}
 		}()
 	}
-	writeJSON(w, http.StatusOK, claimView{Name: guestCopy.Name, UserID: guestCopy.UserID(), App: app.Slug, AppName: app.Name,
-		Owner: d.config().OwnerLabel})
+	claimed, _ := cfg.Find(invCopy.App)
+	writeJSON(w, http.StatusOK, claimView{Name: guestCopy.Name, UserID: guestCopy.UserID(), App: claimed.Slug, AppName: claimed.Name,
+		Owner: cfg.OwnerLabel})
 }
 
 // ---------- guests ----------
@@ -587,7 +610,7 @@ func (d *daemon) revoke(ref, app string, byPerson bool) (revokeResult, error) {
 	ctx, cancel := apiContext()
 	defer cancel()
 	for i, inv := range res.Canceled {
-		if inv.KeyID != "" && d.deleteInviteKey(ctx, api, inv) == nil {
+		if inv.KeyID != "" && d.deleteInviteKey(ctx, api, inv, false) == nil {
 			res.Canceled[i].KeyID = ""
 		}
 	}
@@ -846,24 +869,26 @@ func (d *daemon) syncOnce() string {
 	d.mu.Lock()
 	cfg, loaded := d.cfg, d.loaded
 	d.mu.Unlock()
-	// The list speaks only for the apps whose node it holds (see reconcile). If it holds
-	// none, the credential may be another tailnet's, whose 404s would count spent invite
-	// keys as deleted, so the sync stops, unless a loaded config lists no apps to check.
-	known := false
-	var checked []string
+	// The list speaks only for the apps whose node it holds (see reconcile), counting only
+	// the nodes anchorNodes picks. If it holds none of them, the credential may be another
+	// tailnet's, whose 404s would count spent invite keys as deleted, so the sync stops,
+	// unless a loaded config lists no apps to check.
+	var nodes []NodeStatus
 	for _, n := range d.snapshot() {
-		if id := n.deviceID(); id != "" {
-			known = true
-			if slices.ContainsFunc(devices, func(dev tsapi.Device) bool { return dev.NodeID == id }) {
-				checked = append(checked, n.App().Slug)
-			}
+		nodes = append(nodes, n.status())
+	}
+	anchors, what := anchorNodes(nodes)
+	var checked []string
+	for _, st := range anchors {
+		if slices.ContainsFunc(devices, func(dev tsapi.Device) bool { return dev.NodeID == st.DeviceID }) {
+			checked = append(checked, st.Slug)
 		}
 	}
-	if known && len(checked) == 0 {
-		return setErr(errors.New("the tailnet's device list has none of this computer's apps; is the Tailscale API credential for another tailnet?"))
+	if len(anchors) > 0 && len(checked) == 0 {
+		return setErr(fmt.Errorf("the tailnet's device list has none of this computer's %s; is the Tailscale API credential for another tailnet?", what))
 	}
-	if !known && (len(cfg.Apps) > 0 || !loaded) {
-		return setErr(errors.New("this computer's apps aren't connected yet; the guest sync waits for them"))
+	if len(anchors) == 0 && (len(cfg.Apps) > 0 || !loaded) {
+		return setErr(fmt.Errorf("this computer's %s aren't connected yet; the guest sync waits for them", what))
 	}
 	d.sh.mu.Lock()
 	res := d.sh.st.reconcile(devices, checked, fetched)
@@ -889,10 +914,29 @@ func (d *daemon) syncOnce() string {
 		log.Printf("guest sync: %s", e)
 	}
 	for _, inv := range spent {
-		d.deleteInviteKey(ctx, api, inv)
+		d.deleteInviteKey(ctx, api, inv, true)
 	}
 	return fmt.Sprintf("synced with %d devices: %d guests removed, %d invites expired, %d unclaimed",
 		len(devices), len(res.Removed), len(res.Expired), len(res.Unclaimed))
+}
+
+// anchorNodes picks, from the app nodes that know their ID, those a device list must hold
+// one of for the guest sync to trust it, and says what they are. Only a shareable app's
+// node, tagged as its app's, is sure to be in the tailnet its guests and invite keys are
+// in: an unshared app's node may have signed in to another. While no app is shareable,
+// every node counts, so the sync still deletes the devices of guests whose app was
+// unpublished.
+func anchorNodes(apps []NodeStatus) (anchors []NodeStatus, what string) {
+	shared := slices.ContainsFunc(apps, func(st NodeStatus) bool { return st.Shareable })
+	for _, st := range apps {
+		if st.DeviceID != "" && (!shared || slices.Contains(st.Tags, policy.AppTag(st.Slug))) {
+			anchors = append(anchors, st)
+		}
+	}
+	if shared {
+		return anchors, "shareable apps"
+	}
+	return anchors, "apps"
 }
 
 // dropRemovedGuests ends open connections of guests who are no longer admitted.

@@ -435,8 +435,7 @@ tap. Don't work around them. Doctor marks the checks only the person can fix wit
   (or `connector/` in the repository), and if it keeps stopping, the reason is at the end
   of the log that status names. Don't run `ovenlight run` yourself: a connector started
   from your session stops with it. When status or doctor says to restart it (an app's
-  node lost its login, or the connector is older than the installed binary), the person
-  runs the command shown, too.
+  node lost its login), the person runs the command shown, too.
 - **A Tailscale account**, with MagicDNS and HTTPS Certificates turned on (admin console,
   DNS page).
 - **Store an API token**: the person runs `ovenlight auth set` in their own terminal and

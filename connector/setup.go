@@ -51,7 +51,8 @@ type setupRun struct {
 	apps     []string // shareable apps: the policy gets their tags and rules
 	remove   []string // apps no longer shared: their tags and rules go
 	// known, set by publish --shareable, is every app this connector publishes: the
-	// change is refused while a device carries another app's tag (see oneConnector).
+	// change is refused while a device other than their nodes carries an app tag (see
+	// oneConnector).
 	known []string
 
 	newOwner           bool          // the owner is being recorded or changed: refused unless a device in the tailnet is theirs
@@ -146,18 +147,19 @@ func policyDevices(devices []tsapi.Device) []policy.Device {
 	return out
 }
 
-// oneConnector refuses a tailnet where a device carries the tag of an app this
-// connector doesn't publish, as another connector's app node does, or one left from an
-// app unpublished without an API credential. Each connector keeps its own guest records
-// while tags and a guest's phone reach across the tailnet, so two would mix up each
-// other's guests.
-func oneConnector(devices []tsapi.Device, known []string) error {
+// oneConnector refuses a tailnet where a device carries an app tag but isn't this
+// connector's node for an app it publishes (see nodeIDs): another connector's app node,
+// even for an app of the same slug, or one left from an app unpublished without an API
+// credential. Each connector keeps its own guest records while tags and a guest's phone
+// reach across the tailnet, so two would mix up each other's guests.
+func oneConnector(devices []tsapi.Device, known []string, stateDir string) error {
 	for _, d := range devices {
 		for _, tag := range d.Tags {
-			if slug, ok := strings.CutPrefix(tag, policy.AppTagPrefix); ok && !slices.Contains(known, slug) {
-				name := cmp.Or(d.Hostname, d.Name)
-				return fmt.Errorf("%s in your tailnet is a node for %s (tagged %s), which isn't in this connector's config. "+
-					"If you unpublished %s, delete %s in the Tailscale admin console (Machines) and run this again. "+
+			slug, ok := strings.CutPrefix(tag, policy.AppTagPrefix)
+			if ok && !(slices.Contains(known, slug) && slices.Contains(nodeIDs(stateDir, slug), d.NodeID)) {
+				name := cmp.Or(d.Name, d.Hostname) // two connectors' nodes for one slug share a hostname
+				return fmt.Errorf("%s in your tailnet is a node for %s (tagged %s), and not this connector's. "+
+					"If nothing runs it any more (say you unpublished %s), delete %s in the Tailscale admin console (Machines) and run this again. "+
 					"If another connector shares %s, make apps shareable on that one: Ovenlight supports one sharing connector per tailnet", name, slug, tag, slug, name, slug)
 			}
 		}
@@ -197,7 +199,7 @@ func (s *setupRun) apply(parent context.Context) (bool, error) {
 		return false, err
 	}
 	if s.known != nil {
-		if err := oneConnector(devices, s.known); err != nil {
+		if err := oneConnector(devices, s.known, s.stateDir); err != nil {
 			return false, err
 		}
 	}

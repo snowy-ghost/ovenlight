@@ -124,11 +124,23 @@ func clearNodeState(dir string) error {
 
 // nodeLoggedIn reports whether the app's node has logged in: its state holds a login
 // profile, which tsnet saves once the node has one, not before.
-func nodeLoggedIn(stateDir, slug string) bool {
+func nodeLoggedIn(stateDir, slug string) bool { return len(nodeIDs(stateDir, slug)) > 0 }
+
+// nodeIDs lists the stable IDs of the devices the app's node has logged in as, from the
+// login profiles in its state. They tell this computer's node from another connector's
+// node for an app of the same slug, which carries the same tag.
+func nodeIDs(stateDir, slug string) []string {
 	data, err := jsonfile.ReadFile(filepath.Join(nodeDir(stateDir, slug), "tailscaled.state"))
 	var state map[string][]byte
-	var profiles map[string]json.RawMessage
-	return err == nil && json.Unmarshal(data, &state) == nil && json.Unmarshal(state["_profiles"], &profiles) == nil && len(profiles) > 0
+	var profiles map[string]struct{ NodeID string }
+	if err != nil || json.Unmarshal(data, &state) != nil || json.Unmarshal(state["_profiles"], &profiles) != nil {
+		return nil
+	}
+	var ids []string
+	for _, p := range profiles {
+		ids = append(ids, p.NodeID)
+	}
+	return ids
 }
 
 func newAppNode(app App, stateDir string, dev devOptions, host *daemon) *appNode {
@@ -702,7 +714,8 @@ func (n *appNode) status() NodeStatus {
 	s := NodeStatus{appInfo: n.app.view(), Backend: n.backend, DNSName: n.dnsName, Owner: owner, NodeUser: n.owner, OwnerName: n.ownerName,
 		Tags: slices.Clone(n.tags), DeviceID: n.selfID, KeyExpiry: n.keyExpiry, Error: n.lastErr, Cert: n.cert, CertErr: n.certErr}
 	switch {
-	case n.serving:
+	// tsnet keeps serving when the node loses its login, though nobody can reach it then.
+	case n.serving && n.backend != "NeedsLogin" && n.backend != "NeedsMachineAuth":
 		s.State = "serving"
 	case n.backend == "NeedsLogin":
 		s.State = "needs-login"
@@ -719,7 +732,7 @@ func (n *appNode) status() NodeStatus {
 	default:
 		s.State = "starting"
 	}
-	if n.dnsName != "" && (n.serving || n.backend == "Running") {
+	if n.dnsName != "" && (s.State == "serving" || n.backend == "Running") {
 		s.URL = "https://" + n.dnsName + "/"
 	}
 	if n.dnsName != "" && n.adminUp {

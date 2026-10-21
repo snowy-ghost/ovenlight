@@ -237,13 +237,16 @@ func siteManifestAnswer(t *testing.T, n *appNode) *httptest.ResponseRecorder {
 }
 
 // claimAnswers claims Sam's invite, then has the refusals answered: the invite used on
-// another device, another person's invite on Sam's phone, a device without the tag.
+// another device, the invite of someone who has had a device on Sam's phone, a device
+// without the tag.
 func claimAnswers(t *testing.T) map[string]*httptest.ResponseRecorder {
-	d, _ := wireDaemon(t)
+	d, f := wireDaemon(t)
 	d.sh.st.Invites = []Invite{sentInvite("i1", "Sam", "coach", "key-sam"), sentInvite("i2", "Kim", "coach", "key-kim")}
+	d.sh.st.Guests = []Guest{{DeviceID: "nKimOld", Person: "p-kim", Name: "Kim", App: "coach", RemovedAt: &t0}} // so Kim's invite stays Kim's
 	for i := range d.sh.st.Invites {
 		d.sh.st.Invites[i].Expires = time.Now().Add(time.Hour)
 	}
+	f.Keys = []tsapitest.FakeKey{{Key: tsapi.Key{ID: "ki1"}}} // Sam's key, which the claim deletes
 	post := func(who Identity, key string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
 		d.handleClaim(rec, httptest.NewRequest(http.MethodPost, claimPath, strings.NewReader(`{"key": "`+key+`"}`)), who, d.cfg.Apps[0])

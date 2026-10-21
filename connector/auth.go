@@ -132,22 +132,20 @@ func checkSecretShape(c tsapi.Credentials) error {
 }
 
 // verifyCredentials makes the read-only calls setup-sharing depends on, and says so. Its
-// tailnet must hold one of the running connector's app nodes, once any knows its ID.
+// tailnet must hold one of the running connector's app nodes the guest sync goes by (see
+// anchorNodes), once any knows its ID.
 func verifyCredentials(c tsapi.Credentials, stateDir string) error {
 	devices, err := credentialAccess(c)
 	if err != nil {
 		return err
 	}
-	var ids []string
 	if reply, err := callDaemon(stateDir, "status", 10*time.Second); err == nil {
-		for _, app := range reply.Apps {
-			if app.DeviceID != "" {
-				ids = append(ids, app.DeviceID)
-			}
+		anchors, what := anchorNodes(reply.Apps)
+		if len(anchors) > 0 && !slices.ContainsFunc(devices, func(d tsapi.Device) bool {
+			return slices.ContainsFunc(anchors, func(st NodeStatus) bool { return st.DeviceID == d.NodeID })
+		}) {
+			return fmt.Errorf("the credential's tailnet has none of this computer's %s, so it's for another tailnet; make one in the tailnet this computer's %s are in", what, what)
 		}
-	}
-	if len(ids) > 0 && !slices.ContainsFunc(devices, func(d tsapi.Device) bool { return slices.Contains(ids, d.NodeID) }) {
-		return errors.New("the credential's tailnet has none of this computer's apps, so it's for another tailnet; make one in the tailnet this computer's apps are in")
 	}
 	fmt.Fprintf(os.Stderr, "ok: it can list your %d devices and read the policy file.\n", len(devices))
 	return nil
