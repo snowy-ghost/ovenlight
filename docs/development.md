@@ -106,8 +106,7 @@ version that may update to it by binary alone (by default the highest one signed
   with `install.sh`, `uninstall.sh` and the systemd unit;
 - `ovenlight-connector-windows-amd64.zip` and `-windows-arm64.zip`: with `install.ps1`
   and `uninstall.ps1`, the binary and both scripts signed with Azure Artifact Signing;
-- `SHA256SUMS`, the release's unsigned index `index.json`, and `commit`. It signs
-  nothing.
+- `SHA256SUMS` and the release's index `index.json`, both unsigned, and `commit`.
 
 Each archive holds an `ovenlight-connector-<version>` folder, with `LICENSE`, `NOTICE` and
 `THIRD_PARTY_NOTICES.txt`, the licenses of what that system's build links. The archive

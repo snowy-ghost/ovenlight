@@ -461,7 +461,7 @@ replaces only the binary: never the install scripts, the service, the config or 
    account, count as a crash ([connector.md](connector.md#update)).
 
 A failure before the swap leaves the running connector as it was. `ovenlight status`
-shows any failure, and `doctor` warns once one release has failed three times in a row.
+shows a failed update of the release it installs next, and `doctor` warns once one release has failed three times in a row.
 
 `ovenlight update now --index <file>` installs the release a canary index names, at once.
 That is how we try a release on our own computer before publishing it
@@ -526,9 +526,9 @@ and `updates-off`, which `--purge` deletes too.
 ### What it sends
 
 Only the installed service of a release checks: a build from source never contacts
-downloads.ovenlight.app. The daily check's two GETs carry no cookies, query or
-identifiers, at the same minute each day, picked at random on the connector's first run. A
-failed check is tried again within the hour, and a new release checks as soon as it
+downloads.ovenlight.app. The daily check is two GETs with no cookies, query or
+identifiers. It comes at the same minute each day, picked at random when the updater first
+runs. A failed check is tried again within the hour, and a new release checks as soon as it
 starts. The check runs with updates off too, so the connector still knows when its release
 has a security problem. An update fetches the archive, whose name and folder show this
 computer's system (on Linux and Windows, its processor type too) and the version it
