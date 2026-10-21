@@ -1,4 +1,5 @@
 import Foundation
+import Network
 
 /// An invite to one app on someone else's machine, as the owner's connector writes it: a
 /// universal link, `https://ovenlight.app/join#v=1&control=&key=&owner=&app=&invite=&host=&name=&to=`,
@@ -154,11 +155,12 @@ struct InviteLink: Codable, Equatable, Hashable {
         return try parse(url, allowLocalHTTP: allowLocalHTTP)
     }
 
-    /// A display label: trimmed, without control characters, at most 64 characters.
+    /// A display label: trimmed, without control characters, at most 64 characters. A character
+    /// can carry any number of combining marks, so only 16 scalars a character are read.
     static func label(_ text: String?) -> String? {
         guard let text else { return nil }
-        let cleaned = String(text.unicodeScalars.filter { !isHidden($0) })
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let visible = text.unicodeScalars.lazy.filter { !isHidden($0) }.prefix(maxLabel * 16)
+        let cleaned = String(String.UnicodeScalarView(visible)).trimmingCharacters(in: .whitespacesAndNewlines)
         return cleaned.isEmpty ? nil : String(cleaned.prefix(maxLabel))
     }
 
@@ -172,10 +174,13 @@ struct InviteLink: Codable, Equatable, Hashable {
         }
     }
 
-    /// A multi-label DNS name: letters, digits and hyphens, no IP address, no port.
+    /// A multi-label DNS name: letters, digits and hyphens, no port, and no IP address however
+    /// it's written (iOS dials `0x7f.0.0.1` as loopback, past the proxy).
     static func isDNSName(_ host: String) -> Bool {
         let labels = host.split(separator: ".", omittingEmptySubsequences: false)
-        guard labels.count >= 2, host.count <= 253, !host.allSatisfy({ $0.isNumber || $0 == "." }) else { return false }
+        guard labels.count >= 2, host.count <= 253, !host.allSatisfy({ $0.isNumber || $0 == "." }), IPv4Address(host) == nil else {
+            return false
+        }
         return labels.allSatisfy { label in
             !label.isEmpty && label.count <= 63 && !label.hasPrefix("-") && !label.hasSuffix("-")
                 && label.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-") }

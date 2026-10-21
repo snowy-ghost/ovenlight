@@ -409,6 +409,16 @@ final class OverlayPresenter: ObservableObject {
         window.rootViewController = host
         self.window = window
         apply()
+        // The cover goes up on UIKit's notice too: when the phone locks, SwiftUI's phase
+        // change comes after iOS has taken the app switcher's snapshot.
+        for name in [UIScene.willDeactivateNotification, UIScene.didEnterBackgroundNotification] {
+            NotificationCenter.default.addObserver(forName: name, object: scene, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self, name == UIScene.didEnterBackgroundNotification || !OwnerAuth.isAsking else { return }
+                    self.update(isLocked: self.isLocked, isActive: false)
+                }
+            }
+        }
     }
 
     /// Face ID's prompt for an owner's change held the cover back (see `RootView`). One the

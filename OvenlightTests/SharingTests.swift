@@ -86,7 +86,8 @@ final class InviteLinkTests: XCTestCase {
     }
 
     func testRefusesHostsThatArentNames() {
-        for host in ["10.0.0.1", "echo", "echo.ts.net%2Fpath", "echo.ts.net%3A8443", "-echo.ts.net", "ec%20ho.ts.net"] {
+        for host in ["10.0.0.1", "0x7f.0.0.1", "0xa9.0xfe.0.1", "echo", "echo.ts.net%2Fpath", "echo.ts.net%3A8443", "-echo.ts.net",
+                     "ec%20ho.ts.net"] {
             XCTAssertEqual(error(connectorLink.replacingOccurrences(of: "echo-board.taildef456.ts.net", with: host)),
                            .invalidField("host"), host)
         }
@@ -120,6 +121,8 @@ final class InviteLinkTests: XCTestCase {
         XCTAssertEqual(InviteLink.label("Bank\u{202E}nigoL\u{202C} \u{2066}Pay\u{2069}\u{200F}\u{200B}\u{FEFF}"), "BanknigoL Pay",
                        "bidi controls and invisible characters go")
         XCTAssertEqual(InviteLink.label(String(repeating: family, count: 30))?.count, InviteLink.maxLabel, "counted as people see them")
+        let marked = InviteLink.label("G" + String(repeating: "\u{301}", count: 100_000) + "arden")
+        XCTAssertEqual(marked?.unicodeScalars.count, InviteLink.maxLabel * 16, "a character's marks are read only so far")
     }
 
     func testControlServerAndNetwork() throws {
@@ -337,7 +340,7 @@ final class GuestCleanupTests: XCTestCase {
         XCTAssertEqual(AdminAPI.errorMessage(refusal("owner_only", "for the owner only")), "for the owner only")
 
         let request = Claim.request(for: InviteLink(control: URL(string: "https://c.example")!, key: "tskey-1", owner: "R", app: "a",
-                                                    invite: "i", host: echo, name: "E", to: ""))
+                                                    invite: "i", host: echo, name: "E", to: ""), at: echo)
         XCTAssertEqual(request.url?.absoluteString, "https://\(echo)/__ovenlight/claim")
         XCTAssertEqual(request.httpMethod, "POST")
         XCTAssertEqual(try JSONDecoder().decode([String: String].self, from: request.httpBody!), ["key": "tskey-1"])
@@ -491,6 +494,46 @@ final class GuestCleanupTests: XCTestCase {
         for _ in 1..<PeerAbsence.pollsToEnd { _ = absence.record([notes]) }
         _ = absence.record([])
         XCTAssertEqual(absence.record([notes]), [], "back in the list starts over")
+    }
+
+    /// A phone that joined under another name doesn't reach the new invite's host, so it
+    /// claims through the owner's other apps it does reach, and at the invite's host last.
+    func testAClaimGoesThroughAnotherAppOnlyWhenItsHostIsAbsent() throws {
+        let coach = "coach.taildef456.ts.net"
+        let invite = InviteLink(control: URL(string: "https://c.example")!, key: "k", owner: "Riley", app: "recipes",
+                                invite: "i", host: "recipes.taildef456.ts.net", name: "Recipes", to: "Sam Lee")
+        let apps = [notes, echo, "Coach.taildef456.ts.net.", "gone.taildef456.ts.net"]
+        XCTAssertEqual(Claim.hosts(for: invite, apps: apps, in: try status(peers: [echo: false, notes: true, coach: true])),
+                       [coach, notes, echo, invite.host], "online first, and none the node doesn't reach")
+        XCTAssertEqual(Claim.hosts(for: invite, apps: apps, in: try status(peers: [echo: true, invite.host: false])), [invite.host],
+                       "listed offline isn't absent")
+        XCTAssertEqual(Claim.hosts(for: invite, apps: apps, in: try status(peers: [echo: true, invite.host: true])), [invite.host])
+        XCTAssertEqual(Claim.hosts(for: invite, apps: [invite.host], in: try status(peers: [echo: true])), [invite.host], "no other app")
+        XCTAssertEqual(Claim.hosts(for: invite, apps: apps, in: try status(peers: ["other.taildef456.ts.net": true])), [invite.host],
+                       "no other app among the peers")
+        XCTAssertEqual(Claim.hosts(for: invite, apps: apps, in: try status("Starting", peers: [echo: true])), [invite.host])
+        XCTAssertEqual(Claim.hosts(for: invite, apps: apps, in: nil), [invite.host])
+    }
+
+    /// After a claim through another app, the app waits for its host to join the peers.
+    func testAClaimThroughAnotherAppWaitsForItsHost() async throws {
+        let before = try status(peers: [echo: true])
+        let after = try status(peers: [echo: true, notes: false])
+        var reads = 0
+        let came = await Claim.waitForHost(notes, every: .milliseconds(1)) {
+            reads += 1
+            return reads == 1 ? nil : reads < 4 ? before : after
+        }
+        XCTAssertTrue(came, "listed, even offline")
+        XCTAssertEqual(reads, 4)
+
+        reads = 0
+        let never = await Claim.waitForHost(notes, timeout: .milliseconds(10), every: .milliseconds(1)) {
+            reads += 1
+            return before
+        }
+        XCTAssertFalse(never)
+        XCTAssertEqual(reads, 11, "once more at the timeout")
     }
 
     /// A sleeping computer's apps aren't probed, so their tiles say Offline at once rather
@@ -860,6 +903,12 @@ final class AdminAPITests: XCTestCase {
         XCTAssertEqual(AdminAPI.errorMessage(Data(#"{"error":"run `ovenlight doctor` there"}"#.utf8)), "run ovenlight doctor there")
         let result = try AdminAPI.decoder.decode(AdminRevokeResult.self, from: Data(#"{"removed":[],"errors":["run `ovenlight doctor` there"]}"#.utf8))
         XCTAssertEqual(result.errors, ["run ovenlight doctor there"])
+    }
+
+    func testAnOverlongConnectorMessageIsDropped() {
+        let long = "G" + String(repeating: "\u{301}", count: 100_000)
+        XCTAssertNil(AdminAPI.errorMessage(Data(#"{"error":"\#(long)"}"#.utf8)))
+        XCTAssertEqual(AdminAPI.errorMessage(Data(#"{"error":"\#(String(repeating: "a", count: 1000))"}"#.utf8))?.count, 1000)
     }
 
     func testGoTimestamps() {
@@ -1314,6 +1363,22 @@ final class LockManagerTests: XCTestCase {
         lock.didEnterBackground()
         lock.willBecomeActive()
         XCTAssertTrue(lock.isLocked)
+    }
+
+    /// Turning the lock off asks first, and a cancel keeps the delay. A delay doesn't ask.
+    func testTurningTheLockOffAsksFirst() async {
+        let lock = LockManager(defaults: .throwaway(for: self))
+        let previous = lock.lockAfterSeconds
+        defer { lock.lockAfterSeconds = previous }
+        lock.lockAfterSeconds = 300
+        var asked: [String] = []
+        await lock.setLockAfter(LockManager.off) { asked.append($0); return false }
+        XCTAssertEqual(lock.lockAfterSeconds, 300, "canceled")
+        await lock.setLockAfter(LockManager.off) { asked.append($0); return true }
+        XCTAssertEqual(lock.lockAfterSeconds, LockManager.off)
+        XCTAssertEqual(asked, ["Turn off Ovenlight’s lock", "Turn off Ovenlight’s lock"])
+        await lock.setLockAfter(60) { _ in XCTFail("a delay doesn't ask"); return false }
+        XCTAssertEqual(lock.lockAfterSeconds, 60)
     }
 }
 

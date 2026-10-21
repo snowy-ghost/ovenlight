@@ -383,11 +383,13 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
     /// Waits for the node to change (its state, or its status, which says what the owner's
     /// node carries), or the phone's network to drop, for a second at most, and never past
     /// `deadline`. The second catches a change made before the waits listened.
-    private static func change(of node: MembershipNode, before deadline: Date?) async {
+    static func change(of node: MembershipNode, before deadline: Date?) async {
         let wait = min(deadline.map { max($0.timeIntervalSinceNow, 0) } ?? 1, 1)
         await withTaskGroup(of: Void.self) { group in
             group.addTask { @MainActor in
-                for await _ in node.objectWillChange.values { return }
+                // Only the first: objectWillChange sends unasked, and a second change before this
+                // task runs again (a node coming up sets its status, then its state) would trap.
+                for await _ in node.objectWillChange.first().values { return }
             }
             group.addTask { @MainActor in
                 // Only a drop: the publisher starts with the path as it is now.
@@ -431,7 +433,7 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
     /// Any HTTP answer from the host counts; only connection-level failures don't.
     private static func canReachDirectly(_ startURL: URL) async -> Bool {
         guard let url = URL(string: OvenlightManifest.path, relativeTo: startURL)?.absoluteURL else { return false }
-        return (try? await directProbe.data(from: url)) != nil
+        return (try? await directProbe.cappedData(from: url)) != nil
     }
 
     private func giveUp(_ event: AppLoadGate.Event = .gaveUp) {
@@ -481,11 +483,20 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
         guard let url = action.request.url else { return decisionHandler(.allow) }
         let isMainFrame = action.targetFrame?.isMainFrame ?? true
         if isMainFrame { tapped = Self.isTap(action) }
+        if isMainFrame || action.shouldPerformDownload { navigationActions += 1 }
         switch NavigationPolicy.decide(url: url, appHost: app.host, isMainFrame: isMainFrame, tapped: Self.isTap(action)) {
         case .allow where action.shouldPerformDownload:
-            // `<a download>`, of the app's own pages or of a blob or data URL.
+            // `<a download>`, of the app's own pages or of a blob or data URL. Answered after a
+            // moment, and only if no newer navigation came meanwhile: WebKit holds a process
+            // assertion for each download it's told to make, even one the page's next click
+            // replaced, and a page clicking a link hundreds of times at once got Ovenlight killed.
             let source = (action.sourceFrame as WKFrameInfo?)?.securityOrigin.host
-            decisionHandler(mayDownload(url, from: source, tapped: Self.isTap(action)) ? .download : .cancel)
+            let tap = Self.isTap(action), turn = navigationActions
+            Task { [weak self] in
+                try? await Task.sleep(for: DownloadPolicy.settle)
+                guard let self, turn == navigationActions else { return decisionHandler(.cancel) }
+                decisionHandler(mayDownload(url, from: source, tapped: tap) ? .download : .cancel)
+            }
         case .allow:
             decisionHandler(.allow)
         case .openExternally(let external):
@@ -496,6 +507,10 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
             decisionHandler(.cancel)
         }
     }
+
+    /// Main-frame navigations and downloads asked for so far, so a download answered late
+    /// can tell a newer one replaced it.
+    private var navigationActions = 0
 
     /// A link activated in the app's main frame. WebKit has no public "user gesture" flag,
     /// and a script's `a.click()` counts too, so another app still opens only after
@@ -554,13 +569,19 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
         loadError = nil
         failedLoads = 0
         appDownLoads = 0
-        webView.evaluateJavaScript(Self.coverScript) { [weak self] result, _ in
-            self?.fitsCover = result as? Bool == true
+        Self.readCover(of: webView) { [weak self] cover in
+            self?.fitsCover = cover
             self?.hasLoadedOnce = true
         }
     }
 
-    /// Whether the page's viewport, its last viewport meta, asks for `viewport-fit=cover`.
+    /// Whether the page's viewport, its last viewport meta, asks for `viewport-fit=cover`. The
+    /// script runs in Ovenlight's own JavaScript world: in the page's, a page that replaced
+    /// `RegExp.test` could answer with gigabytes for WebKit to copy into Ovenlight.
+    static func readCover(of webView: WKWebView, then done: @escaping @MainActor (Bool) -> Void) {
+        webView.evaluateJavaScript(coverScript, in: nil, in: .defaultClient) { done((try? $0.get()) as? Bool == true) }
+    }
+
     static let coverScript = #"/viewport-fit\s*=\s*cover/i.test([...document.querySelectorAll('meta[name="viewport" i]')].pop()?.content ?? "")"#
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
@@ -751,12 +772,15 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
     // MARK: Downloads
 
     /// Nothing downloads while this page is kept off screen either: a script's `a.click()`
-    /// would start one under another app. One the person started and the policy refused
-    /// says so.
+    /// would start one under another app. Past `DownloadPolicy.hasRoom` the download is
+    /// refused here, before WebKit starts it: one refused later never ends, and each holds a
+    /// process assertion, so a page downloading without end got Ovenlight killed. One the
+    /// person started and the policy refused says so.
     private func mayDownload(_ url: URL, from sourceHost: String?, tapped: Bool) -> Bool {
         guard webView?.window != nil else { return false }
         let locked = OverlayPresenter.pageWindow == nil
-        if DownloadPolicy.allows(url: url, from: sourceHost, appHost: app.host, locked: locked) { return true }
+        if DownloadPolicy.hasRoom(underWay: downloads.count, waiting: WebViewPool.shared.waitingDownloads[app.id]?.count ?? 0),
+           DownloadPolicy.allows(url: url, from: sourceHost, appHost: app.host, locked: locked) { return true }
         if tapped, !locked { downloadFailed(DownloadPolicy.name(in: url)) }
         return false
     }
@@ -877,6 +901,9 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
 
     // MARK: Helpers
 
+    /// The "Open in Another App?" ask on screen or waiting for its turn.
+    private weak var openAsk: UIAlertController?
+
     /// Does nothing while Ovenlight is locked, or while this page is kept off screen: a
     /// page's script can fake a link tap, and Safari would open over another app.
     func openExternally(_ url: URL) {
@@ -884,11 +911,16 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
         if ["http", "https"].contains(url.scheme?.lowercased() ?? "") {
             present(SFSafariViewController(url: url), orElse: {})
         } else if NavigationPolicy.asksBeforeOpening(url) {
+            // One ask at a time, counted with the page's dialogs: a script can click such a
+            // link without end, and its asks stacked until Ovenlight froze.
+            guard openAsk == nil else { return }
+            let answer = pageAnswer(fallback: false) { open in if open { UIApplication.shared.open(url) } }
             let alert = UIAlertController(title: "Open in Another App?",
                                           message: "\(app.name) wants to open \(NavigationPolicy.target(of: url)).", preferredStyle: .alert)
-            alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-            alert.addAction(UIAlertAction(title: "Open", style: .default) { _ in UIApplication.shared.open(url) })
-            present(alert, orElse: {})
+            alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in answer(false) })
+            alert.addAction(UIAlertAction(title: "Open", style: .default) { _ in answer(true) })
+            openAsk = alert
+            presentPageDialog(alert, answer: answer)
         } else {
             UIApplication.shared.open(url)
         }
@@ -1051,14 +1083,11 @@ struct PageDialogs {
     /// A page's text as its dialog shows it, cut at `maxText` without splitting a character.
     static func cut(_ text: String) -> String {
         guard text.utf16.count > maxText else { return text }
-        var end = text.startIndex
-        var units = 0
-        for character in text {
-            units += character.utf16.count
-            if units > maxText { break }
-            end = text.index(after: end)
-        }
-        return text[..<end] + "\u{2026}"
+        var room = maxText
+        return String(text.prefix { character in
+            room -= character.utf16.count
+            return room >= 0
+        }) + "\u{2026}"
     }
 }
 
@@ -1097,6 +1126,15 @@ enum DownloadPolicy {
     static func removeFolder(of file: URL) {
         try? FileManager.default.removeItem(at: file.deletingLastPathComponent())
     }
+
+    /// How long an `<a download>` waits before it's answered, so a click the page replaced at
+    /// once is never made into a download (see `decidePolicyFor`).
+    static let settle: Duration = .milliseconds(100)
+
+    /// Whether an app's page may start another download: three under way and ten for the
+    /// share sheet at most, as on Android. A page that downloaded without end once filled one
+    /// sheet with 1,491 files, which froze Ovenlight each time it closed.
+    static func hasRoom(underWay: Int, waiting: Int) -> Bool { underWay < 3 && underWay + waiting < 10 }
 
     /// `sourceHost`: the host of the frame that started it, when WebKit says (a navigation
     /// response doesn't).
@@ -1143,9 +1181,15 @@ enum DownloadPolicy {
             .trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: ".")))
         let ext = (name as NSString).pathExtension
         let keepsExtension = !ext.isEmpty && ext.utf8.count <= 16
-        while name.utf8.count > maxFileNameBytes {
+        if name.utf8.count > maxFileNameBytes {
+            let suffix = keepsExtension ? "." + ext : ""
             let stem = keepsExtension ? (name as NSString).deletingPathExtension : name
-            name = String(stem.dropLast()) + (keepsExtension ? "." + ext : "")
+            // Whole characters from the start, as many as fit: one pass, however long the name.
+            var room = maxFileNameBytes - suffix.utf8.count
+            name = String(stem.prefix { character in
+                room -= character.utf8.count
+                return room >= 0
+            }) + suffix
         }
         return name.isEmpty ? "Download" : name
     }

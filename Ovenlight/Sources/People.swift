@@ -175,10 +175,8 @@ struct SharingPeopleList: View {
             for ref in theirs {
                 do {
                     problems += try await client.removePerson(ref.person).errors ?? []
-                } catch let failure as AdminError {
-                    problems.append(failure.message)
                 } catch {
-                    problems.append(AdminError.unreachable.message)
+                    problems.append(AdminError.message(for: error))
                 }
             }
             client.session.finishTasksAndInvalidate()
@@ -329,10 +327,8 @@ struct SharingPersonView: View {
             case .everything: try await client.removePerson(person.id)
             }
             error = result.errors?.first
-        } catch let failure as AdminError {
-            error = failure.message
         } catch {
-            self.error = AdminError.unreachable.message
+            self.error = AdminError.message(for: error)
         }
         await sharing.refresh(apps: registry.apps)
         working = false

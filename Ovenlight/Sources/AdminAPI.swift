@@ -385,9 +385,11 @@ enum AdminAPI {
         return base + (component.addingPercentEncoding(withAllowedCharacters: allowed) ?? component)
     }
 
-    /// The `{"error": "...", "code": "..."}` the connector answers with.
+    /// The `{"error": "...", "code": "..."}` the connector answers with. One longer than a
+    /// connector writes, which a sharer's could send to stall the phone drawing it, is left
+    /// for the caller's own words.
     static func errorMessage(_ data: Data) -> String? {
-        (try? JSONDecoder().decode(ErrorBody.self, from: data))?.error.map(shown)
+        (try? JSONDecoder().decode(ErrorBody.self, from: data))?.error.flatMap { $0.utf8.count <= 1000 ? shown($0) : nil }
     }
 
     /// A connector's message as the phone shows it, read through here: a connector marks
@@ -442,6 +444,11 @@ enum AdminError: Error, Equatable {
         case .failed(let message): return message.prefix(1).uppercased() + message.dropFirst()
         }
     }
+
+    /// The connector's words, or that the computer didn't answer.
+    static func message(for failure: Error) -> String {
+        (failure as? AdminError)?.message ?? unreachable.message
+    }
 }
 
 /// Talks to one connector's admin API through the owner's own node.
@@ -471,7 +478,7 @@ struct AdminClient {
         while true {
             attempt += 1
             do {
-                let (data, response) = try await session.data(for: request)
+                let (data, response) = try await session.cappedData(for: request)
                 let status = (response as? HTTPURLResponse)?.statusCode ?? 0
                 switch status {
                 case 200: return data

@@ -269,7 +269,7 @@ final class AppRegistry: ObservableObject {
     func refreshMetadata(for id: UUID) async {
         guard let app = apps.first(where: { $0.id == id }), let session = session(app) else { return }
         if app.hasConnector, let url = URL(string: "https://\(app.host)\(OvenlightManifest.path)"),
-           let (data, _) = try? await session.data(from: url), let manifest = OvenlightManifest.parse(data),
+           let data = await Self.body(from: url, in: session), let manifest = OvenlightManifest.parse(data),
            let index = apps.firstIndex(where: { $0.id == id }) {
             var updated = apps[index]
             if updated.hasDefaultName { updated.name = manifest.name }
@@ -282,12 +282,14 @@ final class AppRegistry: ObservableObject {
             }
             return
         }
-        guard let (data, _) = try? await session.data(from: app.startURL) else { return }
-        let html = String(decoding: data, as: UTF8.self)
-        let links = ManifestParser.links(inHTML: html, baseURL: app.startURL)
-        var meta = ManifestParser.Metadata(name: ManifestParser.title(inHTML: html))
-        if let manifestURL = links.manifest,
-           let (data, _) = try? await session.data(from: manifestURL) {
+        guard let data = await Self.body(from: app.startURL, in: session) else { return }
+        // Off the main actor: a page can run to megabytes.
+        let (links, title) = await Task.detached { [startURL = app.startURL] in
+            let html = String(decoding: data, as: UTF8.self)
+            return (ManifestParser.links(inHTML: html, baseURL: startURL), ManifestParser.title(inHTML: html))
+        }.value
+        var meta = ManifestParser.Metadata(name: title)
+        if let manifestURL = links.manifest, let data = await Self.body(from: manifestURL, in: session) {
             let fromManifest = ManifestParser.metadata(fromManifest: data, manifestURL: manifestURL)
             meta.name = fromManifest.name ?? meta.name
             meta.themeColorHex = fromManifest.themeColorHex
@@ -308,7 +310,7 @@ final class AppRegistry: ObservableObject {
 
     private func saveIcon(from url: URL, for id: UUID) async {
         guard let app = apps.first(where: { $0.id == id }), let session = session(app),
-              let (data, _) = try? await session.data(from: url),
+              let data = await Self.body(from: url, in: session),
               let image = await Task.detached(operation: { Self.iconImage(from: data) }).value, let png = image.pngData(),
               let index = apps.firstIndex(where: { $0.id == id }) else { return }
         let file = "\(id.uuidString).png"
@@ -321,6 +323,14 @@ final class AppRegistry: ObservableObject {
         save()
     }
 
+    /// Only a 2xx answer counts. A redirect to an address comes back as itself, and its page,
+    /// like an error page, says nothing about the app.
+    private static func body(from url: URL, in session: URLSession) async -> Data? {
+        guard let (data, response) = try? await session.cappedData(from: url),
+              let status = (response as? HTTPURLResponse)?.statusCode, (200..<300).contains(status) else { return nil }
+        return data
+    }
+
     func refreshAllMissingIcons() async {
         for app in apps where app.iconFile == nil {
             await refreshMetadata(for: app.id)
@@ -329,8 +339,11 @@ final class AppRegistry: ObservableObject {
 }
 
 extension Color {
+    /// Every theme color is read here, on each draw: a string longer than a color can be is
+    /// refused before it costs anything.
     init?(hex: String?) {
-        guard var hex = hex?.trimmingCharacters(in: .whitespaces) else { return nil }
+        guard let text = hex, text.utf8.count <= 16 else { return nil }
+        var hex = text.trimmingCharacters(in: .whitespaces)
         if hex.hasPrefix("#") { hex.removeFirst() }
         if hex.count == 3 { hex = hex.map { "\($0)\($0)" }.joined() }
         guard hex.count == 6, let value = UInt32(hex, radix: 16) else { return nil }

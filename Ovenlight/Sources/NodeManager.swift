@@ -349,7 +349,10 @@ final class MembershipNode: ObservableObject {
         await inOrder { [self] in
             pollTask?.cancel()
             pollTask = nil
-            cachedSession?.invalidateAndCancel()
+            // Cancelled, never invalidated: a fetch or probe holding it across an await can
+            // still start a request, which fails with the node gone, where a request on an
+            // invalidated session takes Ovenlight down.
+            cachedSession?.getAllTasks { $0.forEach { $0.cancel() } }
             cachedSession = nil
             proxy = nil
             loopback = nil
@@ -453,10 +456,10 @@ final class MembershipNode: ObservableObject {
         WebViewPool.shared.discardStaleRoutes()
     }
 
-    /// The MagicDNS suffix of the network the node is in, read from the node now.
-    func magicDNSSuffix() async -> String? {
+    /// The node's status, read from the node now rather than at the last poll.
+    func currentStatus() async -> TailnetStatus? {
         guard let node, let data = try? await node.statusJSON() else { return nil }
-        return TailnetStatus.decode(data)?.tailnet?.magicDNSSuffix
+        return TailnetStatus.decode(data)
     }
 
     /// Logs the node out of its network, closes it and deletes its state. The web views it
@@ -638,7 +641,7 @@ final class MembershipNode: ObservableObject {
         let reach: Reach
         if isOwner {
             guard let url = URL(string: OvenlightManifest.path, relativeTo: app.startURL)?.absoluteURL else { return .unreachable }
-            reach = (try? await session.data(from: url)) != nil ? .reached : .unreachable
+            reach = (try? await session.cappedData(from: url)) != nil ? .reached : .unreachable
         } else {
             reach = await GuestProbe.whoami(host: host, session: session).reach
         }
@@ -693,7 +696,53 @@ final class MembershipNode: ObservableObject {
         config.timeoutIntervalForRequest = timeout
         config.timeoutIntervalForResource = resource ?? timeout * 2
         config.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
-        return URLSession(configuration: config)
+        return URLSession(configuration: config, delegate: RedirectPolicy.shared, delegateQueue: nil)
+    }
+}
+
+extension URLSession {
+    /// Above the connector's 5 MiB for a feedback screenshot, the largest answer Ovenlight reads,
+    /// as on Android.
+    static let maxBody = 6 << 20
+
+    /// `data(for:)` that gives up on a body past `maxBody`. URLSession inflates a compressed body
+    /// as it reads, so a small answer could otherwise grow to gigabytes in Ovenlight.
+    func cappedData(for request: URLRequest) async throws -> (Data, URLResponse) {
+        try await Self.capped(bytes(for: request))
+    }
+
+    func cappedData(from url: URL) async throws -> (Data, URLResponse) {
+        try await Self.capped(bytes(from: url))
+    }
+
+    private static func capped(_ answer: (AsyncBytes, URLResponse)) async throws -> (Data, URLResponse) {
+        var data = Data()
+        for try await byte in answer.0 {
+            guard data.count < maxBody else {
+                answer.0.task.cancel()
+                throw URLError(.dataLengthExceedsMaximum)
+            }
+            data.append(byte)
+        }
+        return (data, answer.1)
+    }
+}
+
+/// iOS dials loopback, link-local and the phone's own addresses itself, past the node's proxy, so
+/// a node session follows no redirect to an IP literal, which no app host is: the 3xx is the answer.
+final class RedirectPolicy: NSObject, URLSessionTaskDelegate, Sendable {
+    static let shared = RedirectPolicy()
+
+    /// A name goes to the proxy. An address is refused however it's written: `127.1`,
+    /// `0x7f000001` and `::ffff:127.0.0.1` are loopback too.
+    static func follows(_ url: URL?) -> Bool {
+        let host = url?.host ?? ""
+        return IPv4Address(host) == nil && IPv6Address(host) == nil
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
+                    newRequest request: URLRequest, completionHandler: @escaping @Sendable (URLRequest?) -> Void) {
+        completionHandler(Self.follows(request.url) ? request : nil)
     }
 }
 
@@ -708,7 +757,7 @@ enum GuestProbe {
     }
 
     /// `firstAnswer` as in `Discovery.probe`.
-    static func probe(hosts: [String], session: URLSession?, firstAnswer: @MainActor () -> Void = {}) async -> Outcome {
+    static func probe(hosts: [String], session: URLSession?, firstAnswer: @MainActor () -> Void) async -> Outcome {
         guard let session, !hosts.isEmpty else { return Outcome() }
         return await withTaskGroup(of: (String, Reach, String?).self) { group in
             for host in hosts {
@@ -751,7 +800,7 @@ enum GuestProbe {
     /// its claim does, so a tile can follow a rename.
     static func whoami(host: String, session: URLSession) async -> (reach: Reach, appName: String?) {
         guard let url = URL(string: "https://\(host)/__ovenlight/whoami"),
-              let (data, response) = try? await session.data(from: url),
+              let (data, response) = try? await session.cappedData(from: url),
               let http = response as? HTTPURLResponse else { return (.unreachable, nil) }
         let name = http.statusCode == 200 ? appName(from: data) : nil
         return (classify(status: http.statusCode, header: http.value(forHTTPHeaderField: ConnectorError.header), body: data), name)

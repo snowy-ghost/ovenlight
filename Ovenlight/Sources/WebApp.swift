@@ -108,14 +108,16 @@ enum ManifestParser {
         var iconURL: URL?
     }
 
-    /// Finds `<link rel="manifest">` and `<link rel="apple-touch-icon">` in an HTML page.
+    /// Finds `<link rel="manifest">` and `<link rel="apple-touch-icon">` in an HTML page. Only
+    /// links on the page's own host count, as for a connector's icon (`DiscoveredApp.iconURL`).
     static func links(inHTML html: String, baseURL: URL) -> (manifest: URL?, touchIcon: URL?) {
         var manifest: URL?
         var touchIcon: URL?
-        for tag in matches(of: "<link\\b[^>]*>", in: html) {
+        // A tag's run stops at the next `<`, so one that never closes costs its own run, not the rest of the page.
+        for tag in matches(of: "<link\\b[^<>]*>", in: html) {
             guard let rel = attribute("rel", in: tag)?.lowercased(),
                   let href = attribute("href", in: tag),
-                  let url = URL(string: href, relativeTo: baseURL)?.absoluteURL else { continue }
+                  let url = resolve(href, against: baseURL), isOnHost(url, of: baseURL) else { continue }
             let rels = rel.split(separator: " ")
             if manifest == nil, rels.contains("manifest") { manifest = url }
             if touchIcon == nil, rels.contains("apple-touch-icon") { touchIcon = url }
@@ -124,14 +126,16 @@ enum ManifestParser {
     }
 
     static func title(inHTML html: String) -> String? {
-        guard let range = html.range(of: "<title[^>]*>([^<]*)</title>",
+        // The tag's run stops at the next `<`, as in `links`.
+        guard let range = html.range(of: "<title[^<>]*>([^<]*)</title>",
                                      options: [.regularExpression, .caseInsensitive]) else { return nil }
         let inner = html[range].replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
         let trimmed = inner.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
     }
 
-    /// Reads name, theme color and the best raster icon from a web manifest.
+    /// Reads name, theme color and the best raster icon from a web manifest, counting only
+    /// icons on its own host.
     static func metadata(fromManifest data: Data, manifestURL: URL) -> Metadata {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             return Metadata()
@@ -141,7 +145,7 @@ enum ManifestParser {
         var best: (size: Int, url: URL)?
         for icon in (json["icons"] as? [[String: Any]]) ?? [] {
             guard let src = icon["src"] as? String,
-                  let url = URL(string: src, relativeTo: manifestURL)?.absoluteURL else { continue }
+                  let url = resolve(src, against: manifestURL), isOnHost(url, of: manifestURL) else { continue }
             // UIImage can't decode SVG; skip it and anything declared as non-raster.
             if let type = icon["type"] as? String, type.contains("svg") { continue }
             if url.pathExtension.lowercased() == "svg" { continue }
@@ -151,6 +155,17 @@ enum ManifestParser {
             if best == nil || score > best!.size { best = (score, url) }
         }
         return Metadata(name: name, themeColorHex: theme, iconURL: best?.url)
+    }
+
+    /// A link resolved against `base`, or nil past 2 KB, which no icon's or manifest's address
+    /// reaches: as on Android, a page's endless run of `..` segments then costs nothing on any
+    /// iOS version.
+    static func resolve(_ reference: String, against base: URL) -> URL? {
+        reference.utf8.count <= 2048 ? URL(string: reference, relativeTo: base)?.absoluteURL : nil
+    }
+
+    private static func isOnHost(_ url: URL, of base: URL) -> Bool {
+        Discovery.normalizedHost(url.host ?? "") == Discovery.normalizedHost(base.host ?? "")
     }
 
     private static func largestSize(_ sizes: String?) -> Int {
@@ -168,9 +183,13 @@ enum ManifestParser {
         return regex.matches(in: text, range: NSRange(location: 0, length: ns.length)).map { ns.substring(with: $0.range) }
     }
 
+    /// The attributes `links` reads, compiled once rather than for each of a page's tags.
+    private static let attributes = ["rel", "href"].reduce(into: [String: NSRegularExpression]()) { patterns, name in
+        patterns[name] = try? NSRegularExpression(pattern: "\\b\(name)\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s>]+))", options: .caseInsensitive)
+    }
+
     private static func attribute(_ name: String, in tag: String) -> String? {
-        let pattern = "\\b\(name)\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s>]+))"
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else { return nil }
+        guard let regex = attributes[name] else { return nil }
         let ns = tag as NSString
         guard let match = regex.firstMatch(in: tag, range: NSRange(location: 0, length: ns.length)) else { return nil }
         for group in 1...3 where match.range(at: group).location != NSNotFound {
@@ -188,6 +207,8 @@ enum NavigationPolicy {
         case openExternally(URL)
         case refuse
     }
+
+    static let maxAddressBytes = 2 << 20
 
     /// Schemes iOS itself confirms before opening (calls). Every other app Ovenlight asks
     /// about first: a page's script can fake a link tap, and `shortcuts://` runs shortcuts.
@@ -207,6 +228,9 @@ enum NavigationPolicy {
     /// open only then, never from a script or a frame.
     static func decide(url: URL, appHost: String, isMainFrame: Bool, tapped: Bool) -> Decision {
         let scheme = url.scheme?.lowercased() ?? ""
+        // Chrome refuses an address over 2 MB, so no app needs one, and Ovenlight would otherwise
+        // load a page's endless popup itself, or hand it to Safari, at gigabytes of memory.
+        guard scheme == "data" || url.absoluteString.utf8.count <= maxAddressBytes else { return .refuse }
         switch scheme {
         case "http", "https":
             if !isMainFrame { return .allow }

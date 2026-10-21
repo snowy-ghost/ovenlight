@@ -30,7 +30,7 @@ struct DiscoveredApp: Equatable {
 
     /// The icon, only when it stays on the app's own host (the node can only reach that).
     var iconURL: URL? {
-        guard let path = manifest.icon, let url = URL(string: path, relativeTo: startURL)?.absoluteURL,
+        guard let path = manifest.icon, let url = ManifestParser.resolve(path, against: startURL),
               url.host?.lowercased() == host else { return nil }
         return url
     }
@@ -117,14 +117,14 @@ enum Discovery {
 
     /// Fetches every candidate's manifest concurrently. `firstAnswer` runs as the first host
     /// answers, which proves the path, without waiting for a machine that drops the probe.
-    static func probe(hosts: [String], session: URLSession?, firstAnswer: @MainActor () -> Void = {}) async -> Outcome {
+    static func probe(hosts: [String], session: URLSession?, firstAnswer: @MainActor () -> Void) async -> Outcome {
         guard let session, !hosts.isEmpty else { return Outcome() }
         return await withTaskGroup(of: (String, Data?, Bool).self) { group in
             for host in hosts {
                 group.addTask {
                     guard let url = URL(string: "https://\(host)\(OvenlightManifest.path)") else { return (host, nil, false) }
                     do {
-                        let (data, response) = try await session.data(from: url)
+                        let (data, response) = try await session.cappedData(from: url)
                         let ok = (response as? HTTPURLResponse)?.statusCode == 200
                         return (host, ok ? data : nil, true)
                     } catch {

@@ -4,7 +4,9 @@ import SwiftUI
 /// Gates the whole app behind Face ID (falling back to the device passcode).
 @MainActor
 final class LockManager: ObservableObject {
-    @Published private(set) var isLocked: Bool
+    @Published private(set) var isLocked: Bool {
+        didSet { if !isLocked { defaults.removeObject(forKey: Self.lockedByHandKey) } }
+    }
     @Published private(set) var isAuthenticating = false
     @Published var lastError: String?
     /// This iPhone has no passcode, so there is nothing to unlock with and Ovenlight stays
@@ -13,6 +15,8 @@ final class LockManager: ObservableObject {
 
     static let lockAfterKey = "lockAfterSeconds"
     static let defaultLockAfter = 60
+    /// Off: no time in the background is that long, and a launch doesn't lock either.
+    static let off = Int.max
 
     /// Seconds in the background before Ovenlight locks again. 0 locks every time.
     @AppStorage(LockManager.lockAfterKey) var lockAfterSeconds = LockManager.defaultLockAfter
@@ -26,6 +30,9 @@ final class LockManager: ObservableObject {
     private let boot: () -> String?
     private let defaults: UserDefaults
     static let backgroundedKey = "backgroundedAt"
+    /// Locked from the home screen or the app menu, Ovenlight stays locked until an unlock,
+    /// whatever the delay, even after iOS quits it in the background or the iPhone restarts.
+    static let lockedByHandKey = "lockedByHand"
     /// Face ID starts by itself at launch and on each return from the background, never
     /// again after the person cancels it; the Face ID sheet itself makes Ovenlight briefly
     /// inactive, and coming back from that is no reason to ask again.
@@ -34,8 +41,8 @@ final class LockManager: ObservableObject {
     /// Whether there is anything to protect yet. A new install stays unlocked until there is.
     private let hasSavedData: () -> Bool
 
-    /// A launch locks unless Ovenlight was quit in the background within the lock delay,
-    /// since this iPhone last started.
+    /// A launch locks unless the lock is off, or Ovenlight was quit in the background within
+    /// the lock delay, since this iPhone last started. A lock by hand holds either way.
     init(hasSavedData: @escaping () -> Bool = { true }, now: @escaping () -> ContinuousClock.Instant = { .now },
          boot: @escaping () -> String? = LockManager.bootSession, defaults: UserDefaults = .standard) {
         self.hasSavedData = hasSavedData
@@ -47,7 +54,10 @@ final class LockManager: ObservableObject {
            let backgrounded = try? JSONDecoder().decode(Backgrounded.self, from: saved), let boot = boot(), backgrounded.boot == boot {
             backgroundedAt = backgrounded.at
         }
-        if isLocked, backgroundedAt != nil, !lockIsDue { isLocked = false }
+        if isLocked, !defaults.bool(forKey: Self.lockedByHandKey), lockAfterSeconds == Self.off || backgroundedAt != nil && !lockIsDue {
+            isLocked = false
+        }
+        if !isLocked { defaults.removeObject(forKey: Self.lockedByHandKey) }
     }
 
     private struct Backgrounded: Codable {
@@ -102,6 +112,16 @@ final class LockManager: ObservableObject {
 
     func lock() {
         isLocked = true
+        defaults.set(true, forKey: Self.lockedByHandKey)
+    }
+
+    /// Turning the lock off asks first, so someone handed the unlocked iPhone can't. An
+    /// iPhone with no passcode has nothing to ask for, and the confirmation passes.
+    func setLockAfter(_ seconds: Int, confirm: (String) async -> Bool = OwnerAuth.confirm) async {
+        if seconds == Self.off, lockAfterSeconds != Self.off {
+            guard await confirm("Turn off Ovenlight’s lock") else { return }
+        }
+        lockAfterSeconds = seconds
     }
 
     func didBecomeActive() async {
@@ -110,11 +130,10 @@ final class LockManager: ObservableObject {
         await unlock()
     }
 
-    func unlock() async {
+    func unlock(with context: LAContext = LAContext()) async {
         guard isLocked, !isAuthenticating else { return }
         isAuthenticating = true
         defer { isAuthenticating = false }
-        let context = LAContext()
         var error: NSError?
         guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
             if let error, Self.isPasscodeNotSet(error) { return openWithoutPasscode() }

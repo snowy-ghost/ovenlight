@@ -1,4 +1,5 @@
 import AVFoundation
+import LocalAuthentication
 import SwiftUI
 import WebKit
 import XCTest
@@ -35,6 +36,57 @@ final class ManifestParserTests: XCTestCase {
         XCTAssertEqual(ManifestParser.title(inHTML: "<title>\n Coach </title>"), "Coach")
         XCTAssertNil(ManifestParser.title(inHTML: "<p>none</p>"))
     }
+
+    /// Without an ovenlight.json, Ovenlight fetches only what the app's own host serves: a
+    /// link or icon anywhere else, an IP address among them, counts as none.
+    func testSkipsLinksAndIconsOnOtherHosts() {
+        let html = """
+        <link rel="manifest" href="http://127.0.0.1:8080/m.json"><link rel="manifest" href="/app.webmanifest">
+        <link rel="apple-touch-icon" href="https://cdn.example.com/t.png"><link rel="apple-touch-icon" href="//[fe80::1]/t.png">
+        <link rel="apple-touch-icon" href="https://Alex-Mac.example.ts.net.:8443/touch.png">
+        """
+        let links = ManifestParser.links(inHTML: html, baseURL: base)
+        XCTAssertEqual(links.manifest?.absoluteString, "https://alex-mac.example.ts.net:8443/app.webmanifest")
+        XCTAssertEqual(links.touchIcon?.lastPathComponent, "touch.png")
+        let offHost = ManifestParser.links(inHTML: #"<link rel="manifest apple-touch-icon" href="http://169.254.1.1/x">"#, baseURL: base)
+        XCTAssertNil(offHost.manifest)
+        XCTAssertNil(offHost.touchIcon)
+
+        let manifest = """
+        {"icons":[{"src":"http://192.168.1.20/1024.png","sizes":"1024x1024"},{"src":"https://[::1]/512.png","sizes":"512x512"},
+          {"src":"icon-192.png","sizes":"192x192"}]}
+        """
+        let meta = ManifestParser.metadata(fromManifest: Data(manifest.utf8), manifestURL: base.appendingPathComponent("app.webmanifest"))
+        XCTAssertEqual(meta.iconURL?.absoluteString, "https://alex-mac.example.ts.net:8443/icon-192.png", "the best on the app's own host")
+        let elsewhere = #"{"icons":[{"src":"https://cdn.example.com/512.png","sizes":"512x512"}]}"#
+        XCTAssertNil(ManifestParser.metadata(fromManifest: Data(elsewhere.utf8), manifestURL: base).iconURL)
+    }
+
+    /// A page whose tags never close reads in time linear in its length. Each `<title` or
+    /// `<link` scanned to the end of the page, so 300 KB of them held the main actor for minutes.
+    func testATagThatNeverClosesDoesntStallTheRead() {
+        let head = #"<title lang="en">Coach</title><link rel="manifest" href="m.json"><link rel="apple-touch-icon" href="t.png">"#
+        XCTAssertEqual(ManifestParser.title(inHTML: head), "Coach")
+        let links = ManifestParser.links(inHTML: head, baseURL: base)
+        XCTAssertEqual(links.manifest?.absoluteString, "https://alex-mac.example.ts.net:8443/m.json")
+        XCTAssertEqual(links.touchIcon?.absoluteString, "https://alex-mac.example.ts.net:8443/t.png")
+        for tag in ["<title", "<link "] {
+            let page = String(repeating: tag, count: 50_000)
+            let start = ContinuousClock.now
+            XCTAssertNil(ManifestParser.title(inHTML: page))
+            XCTAssertNil(ManifestParser.links(inHTML: page, baseURL: base).manifest)
+            XCTAssertLessThan(ContinuousClock.now - start, .seconds(2), tag)
+        }
+    }
+
+    /// An icon whose address is thousands of `..` segments is skipped, as on Android, where
+    /// dropping them took seconds.
+    func testAnIconAddressOfEndlessDotSegmentsIsSkipped() {
+        let src = String(repeating: "a/", count: 120_000) + String(repeating: "../", count: 120_000) + "icon.png"
+        let manifest = #"{"icons":[{"src":"\#(src)","sizes":"512x512"},{"src":"ok.png","sizes":"192x192"}]}"#
+        let meta = ManifestParser.metadata(fromManifest: Data(manifest.utf8), manifestURL: base)
+        XCTAssertEqual(meta.iconURL?.absoluteString, "https://alex-mac.example.ts.net:8443/ok.png")
+    }
 }
 
 final class NavigationPolicyTests: XCTestCase {
@@ -46,6 +98,15 @@ final class NavigationPolicyTests: XCTestCase {
 
     func testSameHostStaysInApp() {
         XCTAssertEqual(decide("https://alex-mac.example.ts.net:8443/cards"), .allow)
+    }
+
+    /// An address past 2 MB is neither loaded nor handed on. A data URL is the page's own
+    /// content, left to WebKit.
+    func testAnEndlessAddressGoesNowhere() {
+        let pad = String(repeating: "a", count: NavigationPolicy.maxAddressBytes)
+        XCTAssertEqual(decide("https://alex-mac.example.ts.net/big?pad=" + pad), .refuse)
+        XCTAssertEqual(decide("https://example.com/big?pad=" + pad, tapped: true), .refuse)
+        XCTAssertEqual(decide("data:text/plain," + pad), .allow)
     }
 
     func testOnlyTheAppsOwnPagesPopUpAPost() {
@@ -170,6 +231,13 @@ final class DownloadPolicyTests: XCTestCase {
         XCTAssertFalse(allows("javascript:void(0)"))
     }
 
+    func testOnlySoManyFilesWaitForTheSheet() {
+        XCTAssertTrue(DownloadPolicy.hasRoom(underWay: 0, waiting: 0))
+        XCTAssertTrue(DownloadPolicy.hasRoom(underWay: 2, waiting: 7))
+        XCTAssertFalse(DownloadPolicy.hasRoom(underWay: 3, waiting: 0), "three under way at most")
+        XCTAssertFalse(DownloadPolicy.hasRoom(underWay: 1, waiting: 9), "ten for the sheet at most")
+    }
+
     func testAttachmentsAndFilesWebKitCantShowDownload() {
         func action(_ status: Int?, _ disposition: String?, canShow: Bool = true) -> DownloadPolicy.ResponseAction {
             DownloadPolicy.action(status: status, disposition: disposition, canShow: canShow)
@@ -200,9 +268,19 @@ final class DownloadPolicyTests: XCTestCase {
         XCTAssertEqual(DownloadPolicy.fileName("a:b\\c\u{0}d.txt"), "a-b-c-d.txt")
         XCTAssertEqual(DownloadPolicy.fileName(" .. "), "Download")
         XCTAssertEqual(DownloadPolicy.fileName("Notes ✏️ May.md"), "Notes ✏️ May.md")
-        let long = DownloadPolicy.fileName(String(repeating: "é", count: 300) + ".csv")
-        XCTAssertLessThanOrEqual(long.utf8.count, DownloadPolicy.maxFileNameBytes)
-        XCTAssertTrue(long.hasSuffix("é.csv"))
+    }
+
+    /// A page's name of any length is cut in time linear in its length, at the same place as
+    /// before: whole characters, the extension kept. Cut a character a pass, a name of 100,000
+    /// letters held the main actor for over a minute.
+    func testALongNameIsCutWithoutStalling() {
+        func letters(_ count: Int) -> String { String(repeating: "a", count: count) }
+        XCTAssertEqual(DownloadPolicy.fileName(String(repeating: "é", count: 300) + ".csv"), String(repeating: "é", count: 98) + ".csv")
+        XCTAssertEqual(DownloadPolicy.fileName(letters(184) + "🇬🇧🇬🇧.txt"), letters(184) + "🇬🇧.txt")
+        XCTAssertEqual(DownloadPolicy.fileName(letters(190) + "🇬🇧.txt"), letters(190) + ".txt")
+        let start = ContinuousClock.now
+        XCTAssertEqual(DownloadPolicy.fileName(letters(100_000) + ".txt"), letters(196) + ".txt")
+        XCTAssertLessThan(ContinuousClock.now - start, .seconds(2))
     }
 
     func testAFailedDownloadIsNamedOnlyByARealFileName() {
@@ -314,6 +392,25 @@ final class NoWebRTCTests: XCTestCase {
             """, contentWorld: .page)
         let gone = Array(repeating: "undefined", count: 5).joined(separator: ",")
         XCTAssertEqual(result as? [String], [gone, gone, gone, gone, "undefined", ""])
+    }
+}
+
+final class CoverTests: XCTestCase {
+    /// The viewport is read where the page can't answer for it: one that replaces what the
+    /// script calls changes nothing.
+    @MainActor
+    func testAPageCantAnswerForItsViewport() async throws {
+        let replaced = "<script>RegExp.prototype.test = () => 'x'.repeat(1e6); Array.prototype.pop = () => ({ content: 'viewport-fit=cover' });</script>"
+        for (head, cover) in [("<meta name=viewport content='width=device-width, viewport-fit=cover'>", true),
+                              ("<meta name=viewport content='width=device-width'>", false)] {
+            let view = WKWebView(frame: .zero, configuration: WKWebViewConfiguration())
+            view.loadHTMLString(head + replaced + "<p>hi</p>", baseURL: URL(string: "https://example.com/"))
+            for _ in 0..<50 where try await view.evaluateJavaScript("document.readyState == 'complete'") as? Bool != true {
+                try await Task.sleep(for: .milliseconds(100))
+            }
+            let read = await withCheckedContinuation { done in WebCoordinator.readCover(of: view) { done.resume(returning: $0) } }
+            XCTAssertEqual(read, cover, head)
+        }
     }
 }
 
@@ -467,7 +564,12 @@ final class AppRegistryTests: XCTestCase {
         await nodes.disableOwner()
         XCTAssertEqual(registry.apps.map(\.id), [handAdded.id, shared.id])
         XCTAssertEqual(nodes.discovered, [], "what the node found goes with it, so nothing merges it back")
-        let after = await stores()
+        // WebKit may still list a store for a moment after removing it.
+        var after = await stores()
+        for _ in 0..<20 where after.contains(found.dataStoreID) {
+            try await Task.sleep(for: .milliseconds(100))
+            after = await stores()
+        }
         XCTAssertFalse(after.contains(found.dataStoreID), "its data store is deleted")
 
         await registry.mergeDiscovered([coach, recipes])
@@ -600,6 +702,29 @@ final class AppRegistryTests: XCTestCase {
         XCTAssertEqual(SlowHostProtocol.paths, [OvenlightManifest.path], "not the start page")
         XCTAssertFalse(FileManager.default.fileExists(atPath: file.path), "nothing saved")
         XCTAssertEqual(changes, 0, "nothing redrawn")
+    }
+
+    /// A redirect to an address comes back as the 302 itself. Its page, like an error's, never
+    /// names an app, colors it or gives it an icon, and neither does a 302 for ovenlight.json.
+    func testOnlyA2xxAnswerFillsInAnApp() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let apps = ["moved", "moved-connector", "broken", "notes"].map { label in
+            let url = URL(string: "https://\(label).tailabc123.ts.net/")!
+            return WebApp(name: url.host!, startURL: url, discovered: label == "moved-connector")
+        }
+        try JSONEncoder().encode(apps).write(to: dir.appendingPathComponent("apps.json"))
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [StatusProtocol.self]
+        let session = URLSession(configuration: config)
+        defer { session.invalidateAndCancel() }
+        let registry = AppRegistry(directory: dir, session: { _ in session })
+
+        for app in apps { await registry.refreshMetadata(for: app.id) }
+        XCTAssertEqual(registry.apps.map(\.name), ["moved.tailabc123.ts.net", "moved-connector.tailabc123.ts.net", "Notes", "Notes App"])
+        XCTAssertEqual(registry.apps.map(\.themeColorHex), [nil, nil, nil, "#e05a00"])
+        XCTAssertEqual(registry.apps.map { $0.iconFile != nil }, [false, false, false, true])
     }
 }
 
@@ -737,6 +862,90 @@ final class LockTimingTests: XCTestCase {
         XCTAssertFalse(relaunched.isLocked)
         relaunched.willBecomeActive()
         XCTAssertTrue(launch().isLocked, "quit in front: no time in the background to go by")
+    }
+
+    /// Off never locks: not on a return, however long Ovenlight was away, not at a launch,
+    /// not after a restart. Back to a delay, it locks again.
+    func testOffNeverLocks() {
+        let defaults = UserDefaults.throwaway(for: self)
+        var now = ContinuousClock.now
+        var boot: String? = "boot-1"
+        var saved = false
+        func launch() -> LockManager { LockManager(hasSavedData: { saved }, now: { now }, boot: { boot }, defaults: defaults) }
+        let lock = launch()
+        let previous = lock.lockAfterSeconds
+        defer { lock.lockAfterSeconds = previous }
+        lock.lockAfterSeconds = LockManager.off
+        saved = true
+        XCTAssertFalse(launch().isLocked, "never in the background yet")
+
+        lock.didEnterBackground()
+        now += .seconds(365 * 24 * 60 * 60)
+        XCTAssertFalse(lock.lockIsDue)
+        XCTAssertFalse(launch().isLocked, "quit in the background a year ago")
+        boot = "boot-2"
+        XCTAssertFalse(launch().isLocked, "the iPhone restarted")
+        boot = nil
+        XCTAssertFalse(launch().isLocked, "this boot can't be told")
+        lock.willBecomeActive()
+        XCTAssertFalse(lock.isLocked)
+
+        lock.lockAfterSeconds = 60
+        XCTAssertTrue(launch().isLocked)
+        lock.didEnterBackground()
+        now += .seconds(60)
+        lock.willBecomeActive()
+        XCTAssertTrue(lock.isLocked)
+    }
+
+    /// Locked by hand, even with the lock off, Ovenlight stays locked through a relaunch and a
+    /// restart until an unlock, and an iPhone with no passcode still opens. A delay works as before.
+    func testALockByHandHoldsUntilAnUnlock() async {
+        let defaults = UserDefaults.throwaway(for: self)
+        var now = ContinuousClock.now
+        var boot: String? = "boot-1"
+        var saved = false
+        func launch() -> LockManager { LockManager(hasSavedData: { saved }, now: { now }, boot: { boot }, defaults: defaults) }
+        var app = launch()
+        let previous = app.lockAfterSeconds
+        defer { app.lockAfterSeconds = previous }
+        app.lockAfterSeconds = LockManager.off
+        saved = true
+
+        app.lock()
+        app.didEnterBackground()
+        now += .seconds(60)
+        app = launch()
+        XCTAssertTrue(app.isLocked, "quit in the background")
+        boot = "boot-2"
+        app = launch()
+        XCTAssertTrue(app.isLocked, "the iPhone restarted")
+        await app.unlock(with: FakeFaceID())
+        XCTAssertFalse(app.isLocked)
+        XCTAssertFalse(launch().isLocked, "unlocked, the lock is off again")
+
+        app.lock()
+        app = launch()
+        let noPasscode = FakeFaceID()
+        noPasscode.passcodeSet = false
+        await app.unlock(with: noPasscode)
+        XCTAssertFalse(app.isLocked, "nothing to unlock with")
+        XCTAssertFalse(launch().isLocked)
+
+        app.lock()
+        saved = false
+        XCTAssertFalse(launch().isLocked, "nothing to protect")
+        saved = true
+        XCTAssertFalse(launch().isLocked)
+
+        app.lockAfterSeconds = 60
+        app.lock()
+        app = launch()
+        XCTAssertTrue(app.isLocked, "a delay: locked by hand")
+        await app.unlock(with: FakeFaceID())
+        app.didEnterBackground()
+        now += .seconds(30)
+        XCTAssertFalse(launch().isLocked, "a delay: quit 30 seconds after it left the front")
     }
 
     func testAnEmptyNodeFolderOrListIsNothingToLock() throws {
@@ -1018,6 +1227,44 @@ final class DiscoveryTests: XCTestCase {
     }
 }
 
+final class CappedDataTests: XCTestCase {
+    /// A body is read up to `maxBody` and refused past it, counted as URLSession hands it over,
+    /// after any decompression.
+    func testABodyPastTheCapIsRefused() async throws {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [SizedProtocol.self]
+        let session = URLSession(configuration: config)
+        defer { session.invalidateAndCancel() }
+        let (data, _) = try await session.cappedData(from: URL(string: "https://notes.tailabc123.ts.net/\(URLSession.maxBody)")!)
+        XCTAssertEqual(data.count, URLSession.maxBody)
+        do {
+            _ = try await session.cappedData(for: URLRequest(url: URL(string: "https://notes.tailabc123.ts.net/\(URLSession.maxBody + 1)")!))
+            XCTFail("a body past the cap was read")
+        } catch let error as URLError {
+            XCTAssertEqual(error.code, .dataLengthExceedsMaximum)
+        }
+    }
+}
+
+/// Answers with as many bytes as its path says, in 1 MiB pieces.
+private final class SizedProtocol: URLProtocol {
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        guard let url = request.url, var left = Int(url.lastPathComponent) else { return }
+        client?.urlProtocol(self, didReceive: HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!,
+                            cacheStoragePolicy: .notAllowed)
+        while left > 0 {
+            client?.urlProtocol(self, didLoad: Data(count: min(left, 1 << 20)))
+            left -= 1 << 20
+        }
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
+}
+
 /// Serves every host a connector's manifest (with no icon) at once, except `host`, which fails
 /// after `delay`.
 private final class SlowHostProtocol: URLProtocol {
@@ -1041,6 +1288,34 @@ private final class SlowHostProtocol: URLProtocol {
         client?.urlProtocol(self, didReceive: HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!,
                             cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: Data(#"{"name":"Coach","version":1}"#.utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
+}
+
+/// Serves an app's page, manifest, ovenlight.json and icon, each an answer that would fill the
+/// app in. On a `moved` host every answer is a 302, and on `broken` all but the page are a 404.
+private final class StatusProtocol: URLProtocol {
+    static let icon = UIGraphicsImageRenderer(size: CGSize(width: 8, height: 8)).pngData { context in
+        context.fill(CGRect(x: 0, y: 0, width: 8, height: 8))
+    }
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        guard let url = request.url, let host = url.host else { return }
+        let status = host.hasPrefix("moved") ? 302 : host.hasPrefix("broken") && url.path != "/" ? 404 : 200
+        let body = switch url.path {
+        case OvenlightManifest.path: Data(##"{"name":"Notes App","version":1,"themeColor":"#e05a00"}"##.utf8)
+        case "/manifest.json": Data(##"{"name":"Notes App","theme_color":"#e05a00"}"##.utf8)
+        case "/icon.png": Self.icon
+        default: Data(#"<title>Notes</title><link rel="manifest" href="/manifest.json"><link rel="apple-touch-icon" href="/icon.png">"#.utf8)
+        }
+        client?.urlProtocol(self, didReceive: HTTPURLResponse(url: url, statusCode: status, httpVersion: nil, headerFields: nil)!,
+                            cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: body)
         client?.urlProtocolDidFinishLoading(self)
     }
 
@@ -1299,6 +1574,20 @@ final class AppLoadGateTests: XCTestCase {
         XCTAssertEqual(run([.woke]), .waiting, "only after giving up")
         XCTAssertEqual(run([.nodeReady, .woke]), .probing)
     }
+
+    /// A node coming up changes twice in one turn, its status and then its state, while an
+    /// app opening waits on it: the wait ends at the first.
+    @MainActor
+    func testAWaitOnANodeEndsAtTheFirstOfTwoChanges() async throws {
+        let node = MembershipNode(id: "m1") { nil }
+        let wait = Task { await WebCoordinator.change(of: node, before: nil) }
+        try await Task.sleep(for: .milliseconds(100))
+        let start = ContinuousClock.now
+        node.objectWillChange.send()
+        node.objectWillChange.send()
+        await wait.value
+        XCTAssertLessThan(ContinuousClock.now - start, .milliseconds(500), "the change ended it, not the one-second cap")
+    }
 }
 
 final class ConnectionStateTests: XCTestCase {
@@ -1368,6 +1657,73 @@ final class NodeManagerTests: XCTestCase {
         XCTAssertNil(nodes.memberships[membership.id])
         XCTAssertFalse(FileManager.default.fileExists(atPath: directory.path))
     }
+
+    /// An icon or a probe can hold the node's session across its awaits while the node stops
+    /// (a guest leaving, a restart): its next request fails, and doesn't take Ovenlight down.
+    func testASessionHeldAcrossAStopStillTakesRequests() async throws {
+        let id = UUID().uuidString
+        let node = MembershipNode(id: id) { .init(controlURL: "http://127.0.0.1:9", authKey: nil, hostName: "session-test") }
+        defer { try? FileManager.default.removeItem(at: NodeManager.stateDirectory(for: id)) }
+        await node.start()
+        let session = try XCTUnwrap(node.session(), "up, with its proxy")
+        await node.stop()
+        let answer = try? await session.data(from: URL(string: "https://app.tail0000.ts.net/")!)
+        XCTAssertNil(answer, "the node is gone")
+    }
+}
+
+/// iOS dials loopback, link-local and the phone's own addresses past the node's proxy, so a node
+/// session's redirect to any IP address comes back as the 3xx and is never asked for; a name is followed.
+final class RedirectPolicyTests: XCTestCase {
+    func testRedirectsToAddressesComeBackAndNamesFollow() async throws {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [RedirectingProtocol.self]
+        let session = URLSession(configuration: config, delegate: RedirectPolicy.shared, delegateQueue: nil)
+        defer { session.invalidateAndCancel() }
+        RedirectingProtocol.hosts = []
+        for target in ["http://127.0.0.1:8080/", "http://169.254.1.1/", "http://[fe80::1]:8080/", "https://[::1]/",
+                       "http://192.168.1.20:3000/", "http://127.1/", "http://0x7f000001/", "http://[::ffff:127.0.0.1]/"] {
+            let (data, response) = try await session.data(from: RedirectingProtocol.url(to: target))
+            XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 302, target)
+            XCTAssertEqual(response.url?.host, RedirectingProtocol.host, target)
+            XCTAssertEqual(String(decoding: data, as: UTF8.self), "moved", target)
+        }
+        let (_, response) = try await session.data(from: RedirectingProtocol.url(to: "https://login.tailabc123.ts.net/"))
+        XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
+        XCTAssertEqual(RedirectingProtocol.hosts, Array(repeating: RedirectingProtocol.host, count: 9) + ["login.tailabc123.ts.net"])
+    }
+}
+
+/// `host` answers `/?to=<url>` with a 302 there; any other request gets a 200.
+private final class RedirectingProtocol: URLProtocol {
+    static let host = "app.tailabc123.ts.net"
+    /// The hosts asked for, in order: set from the loading thread, read once the fetches end.
+    static var hosts: [String] = []
+
+    static func url(to target: String) -> URL {
+        var parts = URLComponents(string: "https://\(host)/")!
+        parts.queryItems = [URLQueryItem(name: "to", value: target)]
+        return parts.url!
+    }
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        guard let url = request.url else { return }
+        Self.hosts.append(url.host ?? "")
+        let target = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "to" }?.value
+        let response = HTTPURLResponse(url: url, statusCode: target == nil ? 200 : 302, httpVersion: nil,
+                                       headerFields: target.map { ["Location": $0] })!
+        if let target, let next = URL(string: target) {
+            client?.urlProtocol(self, wasRedirectedTo: URLRequest(url: next), redirectResponse: response)
+        }
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data((target == nil ? "ok" : "moved").utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
 }
 
 @MainActor
@@ -1434,4 +1790,16 @@ extension UserDefaults {
         test.addTeardownBlock { UserDefaults().removePersistentDomain(forName: name) }
         return UserDefaults(suiteName: name)!
     }
+}
+
+/// Stands in for Face ID, which a test can't pass: it always matches, or finds no passcode.
+private final class FakeFaceID: LAContext {
+    var passcodeSet = true
+
+    override func canEvaluatePolicy(_ policy: LAPolicy, error: NSErrorPointer) -> Bool {
+        if !passcodeSet { error?.pointee = NSError(domain: LAErrorDomain, code: LAError.passcodeNotSet.rawValue) }
+        return passcodeSet
+    }
+
+    override func evaluatePolicy(_ policy: LAPolicy, localizedReason: String) async throws -> Bool { true }
 }
