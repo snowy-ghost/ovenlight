@@ -199,7 +199,10 @@ promote 1.1.1 air1
 pull 1.1.1 air1 1.1.0
 build 1.1.1 1.0.6
 refused "1.1.1 was promoted already" sign air1 1.1.1
+tick
 refused "nothing promoted before 1.1.0" sign air1 --pull 1.1.0
+refused "with no leading zeros or suffix, not 1.01.0" release 1.01.0 1.0.6
+refused "with no leading zeros or suffix, not 01.1.0" publish --promote 01.1.0
 
 fresh canary "a failed canary before U's promote"
 keyfolder air1 paper1
@@ -303,7 +306,9 @@ pull 1.1.2 air1 1.1.1
 keys air2 paper1
 build 1.1.3 1.0.6
 signfolder 1.1.3 air2
+tick
 refused "four weeks and four days" sign air2 --promote 1.1.3
+tick
 refused "four weeks and four days" sign air2 --resign
 backdate 33
 # The live index re-signed with the new key before the canary, then the promote and a pull.
@@ -341,6 +346,7 @@ pass "secure is still 1.0.6"
 refused "sign a fresh one" publish --promote 1.1.2
 build 1.1.3 1.0.5
 signfolder 1.1.3 air1
+tick
 refused "secure would go down" sign air1 --promote 1.1.3
 
 fresh gates "what no release gets past"

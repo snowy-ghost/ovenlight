@@ -50,10 +50,21 @@ below() { [ "$1" != "$2" ] && atleast "$1" "$2"; }
 # field <name> <index>: a string or number from an index.
 field() { sed -En "s/.*\"$1\": \"?([^\",]*).*/\1/p" "$2"; }
 
+# canonical <version>: whether it's a version as an index holds it: 1.2.3, with no leading
+# zeros and no suffix.
+canonical() { [[ "$1" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; }
+
 # index <latest> <secure> <reinstallBelow> <serial> <SHA256SUMS>: a release's index, with the
-# SHA-256 of each archive. It stays under 4 KB, which is all ovenlight doctor reads.
+# SHA-256 of each archive, refused when the updater would refuse it. Its serial is above 0
+# once signed. It stays under 4 KB, which is all the updater and ovenlight doctor read.
 index() {
-  local s
+  local s v
+  for v in "$1" "$2" "$3"; do
+    canonical "$v" || refuse "an index's versions look like 1.2.3, not \"$v\""
+  done
+  { atleast "$2" "$1" && atleast "$3" "$1"; } ||
+    refuse "an index's latest ($1) can't be below its secure ($2) or reinstallBelow ($3)"
+  [[ "$4" =~ ^[0-9]+$ ]] || refuse "an index's serial is a number of seconds, not \"$4\""
   s="$(printf '{"latest": "%s", "secure": "%s", "reinstallBelow": "%s", "serial": %s, "archives": {' "$1" "$2" "$3" "$4"
     awk 'NR > 1 { printf ", " } { printf "\"%s\": \"%s\"", $2, $1 }' "$5"
     printf '}}')"

@@ -94,8 +94,8 @@ elif $unsigned; then
   indexed=false
 fi
 if $indexed; then
-  for v in "$secure" $reinstall; do
-    [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || refuse "secure and reinstallBelow look like 1.0.0, not $v"
+  for v in "$version" "$secure" $reinstall; do
+    canonical "$v" || refuse "a release's versions look like 1.2.3, with no leading zeros or suffix, not $v"
   done
   if [ -z "$reinstall" ]; then
     for f in "$records"/*/index.json; do

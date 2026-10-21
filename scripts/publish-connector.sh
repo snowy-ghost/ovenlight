@@ -35,12 +35,12 @@ fi
 version=
 if [ "$mode" != resign ]; then
   version="${1:?$usage}"
-  [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "versions look like 1.0.0, not $version" >&2; exit 1; }
 fi
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck source=connector-release-lib.sh
 . "$root/scripts/connector-release-lib.sh"
+[ -z "$version" ] || canonical "$version" || refuse "versions look like 1.2.3, with no leading zeros or suffix, not $version"
 
 # The updater's cap on an archive, and on the binary it takes out of one.
 cap="$(sed -n 's/^const maxArchiveBytes = \([0-9][0-9 <]*\)$/\1/p' "$root/connector/keys.go")"
