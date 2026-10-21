@@ -848,6 +848,9 @@ func TestUpdateFinding(t *testing.T) {
 		{"off", view(func(u *updateView) { pending(u); u.Off = true }), "1.1.5", true, statusWarn, "updates are off"},
 		{"off, 8 days without a check", view(func(u *updateView) { u.Off, u.LastCheck = true, now.Add(-8*day) }), "1.2.0", true, statusWarn, "can't tell when its release has a security problem"},
 		{"needs its script", view(func(u *updateView) { u.NeedsScript = true }), "1.0.5", true, statusWarn, installDocs},
+		{"needs its script, off", view(func(u *updateView) { u.NeedsScript, u.Off = true, true }), "1.0.5", true, statusWarn, installDocs},
+		{"needs its script, below secure, off", view(func(u *updateView) { u.NeedsScript, u.BelowSecure, u.Off = true, true, true }), "1.0.5", true, statusFail, installDocs},
+		{"below secure, waiting, not running", view(func(u *updateView) { pending(u); u.BelowSecure = true }), "1.0.9", false, statusFail, "has a security problem"},
 		{"failed twice", view(func(u *updateView) {
 			pending(u)
 			u.Failure = &updateFailure{Version: "1.2.0", Count: 2}
@@ -873,6 +876,9 @@ func TestUpdateFinding(t *testing.T) {
 		}
 		if got != nil && strings.Contains(got.Fix, "downloads.ovenlight.app/connector/latest/") {
 			t.Errorf("%s: points at an unverified download", c.name)
+		}
+		if c.name == "below secure, waiting, not running" && got.Fix != "" {
+			t.Errorf("%s: %q, though it installs nothing while down", c.name, got.Fix)
 		}
 		if c.name == "doesn't run here" && strings.Contains(got.Fix, installDocs) {
 			t.Errorf("%s: offers an install by hand, which fails the same way", c.name)
