@@ -55,12 +55,8 @@ func (d *daemon) swapIn(p pendingSwap) error {
 		jsonfile.Remove(path)
 		return err
 	}
-	replace := linkAndRename
-	if runtime.GOOS == "windows" {
-		replace = renameAside
-	}
 	installed := installedBinary(d.stateDir)
-	err := replace(installed, p.Next)
+	err := replaceBinary(installed, p.Next)
 	if err == nil {
 		_, err = os.Stat(installed) // the service's path, which the exit needs
 	}
@@ -142,99 +138,6 @@ func linkAndRename(installed, next string) error {
 		return err
 	}
 	return os.Rename(next, installed)
-}
-
-// renameAside puts next in place of installed on Windows, which renames a running .exe
-// but won't replace or delete one. The old binaries nothing runs go first, as
-// install.ps1 removes them, and an older .prev moves aside (an older ovenlight mcp may
-// still run it). Then moveIn makes the running binary .prev and puts next in its place.
-func renameAside(installed, next string) error {
-	bin, prev := filepath.Dir(installed), prevBinary(installed)
-	// A put-back still trying in the background has the running binary at .prev, which
-	// mustn't move aside.
-	if !exists(installed) {
-		return fmt.Errorf("%s isn't back in place yet", installed)
-	}
-	old, _ := filepath.Glob(filepath.Join(bin, "ovenlight.old*.exe"))
-	for _, f := range old {
-		os.Remove(f) // still running, or held: it goes next time
-	}
-	if exists(prev) {
-		if err := renameRetry(prev, oldBinary(bin), renameWait); err != nil {
-			return err
-		}
-	}
-	return moveIn(installed, next, prev)
-}
-
-// restorePrev puts .prev back in place of installed, the running binary, for a
-// rollback. On macOS and Linux one rename replaces it, so installed is never missing. On
-// Windows moveIn moves the running binary aside.
-func restorePrev(installed string, windows bool) error {
-	prev := prevBinary(installed)
-	if !windows {
-		return os.Rename(prev, installed)
-	}
-	return moveIn(installed, prev, oldBinary(filepath.Dir(installed)))
-}
-
-// moveIn puts from in place of installed, the running binary, which moves to aside, all
-// in one folder: Windows renames a running .exe but won't replace one. installed is
-// missing between those two renames, so whatever waits comes before them: both files are
-// opened for renaming, each tried again while something such as antivirus holds it, and
-// held, so the renames follow each other directly. When the second fails, the running
-// binary goes back, and a put-back that fails too keeps trying in the background for as
-// long as the process runs: until it's back, nothing is at the service's path to start.
-func moveIn(installed, from, aside string) error {
-	src, err := holdForRename(from, renameWait)
-	if err != nil {
-		return err
-	}
-	defer src.Close()
-	cur, err := holdForRename(installed, renameWait)
-	if err != nil {
-		return err
-	}
-	defer cur.Close()
-	if err := cur.rename(aside); err != nil {
-		return err
-	}
-	if err := src.rename(installed); err != nil {
-		if perr := cur.rename(installed); perr != nil {
-			log.Printf("updates: can't put %s back as %s yet: %v", aside, installed, perr)
-			go putBack(aside, installed)
-		}
-		return err
-	}
-	return nil
-}
-
-// putBack renames from to to, trying every second until something is at to.
-func putBack(from, to string) {
-	for !exists(to) {
-		if os.Rename(from, to) != nil {
-			time.Sleep(time.Second)
-		}
-	}
-}
-
-// oldBinary is a new name for a binary moved aside on Windows, as install.ps1 names them.
-func oldBinary(bin string) string {
-	return filepath.Join(bin, fmt.Sprintf("ovenlight.old-%d.exe", time.Now().UnixNano()))
-}
-
-// renameWait is how long a rename on Windows is tried while something such as antivirus
-// holds a file. Nothing has moved yet while it waits.
-const renameWait = 30 * time.Second
-
-// renameRetry renames from to to, trying again for up to wait.
-func renameRetry(from, to string, wait time.Duration) error {
-	for end := time.Now().Add(wait); ; time.Sleep(100 * time.Millisecond) {
-		err := os.Rename(from, to)
-		if err == nil || errors.Is(err, os.ErrNotExist) || time.Now().After(end) {
-			return err
-		}
-	}
 }
 
 // syncDir flushes a folder's entries to disk, so a rename or a new file in it survives a

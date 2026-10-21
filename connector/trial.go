@@ -7,7 +7,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -62,11 +61,10 @@ var serviceTrial *trial
 // binary has verified the index that brought it. Otherwise .prev comes back, and a
 // release that deadlocks its daemon, so the trial can't end, is caught by backstop.
 type trial struct {
-	rec     updateTrial
-	dir     string // the state folder, the binary's bin/..
-	now     func() time.Time
-	windows bool
-	exit    func(why string) // ends the connector after a rollback
+	rec  updateTrial
+	dir  string // the state folder, the binary's bin/..
+	now  func() time.Time
+	exit func(why string) // ends the connector after a rollback
 
 	mu     sync.Mutex
 	d      *daemon // once it's up
@@ -83,7 +81,7 @@ func startTrial() {
 	if err != nil {
 		return
 	}
-	t, exit := beginTrial(filepath.Dir(filepath.Dir(exe)), version(), runtime.GOOS == "windows", func() time.Time { return time.Now().Round(0) })
+	t, exit := beginTrial(filepath.Dir(filepath.Dir(exe)), version(), func() time.Time { return time.Now().Round(0) })
 	if exit {
 		os.Exit(1)
 	}
@@ -115,7 +113,7 @@ func startTrial() {
 // can't be read now stays for the next start. A second start with no clean stop or
 // Windows restart before it rolls back at once, and exit says the connector should then
 // exit.
-func beginTrial(dir, v string, windows bool, now func() time.Time) (t *trial, exit bool) {
+func beginTrial(dir, v string, now func() time.Time) (t *trial, exit bool) {
 	path := filepath.Join(dir, updateTrialFile)
 	data, err := jsonfile.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
@@ -125,14 +123,14 @@ func beginTrial(dir, v string, windows bool, now func() time.Time) (t *trial, ex
 		log.Printf("updates: can't read the last update's trial: %v", err)
 		return nil, false
 	}
-	t = &trial{dir: dir, now: now, windows: windows, served: map[string]bool{}}
+	t = &trial{dir: dir, now: now, served: map[string]bool{}}
 	switch err := json.Unmarshal(data, &t.rec); {
 	case err != nil:
 		log.Printf("updates: the last update's trial ends, since it can't be read: %v", err)
 	case t.rec.To != v:
 	case !exists(prevBinary(installedBinary(dir))):
 		log.Printf("updates: %s has nothing to roll back to, so its trial ends", v)
-	case t.rec.Starts > 0 && !t.rec.Stopped && !t.restarted():
+	case t.rec.Starts > 0 && !t.rec.Stopped && !restartedSince(t.rec.At, now()):
 		return nil, t.rollback(fmt.Errorf("%s started again within its trial: it crashed, hung or was killed", v))
 	default:
 		if t.rec.Starts > 0 {
@@ -147,12 +145,6 @@ func beginTrial(dir, v string, windows bool, now func() time.Time) (t *trial, ex
 	}
 	t.end()
 	return nil, false
-}
-
-// restarted reports whether Windows started since the swap. Windows ends the connector at
-// a restart with no signal to mark a clean stop, so the boot time stands in for one.
-func (t *trial) restarted() bool {
-	return t.windows && t.now().Add(-sinceBoot()).After(t.rec.At)
 }
 
 func exists(path string) bool {
@@ -368,7 +360,7 @@ func (t *trial) failed(why error) func(*updateState) {
 func (t *trial) restore() bool {
 	installed := installedBinary(t.dir)
 	// A crash once .prev is back starts it, and it ends the trial, which isn't its own.
-	if err := restorePrev(installed, t.windows); err != nil {
+	if err := restorePrev(installed); err != nil {
 		// The trial stays, so the next start tries again.
 		log.Printf("updates: can't put %s back: %v", prevBinary(installed), err)
 		return exists(installed)
