@@ -3,23 +3,19 @@ package main
 import (
 	"bytes"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"golang.org/x/crypto/ssh"
 )
 
-// The signatures in testdata/update are ssh-keygen -Y sign's, of index.json: the test key's
-// in three namespaces and with sha256, and one from a key in a Mac's Secure Enclave
-// (sk-ecdsa-sha2-nistp256@openssh.com, through /usr/lib/ssh-keychain.dylib), the kind the
-// release key is. That key was made for this and then deleted.
+// The signatures in testdata/update are ssh-keygen -Y sign's, of index.json, made by its
+// sign.sh: the test key's in three namespaces and with sha256, each release key's, and one
+// from a key in a Mac's Secure Enclave (sk-ecdsa-sha2-nistp256@openssh.com, through
+// /usr/lib/ssh-keychain.dylib), the kind the release key is. That key was made for this
+// and then deleted.
 func TestVerifySig(t *testing.T) {
-	read := func(name string) []byte {
-		b, err := os.ReadFile("testdata/update/" + name)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return b
-	}
+	read := func(name string) []byte { return readUpdateTestdata(t, name) }
 	testKey := mustParseKeys(string(read("../releasekey/test-key.pub")))
 	skKey := mustParseKeys(string(read("sk-key.pub")))
 	defer func(k []ssh.PublicKey) { releaseKeys = k }(releaseKeys)
@@ -67,6 +63,51 @@ func TestVerifySig(t *testing.T) {
 		releaseKeys = c.keys
 		if err := verifySig(index, c.sig, nsLatest); err == nil {
 			t.Errorf("verified with only %d other keys built in", len(c.keys))
+		}
+	}
+}
+
+func readUpdateTestdata(t *testing.T, name string) []byte {
+	t.Helper()
+	b, err := os.ReadFile("testdata/update/" + name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+// Each built-in release key signed index.json once, in ovenlight-test, which nothing that
+// ships accepts, and the keys this build holds verify each signature as they will a
+// release's.
+func TestReleaseKeySignatures(t *testing.T) {
+	index := readUpdateTestdata(t, "index.json")
+	names, _ := filepath.Glob("testdata/update/index.json.release-*.sig")
+	keys := mustParseKeys(releaseKeysFile)
+	if len(keys) == 0 || len(names) != len(keys) {
+		t.Fatalf("%d release keys, %d signatures: run testdata/update/sign.sh", len(keys), len(names))
+	}
+	var sigs [][]byte
+	for _, name := range names {
+		sig := readUpdateTestdata(t, filepath.Base(name))
+		if err := verifySig(index, sig, "ovenlight-test"); err != nil {
+			t.Errorf("%s: %v", name, err)
+		}
+		if verifySig(index, sig, nsLatest) == nil || verifySig(index, sig, nsCanary) == nil {
+			t.Errorf("%s verified in a namespace that ships", name)
+		}
+		sigs = append(sigs, sig)
+	}
+	defer func(k []ssh.PublicKey) { releaseKeys = k }(releaseKeys)
+	for _, k := range keys {
+		releaseKeys = []ssh.PublicKey{k}
+		n := 0
+		for _, sig := range sigs {
+			if verifySig(index, sig, "ovenlight-test") == nil {
+				n++
+			}
+		}
+		if n != 1 {
+			t.Errorf("%s made %d of the signatures", ssh.FingerprintSHA256(k), n)
 		}
 	}
 }
