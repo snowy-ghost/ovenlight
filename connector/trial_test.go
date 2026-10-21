@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -43,7 +44,11 @@ func trialTo(t *testing.T, latest, namespace string) updateTrial {
 // that brought it.
 func trialRig(t *testing.T, rec updateTrial) (dir, installed string) {
 	useTestKey(t)
-	dir = t.TempDir()
+	dir, err := os.MkdirTemp("", "ol") // short enough for a control socket
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
 	installed = installedBinary(dir)
 	if err := os.MkdirAll(filepath.Dir(installed), 0o700); err != nil {
 		t.Fatal(err)
@@ -188,21 +193,28 @@ func TestTrialEnds(t *testing.T) {
 	}
 }
 
-// While another connector holds the state folder, a start changes nothing: it's run
-// --service by hand, which then fails on the lock.
+// While another connector answers for the state folder, a start changes nothing: it's
+// run --service by hand, which then fails on the lock. With none answering, a start whose
+// lock fails is counted, so a release that breaks the lock still rolls back.
 func TestTrialLocked(t *testing.T) {
 	for _, starts := range []int{0, 1} {
 		rec := trialTo(t, "1.2.0", nsLatest)
 		rec.Starts, rec.Started = starts, at(0, 2, 31)
 		dir, installed := trialRig(t, rec)
-		lock, err := lockStateDir(dir)
+		ln, err := listenControl(socketPath(dir))
 		if err != nil {
 			t.Fatal(err)
 		}
+		go func() {
+			for conn, err := ln.Accept(); err == nil; conn, err = ln.Accept() {
+				json.NewEncoder(conn).Encode(controlReply{OK: true})
+				conn.Close()
+			}
+		}()
 		if tr, exit := beginTrial(dir, "1.2.0", time.Now); tr != nil || exit {
 			t.Errorf("%d starts: went on", starts)
 		}
-		lock.Close()
+		ln.Close()
 		if got := readTrial(t, dir); got.Starts != starts || readFile(t, installed) != "new" {
 			t.Errorf("%d starts: changed %+v", starts, got)
 		}
@@ -210,6 +222,18 @@ func TestTrialLocked(t *testing.T) {
 			t.Errorf("%d starts: %+v", starts, st.Failed)
 		}
 	}
+	rec := trialTo(t, "1.2.0", nsLatest)
+	rec.Starts, rec.Started = 1, at(0, 2, 31)
+	dir, installed := trialRig(t, rec)
+	lock, err := lockStateDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lock.Close()
+	if _, exit := beginTrial(dir, "1.2.0", time.Now); !exit {
+		t.Error("a second start with the lock held and no connector answering went on")
+	}
+	rolledBack(t, dir, installed)
 }
 
 // The release must verify, with its own keys, the index that brought it: a canary index

@@ -109,9 +109,10 @@ func startTrial() {
 // the swap didn't finish, a rollback did, or an install script put another release in
 // place. So does one with nothing to roll back to, or that isn't a trial record. One that
 // can't be read now stays for the next start, and so does every trial while another
-// connector holds the state folder: run --service started by hand while the service runs
-// then fails on that lock. A second start with no clean stop or Windows restart since the
-// last counted start rolls back at once, and exit says the connector should then exit.
+// connector answers for the state folder: run --service started by hand while the
+// service runs then fails on its lock. A second start with no clean stop or Windows
+// restart since the last counted start rolls back at once, and exit says the connector
+// should then exit.
 func beginTrial(dir, v string, now func() time.Time) (t *trial, exit bool) {
 	path := filepath.Join(dir, updateTrialFile)
 	data, err := jsonfile.ReadFile(path)
@@ -122,11 +123,11 @@ func beginTrial(dir, v string, now func() time.Time) (t *trial, exit bool) {
 		log.Printf("updates: can't read the last update's trial: %v", err)
 		return nil, false
 	}
-	lock, err := lockStateDir(dir)
-	if err != nil {
+	// The state lock can't tell: it's the code on trial, and a release whose lock fails
+	// would never count a start. A connector that answers is the service, though.
+	if reply, _ := callDaemon(dir, "status", 3*time.Second); reply != nil {
 		return nil, false
 	}
-	defer lock.Close()
 	t = &trial{dir: dir, now: now, served: map[string]bool{}}
 	switch err := json.Unmarshal(data, &t.rec); {
 	case err != nil:
