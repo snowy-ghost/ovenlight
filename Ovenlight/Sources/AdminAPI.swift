@@ -385,9 +385,11 @@ enum AdminAPI {
         return base + (component.addingPercentEncoding(withAllowedCharacters: allowed) ?? component)
     }
 
-    /// The `{"error": "...", "code": "..."}` the connector answers with.
+    /// The `{"error": "...", "code": "..."}` the connector answers with. One longer than a
+    /// connector writes, which a sharer's could send to stall the phone drawing it, is left
+    /// for the caller's own words.
     static func errorMessage(_ data: Data) -> String? {
-        (try? JSONDecoder().decode(ErrorBody.self, from: data))?.error.map(shown)
+        (try? JSONDecoder().decode(ErrorBody.self, from: data))?.error.flatMap { $0.utf8.count <= 1000 ? shown($0) : nil }
     }
 
     /// A connector's message as the phone shows it, read through here: a connector marks

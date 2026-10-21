@@ -905,6 +905,12 @@ final class AdminAPITests: XCTestCase {
         XCTAssertEqual(result.errors, ["run ovenlight doctor there"])
     }
 
+    func testAnOverlongConnectorMessageIsDropped() {
+        let long = "G" + String(repeating: "\u{301}", count: 100_000)
+        XCTAssertNil(AdminAPI.errorMessage(Data(#"{"error":"\#(long)"}"#.utf8)))
+        XCTAssertEqual(AdminAPI.errorMessage(Data(#"{"error":"\#(String(repeating: "a", count: 1000))"}"#.utf8))?.count, 1000)
+    }
+
     func testGoTimestamps() {
         XCTAssertNotNil(AdminAPI.parseDate("2026-09-28T17:03:00Z"))
         XCTAssertNotNil(AdminAPI.parseDate("2026-09-28T17:03:00-04:00"))
