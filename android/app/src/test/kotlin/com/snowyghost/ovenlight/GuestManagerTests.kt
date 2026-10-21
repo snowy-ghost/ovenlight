@@ -366,7 +366,7 @@ class GuestManagerTests {
      * through another, the app waits half a minute at most for its host to appear.
      */
     @Test
-    fun testAClaimThroughAnotherAppWaitsHalfAMinuteForItsHost() = runTest {
+    fun testAClaimThroughAnotherAppWaitsForItsHost() = runTest {
         val s = joinedForHouseGuide()
         s.clients.respond = { null }
         s.guests.accept(echoInvite)

@@ -173,13 +173,14 @@ class GuestCleanupTests {
      * first. Anything else claims at the invite's own host, as before.
      */
     @Test
-    fun testAnInviteMissingFromThePeersIsClaimedThroughAnotherApp() {
+    fun testAClaimGoesThroughAnotherAppOnlyWhenItsHostIsAbsent() {
         val guide = "house-guide.taildef456.ts.net"
         val invite = InviteLink(
             control = URI("https://c.example"), key = "k", owner = "Riley", app = "echo-board", invite = "i", host = echo, name = "Echo", to = "Sam Lee",
         )
         fun through(apps: List<String>, peers: Map<String, Boolean>) = Claim.through(invite, apps, status(peers = peers))
         assertEquals("absent", listOf(guide, notes), through(listOf(notes, guide), mapOf(notes to false, guide to true)))
+        assertEquals("an app the peers don't list is skipped", listOf(guide), through(listOf("recipes.taildef456.ts.net", guide), mapOf(guide to true)))
         assertEquals("listed offline", emptyList<String>(), through(listOf(guide), mapOf(echo to false, guide to true)))
         assertEquals("present", emptyList<String>(), through(listOf(guide), mapOf(echo to true, guide to true)))
         assertEquals("no other host", emptyList<String>(), through(listOf("Echo-Board.taildef456.ts.net."), mapOf(guide to true)))

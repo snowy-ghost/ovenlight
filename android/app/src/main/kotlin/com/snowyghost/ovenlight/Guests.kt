@@ -150,8 +150,8 @@ object Claim {
     }
 
     /**
-     * The membership's other app hosts to claim [invite] through before its own, those listed
-     * online first. An invite under a new name reuses the node, which reaches only the apps it
+     * The membership's other app hosts to claim [invite] through before its own: those the
+     * node's peers list, online first, as on iOS. An invite under a new name reuses the node, which reaches only the apps it
      * was invited to, and the connector retags it for this one only once the invite is claimed
      * through one of those. None when the node's peers list the invite's host, offline or not,
      * or can't say (see [GuestProbe.absentHosts]), and for a node that just joined with this
@@ -161,8 +161,8 @@ object Claim {
         val host = Discovery.normalizedHost(invite.host)
         val others = appHosts.map(Discovery::normalizedHost).toSet() - host
         if (status == null || GuestProbe.absentHosts(others + host, status)?.contains(host) != true) return emptyList()
-        val online = status.peers.filter { it.online }.map { Discovery.normalizedHost(it.dnsName) }.toSet()
-        return others.sortedBy { it !in online }
+        val listed = status.peers.filter { Discovery.normalizedHost(it.dnsName) in others }
+        return (listed.filter { it.online } + listed.filter { !it.online }).map { Discovery.normalizedHost(it.dnsName) }
     }
 
     fun request(invite: InviteLink, host: String = invite.host): Request {
