@@ -558,14 +558,14 @@ func updateFinding(u *updateView, v string, running bool, now time.Time) *Check 
 	stale := u.SelfUpdating && now.Sub(last) > updateStale
 	failed := u.Failure != nil && u.Failure.Count >= failuresToWarn
 	switch {
+	case u.NeedsScript:
+		warn(fmt.Sprintf("%s needs its install script: an update replaces only the binary, and %s is too old for that", u.Latest, v), byHand(u.Latest))
 	case u.Off:
 		msg := "updates are off, so the connector installs no release on its own"
 		if stale {
 			msg += ", and no update check has worked for 7 days, so it can't tell when its release has a security problem"
 		}
 		warn(msg, "Turn them back on with `ovenlight update on`")
-	case u.NeedsScript:
-		warn(fmt.Sprintf("%s needs its install script: an update replaces only the binary, and %s is too old for that", u.Latest, v), byHand(u.Latest))
 	case failed && strings.Contains(u.Failure.Error, notRunnable):
 		warn(fmt.Sprintf("%s doesn't run on this computer, so updating to it has failed %d times in a row: %s", u.Failure.Version, u.Failure.Count, u.Failure.Error),
 			"It most likely needs a newer version of the operating system. Once that's installed, the connector installs "+u.Failure.Version+" on its own the next night")
@@ -589,7 +589,7 @@ func updateFinding(u *updateView, v string, running bool, now time.Time) *Check 
 		if stuck != nil {
 			c.Message += "; " + stuck.Message
 			c.Fix, c.Actor = stuck.Fix, actorPerson
-		} else if u.Pending != "" {
+		} else if u.Pending != "" && running {
 			c.Fix = "Nothing to do: " + u.Pending + " " + u.installs(now)
 		}
 		return c

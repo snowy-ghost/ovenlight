@@ -7,26 +7,12 @@ import (
 	"time"
 )
 
-// sinceBoot is only read on Windows, and set by the tests of it.
-var sinceBoot func() time.Duration
+// replaceBinary puts next in place of installed, the running binary.
+var replaceBinary = linkAndRename
 
-// renamer is a file to rename. Only Windows keeps a file that something holds from being
-// renamed, so here it's just the path, for the tests of Windows' renames.
-type renamer struct{ path string }
+// restorePrev puts .prev back in place of installed, the running binary, for a rollback.
+// One rename replaces it, so installed is never missing.
+func restorePrev(installed string) error { return os.Rename(prevBinary(installed), installed) }
 
-func holdForRename(path string, _ time.Duration) (*renamer, error) {
-	if _, err := os.Lstat(path); err != nil {
-		return nil, err
-	}
-	return &renamer{path}, nil
-}
-
-func (r *renamer) rename(to string) error {
-	if err := os.Rename(r.path, to); err != nil {
-		return err
-	}
-	r.path = to
-	return nil
-}
-
-func (r *renamer) Close() error { return nil }
+// restartedSince is false: a restart on macOS and Linux stops the connector cleanly first.
+func restartedSince(_, _ time.Time) bool { return false }

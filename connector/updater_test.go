@@ -514,6 +514,26 @@ func TestUpdaterSecurityFixByDay(t *testing.T) {
 	}
 }
 
+// A security fix on a computer that's never quiet goes at the start of the next night.
+func TestUpdaterSecurityFixBusy(t *testing.T) {
+	srv := newReleaseServer(t)
+	srv.publish("1.2.0", "1.2.0", "1.1.0", 100)
+	tu := newTestUpdater(t, srv, t.TempDir(), "1.1.5", at(0, 9, 0), false)
+	tu.st.Minute = 10 * 60 // its night starts at 02:00
+	tu.busyAt(at(0, 9, 0))
+	if u := readUpdateView(tu.d.stateDir, "1.1.5", true); !u.InstallBy.Equal(at(1, 2, 0)) {
+		t.Errorf("%+v", u)
+	}
+	tu.busyAt(at(1, 1, 59))
+	if len(tu.swaps) != 0 {
+		t.Fatal("swapped while busy")
+	}
+	tu.busyAt(at(1, 2, 0))
+	if len(tu.swaps) != 1 {
+		t.Error("no swap at the start of the next night")
+	}
+}
+
 // A pull published while an update waits stops its swap, and a fetch that fails before
 // the swap waits for its retry.
 func TestUpdaterFetchBeforeTheSwap(t *testing.T) {
@@ -611,10 +631,13 @@ func TestUpdaterClockRanAhead(t *testing.T) {
 	tu = newTestUpdater(t, srv, t.TempDir(), "1.1.5", at(0, 9, 0), false)
 	tu.st.Minute = 10 * 60 // its night starts at 02:00
 	tu.pollAt(at(0, 9, 0))
-	tu.st.Seen = at(9, 9, 0)
+	tu.st.Seen, tu.st.Checked, tu.st.Since = at(9, 9, 0), at(9, 9, 0), at(9, 9, 0)
+	tu.d.lastRequest.Store(at(9, 9, 0).UnixNano())
 	tu.pollAt(at(0, 9, 1))
-	if !tu.st.Seen.Equal(at(0, 9, 1)) {
-		t.Errorf("seen %v", tu.st.Seen)
+	for name, got := range map[string]time.Time{"seen": tu.st.Seen, "checked": tu.st.Checked, "since": tu.st.Since, "last request": tu.d.lastRequestTime()} {
+		if !got.Equal(at(0, 9, 1)) {
+			t.Errorf("%s %v", name, got)
+		}
 	}
 }
 
@@ -705,7 +728,7 @@ func TestUpdateNow(t *testing.T) {
 	canary := testIndex("1.2.0", "1.1.0", "1.1.0", 1, srv.release("1.2.0"))
 	sig := signIndex(t, canary, nsCanary)
 	ctx := context.Background()
-	if _, err := tu.updateNow(ctx, canary, sig); err == nil || !strings.Contains(err.Error(), "try again in 10m0s") {
+	if _, err := tu.updateNow(ctx, canary, sig); err == nil || !strings.Contains(err.Error(), "up and awake for 10 minutes, so its apps are serving: try again in 10 minutes") {
 		t.Errorf("at the start: %v", err)
 	}
 	tu.pass(10 * time.Minute)
@@ -828,6 +851,9 @@ func TestUpdateFinding(t *testing.T) {
 		{"off", view(func(u *updateView) { pending(u); u.Off = true }), "1.1.5", true, statusWarn, "updates are off"},
 		{"off, 8 days without a check", view(func(u *updateView) { u.Off, u.LastCheck = true, now.Add(-8*day) }), "1.2.0", true, statusWarn, "can't tell when its release has a security problem"},
 		{"needs its script", view(func(u *updateView) { u.NeedsScript = true }), "1.0.5", true, statusWarn, installDocs},
+		{"needs its script, off", view(func(u *updateView) { u.NeedsScript, u.Off = true, true }), "1.0.5", true, statusWarn, installDocs},
+		{"needs its script, below secure, off", view(func(u *updateView) { u.NeedsScript, u.BelowSecure, u.Off = true, true, true }), "1.0.5", true, statusFail, installDocs},
+		{"below secure, waiting, not running", view(func(u *updateView) { pending(u); u.BelowSecure = true }), "1.0.9", false, statusFail, "has a security problem"},
 		{"failed twice", view(func(u *updateView) {
 			pending(u)
 			u.Failure = &updateFailure{Version: "1.2.0", Count: 2}
@@ -853,6 +879,9 @@ func TestUpdateFinding(t *testing.T) {
 		}
 		if got != nil && strings.Contains(got.Fix, "downloads.ovenlight.app/connector/latest/") {
 			t.Errorf("%s: points at an unverified download", c.name)
+		}
+		if c.name == "below secure, waiting, not running" && got.Fix != "" {
+			t.Errorf("%s: %q, though it installs nothing while down", c.name, got.Fix)
 		}
 		if c.name == "doesn't run here" && strings.Contains(got.Fix, installDocs) {
 			t.Errorf("%s: offers an install by hand, which fails the same way", c.name)

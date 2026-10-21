@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -60,11 +59,6 @@ func trialRig(t *testing.T, rec updateTrial) (dir, installed string) {
 	return dir, installed
 }
 
-const onWindows = runtime.GOOS == "windows"
-
-// The tests' computer booted long before their swaps, unless a test says otherwise.
-func init() { sinceBoot = func() time.Duration { return 100000 * time.Hour } }
-
 // rolledBack checks that .prev is back and the trial gone, and returns the failure
 // recorded.
 func rolledBack(t *testing.T, dir, installed string) *updateFailure {
@@ -84,14 +78,14 @@ func rolledBack(t *testing.T, dir, installed string) *updateFailure {
 func TestTrialSecondStart(t *testing.T) {
 	dir, installed := trialRig(t, trialTo(t, "1.2.0", nsLatest))
 	clock := &fakeClock{at(0, 2, 31)}
-	if tr, exit := beginTrial(dir, "1.2.0", onWindows, clock.now); tr == nil || exit {
+	if tr, exit := beginTrial(dir, "1.2.0", clock.now); tr == nil || exit {
 		t.Fatal("no trial")
 	}
 	if rec := readTrial(t, dir); rec.Starts != 1 || readFile(t, installed) != "new" {
 		t.Fatalf("the start isn't counted: %+v", rec)
 	}
 	clock.t = at(0, 2, 32)
-	if tr, exit := beginTrial(dir, "1.2.0", onWindows, clock.now); tr != nil || !exit {
+	if tr, exit := beginTrial(dir, "1.2.0", clock.now); tr != nil || !exit {
 		t.Fatal("a second start went on")
 	}
 	f := rolledBack(t, dir, installed)
@@ -107,54 +101,30 @@ func TestTrialSecondStart(t *testing.T) {
 // start begins it afresh. A start after that with no clean stop rolls back.
 func TestTrialCleanStop(t *testing.T) {
 	dir, installed := trialRig(t, trialTo(t, "1.2.0", nsLatest))
-	tr, _ := beginTrial(dir, "1.2.0", onWindows, time.Now)
+	tr, _ := beginTrial(dir, "1.2.0", time.Now)
 	tr.stopped()
-	if rec := readTrial(t, dir); !rec.Stopped || rec.Starts != 1 {
+	if rec := readTrial(t, dir); rec.Starts != 0 {
 		t.Fatalf("not marked: %+v", rec)
 	}
-	if tr, exit := beginTrial(dir, "1.2.0", onWindows, time.Now); tr == nil || exit {
+	if tr, exit := beginTrial(dir, "1.2.0", time.Now); tr == nil || exit {
 		t.Fatal("a start after a clean stop rolled back")
 	}
-	if rec := readTrial(t, dir); rec.Stopped || rec.Starts != 1 || readFile(t, installed) != "new" {
+	if rec := readTrial(t, dir); rec.Starts != 1 || readFile(t, installed) != "new" {
 		t.Fatalf("not afresh: %+v", rec)
 	}
-	if _, exit := beginTrial(dir, "1.2.0", onWindows, time.Now); !exit {
+	if _, exit := beginTrial(dir, "1.2.0", time.Now); !exit {
 		t.Fatal("a crash after it went on")
 	}
 	rolledBack(t, dir, installed)
 
 	// Once the trial is over, a stop leaves nothing behind.
 	dir, _ = trialRig(t, trialTo(t, "1.2.0", nsLatest))
-	tr, _ = beginTrial(dir, "1.2.0", onWindows, time.Now)
+	tr, _ = beginTrial(dir, "1.2.0", time.Now)
 	tr.end()
 	tr.stopped()
 	if exists(filepath.Join(dir, updateTrialFile)) {
 		t.Error("a stop after the trial wrote it again")
 	}
-}
-
-// Windows ends the connector at a restart with no clean stop, so a start after the
-// computer booted since the swap begins the trial afresh. With no boot, it rolls back.
-func TestTrialWindowsRestart(t *testing.T) {
-	defer func(f func() time.Duration) { sinceBoot = f }(sinceBoot)
-	dir, installed := trialRig(t, trialTo(t, "1.2.0", nsLatest))
-	beginTrial(dir, "1.2.0", true, time.Now)
-	sinceBoot = func() time.Duration { return time.Minute }
-	if tr, exit := beginTrial(dir, "1.2.0", true, time.Now); tr == nil || exit {
-		t.Fatal("a start after a restart rolled back")
-	}
-	if tr, exit := beginTrial(dir, "1.2.0", false, time.Now); tr != nil || !exit {
-		t.Fatal("a Mac or Linux start with no clean stop went on")
-	}
-	rolledBack(t, dir, installed)
-
-	dir, installed = trialRig(t, trialTo(t, "1.2.0", nsLatest))
-	beginTrial(dir, "1.2.0", true, time.Now)
-	sinceBoot = func() time.Duration { return 100000 * time.Hour }
-	if _, exit := beginTrial(dir, "1.2.0", true, time.Now); !exit {
-		t.Fatal("a start with no restart went on")
-	}
-	rolledBack(t, dir, installed)
 }
 
 // A rollback that a crash cut short after recording its failure doesn't count it again,
@@ -165,14 +135,14 @@ func TestTrialRollbackCountsOnce(t *testing.T) {
 		want     int
 	}{{at(0, 2, 33), 1}, {at(-1, 2, 30), 2}} {
 		rec := trialTo(t, "1.2.0", nsLatest)
-		rec.Starts = 1
+		rec.Starts, rec.Started = 1, at(0, 2, 31)
 		dir, installed := trialRig(t, rec)
 		st := &updateState{Failed: &updateFailure{Version: "1.2.0", At: c.failedAt, Error: "earlier", Count: 1}}
 		if err := jsonfile.Save(filepath.Join(dir, updateStateFile), st); err != nil {
 			t.Fatal(err)
 		}
 		clock := &fakeClock{at(0, 2, 34)}
-		beginTrial(dir, "1.2.0", onWindows, clock.now)
+		beginTrial(dir, "1.2.0", clock.now)
 		if f := rolledBack(t, dir, installed); f.Count != c.want {
 			t.Errorf("failed at %v: %+v", c.failedAt, f)
 		}
@@ -194,7 +164,7 @@ func TestTrialEnds(t *testing.T) {
 		if name == "another version" {
 			v = "1.1.5"
 		}
-		if tr, exit := beginTrial(dir, v, onWindows, time.Now); tr != nil || exit {
+		if tr, exit := beginTrial(dir, v, time.Now); tr != nil || exit {
 			t.Errorf("%s: still on trial", name)
 		}
 		if exists(filepath.Join(dir, updateTrialFile)) || readFile(t, installed) != "new" {
@@ -213,8 +183,32 @@ func TestTrialEnds(t *testing.T) {
 	if err := os.Mkdir(path, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if tr, exit := beginTrial(dir, "1.2.0", onWindows, time.Now); tr != nil || exit || !exists(path) {
+	if tr, exit := beginTrial(dir, "1.2.0", time.Now); tr != nil || exit || !exists(path) {
 		t.Error("a trial that can't be read now went")
+	}
+}
+
+// While another connector holds the state folder, a start changes nothing: it's run
+// --service by hand, which then fails on the lock.
+func TestTrialLocked(t *testing.T) {
+	for _, starts := range []int{0, 1} {
+		rec := trialTo(t, "1.2.0", nsLatest)
+		rec.Starts, rec.Started = starts, at(0, 2, 31)
+		dir, installed := trialRig(t, rec)
+		lock, err := lockStateDir(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if tr, exit := beginTrial(dir, "1.2.0", time.Now); tr != nil || exit {
+			t.Errorf("%d starts: went on", starts)
+		}
+		lock.Close()
+		if got := readTrial(t, dir); got.Starts != starts || readFile(t, installed) != "new" {
+			t.Errorf("%d starts: changed %+v", starts, got)
+		}
+		if st, _ := loadUpdateState(dir); st.Failed != nil {
+			t.Errorf("%d starts: %+v", starts, st.Failed)
+		}
 	}
 }
 
@@ -225,7 +219,7 @@ func TestTrialEnds(t *testing.T) {
 func TestTrialIndex(t *testing.T) {
 	canary := trialTo(t, "1.2.0", nsCanary)
 	dir, _ := trialRig(t, canary)
-	if tr, _ := beginTrial(dir, "1.2.0", onWindows, time.Now); tr == nil || tr.verifyIndex() {
+	if tr, _ := beginTrial(dir, "1.2.0", time.Now); tr == nil || tr.verifyIndex() {
 		t.Error("a canary index was refused")
 	}
 	wrongNS := trialTo(t, "1.2.0", nsLatest)
@@ -236,7 +230,7 @@ func TestTrialIndex(t *testing.T) {
 	unsigned.Sig = nil
 	for name, rec := range map[string]updateTrial{"signed for another namespace": wrongNS, "in namespace file": file, "naming 1.2.1": other, "unsigned": unsigned} {
 		dir, installed := trialRig(t, rec)
-		tr, _ := beginTrial(dir, "1.2.0", onWindows, time.Now)
+		tr, _ := beginTrial(dir, "1.2.0", time.Now)
 		if tr == nil || readTrial(t, dir).Starts != 1 || !tr.verifyIndex() {
 			t.Errorf("%s: no rollback", name)
 			continue
@@ -246,9 +240,9 @@ func TestTrialIndex(t *testing.T) {
 		}
 	}
 	rec := trialTo(t, "1.2.1", nsLatest)
-	rec.Starts = 1
+	rec.Starts, rec.Started = 1, time.Now()
 	dir, installed := trialRig(t, rec)
-	if tr, exit := beginTrial(dir, "1.2.0", onWindows, time.Now); tr != nil || !exit {
+	if tr, exit := beginTrial(dir, "1.2.0", time.Now); tr != nil || !exit {
 		t.Fatal("the start after a verifier that crashed went on")
 	}
 	if f := rolledBack(t, dir, installed); !strings.Contains(f.Error, "started again") {
@@ -268,7 +262,7 @@ func startTrialing(t *testing.T, apps ...string) (*trialing, string, string) {
 	rec.Apps = apps
 	dir, installed := trialRig(t, rec)
 	tr := &trialing{clock: &fakeClock{at(0, 2, 31)}}
-	tr.trial, _ = beginTrial(dir, "1.2.0", onWindows, tr.clock.now)
+	tr.trial, _ = beginTrial(dir, "1.2.0", tr.clock.now)
 	if tr.trial == nil {
 		t.Fatal("no trial")
 	}
@@ -394,6 +388,37 @@ func TestTrialBackstop(t *testing.T) {
 	}
 }
 
+// Only one of the backstop and a late tick ends the trial: a tick once the backstop has
+// begun leaves the trial to it, and the backstop rolls nothing back once a tick passed.
+func TestTrialBackstopOrTick(t *testing.T) {
+	if updateHour != time.Hour {
+		t.Skip("a compressed schedule")
+	}
+	serving := func(tr *trialing) *daemon {
+		d, _ := testDaemon(t)
+		d.upd = &updater{d: d, now: tr.clock.now}
+		d.nodes["coach"].serving = true
+		tr.attach(d)
+		return d
+	}
+	tr, dir, _ := startTrialing(t, "coach")
+	d := serving(tr)
+	tr.givingUp = true
+	if !tr.pass(10*time.Minute) || d.upd.st.Updated != nil || !exists(filepath.Join(dir, updateTrialFile)) {
+		t.Error("a tick passed the trial the backstop is rolling back")
+	}
+
+	tr, dir, installed := startTrialing(t, "coach")
+	serving(tr)
+	tr.pass(10 * time.Minute)
+	if tr.giveUp() || readFile(t, installed) != "new" {
+		t.Error("the backstop rolled back a trial that passed")
+	}
+	if st, _ := loadUpdateState(dir); st.Failed != nil {
+		t.Errorf("%+v", st.Failed)
+	}
+}
+
 // During the last update's trial the updater downloads and swaps nothing, and once a swap
 // has begun the exit, it does nothing more.
 func TestUpdaterWaitsForTheTrial(t *testing.T) {
@@ -401,7 +426,7 @@ func TestUpdaterWaitsForTheTrial(t *testing.T) {
 	tu.d.trial = &trial{}
 	tu.pollAt(at(3, 2, 30))
 	canary := testIndex("1.2.0", "1.1.0", "1.1.0", 1, srv.release("1.2.0"))
-	if _, err := tu.updateNow(context.Background(), canary, signIndex(t, canary, nsCanary)); err == nil || !strings.Contains(err.Error(), "on its trial") {
+	if _, err := tu.updateNow(context.Background(), canary, signIndex(t, canary, nsCanary)); err == nil || !strings.Contains(err.Error(), "on its trial, which ends 10 minutes after it started") {
 		t.Errorf("update now: %v", err)
 	}
 	if len(tu.swaps) != 0 {

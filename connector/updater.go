@@ -237,12 +237,18 @@ func (u *updater) poll(ctx context.Context) {
 	if u.st.NextCheck.After(now.Add(updateDay + updateHour)) {
 		u.st.NextCheck = now // the clock was set back
 	}
-	// Times noted while the clock ran ahead would hold the wait and the retry back as long.
-	if u.st.Seen.After(now) {
-		u.st.Seen = now
+	// Times noted while the clock ran ahead would hold the wait, the retry and every quiet
+	// moment back as long, and hide a week without a check.
+	for _, t := range []*time.Time{&u.st.Seen, &u.st.Checked, &u.st.Since} {
+		if t.After(now) {
+			*t = now
+		}
 	}
 	if f := u.st.Failed; f != nil && f.At.After(now) {
 		f.At = now
+	}
+	if u.d.lastRequestTime().After(now) {
+		u.d.lastRequest.Store(now.UnixNano())
 	}
 	if !now.Before(u.st.NextCheck) {
 		u.check(ctx)
@@ -389,7 +395,7 @@ func (u *updater) updateNow(ctx context.Context, data, sig []byte) (string, erro
 		return "", errors.New("the connector is restarting on a new release")
 	}
 	if u.d.onTrial() {
-		return "", fmt.Errorf("%s is still on its trial, which ends %s after it started: try again then", u.v, quietFor)
+		return "", fmt.Errorf("%s is still on its trial, which ends %s after it started: try again then", u.v, humanDuration(quietFor))
 	}
 	// Every check but the serial: a canary index can't lower the held index's secure or
 	// reinstallBelow either.
@@ -407,8 +413,9 @@ func (u *updater) updateNow(ctx context.Context, data, sig []byte) (string, erro
 	}
 	now := u.now()
 	if up := now.Sub(u.noteAwake(now)); up < quietFor {
-		return "", fmt.Errorf("the connector has been up and awake for %s, and swaps only after %s, once its apps are serving: try again in %s",
-			up.Round(time.Second), quietFor, (quietFor - up).Round(time.Second))
+		wait := (quietFor - up + time.Minute - 1).Truncate(time.Minute) // in whole minutes, rounded up
+		return "", fmt.Errorf("the connector swaps only once it has been up and awake for %s, so its apps are serving: try again in %s",
+			humanDuration(quietFor), humanDuration(wait))
 	}
 	if err := u.download(ctx, idx); err != nil {
 		return "", fmt.Errorf("downloading %s: %w", idx.Latest, err)
@@ -437,8 +444,8 @@ type updatePlan struct {
 }
 
 // planUpdate is the update st's index names for version v, as updateTarget times it. One
-// still waiting a day after it's due goes at the start of the next night, or as soon as
-// the connector runs after that. A version that failed is tried again the next night (the
+// still waiting a day after it's due (a security fix, from when it's due) goes at the
+// start of the next night, or as soon as the connector runs after that. A version that failed is tried again the next night (the
 // first start of one at least an hour after it failed), busy or not.
 func planUpdate(st *updateState, v string) updatePlan {
 	idx, err := parseIndex(st.Index)
@@ -452,6 +459,9 @@ func planUpdate(st *updateState, v string) updatePlan {
 		return p
 	}
 	p.after, p.by = due, nextAt(due.Add(updateDay), p.night)
+	if p.security {
+		p.by = nextAt(due, p.night)
+	}
 	// A retry that comes later moves both: a computer that's never quiet takes it that
 	// night too.
 	if f := st.Failed; f != nil && f.Version == p.target {
