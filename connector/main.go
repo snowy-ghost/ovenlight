@@ -878,6 +878,7 @@ type statusOut struct {
 	PID           int            `json:"pid,omitempty"`
 	Dev           bool           `json:"dev,omitempty"`
 	LoginEnvError string         `json:"loginEnvError,omitempty"` // see controlReply.EnvError
+	Update        *updateView    `json:"update,omitempty"`        // the running connector's, or with none running this binary's
 	Apps          []appStatus    `json:"apps"`
 	Sharing       sharingSummary `json:"sharing"`
 }
@@ -892,6 +893,7 @@ func collectStatus(p *paths) (*statusOut, error) {
 		return nil, daemonErr
 	}
 	out := &statusOut{Version: version(), Daemon: reply != nil, Apps: []appStatus{}}
+	out.Update, _ = daemonUpdate(p.state, reply)
 	live := map[string]NodeStatus{}
 	var processes map[string]ProcessStatus
 	if reply != nil {
@@ -982,6 +984,9 @@ func cmdStatus(args []string) error {
 			mode = " (DEV control server)"
 		}
 		fmt.Printf("Connector: running, pid %d, version %s%s\n", out.PID, orDash(out.DaemonVersion), mode)
+		for _, line := range updateLines(out.Update, out.DaemonVersion) {
+			fmt.Println("  " + line)
+		}
 		processes := map[string]ProcessStatus{}
 		for _, a := range out.Apps {
 			if a.Process != nil {

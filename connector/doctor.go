@@ -470,7 +470,8 @@ func runDoctor(cfg *Config, stateDir, configPath string) []Check {
 	} else {
 		checks = append(checks, Check{ID: "daemon", Status: statusOK, Message: fmt.Sprintf("running (pid %d)", reply.PID)})
 	}
-	if c := updateCheck(); c != nil {
+	u, v := daemonUpdate(stateDir, reply)
+	if c := updateFinding(u, v, reply != nil, time.Now()); c != nil {
 		checks = append(checks, *c)
 	}
 	if len(cfg.Apps) == 0 {
@@ -525,6 +526,75 @@ func runDoctor(cfg *Config, stateDir, configPath string) []Check {
 	}
 	checks = append(checks, sharedPortChecks(cfg)...)
 	return append(checks, sharingChecks(cfg, configPath, reply)...)
+}
+
+// updateStale is how long without a verified update check doctor warns after, and
+// failuresToWarn how many failures in a row of one release.
+const (
+	updateStale    = 7 * 24 * time.Hour
+	failuresToWarn = 3
+)
+
+// updateFinding judges the connector, at version v, by what its updater recorded, and
+// fetches nothing. An update waiting its turn is ok. Below secure it fails, even with
+// updates off, and it warns only when this computer won't update on its own. running says
+// the connector answered, so u.SelfUpdating is known.
+func updateFinding(u *updateView, v string, running bool, now time.Time) *Check {
+	if _, ok := semver(v); !ok {
+		return nil // a development build
+	}
+	byHand := func(release string) string {
+		return fmt.Sprintf("Install %s with the verified steps in %s; your apps and node state are kept", release, installDocs)
+	}
+	last := u.LastCheck
+	if last.IsZero() {
+		last = u.since
+	}
+	// stuck is why this computer won't update on its own.
+	var stuck *Check
+	warn := func(msg, fix string) {
+		stuck = &Check{ID: "update", Status: statusWarn, Message: msg, Fix: fix, Actor: actorPerson}
+	}
+	switch {
+	case u.Off:
+		warn("updates are off, so the connector installs no release on its own", "Turn them back on with `ovenlight update on`")
+	case u.NeedsScript:
+		warn(fmt.Sprintf("%s needs its install script: an update replaces only the binary, and %s is too old for that", u.Latest, v), byHand(u.Latest))
+	case u.Failure != nil && u.Failure.Count >= failuresToWarn:
+		warn(fmt.Sprintf("updating to %s has failed %d times in a row, last on %s: %s", u.Failure.Version, u.Failure.Count, when(u.Failure.At), u.Failure.Error),
+			"It tries again each night. "+byHand(u.Failure.Version))
+	case running && !u.SelfUpdating:
+		warn("the running connector isn't the installed service, so it doesn't update itself",
+			"Stop the connector started by hand, and start the installed one with "+serviceCommands[runtime.GOOS].start)
+	case u.SelfUpdating && now.Sub(last) > updateStale:
+		msg := "no update check has worked for 7 days"
+		if u.CheckError != "" {
+			msg += ": " + u.CheckError
+		}
+		warn(msg, "Check that this computer reaches downloads.ovenlight.app: its network connection, and any firewall or proxy")
+	}
+	installs := ""
+	if u.Pending != "" {
+		installs = fmt.Sprintf("it installs %s on its own at a quiet moment from %s, and by %s at the latest", u.Pending, when(u.InstallAfter), when(u.InstallBy))
+	}
+	switch {
+	case u.security:
+		c := &Check{ID: "update", Status: statusFail, Message: fmt.Sprintf("the connector, %s, has a security problem fixed in %s", v, u.Secure)}
+		if stuck != nil {
+			c.Message += "; " + stuck.Message
+			c.Fix, c.Actor = stuck.Fix, actorPerson
+		} else if installs != "" {
+			c.Fix = "Nothing to do: " + installs
+		}
+		return c
+	case stuck != nil:
+		return stuck
+	case installs != "":
+		return &Check{ID: "update", Status: statusOK, Message: u.Pending + " is out, and " + installs}
+	case u.Latest == "":
+		return &Check{ID: "update", Status: statusOK, Message: "no update check has worked yet"}
+	}
+	return &Check{ID: "update", Status: statusOK, Message: fmt.Sprintf("%s is up to date (checked %s)", v, when(u.LastCheck))}
 }
 
 // heldByOther is portHeldCheck for check and doctor, for an app the connector runs: with

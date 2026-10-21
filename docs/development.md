@@ -421,7 +421,7 @@ To build and sign your own copy, change to your own:
   Signing profile (`WIN_ENDPOINT`, `WIN_PROFILE`) in `scripts/release-connector.sh`, the
   keys in `docs/allowed_signers`, the `team@snowyghost.com` principal both release scripts
   verify `SHA256SUMS.sig` against, the bucket and site in `scripts/publish-connector.sh`,
-  and `latestURL` and the download URL in `latestArchive()` in `connector/update.go`.
+  and `releaseBase` and `installDocs` in `connector/update.go`.
 
 ### Invite links
 
