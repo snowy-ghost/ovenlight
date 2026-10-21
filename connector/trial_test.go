@@ -103,13 +103,13 @@ func TestTrialCleanStop(t *testing.T) {
 	dir, installed := trialRig(t, trialTo(t, "1.2.0", nsLatest))
 	tr, _ := beginTrial(dir, "1.2.0", time.Now)
 	tr.stopped()
-	if rec := readTrial(t, dir); !rec.Stopped || rec.Starts != 1 {
+	if rec := readTrial(t, dir); rec.Starts != 0 {
 		t.Fatalf("not marked: %+v", rec)
 	}
 	if tr, exit := beginTrial(dir, "1.2.0", time.Now); tr == nil || exit {
 		t.Fatal("a start after a clean stop rolled back")
 	}
-	if rec := readTrial(t, dir); rec.Stopped || rec.Starts != 1 || readFile(t, installed) != "new" {
+	if rec := readTrial(t, dir); rec.Starts != 1 || readFile(t, installed) != "new" {
 		t.Fatalf("not afresh: %+v", rec)
 	}
 	if _, exit := beginTrial(dir, "1.2.0", time.Now); !exit {

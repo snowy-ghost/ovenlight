@@ -34,14 +34,9 @@ type updateTrial struct {
 	Index     []byte `json:"index"`
 	Sig       []byte `json:"sig"`
 	Namespace string `json:"namespace"`
-	// Starts counts To's starts as the service. A second one within the trial means it
-	// crashed, hung or was killed, and puts .prev back, unless Stopped says it stopped
-	// cleanly in between.
+	// Starts counts To's starts as the service since the swap or its last clean stop. A
+	// second one within the trial means it crashed, hung or was killed, and puts .prev back.
 	Starts int `json:"starts"`
-	// Stopped is set when To stops cleanly during its trial, through the normal shutdown on
-	// a signal: the computer restarting, or the service restarted. Its next start begins
-	// the trial afresh, as does one after Windows restarted, which sends no signal.
-	Stopped bool `json:"stopped,omitempty"`
 }
 
 // serviceStart reports whether args (os.Args[1:]) start the connector as the installed
@@ -130,13 +125,13 @@ func beginTrial(dir, v string, now func() time.Time) (t *trial, exit bool) {
 	case t.rec.To != v:
 	case !exists(prevBinary(installedBinary(dir))):
 		log.Printf("updates: %s has nothing to roll back to, so its trial ends", v)
-	case t.rec.Starts > 0 && !t.rec.Stopped && !restartedSince(t.rec.At, now()):
+	case t.rec.Starts > 0 && !restartedSince(t.rec.At, now()):
 		return nil, t.rollback(fmt.Errorf("%s started again within its trial: it crashed, hung or was killed", v))
 	default:
 		if t.rec.Starts > 0 {
-			log.Printf("updates: %s stopped cleanly or the computer restarted during its trial, which starts again", v)
+			log.Printf("updates: Windows restarted during %s's trial, which starts again", v)
 		}
-		t.rec.Starts, t.rec.Stopped = 1, false
+		t.rec.Starts = 1
 		if err := jsonfile.Save(path, &t.rec); err != nil {
 			return nil, t.rollback(fmt.Errorf("%s can't count its start: %w", v, err))
 		}
@@ -183,16 +178,17 @@ func (t *trial) daemon() *daemon {
 	return t.d
 }
 
-// stopped marks the trial when the connector stops cleanly during it, on a signal, so the
-// next start begins the trial afresh rather than rolling back. A crash leaves no mark, and
-// a release that hangs is still caught by the deadline or the backstop.
+// stopped uncounts the start when the connector stops cleanly during its trial, on a
+// signal (the computer restarting, or the service restarted), so the next start begins
+// the trial afresh rather than rolling back. A crash leaves the count, and a release that
+// hangs is still caught by the deadline or the backstop.
 func (t *trial) stopped() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if t.ended {
 		return
 	}
-	t.rec.Stopped = true
+	t.rec.Starts = 0
 	if err := jsonfile.Save(filepath.Join(t.dir, updateTrialFile), &t.rec); err != nil {
 		log.Printf("updates: marking the trial's clean stop: %v", err)
 	}
