@@ -9,6 +9,7 @@
     <array>
         <string>__BIN__</string>
         <string>run</string>
+        <string>--service</string>
         <string>--log</string>
         <string>__LOG__</string>
     </array>

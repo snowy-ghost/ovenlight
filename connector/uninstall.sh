@@ -1,10 +1,10 @@
 #!/bin/bash
 # Stops and removes the ovenlight launchd agent (macOS) or systemd user service (Linux),
-# its binary and its ~/.local/bin link.
-# Node state, the app list and the logs stay, so a reinstall needs no new logins; --purge
-# deletes them too, with the stored API credential, the guest records, the feedback
-# inbox and the policy backups (the nodes then stay in your tailnet, offline, until you remove them in the admin
-# console).
+# its binaries (the updater's too) and its ~/.local/bin link.
+# Node state, the app list, the updater's state (update.json, updates-off) and the logs
+# stay, so a reinstall needs no new logins; --purge deletes them too, with the stored API
+# credential, the guest records, the feedback inbox and the policy backups (the nodes then
+# stay in your tailnet, offline, until you remove them in the admin console).
 set -euo pipefail
 
 case "$(uname -s)" in
@@ -39,7 +39,8 @@ esac
 # The link install.sh made, only if it still points at our binary.
 link="$HOME/.local/bin/ovenlight"
 [ "$(readlink "$link" 2>/dev/null)" = "$support/bin/ovenlight" ] && rm "$link"
-rm -f "$support/bin/ovenlight" "$support/ovenlight.sock" "$support/ovenlight.lock"
+rm -f "$support/bin/ovenlight" "$support/bin/ovenlight.prev" "$support/bin/ovenlight.next" "$support/bin/ovenlight.download" \
+  "$support/update-trial.json" "$support/ovenlight.sock" "$support/ovenlight.lock"
 echo "removed $label"
 
 if [ "${1:-}" = "--purge" ]; then
