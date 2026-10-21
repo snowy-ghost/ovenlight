@@ -15,13 +15,19 @@ spec="${OVENLIGHT_SWIFT_SPEC:-origin/app-1.0.2}"
 # Swift tests with no Kotlin twin, each with its reason.
 excluded() {
   sed 's/#.*//' <<'EOF' | awk 'NF { print $1 }'
-testTheShareSheetClosesOnce              # iOS presentation only: Android has its own Save, Share and Open sheet
-testOnlyAShownSheetTakesItsFiles         # iOS presentation only, as above
-testAppReplacedByAppStaysOnScreen        # SwiftUI only: a replaced cover's onDismiss
-testSheetsReplaceEachOther               # SwiftUI only: a replaced sheet's onDismiss
-testOnlyTheAppsOwnPagesPopUpAPost        # Android opens no popups: setSupportMultipleWindows(false)
-testBlocksLoopbackAndLocalAddressesOnly  # iOS only: WebKit loads loopback and the phone's own address past the proxy; Android's proxy refuses them (proxy_test.go)
-testTheRulesCompile                      # iOS only, as above: WebKit's content rule list
+testTheShareSheetClosesOnce                     # iOS presentation only: Android has its own Save, Share and Open sheet
+testOnlyAShownSheetTakesItsFiles                # iOS presentation only, as above
+testAppReplacedByAppStaysOnScreen               # SwiftUI only: a replaced cover's onDismiss
+testSheetsReplaceEachOther                      # SwiftUI only: a replaced sheet's onDismiss
+testAWaitOnANodeEndsAtTheFirstOfTwoChanges      # Combine only: objectWillChange read as an async sequence traps on a second change
+testASessionHeldAcrossAStopStillTakesRequests   # URLSession only: a request on an invalidated session ends the app; Android never invalidates its OkHttp clients
+testOnlyTheAppsOwnPagesPopUpAPost               # Android opens no popups: setSupportMultipleWindows(false)
+testAPageCantAnswerForItsViewport               # WebView has no script world apart from the page's: PageLook checks what comes back instead
+testAnEndlessAddressGoesNowhere                 # Chromium loads no address past 2 MB, and Android hands on none past 64 KB (testAnOversizedAddressLeavesOvenlightRunning)
+testBlocksLoopbackAndLocalAddressesOnly         # iOS only: WebKit loads loopback and the phone's own address past the proxy; Android's proxy refuses them (proxy_test.go)
+testTheRulesCompile                             # iOS only, as above: WebKit's content rule list
+testRedirectsToAddressesComeBackAndNamesFollow  # iOS only, as above: a redirect could take URLSession to them past the proxy
+testSkipsLinksAndIconsOnOtherHosts              # iOS only, as above: a page's link or icon off its own host could name them
 EOF
 }
 

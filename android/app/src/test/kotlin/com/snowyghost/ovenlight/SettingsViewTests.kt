@@ -283,7 +283,7 @@ class SettingsViewTests {
     }
 
     @Test
-    fun testOffAsksFirst() {
+    fun testTurningTheLockOffAsksFirst() {
         val asked = mutableListOf<String>()
         var confirmed = false
         var state by mutableStateOf(SettingsState())
