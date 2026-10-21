@@ -5,3 +5,5 @@ plugins/ovenlight/scripts/mcp text eol=lf
 # Gradle's wrapper scripts, for the same reason: sh reads gradlew with LF, cmd reads gradlew.bat with CRLF.
 android/gradlew text eol=lf
 *.bat text eol=crlf
+# Signed test data stays byte for byte as signed.
+connector/testdata/update/** -text
