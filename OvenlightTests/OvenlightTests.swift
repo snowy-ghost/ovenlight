@@ -324,14 +324,18 @@ final class DownloadPolicyTests: XCTestCase {
                              "covered": ["closed", "waited"], "refused": ["unseen", "waited"]])
     }
 
-    /// Only a sheet that showed takes its files off the waiting list; either way it unregisters.
+    /// Only a sheet that showed takes its files off the waiting list; either way it unregisters,
+    /// and its page marks the close in its run of dialogs before anything else shows, its next
+    /// sheet included.
     @MainActor
     func testOnlyAShownSheetTakesItsFiles() async throws {
         let id = UUID(), shared = URL(fileURLWithPath: "/a"), later = URL(fileURLWithPath: "/b")
         WebViewPool.shared.waitingDownloads[id] = [shared, later]
         defer { WebViewPool.shared.waitingDownloads[id] = nil }
-        _ = WebCoordinator.makeSheet(sharing: [shared], of: id)
-        let sheet = WebCoordinator.makeSheet(sharing: [shared], of: id)
+        var log: [String] = []
+        _ = WebCoordinator.makeSheet(sharing: [shared], of: id) { log.append("refused closed") }
+        let sheet = WebCoordinator.makeSheet(sharing: [shared], of: id) { log.append("closed") }
+        sheet.waiting = [{ log.append("waited") }]
         try await Task.sleep(for: .milliseconds(100))
         XCTAssertEqual(WebViewPool.shared.waitingDownloads[id], [shared, later], "refused")
         XCTAssertTrue(WebCoordinator.sheet === sheet)
@@ -340,6 +344,7 @@ final class DownloadPolicyTests: XCTestCase {
         for _ in 0..<100 where WebCoordinator.sheet != nil { try await Task.sleep(for: .milliseconds(10)) }
         XCTAssertNil(WebCoordinator.sheet)
         XCTAssertEqual(WebViewPool.shared.waitingDownloads[id], [later])
+        XCTAssertEqual(log, ["refused closed", "closed", "waited"])
     }
 }
 

@@ -764,7 +764,11 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
         if dialogs.stopped { return answer.fallBack() }
         if offersStop {
             alert.addAction(UIAlertAction(title: PageDialogs.stopTitle, style: .default) { [weak self] _ in
-                self?.dialogs.stopped = true
+                if let self {
+                    dialogs.stopped = true
+                    // Its files waiting for the sheet go too, and it downloads no more.
+                    WebViewPool.shared.dropWaitingDownloads(of: app.id)
+                }
                 answer.fallBack()
             })
         }
@@ -774,10 +778,12 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
     /// Ovenlight's own sheet for something the page did, which it can do without a tap,
     /// counted with its dialogs: a page could raise one the moment the last one closed. Past a
     /// few in a row, an ask naming the app and what it wants comes first, with the way to stop
-    /// the page's dialogs. `show` presents the sheet, and marks its close in the run.
-    private func presentPageSheet(ask title: String, _ message: String, goAhead: String, show: @escaping () -> Void) {
+    /// the page's dialogs. `show` presents the sheet, and marks its close in the run; `cancel`
+    /// runs if the person declines, or the ask goes unanswered.
+    private func presentPageSheet(ask title: String, _ message: String, goAhead: String,
+                                  show: @escaping () -> Void, cancel: @escaping () -> Void = {}) {
         guard dialogs.next() else { return show() }
-        let answer = pageAnswer(fallback: false) { go in if go { show() } }
+        let answer = pageAnswer(fallback: false) { go in go ? show() : cancel() }
         let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in answer(false) })
         alert.addAction(UIAlertAction(title: goAhead, style: .default) { _ in answer(true) })
@@ -787,13 +793,13 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
 
     // MARK: Downloads
 
-    /// Nothing downloads while this page is kept off screen either: a script's `a.click()`
-    /// would start one under another app. Past `DownloadPolicy.hasRoom` the download is
-    /// refused here, before WebKit starts it: one refused later never ends, and each holds a
-    /// process assertion, so a page downloading without end got Ovenlight killed. One the
-    /// person started and the policy refused says so.
+    /// Nothing downloads while this page is kept off screen either (a script's `a.click()`
+    /// would start one under another app), or once the person stopped its dialogs. Past
+    /// `DownloadPolicy.hasRoom` the download is refused here, before WebKit starts it: one
+    /// refused later never ends, and each holds a process assertion, so a page downloading
+    /// without end got Ovenlight killed. One the person started and the policy refused says so.
     private func mayDownload(_ url: URL, from sourceHost: String?, tapped: Bool) -> Bool {
-        guard webView?.window != nil else { return false }
+        guard webView?.window != nil, !dialogs.stopped else { return false }
         let locked = OverlayPresenter.pageWindow == nil
         if DownloadPolicy.hasRoom(underWay: downloads.count, waiting: WebViewPool.shared.waitingDownloads[app.id]?.count ?? 0),
            DownloadPolicy.allows(url: url, from: sourceHost, appHost: app.host, locked: locked) { return true }
@@ -829,10 +835,13 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
     }
 
     /// The share sheet saves the file to Files or sends it on. An empty one isn't worth a
-    /// sheet (an `<a download>` the server answered with nothing).
+    /// sheet (an `<a download>` the server answered with nothing), and none shows once the
+    /// person stopped the page's dialogs.
     func downloadDidFinish(_ download: WKDownload) {
         guard let file = downloads.removeValue(forKey: ObjectIdentifier(download))?.file else { return }
-        if (try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize) == 0 { return DownloadPolicy.removeFolder(of: file) }
+        if dialogs.stopped || (try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize) == 0 {
+            return DownloadPolicy.removeFolder(of: file)
+        }
         WebViewPool.shared.waitingDownloads[app.id, default: []].append(file)
         presentWaitingDownloads()
     }
@@ -879,7 +888,18 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
            transition.animate(alongsideTransition: nil, completion: { [weak self] _ in
                DispatchQueue.main.async { self?.showWaitingDownloads() }
            }) { return }
-        if webView.isDescendant(of: top.view) { return present(Self.makeSheet(sharing: files, of: app.id), orElse: {}) }
+        if webView.isDescendant(of: top.view), raised == nil {
+            // A page that downloaded about once a second brought a new sheet as each closed.
+            let id = app.id
+            return presentPageSheet(ask: "Download More Files?", "\(app.name) wants to download \(files.count) more \(files.count == 1 ? "file" : "files").",
+                                    goAhead: "Download") { [weak self] in
+                self?.present(Self.makeSheet(sharing: files, of: id) { self?.dialogs.closed() }, orElse: {})
+            } cancel: {
+                // Never shared, so they go at once.
+                WebViewPool.shared.waitingDownloads[id]?.removeAll(where: files.contains)
+                files.forEach(DownloadPolicy.removeFolder)
+            }
+        }
         watcher = Task { [weak self] in
             guard (try? await Task.sleep(for: .milliseconds(500))) != nil else { return }
             self?.showWaitingDownloads()
@@ -888,14 +908,15 @@ final class WebCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WK
 
     /// Registers a share sheet for `files`. Once it has shown they leave the waiting list,
     /// shared or cancelled, and stay on disk until the next launch (AirDrop may still be
-    /// sending); one that never showed leaves them waiting. Then what waited shows, and the
-    /// page on top shows any files still waiting, after an unseen sheet only once per
-    /// trigger. Another sheet may be up, which stays.
-    static func makeSheet(sharing files: [URL], of id: UUID) -> ShareSheet {
+    /// sending); one that never showed leaves them waiting. Then `onClose` runs, what waited
+    /// shows, and the page on top shows any files still waiting, after an unseen sheet only
+    /// once per trigger. Another sheet may be up, which stays.
+    static func makeSheet(sharing files: [URL], of id: UUID, onClose: @escaping @MainActor () -> Void) -> ShareSheet {
         let sheet = ShareSheet(activityItems: files, applicationActivities: nil)
         sheet.closed = { [weak sheet] shown, waiting in
             if Self.sheet === sheet { Self.sheet = nil }
             if shown { WebViewPool.shared.waitingDownloads[id]?.removeAll(where: files.contains) }
+            onClose()
             waiting.forEach { $0() }
             guard shown || !retriedUnseen else { return }
             WebViewPool.shared.presentWaitingDownloads()
@@ -1081,11 +1102,11 @@ final class DialogAnswer<Value: Sendable>: @unchecked Sendable {
 }
 
 /// A page's dialogs in a row, each within a second of the last one closing: its alerts,
-/// confirms and prompts, and what it raises of Ovenlight's own (an ask, a Safari view). Past
-/// three in a row, however long each was read, each offers to stop the page's dialogs, as
-/// Chrome does, so a page that asks in a loop can't trap the person. Once stopped, each is
-/// answered at once with its fallback, and nothing more opens, until the person reloads the
-/// app or opens it again.
+/// confirms and prompts, and what it raises of Ovenlight's own (an ask, a Safari view, the
+/// share sheet). Past three in a row, however long each was read, each offers to stop the
+/// page's dialogs, as Chrome does, so a page that asks in a loop can't trap the person. Once
+/// stopped, each is answered at once with its fallback, and nothing more opens or downloads,
+/// until the person reloads the app or opens it again.
 struct PageDialogs {
     static let loopCount = 3
     static let gap: Duration = .seconds(1)

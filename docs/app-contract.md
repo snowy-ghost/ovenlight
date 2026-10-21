@@ -143,7 +143,9 @@ None of this is required: an app without it is still listed, by name.
   `<a download>` link works in the app's own frames too, but not in a frame from another
   host. In a frame, an attachment or a type WebKit can't show loads as WebKit would, never
   raising the share sheet. Downloads come only from the app's own host, and are refused
-  while Ovenlight is locked.
+  while Ovenlight is locked. Past three share sheets in a row, Ovenlight asks before the
+  next, and the person can stop the page's dialogs, which refuses its downloads too until
+  the app is reloaded or opened again.
 - **No service workers or offline copies.** WebKit runs service workers in an app like
   Ovenlight only on domains it lists when it's built, and an owner's tailnet can't be known
   in advance. An app loads only while its computer can be reached.
