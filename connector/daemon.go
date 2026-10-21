@@ -28,7 +28,6 @@ type daemon struct {
 	configPath string
 	stateDir   string
 	dev        devOptions
-	service    bool // started as the installed service (run --service), the only connector that updates itself
 	sh         *sharing
 	procs      *supervisors // the apps' own processes, for apps published with --run
 
@@ -101,11 +100,8 @@ func runDaemon(configPath, stateDir string, dev devOptions, service bool) error 
 		ln.Close()
 		return err
 	}
-	d := &daemon{configPath: configPath, stateDir: stateDir, dev: dev, service: service, sh: sh, nodes: map[string]*appNode{},
-		procs: newSupervisors(appLogDir(stateDir))}
-	if service {
-		d.trial = serviceTrial
-	}
+	d := &daemon{configPath: configPath, stateDir: stateDir, dev: dev, sh: sh, nodes: map[string]*appNode{},
+		procs: newSupervisors(appLogDir(stateDir)), trial: serviceTrial}
 	log.Printf("Ovenlight connector starting (config %s, state %s)", configPath, stateDir)
 	if dev.ControlURL != "" {
 		log.Printf("DEV MODE: control server %s", dev.ControlURL)

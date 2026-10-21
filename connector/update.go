@@ -42,7 +42,7 @@ func archiveName() string {
 	return "ovenlight-connector-" + name
 }
 
-// semver reads "1.2.3", without a pre-release part, and only as vstring writes it.
+// semver reads "1.2.3", without a pre-release part or a leading zero.
 func semver(s string) ([3]int, bool) {
 	var v [3]int
 	parts := strings.Split(s, ".")
@@ -58,8 +58,6 @@ func semver(s string) ([3]int, bool) {
 	}
 	return v, true
 }
-
-func vstring(v [3]int) string { return fmt.Sprintf("%d.%d.%d", v[0], v[1], v[2]) }
 
 func less(a, b [3]int) bool {
 	for i := range a {
