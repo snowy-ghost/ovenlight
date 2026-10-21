@@ -422,6 +422,15 @@ if [ -n "$mocks" ]; then
   mkdir -p "$dry/home"
   refused "holds a release key whose private half is public" env -u OVENLIGHT_RELEASE_DRY HOME="$dry/home" \
     "$repo/scripts/release-connector.sh" --unsigned 1.1.0 1.0.6 1.1.0
+  # A key swap that leaves a mock key in docs/allowed_signers would let owners' own check pass
+  # what its public private half signs, so a real build refuses that too.
+  cat "$fixtures/air1.pub" "$fixtures/paper1.pub" > "$repo/connector/release_keys"
+  # shellcheck disable=SC2086 # one path per word
+  awk '{ print "team@snowyghost.com namespaces=\"file,ovenlight-latest\"", $1, $2 }' $mocks >> "$repo/docs/allowed_signers"
+  commit "a mock key left in allowed_signers"
+  refused "docs/allowed_signers holds a release key whose private half is public" env -u OVENLIGHT_RELEASE_DRY \
+    HOME="$dry/home" "$repo/scripts/release-connector.sh" --unsigned 1.1.0 1.0.6 1.1.0
+  signers air1 paper1
 fi
 keys air1 paper1
 refused "a dry run builds only with --unsigned" "$repo/scripts/release-connector.sh" 1.1.0 1.0.6 1.1.0
