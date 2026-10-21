@@ -485,7 +485,7 @@ sed -i '' "s/$old/$new/" "$dry/build/index.json"
 run sign air1 1.1.0
 refused "holds more than an ovenlight-connector-1.1.0/ folder" publish 1.1.0
 # A build over the updater's cap, which publish reads from connector/keys.go.
-sed -i '' 's/^const maxArchiveBytes = .*/const maxArchiveBytes = 1 << 10/' "$repo/connector/keys.go"
+sed -i '' 's|^const maxArchiveBytes = .*|const maxArchiveBytes = 1 << 10 // 1 KiB|' "$repo/connector/keys.go"
 commit "a 1 KiB cap"
 build 1.1.1 1.0.6
 run sign air1 1.1.1

@@ -75,7 +75,9 @@ OVENLIGHT_E2E_HEADSCALE="$(go env GOPATH)/bin/headscale" go -C connector test -t
 CI (`.github/workflows/ci.yml`) runs on every push and pull request, and weekly, on Linux
 and Windows: `go vet` (with and without the `e2e` tag), the tests (with `-race` on Linux)
 and `govulncheck`, then the install scripts as a user runs them: install, a killed
-connector restarting, reinstall and `uninstall --purge`. On Linux it also runs `gofmt`,
+connector restarting, reinstall and `uninstall --purge`. The install jobs then run the
+updater end to end, on macOS too, where the job also dry-runs the release scripts with
+`scripts/test-connector-release.sh`. On Linux it also runs `gofmt`,
 `go vet` and `govulncheck` for darwin/arm64 with cgo off, a check that
 `scripts/third-party-notices.sh` still finds a license kept below a module's root, and the
 end-to-end test against Headscale. It also renders the docs with `scripts/sitedocs`,

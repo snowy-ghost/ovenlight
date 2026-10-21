@@ -43,7 +43,7 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 [ -z "$version" ] || canonical "$version" || refuse "versions look like 1.2.3, with no leading zeros or suffix, not $version"
 
 # The updater's cap on an archive, and on the binary it takes out of one.
-cap="$(sed -n 's/^const maxArchiveBytes = \([0-9][0-9 <]*\)$/\1/p' "$root/connector/keys.go")"
+cap="$(sed -En 's|^const maxArchiveBytes = ([0-9][0-9 <]*)(//.*)?$|\1|p' "$root/connector/keys.go")"
 [ -n "$cap" ] || refuse "no maxArchiveBytes in connector/keys.go"
 cap=$((cap))
 
