@@ -142,6 +142,11 @@ class PageEdges(
             override fun dropped() = answer.dropped()
         }
 
+        /** "Open in another app?" for a trip to another site the page took by itself, past a few in a row ([trip]). */
+        class OpenSite(val url: URI) : FromPage(NavigationPolicy.target(url), offersQuiet = true) {
+            override fun dropped() = Unit
+        }
+
         /** An image input's sheet: take a photo, choose one, or choose a file when [files]. */
         class ChooseSource(val files: Boolean, val answer: DialogAnswer<Source?>) : Dialog() {
             override fun dropped() = answer.dropped()
@@ -184,7 +189,7 @@ class PageEdges(
                 true
             }
             is NavigationPolicy.Decision.OpenExternally -> {
-                openExternally(decision.url)
+                if (request.hasGesture()) openExternally(decision.url) else trip(decision.url)
                 true
             }
         }
@@ -284,8 +289,7 @@ class PageEdges(
             return
         }
         if (scheme == "http" || scheme == "https") {
-            val page = if (NavigationPolicy.isOvenlightLink(url)) NavigationPolicy.joinPage(url) else url
-            CustomTabs.open(context, page, lifecycle)
+            openSite(url)
             return
         }
         val intent = handOff(url) ?: run {
@@ -293,6 +297,27 @@ class PageEdges(
             return
         }
         if (NavigationPolicy.asksBeforeOpening(url)) show(Dialog.OpenElsewhere(NavigationPolicy.target(url), intent)) else start(intent)
+    }
+
+    /** A web page in a Custom Tab, an excursion; true when it opened. */
+    private fun openSite(url: URI): Boolean =
+        CustomTabs.open(context, if (NavigationPolicy.isOvenlightLink(url)) NavigationPolicy.joinPage(url) else url, lifecycle)
+
+    /** A trip's tab is open: the person's return from it closes the trip ([inFront]). */
+    private var onTrip = false
+
+    /**
+     * A trip to another site the page took by itself, such as a sign-in's redirect: one at a
+     * time, none while a dialog shows or the last trip's tab is open. Each counts in the run with
+     * the page's dialogs, so a page that sends the person off again as each tab closes is asked
+     * about, with the way out, rather than opening a tab each time.
+     */
+    private fun trip(url: URI) {
+        if (quiet || onTrip || mutableDialog.value != null) return OvenlightLog.i("${app.host}: refused a trip to another site")
+        // Off screen, locked or away nothing opens, nor what's too long to hand on, as openExternally logs.
+        if (!mayAct || url.toString().length > NavigationPolicy.maxHandOffLength) return openExternally(url)
+        if (nextInRun()) return show(Dialog.OpenSite(url))
+        onTrip = openSite(url)
     }
 
     /** The intent that hands [url] to another app, or null when it would reach Ovenlight itself. */
@@ -324,20 +349,21 @@ class PageEdges(
         mutableDialog.value = dialog
     }
 
-    /** The page's dialogs and download sheets in a row, each within [DIALOG_RUN_GAP_MILLIS] of the last one closing. */
+    /** The page's dialogs, download sheets and own trips to other sites in a row, each within [DIALOG_RUN_GAP_MILLIS] of the last one closing. */
     private var dialogRun = 0
     private var lastDialogClosed: Long? = null
 
     /**
      * The person stopped this page: each of its dialogs is answered with its fallback at once,
-     * and none of its downloads starts ([PageDownloads]), until they reload the app or open it
-     * again ([allowDialogsAgain]). Nothing the page does itself (a reload of its own) lifts it.
+     * and none of its downloads ([PageDownloads]) or its own trips to other sites starts, until
+     * they reload the app or open it again ([allowDialogsAgain]). Nothing the page does itself
+     * (a reload of its own) lifts it.
      */
     var quiet = false
         private set
 
     /**
-     * Counts a page's dialog, or a download sheet, in the run: true past [DIALOG_LOOP_COUNT]
+     * Counts a page's dialog, a download sheet or a trip in the run: true past [DIALOG_LOOP_COUNT]
      * in a row, however long each was read, when it offers "Don't let this app show more
      * dialogs", as Chrome does, so a page that asks in a loop can't trap the person.
      */
@@ -348,7 +374,7 @@ class PageEdges(
         return dialogRun > DIALOG_LOOP_COUNT
     }
 
-    /** A page's dialog, or a download sheet, closed. */
+    /** A page's dialog, a download sheet or a trip closed. */
     fun closedInRun() {
         lastDialogClosed = SystemClock.elapsedRealtime()
     }
@@ -383,6 +409,11 @@ class PageEdges(
         start(dialog.intent)
     }
 
+    fun open(dialog: Dialog.OpenSite) {
+        dismiss(dialog)
+        if (mayAct) onTrip = openSite(dialog.url)
+    }
+
     /** The page went: as [takenAway], and no way back is checked any more. */
     fun destroy() {
         returnCheck?.cancel()
@@ -398,10 +429,12 @@ class PageEdges(
     /** A full screen the page asked for while it couldn't act, ended once it's in front again. */
     private var refusedFullscreen: WebChromeClient.CustomViewCallback? = null
 
-    /** The page is on screen, unlocked and in front again: a full screen refused meanwhile ends now. */
+    /** The page is on screen, unlocked and in front again: a full screen refused meanwhile ends now, and a trip's tab has closed. */
     fun inFront() {
         refusedFullscreen?.onCustomViewHidden()
         refusedFullscreen = null
+        if (onTrip) closedInRun()
+        onTrip = false
     }
 
     fun exitFullscreen() {
@@ -884,6 +917,21 @@ private fun PageDialog(edges: PageEdges, dialog: PageEdges.Dialog, appName: Stri
                 dismissButton = { TextButton(onClick = { dialog.answer(null); dismiss() }) { Text(stringResource(R.string.cancel)) } },
             )
         }
+        is PageEdges.Dialog.OpenSite -> AlertDialog(
+            onDismissRequest = dismiss,
+            title = { Text(stringResource(R.string.page_open_elsewhere_title)) },
+            text = {
+                GuardedFromOverlays()
+                PageDialogText(stringResource(R.string.page_open_elsewhere_body, appName, dialog.message), quiet)
+            },
+            confirmButton = {
+                GoAheadButton(dialog, stringResource(R.string.open)) {
+                    if (stopMore) edges.quietDialogs()
+                    edges.open(dialog)
+                }
+            },
+            dismissButton = { TextButton(onClick = dismiss) { Text(stringResource(R.string.cancel)) } },
+        )
         is PageEdges.Dialog.ChooseSource -> SourceSheet(dialog, dismiss)
         is PageEdges.Dialog.OpenElsewhere -> AlertDialog(
             onDismissRequest = dismiss,
