@@ -514,6 +514,26 @@ func TestUpdaterSecurityFixByDay(t *testing.T) {
 	}
 }
 
+// A security fix on a computer that's never quiet goes at the start of the next night.
+func TestUpdaterSecurityFixBusy(t *testing.T) {
+	srv := newReleaseServer(t)
+	srv.publish("1.2.0", "1.2.0", "1.1.0", 100)
+	tu := newTestUpdater(t, srv, t.TempDir(), "1.1.5", at(0, 9, 0), false)
+	tu.st.Minute = 10 * 60 // its night starts at 02:00
+	tu.busyAt(at(0, 9, 0))
+	if u := readUpdateView(tu.d.stateDir, "1.1.5", true); !u.InstallBy.Equal(at(1, 2, 0)) {
+		t.Errorf("%+v", u)
+	}
+	tu.busyAt(at(1, 1, 59))
+	if len(tu.swaps) != 0 {
+		t.Fatal("swapped while busy")
+	}
+	tu.busyAt(at(1, 2, 0))
+	if len(tu.swaps) != 1 {
+		t.Error("no swap at the start of the next night")
+	}
+}
+
 // A pull published while an update waits stops its swap, and a fetch that fails before
 // the swap waits for its retry.
 func TestUpdaterFetchBeforeTheSwap(t *testing.T) {
