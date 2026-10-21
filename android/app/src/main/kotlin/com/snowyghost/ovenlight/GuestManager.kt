@@ -282,7 +282,8 @@ class GuestManager(
 
     /**
      * Posts the invite's key to the app's connector, at the first host in [through] that answers,
-     * else at the invite's own (see [Claim.through]). Right after joining, the connector may not
+     * else at the invite's own (see [Claim.through]), trying each again every round, as a
+     * computer can come back during the claim. Right after joining, the connector may not
      * know the device yet, so connection failures and "Unknown caller" retry for up to
      * [Claim.budget] in all (docs/protocol.md), each try with a new session from the node,
      * which may have been replaced meanwhile. The budget is kept on [now], which stops while the
@@ -291,25 +292,22 @@ class GuestManager(
      */
     private suspend fun claim(invite: InviteLink, node: MembershipNode, through: List<String>): Claim.Step {
         val deadline = now() + Claim.budget.inWholeMilliseconds
-        var hosts = through + invite.host
         var attempt = 0
         while (true) {
-            val timeout = Claim.tryTimeout((deadline - now()).milliseconds).inWholeMilliseconds
-            val response = node.makeSession(timeout, timeout)?.let { session ->
-                try {
-                    session(Claim.request(invite, hosts.first()))
+            for (host in through + invite.host) {
+                val timeout = Claim.tryTimeout((deadline - now()).milliseconds).inWholeMilliseconds
+                val session = node.makeSession(timeout, timeout) ?: break
+                val response = try {
+                    session(Claim.request(invite, host))
                 } catch (e: CancellationException) {
                     throw e
                 } catch (_: Exception) {
                     null
-                }
-            }
-            if (response != null) {
+                } ?: continue
                 val step = Claim.interpret(response.status, response.header(ConnectorError.header), response.body)
                 if (step != Claim.Step.Retry) return step
                 log("claim answered ${response.status}, trying again")
-            } else if (hosts.size > 1) {
-                hosts = hosts.drop(1)
+                break
             }
             delay(Claim.wait(after = attempt, left = (deadline - now()).milliseconds) ?: return Claim.Step.Retry)
             attempt += 1

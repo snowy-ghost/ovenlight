@@ -373,7 +373,7 @@ class GuestManagerTests {
         assertEquals(JoinPhase.Failed(JoinError.Network), s.guests.phases.value[echoInvite.invite])
         val claims = s.clients.requests.filter { it.url.encodedPath == Claim.path }.map { it.url.toString() }
         assertEquals(guideClaimURL, claims.first())
-        assertTrue("then the invite's own host, until the budget ends", claims.size > 2 && claims.drop(1).all { it == claimURL })
+        assertTrue("then the invite's own host, both every round until the budget ends", claims.size > 2 && claims.chunked(2).all { it == listOf(guideClaimURL, claimURL) })
 
         s.clients.respond = { request -> if (request.url.toString() == guideClaimURL) answer(200, "{}") else null }
         val started = testScheduler.currentTime
