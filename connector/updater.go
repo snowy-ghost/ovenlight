@@ -395,7 +395,7 @@ func (u *updater) updateNow(ctx context.Context, data, sig []byte) (string, erro
 		return "", errors.New("the connector is restarting on a new release")
 	}
 	if u.d.onTrial() {
-		return "", fmt.Errorf("%s is still on its trial, which ends %s after it started: try again then", u.v, quietFor)
+		return "", fmt.Errorf("%s is still on its trial, which ends %s after it started: try again then", u.v, humanDuration(quietFor))
 	}
 	// Every check but the serial: a canary index can't lower the held index's secure or
 	// reinstallBelow either.
@@ -413,8 +413,9 @@ func (u *updater) updateNow(ctx context.Context, data, sig []byte) (string, erro
 	}
 	now := u.now()
 	if up := now.Sub(u.noteAwake(now)); up < quietFor {
-		return "", fmt.Errorf("the connector has been up and awake for %s, and swaps only after %s, once its apps are serving: try again in %s",
-			up.Round(time.Second), quietFor, (quietFor - up).Round(time.Second))
+		wait := (quietFor - up + time.Minute - 1).Truncate(time.Minute) // in whole minutes, rounded up
+		return "", fmt.Errorf("the connector swaps only once it has been up and awake for %s, so its apps are serving: try again in %s",
+			humanDuration(quietFor), humanDuration(wait))
 	}
 	if err := u.download(ctx, idx); err != nil {
 		return "", fmt.Errorf("downloading %s: %w", idx.Latest, err)

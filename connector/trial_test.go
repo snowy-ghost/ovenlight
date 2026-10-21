@@ -426,7 +426,7 @@ func TestUpdaterWaitsForTheTrial(t *testing.T) {
 	tu.d.trial = &trial{}
 	tu.pollAt(at(3, 2, 30))
 	canary := testIndex("1.2.0", "1.1.0", "1.1.0", 1, srv.release("1.2.0"))
-	if _, err := tu.updateNow(context.Background(), canary, signIndex(t, canary, nsCanary)); err == nil || !strings.Contains(err.Error(), "on its trial") {
+	if _, err := tu.updateNow(context.Background(), canary, signIndex(t, canary, nsCanary)); err == nil || !strings.Contains(err.Error(), "on its trial, which ends 10 minutes after it started") {
 		t.Errorf("update now: %v", err)
 	}
 	if len(tu.swaps) != 0 {

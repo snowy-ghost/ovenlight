@@ -728,7 +728,7 @@ func TestUpdateNow(t *testing.T) {
 	canary := testIndex("1.2.0", "1.1.0", "1.1.0", 1, srv.release("1.2.0"))
 	sig := signIndex(t, canary, nsCanary)
 	ctx := context.Background()
-	if _, err := tu.updateNow(ctx, canary, sig); err == nil || !strings.Contains(err.Error(), "try again in 10m0s") {
+	if _, err := tu.updateNow(ctx, canary, sig); err == nil || !strings.Contains(err.Error(), "up and awake for 10 minutes, so its apps are serving: try again in 10 minutes") {
 		t.Errorf("at the start: %v", err)
 	}
 	tu.pass(10 * time.Minute)
