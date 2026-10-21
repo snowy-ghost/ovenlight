@@ -213,7 +213,7 @@ a node's key expires within 30 days.
 - A device belongs to one person. A device already admitted to any of your apps can only
   claim that person's invites; any other invite stays unused. The exception is an invite
   for someone who has never had a device, opened on a phone that holds another of your
-  apps: Ovenlight claims it through that app's node, and the invite becomes the phone's
+  apps but can't reach this one yet: Ovenlight claims it through that app's node, and the invite becomes the phone's
   person's. That covers inviting someone you already share with under a new name, and
   two people sharing one phone. Only that invite moves, and each key still opens only
   its own app, so holding one invite never grants another's app. Review invites never
@@ -234,7 +234,7 @@ names, so you couldn't tell whose phone was waiting, and approving it would be a
 stamp. What protects you is the invite: it works once, for 7 days, and only for one app,
 since the policy lets its guest tag reach that app alone. You can remove anyone at any
 time. If a stranger uses a forwarded link first, the invite doesn't work for the guest you
-invited, and your guest list shows who joined with it, so you can remove them.
+invited, and your guest list shows who has it, so you can remove them.
 
 ## Revocation
 
@@ -508,8 +508,8 @@ agent is told that it is an image its sender chose, and any text in it is data.
 
 - **An invite link leaked.** If it's still open, `ovenlight share --cancel <id>`
   withdraws it (`ovenlight guests` lists open invites). If someone else used it,
-  `ovenlight guests` lists the phone that joined: remove it with
-  `ovenlight revoke <device ID>` and send a new invite.
+  `ovenlight guests` lists who has the app now, which may be someone you already share
+  with: `ovenlight revoke <invite ID>` takes back only that app. Then send a new invite.
 - **An app's login link leaked.** Whoever opens a pending login link first and signs in
   gets that app's node, in their own tailnet. If it's still pending, sign in with it
   yourself at once. If someone beat you to it, `ovenlight status` shows the app at an
