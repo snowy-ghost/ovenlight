@@ -303,7 +303,7 @@ func (t *trial) giveUp() {
 	if err := recordFile(t.dir, t.failed(why)); err != nil {
 		log.Printf("updates: recording the failure of %s: %v", t.rec.To, err)
 	}
-	t.putBack()
+	t.restore()
 	for !exists(installedBinary(t.dir)) {
 		time.Sleep(time.Second) // a put-back still trying in the background
 	}
@@ -342,7 +342,7 @@ func (t *trial) rollback(why error) bool {
 	if err := t.record(t.failed(why)); err != nil {
 		log.Printf("updates: recording the failure of %s: %v", t.rec.To, err)
 	}
-	return t.putBack()
+	return t.restore()
 }
 
 // failed records why the release failed. A crash after it's recorded starts the release
@@ -355,10 +355,10 @@ func (t *trial) failed(why error) func(*updateState) {
 	}
 }
 
-// putBack puts .prev back in place of the binary on trial, and ends the trial. It reports
+// restore puts .prev back in place of the binary on trial, and ends the trial. It reports
 // whether the connector should exit so the service starts what's in place, which is once
 // bin/ovenlight exists.
-func (t *trial) putBack() bool {
+func (t *trial) restore() bool {
 	installed := installedBinary(t.dir)
 	// A crash once .prev is back starts it, and it ends the trial, which isn't its own.
 	if err := restorePrev(installed, t.windows); err != nil {

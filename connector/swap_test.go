@@ -210,8 +210,8 @@ func oldBinaries(bin string) []string {
 }
 
 // Windows' renames, on every OS: the old binaries go, an older .prev moves aside, the
-// running binary becomes .prev and the release takes its place. A last rename that fails
-// puts .prev back.
+// running binary becomes .prev and the release takes its place. With no release, nothing
+// moves.
 func TestRenameAside(t *testing.T) {
 	bin := t.TempDir()
 	installed, prev, next := filepath.Join(bin, "ovenlight.exe"), filepath.Join(bin, "ovenlight.prev.exe"), filepath.Join(bin, "ovenlight.next.exe")
@@ -236,18 +236,19 @@ func TestRenameAside(t *testing.T) {
 		t.Error("no release, and no error")
 	}
 	if readFile(t, installed) != "running" || exists(prev) {
-		t.Error(".prev isn't back")
+		t.Error("something moved")
 	}
 
-	// A put-back that failed left the running binary as .prev and nothing at installed:
-	// it's put back first, never moved aside.
+	// A put-back still trying left the running binary as .prev and nothing at installed:
+	// nothing moves, and putBack brings it back.
 	os.Rename(installed, prev)
 	writeFile(t, next, "new")
-	if err := renameAside(installed, next); err != nil {
-		t.Fatal(err)
+	if err := renameAside(installed, next); err == nil || readFile(t, prev) != "running" || len(oldBinaries(bin)) != 0 {
+		t.Errorf("during a put-back: %v, %v", err, oldBinaries(bin))
 	}
-	if readFile(t, installed) != "new" || readFile(t, prev) != "running" || len(oldBinaries(bin)) != 0 {
-		t.Errorf("after a failed put-back: %v", oldBinaries(bin))
+	putBack(prev, installed)
+	if readFile(t, installed) != "running" || exists(prev) {
+		t.Error("not put back")
 	}
 }
 
