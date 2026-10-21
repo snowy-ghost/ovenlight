@@ -445,16 +445,18 @@ replaces only the binary: never the install scripts, the service, the config or 
    128 MB, and opens it only once its SHA-256 matches the index.
 2. It takes out one file, `ovenlight-connector-<version>/ovenlight` (`ovenlight.exe` on
    Windows), by its exact name, and nothing else.
-3. It runs that binary's `version` and requires the version the index names.
-4. When the update's moment comes, it fetches the index again, and goes on only if it still
+3. When the update's moment comes, it fetches the index again, and goes on only if it still
    names that release. So a computer that gets the pull at any point in the two days
    doesn't install the pulled release.
+4. It runs the new binary's `version` and requires the version the index names.
 5. It records a trial, keeps the running binary as `ovenlight.prev` (`ovenlight.prev.exe`
    on Windows), puts the new one in its place and exits. The service starts the new one.
 6. The new release has 10 minutes of time awake to serve every app that was serving before,
    with its node logged in, and to verify the signed index that brought it, with its own
-   built-in keys. If it crashes or runs out of time, the previous binary goes back and the
-   update is tried again the next night.
+   built-in keys. If it crashes, or doesn't do both in that time, the previous binary goes
+   back and the update is tried again the next night. A clean stop, such as a restart of
+   the computer or of the service, starts the 10 minutes again. On Windows,
+   `Stop-ScheduledTask` ends the connector without a clean stop, so it counts as a crash.
 
 A failure before the swap leaves the running connector as it was. `ovenlight status`
 shows any failure, and `doctor` warns once one release has failed three times in a row.
@@ -481,24 +483,26 @@ script prints the commit, the index and the checksums first. It signs only a com
 `connector/release_keys` lists exactly the keys that Mac keeps, so the keys a release
 trusts never come from the commit alone. Even so, a signature vouches for what is on master
 and for the Mac that built it, and no more. Whoever can sign a release, or get code onto
-master and through that Mac, can run code on your computer within days, as
-you, beside your Tailscale API credential, and on Windows with administrator rights.
+master and through that Mac, can run code on your computer within a day (an index that
+raises `secure` skips the two-day wait), as you, beside your Tailscale API credential, and
+on Windows with administrator rights.
 `ovenlight update off` opts out.
 
-When one key is lost, the next release, signed with the other, replaces it. If both were
-lost, installed connectors would keep running but never update again: `doctor` warns
-after seven days without a verified check, and each owner would install a new release by
-hand once. A computer that makes no check during the four weeks a release bringing in a
-new key stays the latest can't verify the releases after it, and needs that one install by
-hand too.
+When one key is lost, the next release, signed with the other, replaces it. A computer
+that doesn't install that release within four weeks of it coming out, because it was off or
+had updates off, can't verify the releases signed with only the new key: its checks fail,
+`doctor` warns after seven days, and it needs one install by hand. If both keys were lost,
+every computer would be in that position once we publish a release signed with a new key.
 
 ### The files it keeps
 
 In the state directory (connector.md's [table](connector.md#what-it-installs) has it for
 each system):
 
-- `update.json`: the index accepted last, when this computer first saw its latest release
-  named, the last check, the last update and the last failure.
+- `update.json`: the index accepted last, the minute of the daily check, when this
+  computer first saw its latest release named, the last check, the last update and the
+  last failure. One that can't be read is set aside as `update.json.bad`, and the updater
+  starts afresh.
 - `updates-off`: there while updates are off.
 - `update-trial.json`: an update's trial, while the new release proves itself.
 
@@ -509,13 +513,13 @@ In its `bin` folder, beside the connector's binary:
   moment.
 - `ovenlight.prev` (`ovenlight.prev.exe`): the binary before the last update, for a
   rollback.
-- On Windows, `ovenlight.old-<number>.exe`: older binaries moved aside, deleted once
-  nothing runs them.
+- On Windows, `ovenlight.old-<number>.exe`: older binaries moved aside, deleted at the
+  next update or install.
 
 Only you can read them, as with the rest of the state directory. The install scripts
 remove a trial and `ovenlight.prev` before they install, so the connector they install is
-never rolled back. The uninstall scripts remove all but `update.json` and `updates-off`,
-which `--purge` deletes too.
+never rolled back. The uninstall scripts remove all but `update.json`, `update.json.bad`
+and `updates-off`, which `--purge` deletes too.
 
 ### What it sends
 
