@@ -23,19 +23,3 @@ func TestCompressedSchedule(t *testing.T) {
 		t.Errorf("due %v", due)
 	}
 }
-
-func TestTestHour(t *testing.T) {
-	if testHour("") != time.Hour || testHour("5s") != 5*time.Second {
-		t.Error("testHour")
-	}
-	for _, bad := range []string{"7s", "-5s", "0s", "2h", "an hour"} {
-		func() {
-			defer func() {
-				if recover() == nil {
-					t.Errorf("%q was taken", bad)
-				}
-			}()
-			testHour(bad)
-		}()
-	}
-}

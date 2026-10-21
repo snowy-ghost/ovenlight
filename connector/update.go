@@ -113,66 +113,37 @@ func parseIndex(data []byte) (*updateIndex, error) {
 	return &idx, nil
 }
 
-// checkIndex reads a fetched latest.json and its signature, and judges it against the
-// index held (nil before the first), which is local state and never checked again. The
+// readAgainst reads an index and its signature in namespace, and judges it against the
+// index held (nil before the first), which is local state and never checked again: it
+// can't lower the held index's secure or reinstallBelow, whatever the scripts allowed. It
+// returns the held index too, parsed.
+func readAgainst(held, data, sig []byte, namespace string) (idx, h *updateIndex, err error) {
+	if idx, err = readIndex(data, sig, namespace); err != nil || held == nil {
+		return idx, nil, err
+	}
+	if h, err = parseIndex(held); err != nil {
+		return nil, nil, err
+	}
+	if less(idx.secure, h.secure) || less(idx.below, h.below) {
+		return nil, nil, errors.New("the index lowers secure or reinstallBelow")
+	}
+	return idx, h, nil
+}
+
+// checkIndex reads a fetched latest.json and its signature against the index held. The
 // same bytes are a verified check with nothing new. A higher serial replaces the held
-// index (fresh), unless it lowers secure or reinstallBelow, whatever the scripts allowed.
-// Anything else is refused, and isn't a verified check.
+// index (fresh). Anything else is refused, and isn't a verified check.
 func checkIndex(held, data, sig []byte) (idx *updateIndex, fresh bool, err error) {
-	if idx, err = readIndex(data, sig, nsLatest); err != nil {
+	idx, h, err := readAgainst(held, data, sig, nsLatest)
+	switch {
+	case err != nil:
 		return nil, false, err
+	case bytes.Equal(data, held):
+		return idx, false, nil
+	case h != nil && idx.Serial <= h.Serial:
+		return nil, false, errors.New("the index is older than the one held")
 	}
-	if fresh, err = judgeIndex(held, data, idx); err != nil {
-		return nil, false, err
-	}
-	return idx, fresh, nil
-}
-
-// judgeIndex is checkIndex's rules, for an index already read.
-func judgeIndex(held, data []byte, idx *updateIndex) (fresh bool, err error) {
-	if held == nil {
-		return true, nil
-	}
-	if bytes.Equal(data, held) {
-		return false, nil
-	}
-	h, err := parseIndex(held)
-	if err != nil {
-		return false, err
-	}
-	if idx.Serial <= h.Serial {
-		return false, errors.New("the index is older than the one held")
-	}
-	if err := notLower(h, idx); err != nil {
-		return false, err
-	}
-	return true, nil
-}
-
-// checkCanary reads a canary index and its signature for update now --index, with every
-// check but the serial: it can't lower the held index's secure or reinstallBelow either.
-// It applies once and is never held.
-func checkCanary(held, data, sig []byte) (*updateIndex, error) {
-	idx, err := readIndex(data, sig, nsCanary)
-	if err != nil || held == nil {
-		return idx, err
-	}
-	h, err := parseIndex(held)
-	if err == nil {
-		err = notLower(h, idx)
-	}
-	if err != nil {
-		return nil, err
-	}
-	return idx, nil
-}
-
-// notLower refuses an index that lowers the held index's secure or reinstallBelow.
-func notLower(held, idx *updateIndex) error {
-	if less(idx.secure, held.secure) || less(idx.below, held.below) {
-		return errors.New("the index lowers secure or reinstallBelow")
-	}
-	return nil
+	return idx, true, nil
 }
 
 // updateTarget is the release idx names for a connector at version v, and when it's due:

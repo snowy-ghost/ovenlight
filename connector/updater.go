@@ -378,7 +378,9 @@ func (u *updater) updateNow(ctx context.Context, data, sig []byte) (string, erro
 	if u.d.onTrial() {
 		return "", fmt.Errorf("%s is still on its trial, which ends %s after it started: try again then", u.v, quietFor)
 	}
-	idx, err := checkCanary(u.st.Index, data, sig)
+	// Every check but the serial: a canary index can't lower the held index's secure or
+	// reinstallBelow either.
+	idx, _, err := readAgainst(u.st.Index, data, sig, nsCanary)
 	if err != nil {
 		return "", fmt.Errorf("the connector doesn't take this index: %w", err)
 	}
