@@ -6,10 +6,10 @@
 # The test key signs it in each namespace the tests check, and with sha256. Each release
 # key signs it only in ovenlight-test, which nothing that ships accepts, so a real key's
 # signature here can never be published as an index. With no arguments the release keys
-# are the mock ones in ../releasekey. After the real keys go into connector/release_keys,
-# run it on the Air with their private key files, in the same order, such as
-#
-#   connector/testdata/update/sign.sh ~/.ssh/id_ecdsa_sk_rk_ovenlight-release <paper key>
+# are the mock ones in ../releasekey. The real keys' index.json.release-*.sig come from key
+# setup, which signs a copy of index.json, so index.json never changes: those signatures
+# are of it, byte for byte. Run after the key swap, this replaces them with the mock keys',
+# so copy them back from ~/Sync/ovenlight/release-key-test/.
 #
 # A Touch ID handle signs through /usr/lib/ssh-keychain.dylib. index.json.ovenlight-latest.sk.sig
 # is from a Secure Enclave key that was deleted after signing, so it stays as it is.

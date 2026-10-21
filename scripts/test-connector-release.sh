@@ -315,7 +315,7 @@ keys air1 paper1
 ship 1.1.0 1.0.6 air1 1.1.0
 ship 1.1.1 1.0.6 air1
 tick
-refused "1.1.0/release_keys doesn't list this one" sign paper2 --pull 1.1.1
+refused "1.1.0/release_keys doesn't list its key" sign paper2 --pull 1.1.1
 forge 1.1.1 pull paper2 1.1.0
 refused "isn't signed by a key any release lists" publish --pull 1.1.1
 # A key that only a release not yet promoted lists can't sign it either.
@@ -324,7 +324,7 @@ keys air2 paper1 air1
 build 1.1.2 1.0.6
 signfolder 1.1.2 air1
 forge 1.1.1 pull air2 1.1.0
-refused "the index it replaces, or one" publish --pull 1.1.1
+refused "the index it replaces, and" publish --pull 1.1.1
 pull 1.1.1 paper1 1.1.0
 
 fresh move "a planned move to a new Air, with releases inside and after its four weeks"
@@ -421,20 +421,36 @@ resign air1 1.1.1
 pass "secure is still 1.0.6"
 refused "sign a fresh one" publish --promote 1.1.2
 build 1.1.3 1.0.5
-signfolder 1.1.3 air1
-tick
-refused "secure would go down" sign air1 --promote 1.1.3
-forge 1.1.3 promote air1 1.1.3
-refused "secure would go down" publish --promote 1.1.3
+refused "1.1.3 can't go below either" sign air1 1.1.3
 forge 1.1.0 promote air1 1.1.0
 refused "1.1.0 was promoted already" publish --promote 1.1.0
-build 1.1.4 1.0.6
+build 1.1.4 1.1.2
 signfolder 1.1.4 air1
 forge 1.1.4 promote paper1 1.1.4
 refused "are signed with different keys" publish --promote 1.1.4
 
+fresh lower "a release signed but not promoted keeps what it raised"
+keyfolder air1 paper1
+keys air1 paper1
+ship 1.1.0 1.0.6 air1 1.1.0
+# 1.1.2 is signed before 1.1.1 raises secure and reinstallBelow, so only its promote refuses it.
+build 1.1.2 1.0.6
+signfolder 1.1.2 air1
+build 1.1.1 1.1.1 1.1.1
+signfolder 1.1.1 air1
+build 1.1.3 1.0.6
+refused "1.1.3 can't go below either" sign air1 1.1.3
+build 1.1.3 1.1.1 1.1.0
+refused "1.1.3 can't go below either" sign air1 1.1.3
+promote 1.1.1 air1
+tick
+refused "secure would go down" sign air1 --promote 1.1.2
+forge 1.1.2 promote air1 1.1.2
+refused "secure would go down" publish --promote 1.1.2
+
 fresh gates "what no release gets past"
 keyfolder air1 paper1
+ssh-keygen -q -t ed25519 -N '' -C stranger -f "$dry/private/stranger"
 { cat "$fixtures/air1.pub" "$fixtures/paper1.pub" "$root/connector/testdata/releasekey/test-key.pub"; } > "$repo/connector/release_keys"
 commit "the test key"
 refused "holds a release key whose private half is public" release 1.1.0 1.0.6 1.1.0
@@ -456,18 +472,23 @@ if [ -n "$mocks" ]; then
     "$repo/scripts/release-connector.sh" --unsigned 1.1.0 1.0.6 1.1.0
   # A key swap that leaves a mock key in docs/allowed_signers would let owners' own check pass
   # what its public private half signs, so a real build refuses that too.
-  cat "$fixtures/air1.pub" "$fixtures/paper1.pub" > "$repo/connector/release_keys"
+  cat "$dry/private/stranger.pub" > "$repo/connector/release_keys"
   # shellcheck disable=SC2086 # one path per word
   awk '{ print "team@snowyghost.com namespaces=\"file,ovenlight-latest\"", $1, $2 }' $mocks >> "$repo/docs/allowed_signers"
   commit "a mock key left in allowed_signers"
   refused "docs/allowed_signers holds a release key whose private half is public" env -u OVENLIGHT_RELEASE_DRY \
     HOME="$dry/home" "$repo/scripts/release-connector.sh" --unsigned 1.1.0 1.0.6 1.1.0
-  signers air1 paper1
 fi
+# So does one left with a dry run's fixture key, whose private half is public too.
+mkdir -p "$dry/home"
+cat "$dry/private/stranger.pub" > "$repo/connector/release_keys"
+signers air1
+refused "docs/allowed_signers holds a release key whose private half is public" env -u OVENLIGHT_RELEASE_DRY \
+  HOME="$dry/home" "$repo/scripts/release-connector.sh" --unsigned 1.1.0 1.0.6 1.1.0
+signers air1 paper1
 keys air1 paper1
 refused "a dry run builds only with --unsigned" "$repo/scripts/release-connector.sh" 1.1.0 1.0.6 1.1.0
 build 1.1.0 1.0.6 1.1.0
-ssh-keygen -q -t ed25519 -N '' -C stranger -f "$dry/private/stranger"
 refused "a dry run trusts only the fixture keys" sign stranger 1.1.0
 refused "a dry run signs with --key" env OVENLIGHT_RELEASE_DRY="$dry" "$repo/scripts/sign-connector.sh" 1.1.0
 refused "isn't a folder" env OVENLIGHT_RELEASE_DRY= "$repo/scripts/sign-connector.sh" --key "$dry/private/air1" 1.1.0

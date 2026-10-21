@@ -100,7 +100,8 @@ grep -F "\"$archive\": \"$(shasum -a 256 "$archive" | cut -d ' ' -f 1)\"" latest
 On Linux, put `linux-amd64` or `linux-arm64` in place of `macos`, and if `shasum` is
 missing, `sha256sum` in place of `shasum -a 256`. The first check prints
 `Good "ovenlight-latest" signature`, and the second prints the index, which names the
-release after `"latest"`. If both do, unpack the archive and run its install script:
+release after `"latest"`. If both do, unpack the archive and run its install script, in the
+same window:
 
 ```sh
 tar xzf "$archive" --strip-components 1
@@ -121,7 +122,7 @@ cmd /c 'ssh-keygen -Y verify -f allowed_signers -I team@snowyghost.com -n ovenli
 
 On an Arm PC, use `windows-arm64` in place of `windows-amd64`. If the first check prints
 `Good "ovenlight-latest" signature` and the second `True`, unpack the archive and run its
-install script:
+install script, in the same window:
 
 ```powershell
 tar -xf $archive --strip-components 1
@@ -218,15 +219,16 @@ day, and installs a new release two days after it comes out, at a quiet moment i
 night: once nothing has used your apps or the connector for 10 minutes. Each computer's
 night starts at a time of its own between 02:00 and 04:00, and ends at 05:00, its own
 time. A release that fixes a security problem in yours goes in at the first quiet 10
-minutes, day or night. On a computer that's never quiet, or asleep every night, an update
-still waiting a day after it was due goes in at the start of the next night, busy or not,
-once the connector has been running and awake for 10 minutes. Installing restarts the
+minutes, day or night. On a computer that's never quiet, or asleep every night, a security
+fix goes in at the start of the next night, busy or not, as does any other update still
+waiting a day after it was due, once the connector has been running and awake for 10
+minutes. Installing restarts the
 connector, so the apps it runs stop and open connections drop for a few seconds (about 10
 on Linux, up to a minute on Windows). If the new release doesn't serve your apps again
 within 10 minutes, the connector goes back to the one before, and tries again at the start
 of the next night, busy or not. A restart of your computer in those 10 minutes starts them
 again. On Windows, the Stop or Restart command above in that time makes it go back too, as
-does signing out of a work, school or domain account.
+does shutting down or signing out of a work, school or domain account.
 
 `ovenlight status` shows the last check, a release waiting its turn and when it installs,
 the last update, one that failed, and whether yours has a known security problem.
@@ -249,11 +251,12 @@ files in `~/ovenlight-connector`, and the install script reinstalls the connecto
 
 Each release from 1.0.1 on also stays in its own folder, such as
 `https://downloads.ovenlight.app/connector/1.0.9/`, with its checksums signed by the keys
-in `allowed_signers` as it was at that release's tag. To install an older release and stay
-on it, first run `ovenlight update off`, or a release that updates itself moves to the
-newest again. One up to 1.0.9 never updates itself, and `ovenlight doctor` says when the
-release you're on has a known security problem. Then check it on a Mac or Linux, with its
-version in place of `1.0.9`, and the same changes for Linux as above:
+in `allowed_signers` as it was at that release's tag. The release you updated from is in
+`ovenlight status`'s Last update line. To install an older release and stay on it, first
+run `ovenlight update off`, or the connector moves to the newest again (one up to 1.0.9
+never updates itself). `ovenlight doctor` still says when the release you're on has a known
+security problem. Check it on a Mac or Linux with its version in place of `1.0.9`, and the
+Linux changes above:
 
 ```sh
 mkdir -p ~/ovenlight-connector && cd ~/ovenlight-connector
@@ -267,12 +270,11 @@ ssh-keygen -Y verify -f allowed_signers -I team@snowyghost.com -n file \
 shasum -a 256 -c --ignore-missing SHA256SUMS
 ```
 
-On Windows, whose releases start with the first that updates itself, check it in an
-administrator PowerShell, with its version in place of `1.1.0`:
+On Windows, check it in an administrator PowerShell, with its version in place of `1.0.9`:
 
 ```powershell
 mkdir $HOME\ovenlight-connector -Force | Out-Null; cd $HOME\ovenlight-connector
-$release = '1.1.0'
+$release = '1.0.9'
 $archive = 'ovenlight-connector-windows-amd64.zip'
 $base = "https://downloads.ovenlight.app/connector/$release"
 curl.exe -fsSL --remote-name-all "$base/$archive" "$base/SHA256SUMS" "$base/SHA256SUMS.sig"
@@ -282,8 +284,8 @@ cmd /c 'ssh-keygen -Y verify -f allowed_signers -I team@snowyghost.com -n file -
 ```
 
 If the first check prints `Good "file" signature`, and the second the archive's name with
-`OK` (`True` on Windows), unpack and install it with the second block of the
-[verified steps](#check-a-download-first).
+`OK` (`True` on Windows), unpack and install it as the
+[verified steps](#check-a-download-first) do, in the same window.
 
 ## Publish an app
 

@@ -90,12 +90,11 @@ app's side runs only in Xcode, locally and before shipping, never in CI, so a ch
 On the mini, in `~/src/ovenlight`:
 
 ```sh
-scripts/release-connector.sh 1.1.0 1.0.6
+scripts/release-connector.sh 1.2.0 1.0.6
 ```
 
 It takes the version, the oldest secure one, and optionally `reinstallBelow`, the oldest
 version that may update to it by binary alone (by default the highest one signed so far).
-The first release names its own.
 `--unsigned`, before the version, skips all signing, to test the rest.
 
 `release-connector.sh` writes the release to `build/release/`, replacing the one before:
@@ -129,14 +128,14 @@ Try the Windows build on a PC with Smart App Control on before publishing. Then,
 mini, tag the release on `HEAD`, the clean commit on `origin/master` it was built from:
 
 ```sh
-git tag -s -m "Connector 1.1.0" connector-v1.1.0
-git push origin connector-v1.1.0
+git tag -s -m "Connector 1.2.0" connector-v1.2.0
+git push origin connector-v1.2.0
 ```
 
 Sign it on the Air, with the release key behind Touch ID:
 
 ```sh
-scripts/sign-connector.sh 1.1.0
+scripts/sign-connector.sh 1.2.0
 ```
 
 It copies the build's `SHA256SUMS` and index from `~/src/ovenlight/build/release` on the
@@ -152,30 +151,31 @@ Back on the mini, upload the version's folder, then try the release on the mini'
 connector, the canary:
 
 ```sh
-scripts/publish-connector.sh 1.1.0
-ovenlight update now --index ~/Sync/ovenlight/releases/1.1.0/canary.json
+scripts/publish-connector.sh 1.2.0
+ovenlight update now --index ~/Sync/ovenlight/releases/1.2.0/canary.json
 ```
 
-The mini's connector must run the live release first: after a pull it may still run the
+A folder upload that fails partway is finished by running it again, before the next
+build replaces `build/release`. The mini's connector must run the live release first: after a pull it may still run the
 release taken out, so install the live one by hand from its folder. The live index must
 also be signed with a key the new release lists, so after a key change, `--resign` it
-first. The canary passes once the apps serve again and `ovenlight status` shows 1.1.0
+first. The canary passes once the apps serve again and `ovenlight status` shows 1.2.0
 running with a check made since it started. A release that raises `reinstallBelow`
 passes once `update now` says it needs its install script, the mini installs it by hand
-from `connector/1.1.0/` ([connector.md](connector.md#install-a-release-by-hand)), and
+from `connector/1.2.0/` ([connector.md](connector.md#install-a-release-by-hand)), and
 status shows a check made since. A release whose canary fails is never promoted: fix it
 under a new version, since a published folder never changes.
 
 Then promote it. Sign the promote on the Air:
 
 ```sh
-scripts/sign-connector.sh --promote 1.1.0
+scripts/sign-connector.sh --promote 1.2.0
 ```
 
 then publish it on the mini:
 
 ```sh
-scripts/publish-connector.sh --promote 1.1.0
+scripts/publish-connector.sh --promote 1.2.0
 ```
 
 That puts its files in `connector/latest/` and its index in `latest.json`, and every
@@ -209,26 +209,31 @@ The first release that updates itself, 1.1.0 here, goes out once, with 1.1.1 aft
 1. Before the updater reaches master, swap the mock release keys for the real ones, in
    one commit:
    - `connector/release_keys` and `docs/allowed_signers` list the two real public keys,
-     the latter in namespaces `file,ovenlight-latest`. The mock lines and their comment
-     leave `allowed_signers`, and the old keys stay.
-   - On the Air, `connector/testdata/update/sign.sh` re-signs the test fixtures, given the
-     Touch ID handle and the paper key's file in the order `release_keys` lists them.
+     the latter in namespaces `file,ovenlight-latest`. The mock lines, the keys that
+     signed releases up to 1.0.9 and their comments leave `allowed_signers`: a release up
+     to 1.0.9 is checked with the file at its own tag.
+   - `index.json.release-1.sig` and `index.json.release-2.sig`, which key setup signed
+     with the two real keys, are copied from `~/Sync/ovenlight/release-key-test/` into
+     `connector/testdata/update/`.
    - The comment in `connector/keys.go` loses its sentence about the mock keys.
    - The Air's `~/.ssh/ovenlight-release-keys/` holds the two real public keys.
 
    `connector/testdata/releasekey/mock-*.pub` stay: `release-connector.sh` refuses any key
    there in `release_keys` or `allowed_signers`.
-2. `~/Sync/ovenlight/releases/` holds no records yet, so 1.1.0 names its own
-   `reinstallBelow`: `scripts/release-connector.sh 1.1.0 1.0.6 1.1.0`. Sign and publish its
-   folder, then build, sign and publish 1.1.1 from the same commit.
+2. Merge the updater to master. Check that `~/Sync/ovenlight/releases/` holds no records
+   yet, so 1.1.0 names its own `reinstallBelow`:
+   `scripts/release-connector.sh 1.1.0 1.0.6 1.1.0`. Sign and publish its folder, then
+   build, sign and publish 1.1.1 from the same commit.
 3. Nothing before 1.1.0 updates itself, so it has no canary. The mini installs it by hand
    from `connector/1.1.0/` ([connector.md](connector.md#install-a-release-by-hand)), then
    runs 1.1.1's canary. The trial passes on the canary index, but no daily check verifies
    while `latest.json` is 1.0.9's, which is unsigned. The mini's first verified check after
-   1.1.0's promote completes the canary.
-4. Promote 1.1.0, then take the old keys out of `docs/allowed_signers`. Until that promote,
-   the verified install steps fail on 1.0.9's unsigned `latest.json`, so promote soon
-   after the merge. Promote 1.1.1 a day later, the owners' first automatic update.
+   1.1.0's promote completes the canary. The mini's Windows on Arm VM installs 1.1.0 by
+   hand too, with no canary, and stays on it, to take 1.1.1 the way owners will.
+4. Deploy the site, so its privacy policy covers the update check, then promote 1.1.0.
+   Until that promote, the verified install steps fail on 1.0.9's unsigned
+   `latest.json`, so promote soon after the merge. Promote 1.1.1 a day later, the owners'
+   first automatic update.
 
 ## The iPhone app
 

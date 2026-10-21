@@ -114,6 +114,14 @@ release)
   index "$version" "$secure" "$reinstall" 0 "$b/SHA256SUMS" | cmp -s - "$b/index.json" ||
     refuse "build/release's index.json doesn't match its SHA256SUMS"
   abovereleased "$version"
+  # A release signed but not promoted yet may be skipped by this one's promote, so this one
+  # keeps what it raised.
+  for f in "$records"/*/canary.json; do
+    v="$(basename "$(dirname "$f")")"
+    if below "$v" "$version" && { below "$secure" "$(field secure "$f")" || below "$reinstall" "$(field reinstallBelow "$f")"; }; then
+      refuse "$v is signed with secure $(field secure "$f") and reinstallBelow $(field reinstallBelow "$f"): $version can't go below either"
+    fi
+  done
   if [ -f "$records/$version/SHA256SUMS" ] && ! cmp -s "$records/$version/SHA256SUMS" "$b/SHA256SUMS"; then
     refuse "another build of $version is signed already: a new build takes a new version"
   fi
@@ -161,11 +169,6 @@ $(diff "$tmp/want" "$tmp/have" | sed -n 's/^</  missing/p; s/^>/  extra/p')"
   sign ovenlight-canary "$b/canary.json"
   echo "$commit" > "$b/commit"
   keep "$version" "$b"/{SHA256SUMS,SHA256SUMS.sig,index.json,commit,release_keys,canary.json,canary.json.sig}
-  if [ -n "$dry" ]; then
-    cp "$b/SHA256SUMS.sig" "$minirelease/"
-  else
-    scp -q "$b/SHA256SUMS.sig" "$minirelease/"
-  fi
   echo "signed: on the mini, scripts/publish-connector.sh $version, then the canary with $records/$version/canary.json"
   ;;
 
@@ -192,14 +195,7 @@ pull)
     refuse "$version isn't the live release (${live:-nothing is promoted}): only the live one is pulled, and one that's no longer the latest is fixed forward"
   target="$(keptbelow "$version")"
   [ -n "$target" ] || refuse "nothing promoted before $version to go back to"
-  # Computers that took the live index can check a pull signed with its key, and every
-  # computer the pull reaches one that all their releases list.
-  if ! verify "$records/$newest.json" "$records/$newest.json.sig" ovenlight-latest "$tmp/signer"; then
-    for k in $(pullkeys "$version"); do
-      haskey "$kblob" "$k" ||
-        refuse "the live index, $newest, was signed with another key, and $k doesn't list this one"
-    done
-  fi
+  pullsigned "$tmp/signer" "$newest" "$version"
   verifyrule "$target" "$records/$target/SHA256SUMS" "$records/$target/SHA256SUMS.sig" file
   ordered "$now"
   releaseindex "$target" "$now" > "$tmp/pull-$now.json"
