@@ -215,7 +215,8 @@ The first release that updates itself, 1.1.0 here, goes out once, with 1.1.1 aft
    - `index.json.release-1.sig` and `index.json.release-2.sig`, which key setup signed
      with the two real keys, are copied from `~/Sync/ovenlight/release-key-test/` into
      `connector/testdata/update/`.
-   - The comment in `connector/keys.go` loses its sentence about the mock keys.
+   - The comments in `connector/keys.go` and `connector/sshsig_test.go` lose what they say
+     about the mock keys.
    - `connector/testdata/update/sign.sh` loses the lines that delete
      `index.json.release-*.sig` and sign them with the mock keys, and their comment.
    - The Air's `~/.ssh/ovenlight-release-keys/` holds the two real public keys.
