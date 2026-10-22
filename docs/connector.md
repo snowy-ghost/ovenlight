@@ -179,7 +179,7 @@ On Linux, `$XDG_CONFIG_HOME` and `$XDG_STATE_HOME` take the place of `~/.config`
 `~/.local/state` when set. At 20 MB the log moves to `ovenlight.log.1` beside it,
 replacing the one before. What bypasses the log, such as a crash, goes to
 `ovenlight.stderr.log` beside the log on macOS and Windows, and to the user journal on
-Linux (`journalctl --user -u ovenlight`). The updater keeps a few files of its own in the
+Linux (`journalctl --user -eu ovenlight`). The updater keeps a few files of its own in the
 state directory and the bin folder ([security.md](security.md#the-files-it-keeps)).
 
 On macOS and Linux, `install.sh` links `ovenlight` in `~/.local/bin`, but never replaces a

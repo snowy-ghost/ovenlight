@@ -86,7 +86,7 @@ func startFix(p *paths) string {
 var serviceCommands = map[string]struct{ start, restart, where, crash string }{
 	"darwin": {"launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.snowyghost.ovenlight.connector.plist || launchctl kickstart gui/$(id -u)/com.snowyghost.ovenlight.connector",
 		"launchctl kickstart -k gui/$(id -u)/com.snowyghost.ovenlight.connector", "", "ovenlight.stderr.log beside it"},
-	"linux":   {"systemctl --user enable --now ovenlight", "systemctl --user restart ovenlight", "", "`journalctl --user -u ovenlight`"},
+	"linux":   {"systemctl --user enable --now ovenlight", "systemctl --user restart ovenlight", "", "`journalctl --user -eu ovenlight`"},
 	"windows": {"Enable-ScheduledTask ovenlight; Start-ScheduledTask ovenlight", "Stop-ScheduledTask ovenlight; Start-ScheduledTask ovenlight", " in an administrator PowerShell", "ovenlight.stderr.log beside it"},
 }
 
