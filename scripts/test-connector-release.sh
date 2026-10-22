@@ -416,7 +416,7 @@ if publish --promote 1.1.1 > "$dry/log" 2>&1; then fail "the upload of latest.js
 chmod 644 "$dry/bucket/connector/latest.json"
 tick
 run sign air1 --resign
-refused "the publish of 1.1.1/promote-" publish --resign
+refused "not 1.1.1/promote-" publish --resign
 rm "$dry"/sync/releases/1.1.1/promote-*.published
 run publish --resign
 run nokey --check
@@ -428,6 +428,14 @@ resign air1 1.1.1
 records=("$dry"/sync/releases/1.1.1/promote-*.live)
 [ ${#records[@]} -eq 1 ] || fail "the promote cut short once latest.json was it isn't marked live"
 pass "the resign marks live the promote cut short once latest.json was it"
+# One dropped though latest.json is it stops the next, until its record is back.
+r=("$dry"/sync/releases/1.1.1/resign-*.published)
+mv "${r[0]}" "$dry/kept"
+tick
+run sign air1 --resign
+refused "latest.json names 1.1.1, not 1.1.1/promote-" publish --resign
+mv "$dry/kept" "${r[0]}"
+run publish --resign
 # A promote cut short, then finished after the Air signed the next on the one before it.
 build 1.1.2 1.0.6
 signfolder 1.1.2 air1
