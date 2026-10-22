@@ -68,7 +68,7 @@ air=1
 # fetchlive: latest.json, in $tmp/live.json.
 fetchlive() {
   if [ -n "$dry" ]; then cp "$dry/bucket/connector/latest.json" "$tmp/live.json"
-  else curl -fsS -o "$tmp/live.json" "https://downloads.ovenlight.app/connector/latest.json?$(date +%s)"; fi
+  else curl -fsS --max-filesize 4096 -o "$tmp/live.json" "https://downloads.ovenlight.app/connector/latest.json?$(date +%s)"; fi
 }
 
 # observe: the header's check of latest.json. pending is a pull signed above it and never seen.
@@ -121,6 +121,7 @@ import() {
       continue
     fi
     read -r c _ < "$d/commit"
+    [[ "$c" =~ ^[0-9a-f]{40}$ ]] || refuse "$v's commit file names $c, not a commit's full hash"
     git -C "$root" merge-base --is-ancestor "$c" "$master" || refuse "$v was built from $c, which isn't on $master"
     mkdir -p "$h/$v"
     git -C "$root" show "$c:connector/release_keys" > "$h/$v/release_keys"
@@ -181,9 +182,11 @@ kblob="$(awk '{ print $2 }' "$tmp/signer")"
 trusted "$tmp/signer"
 
 # One serial from the future would block every later index, so the clock that sets it is
-# checked against the mini's.
+# checked against the mini's. The mini's answer must be a number before any arithmetic,
+# since bash runs commands in an array subscript there.
 now="$(date +%s)"
 if [ -n "$dry" ]; then mini="$now"; else mini="$(ssh mini date +%s)"; fi
+[[ "$mini" =~ ^[0-9]+$ ]] || refuse "the mini's clock answered \"$mini\", not a number of seconds"
 [ "$now" -le $((mini + 3600)) ] || refuse "this clock is more than an hour ahead of the mini's"
 
 # sign <namespace> <file>: writes <file>.sig with the key, and checks it.
@@ -249,6 +252,7 @@ release)
   mkdir "$b"
   scp -q "$minirelease/SHA256SUMS" "$minirelease/index.json" "$minirelease/commit" "$b/"
   read -r commit tag < "$b/commit"
+  [[ "$commit" =~ ^[0-9a-f]{40}$ ]] || refuse "the build's commit file names $commit, not a commit's full hash"
   if [ -n "$dry" ]; then
     [ "$tag" = dry-run ] || refuse "a dry run signs only a dry run's build"
   else
