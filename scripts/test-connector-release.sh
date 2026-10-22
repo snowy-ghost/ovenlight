@@ -207,7 +207,7 @@ untouched() {
 # backdate <days>: every promote published that many days earlier.
 backdate() {
   local f
-  for f in "$dry"/sync/releases/*/promote-*.published; do
+  for f in "$dry"/sync/releases/*/promote-*.live; do
     echo $(($(cat "$f") - $1 * 86400)) > "$f"
   done
 }

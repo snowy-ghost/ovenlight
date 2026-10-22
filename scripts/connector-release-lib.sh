@@ -6,7 +6,8 @@
 # Every promote, pull and resign index sign-connector.sh signs sits in its release's folder of
 # the records, ~/Sync/ovenlight/releases/<version>/, as <kind>-<serial>.json and its .sig, and
 # here it's named <version>/<kind>-<serial>. publish-connector.sh adds <kind>-<serial>.published,
-# holding the time it was published, before it uploads it. A pull or resign also notes, in
+# holding the time its publish began, before it uploads it, and <kind>-<serial>.live, the time
+# latest.json began naming it, once it has. A pull or resign also notes, in
 # <kind>-<serial>.base, the published index it was built on. Those records, and the last index
 # sign-connector.sh signed, which it keeps beside the Air's keys, are the only history the
 # scripts read, never the bucket.
@@ -249,7 +250,7 @@ newkeywait() {
   for id in $published; do
     v="$(field latest "$records/$id.json")"
     if ! haskey "$1" "$records/$v/release_keys"; then old="$v" from=
-    elif [ -z "$from" ]; then from="$(cat "$records/$id.published")"; fi
+    elif [ -z "$from" ] && [ -f "$records/$id.live" ]; then from="$(cat "$records/$id.live")"; fi
   done
   if [ -z "$old" ]; then return 0; fi
   from="${from:-$2}"

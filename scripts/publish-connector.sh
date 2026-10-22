@@ -168,6 +168,7 @@ goes() {
   done
   put connector/latest.json.sig "$records/$1.json.sig" "public, max-age=300"
   put connector/latest.json "$records/$1.json" "public, max-age=300"
+  date +%s > "$records/$1.live"
   echo "published $1: $SITE/connector/latest.json names $2"
 }
 
