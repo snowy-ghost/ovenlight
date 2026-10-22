@@ -850,7 +850,7 @@ func TestUpdateFinding(t *testing.T) {
 		{"below secure, waiting", view(func(u *updateView) { pending(u); u.BelowSecure = true }), "1.0.9", true, statusFail, "Nothing to do: 1.2.0 installs on its own"},
 		{"below secure, off", view(func(u *updateView) { pending(u); u.BelowSecure, u.Off = true, true }), "1.0.9", false, statusFail, "ovenlight update on"},
 		{"off", view(func(u *updateView) { pending(u); u.Off = true }), "1.1.5", true, statusWarn, "updates are off"},
-		{"off, 8 days without a check", view(func(u *updateView) { u.Off, u.LastCheck = true, now.Add(-8*day) }), "1.2.0", true, statusWarn, "can't tell when its release has a security problem"},
+		{"off, 8 days without a check", view(func(u *updateView) { u.Off, u.LastCheck = true, now.Add(-8*day) }), "1.2.0", true, statusWarn, "can't learn of a new security problem"},
 		{"needs its script", view(func(u *updateView) { u.NeedsScript = true }), "1.0.5", true, statusWarn, installDocs},
 		{"needs its script, off", view(func(u *updateView) { u.NeedsScript, u.Off = true, true }), "1.0.5", true, statusWarn, installDocs},
 		{"needs its script, below secure, off", view(func(u *updateView) { u.NeedsScript, u.BelowSecure, u.Off = true, true, true }), "1.0.5", true, statusFail, installDocs},
