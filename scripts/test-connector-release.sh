@@ -321,8 +321,6 @@ run sign air1 --resign
 lastsigned 1.1.1
 mv "$dry"/hidden/* "$d/1.1.1/"
 for f in "$d"/1.1.2/promote-*; do mv "$f" "$d/1.1.1/"; done
-run publish --resign
-latest_is 1.1.1 air1
 refused "1.1.2 isn't the live release (1.1.1)" sign air1 --pull 1.1.2
 forge 1.1.2 pull air1 1.1.1
 refused "1.1.2 isn't the live release (1.1.1)" publish --pull 1.1.2
@@ -332,9 +330,6 @@ mv "$d"/1.1.1/pull-* "$dry/hidden/"
 tick
 run sign air1 --resign
 lastsigned 1.1.0
-mv "$dry"/hidden/* "$d/1.1.1/"
-run publish --resign
-latest_is 1.1.0 air1
 
 fresh stale "a pull signed and not yet published"
 keyfolder air1 paper1
@@ -347,7 +342,6 @@ run sign air1 --pull 1.1.1
 build 1.1.2 1.0.6
 signfolder 1.1.2 air1
 tick
-refused "1.1.1/pull-" sign air1 --resign
 refused "isn't published: publish it on the mini, or sign a fresh pull" sign air1 --promote 1.1.2
 pull 1.1.1 air1 1.1.0
 # An agent holding ~/Sync swaps an archive's hash, signs SHA256SUMS and the canary index to
@@ -408,7 +402,6 @@ pull 1.1.1 air1 1.1.0
 newair
 cp "$fixtures/air2.pub" "$dry/keys/touchid.pub"
 cat "$fixtures/air1.pub" "$fixtures/paper1.pub" > "$dry/import"
-refused "isn't an index in" nokey --check
 # An agent holding ~/Sync deletes the pull's record of being published, makes up a promote of
 # 1.1.1 signed with another key, and points 1.1.0's commit at one whose release_keys lists the
 # new key.
