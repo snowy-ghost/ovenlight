@@ -45,7 +45,7 @@ func cmdUpdate(args []string) error {
 		}
 		msg := "Updates are on."
 		if _, ok := semver(version()); ok {
-			msg += " The connector installs a new release on its own two days after it first sees it, at a quiet moment in the night, and a security fix sooner. A release that's overdue goes in within minutes, busy or not."
+			msg += " The connector installs a new release on its own two days after it first sees it, at a quiet moment in the night, and a security fix sooner. A release that's overdue goes in within the hour, busy or not."
 		}
 		fmt.Println(msg)
 	case "now":
