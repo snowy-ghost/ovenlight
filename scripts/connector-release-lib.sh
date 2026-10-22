@@ -222,6 +222,9 @@ pullsigned() {
   for f in $(rulekeys "$3") $(livekeys); do
     haskey "$(awk '{ print $2 }' "$1")" "$f" || refuse "the pull isn't signed with the key of $2, the index it replaces, and $f doesn't list its key"
   done
+  # Computers asleep on an older release may not hold a new Touch ID key yet. The paper key,
+  # which every release of its time lists, signs a pull at once after the Air is lost.
+  [ "$(awk '{ print $1 }' "$1")" = ssh-ed25519 ] || newkeywait "$(awk '{ print $2 }' "$1")" "$(date +%s)"
 }
 
 # verifyrule <version> <file> <sig> <namespace>: refuses a signature the one rule doesn't accept.

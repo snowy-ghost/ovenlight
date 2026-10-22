@@ -388,16 +388,20 @@ signers air1 paper2
 ship 1.1.1 1.0.6 air1
 tick
 refused "four weeks and four days" sign paper2 --resign
-backdate 33
+# A release that mustn't ship goes out, and the new paper key pulls it, as it would after a
+# lost Air, without waiting.
 ship 1.1.2 1.0.6 air1
+pull 1.1.2 paper2 1.1.1
+backdate 33
+ship 1.1.4 1.0.6 air1
 # The Air is lost, and the new paper key signs what the next R needs at once, with paper1
 # standing in for the paper key after it.
 keyfolder air2 paper1
 keys air2 paper1 paper2
-build 1.1.3 1.0.6
-signfolder 1.1.3 paper2
-resign paper2 1.1.2
-promote 1.1.3 paper2
+build 1.1.5 1.0.6
+signfolder 1.1.5 paper2
+resign paper2 1.1.4
+promote 1.1.5 paper2
 
 fresh paperpull "the Air that signed the live index lost before its pull, which the paper key signs"
 keyfolder air1 paper1
@@ -431,6 +435,9 @@ promote 1.1.1 air1
 build 1.1.2 1.0.6
 signfolder 1.1.2 air1
 promote 1.1.2 air1
+# Computers asleep on 1.1.0 hold only the old keys, so the new key can't sign the pull yet.
+tick
+refused "four weeks and four days" sign air2 --pull 1.1.2
 pull 1.1.2 air1 1.1.1
 # The release after drops the old key, and the new key alone waits four weeks and four days.
 keys air2 paper1
