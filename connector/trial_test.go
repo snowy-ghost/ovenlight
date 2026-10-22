@@ -155,13 +155,24 @@ func TestTrialRollbackCountsOnce(t *testing.T) {
 }
 
 // A trial to another version ends: the swap didn't finish, a rollback did, or an install
-// script put another release in place. So does one with nothing to roll back to, and one
+// script put another release in place. So does one update.json records as passed, which
+// a removal that failed after the pass leaves, one with nothing to roll back to, and one
 // that can't be read. Nothing moves.
 func TestTrialEnds(t *testing.T) {
 	for name, setup := range map[string]func(dir, installed string){
 		"another version":      func(string, string) {},
 		"nothing to roll back": func(_, installed string) { os.Remove(prevBinary(installed)) },
 		"unreadable":           func(dir, _ string) { writeFile(t, filepath.Join(dir, updateTrialFile), "{") },
+		"passed": func(dir, _ string) {
+			rec := readTrial(t, dir)
+			rec.Starts, rec.Started = 1, at(0, 2, 31)
+			if err := jsonfile.Save(filepath.Join(dir, updateTrialFile), &rec); err != nil {
+				t.Fatal(err)
+			}
+			if err := recordFile(dir, func(st *updateState) { st.Updated = &updateEvent{From: rec.From, To: rec.To, At: rec.At} }); err != nil {
+				t.Fatal(err)
+			}
+		},
 	} {
 		dir, installed := trialRig(t, trialTo(t, "1.2.0", nsLatest))
 		setup(dir, installed)
@@ -353,8 +364,8 @@ func TestTrialPasses(t *testing.T) {
 }
 
 // At the deadline, an app recorded that hasn't served again, logged in, a daemon that
-// never came up, or an updater that never started, rolls back and exits. An app
-// unpublished since needn't serve.
+// never came up, or an updater that never started, rolls back and exits. So does an app
+// unpublished since: only the release on trial could say it was.
 func TestTrialDeadline(t *testing.T) {
 	if updateHour != time.Hour {
 		t.Skip("a compressed schedule")
@@ -391,6 +402,7 @@ func TestTrialDeadline(t *testing.T) {
 
 	tr, dir, installed = startTrialing(t, "coach", "gone")
 	d, _ = testDaemon(t)
+	d.stateDir = dir
 	d.nodes["coach"].serving = true
 	d.upd = &updater{d: d, now: tr.clock.now}
 	if err := jsonfile.Save(d.configPath, &Config{Apps: []App{{Name: "Interview Coach", Slug: "coach", Port: 4317}}}); err != nil {
@@ -398,8 +410,8 @@ func TestTrialDeadline(t *testing.T) {
 	}
 	tr.attach(d)
 	tr.pass(10 * time.Minute)
-	if len(tr.exits) != 0 || readFile(t, installed) != "new" || exists(filepath.Join(dir, updateTrialFile)) {
-		t.Error("an unpublished app failed the trial")
+	if f := rolledBack(t, dir, installed); !strings.Contains(f.Error, "gone didn't serve again") || len(tr.exits) != 1 {
+		t.Errorf("unpublished: %+v", f)
 	}
 }
 

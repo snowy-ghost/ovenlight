@@ -597,7 +597,11 @@ func updateFinding(u *updateView, v string, running bool, now time.Time) *Check 
 	case stuck != nil:
 		return stuck
 	case u.Pending != "":
-		return &Check{ID: "update", Status: statusOK, Message: u.Pending + " is out, and " + u.installs(now)}
+		msg := u.Pending + " is out"
+		if running {
+			msg += ", and " + u.installs(now)
+		}
+		return &Check{ID: "update", Status: statusOK, Message: msg}
 	case u.Latest == "":
 		return &Check{ID: "update", Status: statusOK, Message: "no update check has worked yet"}
 	}

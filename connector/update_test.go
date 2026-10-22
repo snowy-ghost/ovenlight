@@ -13,6 +13,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -272,6 +273,20 @@ func TestFetchIndex(t *testing.T) {
 	big = true
 	if _, _, err := fetchIndex(context.Background(), srv.URL); err == nil {
 		t.Error("read an index over 4 KB")
+	}
+}
+
+// The updater signs in to a proxy named with a user and password, and logs nothing for
+// each CONNECT.
+func TestUpdateClientProxyAuth(t *testing.T) {
+	tr := updateClient.Transport.(*http.Transport)
+	proxy, _ := url.Parse("http://bob:hunter2@proxy.example:8080")
+	h, err := tr.GetProxyConnectHeader(context.Background(), proxy, "downloads.ovenlight.app:443")
+	if err != nil || h.Get("Proxy-Authorization") != "Basic Ym9iOmh1bnRlcjI=" {
+		t.Errorf("%v %v", h, err)
+	}
+	if tr.OnProxyConnectResponse != nil {
+		t.Error("each CONNECT is logged")
 	}
 }
 

@@ -130,12 +130,12 @@ func startTrial() {
 // beginTrial counts a start of version v as the service, given the state folder the
 // binary is in, and returns its trial when it's on one. A trial to another version ends:
 // the swap didn't finish, a rollback did, or an install script put another release in
-// place. So does one with nothing to roll back to, or that isn't a trial record. One that
-// can't be read now stays for the next start, and so does every trial while another
-// connector listens on the state folder's socket: run --service started by hand while
-// the service runs then fails on its lock. A second start with no clean stop or Windows
-// restart since the last counted start rolls back at once, and exit says the connector
-// should then exit.
+// place. So does one that update.json records as passed, one with nothing to roll back
+// to, and one that isn't a trial record. One that can't be read now stays for the next
+// start, and so does every trial while another connector listens on the state folder's
+// socket: run --service started by hand while the service runs then fails on its lock. A
+// second start with no clean stop or Windows restart since the last counted start rolls
+// back at once, and exit says the connector should then exit.
 func beginTrial(dir, v string, now func() time.Time) (t *trial, exit bool) {
 	path := filepath.Join(dir, updateTrialFile)
 	data, err := jsonfile.ReadFile(path)
@@ -159,6 +159,7 @@ func beginTrial(dir, v string, now func() time.Time) (t *trial, exit bool) {
 	case err != nil:
 		log.Printf("updates: the last update's trial ends, since it can't be read: %v", err)
 	case t.rec.To != v:
+	case passed(dir, t.rec): // and the trial outlived its pass
 	case !exists(prevBinary(installedBinary(dir))):
 		log.Printf("updates: %s has nothing to roll back to, so its trial ends", v)
 	case t.rec.Starts > 0 && !restartedSince(t.rec.Started, now()):
@@ -320,12 +321,13 @@ func (t *trial) tick() bool {
 		t.exit("rolled back to " + t.rec.From)
 		return true
 	}
-	// The trial ends before the update is recorded: a crash in between keeps the release,
-	// which passed.
-	t.end()
+	// The pass is on disk before the trial goes, so a trial that a crash, a power cut or a
+	// removal that fails leaves behind ends at the next start, and the release stays.
 	log.Printf("updates: %s passed its trial", t.rec.To)
 	u.st.Updated = &updateEvent{From: t.rec.From, To: t.rec.To, At: t.rec.At}
 	u.save()
+	syncDir(t.dir)
+	t.end()
 	return true
 }
 
@@ -382,8 +384,7 @@ func (t *trial) giveUp() bool {
 	return true
 }
 
-// failure is why the trial fails at its deadline, or nil when it passes. An app
-// unpublished since the swap needn't serve.
+// failure is why the trial fails at its deadline, or nil when it passes.
 func (t *trial) failure(d *daemon) error {
 	if d == nil {
 		return fmt.Errorf("%s didn't finish starting within its trial", t.rec.To)
@@ -391,15 +392,13 @@ func (t *trial) failure(d *daemon) error {
 	if d.upd == nil {
 		return fmt.Errorf("%s's updater didn't start", t.rec.To)
 	}
-	cfg, found, err := loadConfigFile(d.configPath)
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	var missing []string
 	for _, slug := range t.rec.Apps {
-		if _, ok := cfg.Find(slug); t.served[slug] || (err == nil && found && !ok) {
-			continue
+		if !t.served[slug] {
+			missing = append(missing, slug)
 		}
-		missing = append(missing, slug)
 	}
 	if len(missing) > 0 {
 		return fmt.Errorf("%s didn't serve again with its node logged in within %s's trial", strings.Join(missing, ", "), t.rec.To)
@@ -473,6 +472,13 @@ func (t *trial) record(change func(*updateState)) error {
 		return nil
 	}
 	return recordFile(t.dir, change)
+}
+
+// passed reports whether update.json in the state folder dir records rec's update as
+// passed.
+func passed(dir string, rec updateTrial) bool {
+	st, err := loadUpdateState(dir)
+	return err == nil && st.Updated != nil && st.Updated.To == rec.To && st.Updated.At.Equal(rec.At)
 }
 
 // recordFile changes update.json in the state folder dir.

@@ -915,6 +915,7 @@ func TestUpdateFinding(t *testing.T) {
 		{"never checked in 8 days", view(func(u *updateView) { u.Latest, u.LastCheck, u.since = "", time.Time{}, now.Add(-8*day) }), "1.2.0", true, statusWarn, "for 7 days"},
 		{"run by hand", view(func(u *updateView) { u.SelfUpdating = false }), "1.2.0", true, statusWarn, "isn't the installed service"},
 		{"not running", view(func(u *updateView) { u.SelfUpdating = false }), "1.2.0", false, statusOK, "up to date"},
+		{"waiting its turn, not running", view(func(u *updateView) { u.SelfUpdating, u.Pending = false, "1.2.0" }), "1.1.5", false, statusOK, "1.2.0 is out"},
 	} {
 		got := updateFinding(c.u, c.v, c.running, now)
 		if got == nil || got.Status != c.status || !strings.Contains(got.Message+" "+got.Fix, c.has) {
@@ -922,6 +923,9 @@ func TestUpdateFinding(t *testing.T) {
 		}
 		if got != nil && strings.Contains(got.Fix, "downloads.ovenlight.app/connector/latest/") {
 			t.Errorf("%s: points at an unverified download", c.name)
+		}
+		if c.name == "waiting its turn, not running" && strings.Contains(got.Message, "installs") {
+			t.Errorf("%s: %q, though it installs nothing while down", c.name, got.Message)
 		}
 		if c.name == "below secure, waiting, not running" && got.Fix != "" {
 			t.Errorf("%s: %q, though it installs nothing while down", c.name, got.Fix)
@@ -987,7 +991,8 @@ func TestUpdateLines(t *testing.T) {
 }
 
 // Once an update's moment has come, status names now, or for a regular release outside
-// the night the start of the next, in its text and its JSON alike.
+// the night the start of the next, in its text and its JSON alike. With updates off or
+// no connector updating itself, the JSON names no install times either.
 func TestInstallsFromNow(t *testing.T) {
 	if updateHour != time.Hour {
 		t.Skip("a compressed schedule")
@@ -1010,6 +1015,13 @@ func TestInstallsFromNow(t *testing.T) {
 		u := readUpdateView(dir, "1.1.5", true, c.now)
 		if got := u.installs(c.now); !u.InstallAfter.Equal(c.from) || !strings.Contains(got, when(c.from)) {
 			t.Errorf("%s at %v: from %v, %s", c.secure, c.now, u.InstallAfter, got)
+		}
+	}
+	notSelf := readUpdateView(dir, "1.1.5", false, at(0, 14, 0))
+	os.WriteFile(filepath.Join(dir, updatesOffFile), nil, 0o600)
+	for name, u := range map[string]*updateView{"not updating itself": notSelf, "off": readUpdateView(dir, "1.1.5", true, at(0, 14, 0))} {
+		if u.Pending != "1.2.0" || !u.InstallAfter.IsZero() || !u.InstallBy.IsZero() {
+			t.Errorf("%s: %+v", name, u)
 		}
 	}
 }
