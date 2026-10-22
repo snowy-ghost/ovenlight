@@ -15,24 +15,24 @@
 #   scripts/sign-connector.sh [--key <file>] --resign
 #       the live index again, with a key the live release lists, as does every pulled
 #       release above it
+#   scripts/sign-connector.sh --check
+#       checks latest.json, as each of the others does first
 #
-# Each index gets the time now as its serial. What it signs goes in the release's folder in
-# ~/Sync/ovenlight/releases/, which scripts/publish-connector.sh publishes from on the mini.
-# Touch ID shows a prompt and not what it signs, so this prints that first, and refuses
-# before it whatever publish-connector.sh would refuse. A release is signed and promoted only
-# when its connector/release_keys is exactly the two keys in ~/.ssh/ovenlight-release-keys/
-# plus the key signing it, so the keys a release trusts never come from the commit alone.
-# The paper key signs only a release that replaces it, so its .pub has left that folder. A
-# promote, pull or resign builds only on what this Air's own keys signed: those two, the
-# ones they replaced, which the folder's retired file lists, and the key signing. The
-# records' release_keys are only as safe as ~/Sync, as are their index.json and canary.json
-# files, which carry a release's raise of secure or reinstallBelow forward to later ones. It
-# also builds only on the index it signed last, which it keeps in that folder as last.json,
-# and on the published indexes it built that one on, kept there as published, so the records
-# can't be rolled back. And it signs a promote, pull or resign only while latest.json is the
-# newest index the records call published (unsigned while they call none published), and
-# that index names the release the records' names make live, so marking or renaming an index
-# in ~/Sync can't change the live one.
+# Each index gets the time now as its serial. What it signs goes in this Air's history,
+# ~/.ssh/ovenlight-release-keys/history/, the only record it reads, and is copied to the
+# release's folder in ~/Sync/ovenlight/releases/, which scripts/publish-connector.sh
+# publishes from on the mini. Touch ID shows a prompt and not what it signs, so this prints
+# that first, and refuses before it whatever publish-connector.sh would refuse. A release is
+# signed and promoted only when its connector/release_keys is exactly the two keys in
+# ~/.ssh/ovenlight-release-keys/ plus the key signing it, so the keys a release trusts never
+# come from the commit alone. The paper key signs only a release that replaces it, so its
+# .pub has left that folder.
+#
+# Each run first fetches latest.json, which must be an index in the history, never one below
+# an index it has been (1.0.9's unsigned one until then), and marks it seen: it's the live
+# index. A pull signed above it and never seen blocks promotes and resigns until it's
+# published or a fresh pull is signed, and a promote or resign never seen is superseded by the
+# next index. After signing an index for latest.json, it waits for latest.json to be it.
 #
 # --key signs with a key other than this Air's Touch ID handle, such as the paper backup or
 # another Touch ID key's handle, with its public half beside it as <file>.pub.
@@ -40,26 +40,62 @@ set -euo pipefail
 
 HANDLE="$HOME/.ssh/id_ecdsa_sk_rk_ovenlight-release"
 
-usage="usage: sign-connector.sh [--key <file>] [--promote | --pull] <version>, or [--key <file>] --resign"
+usage="usage: sign-connector.sh [--key <file>] [--promote | --pull] <version>, [--key <file>] --resign or --check"
 mode=release
 key=
 while [[ "${1:-}" == --* ]]; do
   case "$1" in
   --key) key="${2:?$usage}"; shift ;;
-  --promote | --pull | --resign) mode="${1#--}" ;;
+  --promote | --pull | --resign | --check) mode="${1#--}" ;;
   *) echo "unknown option $1" >&2; exit 1 ;;
   esac
   shift
 done
 version=
-if [ "$mode" != resign ]; then
-  version="${1:?$usage}"
-fi
+case "$mode" in release | promote | pull) version="${1:?$usage}" ;; esac
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck disable=SC2034 # the lib reads it
+air=1
 # shellcheck source=connector-release-lib.sh
 . "$root/scripts/connector-release-lib.sh"
 [ -z "$version" ] || canonical "$version" || refuse "versions look like 1.2.3, with no leading zeros or suffix, not $version"
+
+# fetchlive: latest.json, in $tmp/live.json.
+fetchlive() {
+  if [ -n "$dry" ]; then cp "$dry/bucket/connector/latest.json" "$tmp/live.json"
+  else curl -fsS -o "$tmp/live.json" "https://downloads.ovenlight.app/connector/latest.json?$(date +%s)"; fi
+}
+
+# observe: refuses a latest.json that isn't an index in the history, or is one below an index
+# it has been, and marks it seen. pending is a pull signed above it and never seen.
+observe() {
+  local id found=
+  fetchlive || refuse "couldn't fetch latest.json"
+  if [ -z "$(field serial "$tmp/live.json")" ]; then
+    [ -z "$newest" ] || refuse "latest.json is unsigned, and it was $newest: publish $newest again on the mini"
+    pending=
+    return
+  fi
+  for id in $signed; do
+    if cmp -s "$tmp/live.json" "$records/$id.json"; then found="$id"; fi
+  done
+  [ -n "$found" ] || refuse "latest.json isn't an index in $records. After a planned move, copy the other Air's history in first."
+  if [ -n "$newest" ] && [ "$(serialof "$found")" -lt "$(serialof "$newest")" ]; then
+    refuse "latest.json is $found, older than $newest, which it has been: publish $newest again on the mini"
+  fi
+  [ -f "$records/$found.seen" ] || date +%s > "$records/$found.seen"
+  readrecords
+  pending=
+  for id in $signed; do
+    case "$id" in */pull-*) if [ "$(serialof "$id")" -gt "$(serialof "$newest")" ]; then pending="$id"; fi ;; esac
+  done
+  echo "latest.json is $newest, so $live is live"
+}
+
+case "$mode" in
+check) observe; exit ;;
+esac
 
 if [ -z "$key" ]; then
   [ -z "$dry" ] || refuse "a dry run signs with --key and a fixture key, never the Touch ID key"
@@ -83,63 +119,6 @@ if [ -n "$dry" ]; then mini="$now"; else mini="$(ssh mini date +%s)"; fi
 sign() {
   ssh-keygen -Y sign -q -f "$key" -n "$1" < "$2" > "$2.sig"
   verify "$2" "$2.sig" "$1" "$tmp/signer" || refuse "the signature of $2 doesn't verify with $key.pub"
-  if [ "$1" = ovenlight-latest ]; then
-    cp "$2" "$keydir/last.json"
-    echo "$published" > "$keydir/published"
-  fi
-}
-
-# This Air's own keys, none from ~/Sync.
-cat /dev/null "$keydir"/*.pub "$tmp/signer" > "$tmp/air"
-if [ -f "$keydir/retired" ]; then cat "$keydir/retired" >> "$tmp/air"; fi
-
-# airsigned <version>: refuses a release whose SHA256SUMS or canary index they didn't sign.
-airsigned() {
-  { verify "$records/$1/SHA256SUMS" "$records/$1/SHA256SUMS.sig" file "$tmp/air" &&
-    verify "$records/$1/canary.json" "$records/$1/canary.json.sig" ovenlight-canary "$tmp/air"; } ||
-    refuse "$1 isn't signed by a key in $keydir or its retired list"
-}
-
-# vouched: refuses records with a published index these keys didn't sign or kept under
-# another serial than its own, with none while latest.json is signed, whose newest published
-# index isn't the last one this Air signed, isn't latest.json or names a release that
-# doesn't fit its name or the live one, or whose others aren't the ones it built that one on.
-vouched() {
-  local id n moved="After a planned move, copy last.json and published into $keydir from the Air that signed last."
-  for id in $published; do
-    verify "$records/$id.json" "$records/$id.json.sig" ovenlight-latest "$tmp/air" ||
-      refuse "$id isn't signed by a key in $keydir or its retired list"
-    [ "$(field serial "$records/$id.json")" = "$(serialof "$id")" ] ||
-      refuse "$id.json is signed with serial $(field serial "$records/$id.json"), not $(serialof "$id")"
-  done
-  # A new Air has no last.json until one is copied in, and a replacement deletes its own.
-  if [ -n "$newest" ] && ! cmp -s "$records/$newest.json" "$keydir/last.json"; then
-    copy="curl -fsS https://downloads.ovenlight.app/connector/latest.json | cmp - $records/$newest.json && cp $records/$newest.json $keydir/last.json"
-    names="the records' newest published index, $newest, names $(field latest "$records/$newest.json")"
-    [ -f "$keydir/last.json" ] || refuse "This Air has signed no index, and $names. $moved Otherwise copy the records' newest index in only once https://downloads.ovenlight.app/connector/latest.json names the release you last promoted, or the one your last pull went back to:
-  $copy"
-    refuse "This Air last signed an index naming $(field latest "$keydir/last.json"), at $(date -r "$(field serial "$keydir/last.json")"), and $names. $moved Otherwise copy the records' newest index in only if you know this Air's last index never went out, since whoever holds ~/Sync and the bucket can roll back both the records and latest.json:
-  $copy"
-  fi
-  # The published indexes are the ones they were when this Air signed last.json, and it.
-  if [ -f "$keydir/published" ]; then
-    { cat "$keydir/published"; echo "$newest"; } | awk 'NF && !seen[$0]++' > "$tmp/saw"
-    echo "$published" | awk NF | cmp -s - "$tmp/saw" ||
-      refuse "the records' published indexes changed since this Air signed $keydir/last.json:
-$(echo "$published" | awk NF | diff "$tmp/saw" - | sed -n 's/^</  no longer published:/p; s/^>/  newly published:/p')
-$moved Otherwise find out who changed the records before signing anything."
-  fi
-  if [ -n "$dry" ]; then cp "$dry/bucket/connector/latest.json" "$tmp/live.json"
-  else curl -fsS -o "$tmp/live.json" "https://downloads.ovenlight.app/connector/latest.json?$now" || refuse "couldn't fetch latest.json"; fi
-  if [ -n "$newest" ]; then
-    n="$(field latest "$records/$newest.json")"
-    { case "$newest" in */pull-*) below "$n" "${newest%%/*}" ;; *) [ "$n" = "${newest%%/*}" ] ;; esac && [ "$n" = "$live" ]; } ||
-      refuse "$newest.json names $n, which doesn't fit its name, or the live release the records make of it, ${live:-none}: find out who changed the records before signing anything"
-    cmp -s "$tmp/live.json" "$records/$newest.json" ||
-      refuse "latest.json isn't $newest, the records' newest published index. If you ran its publish and it failed partway, run that publish again on the mini. If you never ran it, the records were changed: find out who before signing anything."
-  else
-    [ -z "$(field serial "$tmp/live.json")" ] || refuse "latest.json is a signed index, and the records call none published: find out who changed the records before signing anything"
-  fi
 }
 
 # rulehas <version> [<own release_keys>]: refuses a key the one rule won't accept for it.
@@ -167,16 +146,31 @@ $(diff "$tmp/want" "$tmp/have" | sed -n 's/^</  missing/p; s/^>/  extra/p')"
   fi
 }
 
-# keep <file> <name>...: puts the signed files in the release's folder.
+# keep <version> <file>...: puts the signed files in the release's folder of the history,
+# and copies them to the mini's records.
 keep() {
-  local d="$records/$1"
+  local v="$1"
   shift
-  mkdir -p "$d"
-  cp "$@" "$d/"
+  mkdir -p "$records/$v" "$sync/$v"
+  cp "$@" "$records/$v/"
+  cp "$@" "$sync/$v/"
+}
+
+# await <id>: waits for latest.json to be the index, and marks it seen. A dry run leaves that
+# to the next run, as Ctrl-C does.
+await() {
+  [ -z "$dry" ] || return 0
+  echo "waiting for latest.json to be it (Ctrl-C stops waiting)"
+  until fetchlive 2> /dev/null && cmp -s "$tmp/live.json" "$records/$1.json"; do sleep 10; done
+  date +%s > "$records/$1.seen"
+  echo "latest.json is $1"
 }
 
 echo "signing with $(ssh-keygen -lf "$key.pub")"
-if [ "$mode" != release ]; then vouched; fi
+observe
+if [ -n "$pending" ] && [ "$mode" != release ] && [ "$mode" != pull ]; then
+  refuse "$pending, a pull signed after the live index, isn't published: publish it on the mini, or sign a fresh pull"
+fi
 case "$mode" in
 release)
   b="$tmp/build"
@@ -230,7 +224,7 @@ release)
   sign ovenlight-canary "$b/canary.json"
   echo "$commit" > "$b/commit"
   keep "$version" "$b"/{SHA256SUMS,SHA256SUMS.sig,index.json,commit,release_keys,canary.json,canary.json.sig}
-  echo "signed: on the mini, scripts/publish-connector.sh $version, then the canary with $records/$version/canary.json"
+  echo "signed: on the mini, scripts/publish-connector.sh $version, then the canary with $sync/$version/canary.json"
   ;;
 
 promote)
@@ -242,7 +236,6 @@ promote)
   ordered "$now"
   folderkeys "$d/release_keys" "$version's release_keys"
   rulehas "$version"
-  airsigned "$version"
   releaseindex "$version" "$now" > "$tmp/promote-$now.json"
   nodrop "$tmp/promote-$now.json"
   newkeywait "$kblob" "$now"
@@ -251,6 +244,7 @@ promote)
   sign ovenlight-latest "$tmp/promote-$now.json"
   keep "$version" "$tmp/promote-$now.json" "$tmp/promote-$now.json.sig"
   echo "signed: on the mini, scripts/publish-connector.sh --promote $version"
+  await "$version/promote-$now"
   ;;
 
 pull)
@@ -261,7 +255,6 @@ pull)
   pullsigned "$tmp/signer" "$newest" "$version"
   verifyrule "$target" "$records/$target/SHA256SUMS" "$records/$target/SHA256SUMS.sig" file
   ordered "$now"
-  airsigned "$target"
   releaseindex "$target" "$now" > "$tmp/pull-$now.json"
   nodrop "$tmp/pull-$now.json"
   echo "pulling $version: latest.json goes back to $target, built on $newest"
@@ -270,6 +263,7 @@ pull)
   echo "$newest" > "$tmp/pull-$now.base"
   keep "$version" "$tmp/pull-$now.json" "$tmp/pull-$now.json.sig" "$tmp/pull-$now.base"
   echo "signed: on the mini, scripts/publish-connector.sh --pull $version"
+  await "$version/pull-$now"
   ;;
 
 resign)
@@ -279,7 +273,6 @@ resign)
   done
   newkeywait "$kblob" "$now"
   ordered "$now"
-  airsigned "$live"
   releaseindex "$live" "$now" > "$tmp/resign-$now.json"
   echo "re-signing the live index, $newest, for $live:"
   echo "  $(cat "$tmp/resign-$now.json")"
@@ -287,5 +280,6 @@ resign)
   echo "$newest" > "$tmp/resign-$now.base"
   keep "$live" "$tmp/resign-$now.json" "$tmp/resign-$now.json.sig" "$tmp/resign-$now.base"
   echo "signed: on the mini, scripts/publish-connector.sh --resign"
+  await "$live/resign-$now"
   ;;
 esac
