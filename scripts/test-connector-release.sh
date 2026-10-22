@@ -238,6 +238,20 @@ commit "after 1.1.0"
 git -C "$repo" tag -m "Connector 1.1.0" connector-v1.1.0
 refused "the commit 1.1.0 was built from" publish 1.1.0
 git -C "$repo" tag -f -m "Connector 1.1.0" connector-v1.1.0 HEAD~1 > /dev/null
+# Outside a dry run, the tag must be on origin as it is here, with defaults that point into
+# the scratch folder all the same. Past that check, a fixture key stops it before anything
+# is fetched or uploaded.
+mkdir -p "$dry/home/Sync/ovenlight" "$repo/build"
+ln -s "$dry/sync/releases" "$dry/home/Sync/ovenlight/releases"
+ln -s "$dry/build" "$repo/build/release"
+realpublish() { env -u OVENLIGHT_RELEASE_DRY HOME="$dry/home" "$repo/scripts/publish-connector.sh" "$@"; }
+refused "connector-v1.1.0 isn't pushed to origin as it is here" realpublish 1.1.0
+git init -q --bare "$dry/origin.git"
+git -C "$repo" remote add origin "$dry/origin.git"
+git -C "$repo" push -q origin HEAD:refs/tags/connector-v1.1.0
+refused "connector-v1.1.0 isn't pushed to origin as it is here" realpublish 1.1.0
+git -C "$repo" push -q -f origin connector-v1.1.0
+refused "is a dry-run fixture key" realpublish 1.1.0
 run publish 1.1.0
 folder_is 1.1.0
 refused "no index matching 1.1.0/promote-*" publish --promote 1.1.0
@@ -469,31 +483,23 @@ commit "the test key"
 refused "holds a release key whose private half is public" release 1.1.0 1.0.6 1.1.0
 # A dry run builds with the mock release keys, which stand in for the real ones until they're
 # made, and a real build refuses them before it builds anything. Its defaults point into the
-# scratch folder all the same.
-mocks=
-for k in "$root"/connector/testdata/releasekey/*.pub; do
-  if [ "$(basename "$k")" != test-key.pub ]; then mocks="$mocks $k"; fi
-done
-if [ -n "$mocks" ]; then
-  # shellcheck disable=SC2086 # one path per word
-  cat "$fixtures/air1.pub" "$fixtures/paper1.pub" $mocks > "$repo/connector/release_keys"
-  commit "the mock keys"
-  build 1.1.0 1.0.6 1.1.0
-  pass "a dry run builds with the mock release keys"
-  mkdir -p "$dry/home"
-  refused "holds a release key whose private half is public" env -u OVENLIGHT_RELEASE_DRY HOME="$dry/home" \
-    "$repo/scripts/release-connector.sh" --unsigned 1.1.0 1.0.6 1.1.0
-  # A key swap that leaves a mock key in docs/allowed_signers would let owners' own check pass
-  # what its public private half signs, so a real build refuses that too.
-  cat "$dry/private/stranger.pub" > "$repo/connector/release_keys"
-  # shellcheck disable=SC2086 # one path per word
-  awk '{ print "team@snowyghost.com namespaces=\"file,ovenlight-latest\"", $1, $2 }' $mocks >> "$repo/docs/allowed_signers"
-  commit "a mock key left in allowed_signers"
-  refused "docs/allowed_signers holds a release key whose private half is public" env -u OVENLIGHT_RELEASE_DRY \
-    HOME="$dry/home" "$repo/scripts/release-connector.sh" --unsigned 1.1.0 1.0.6 1.1.0
-fi
-# So does one left with a dry run's fixture key, whose private half is public too.
+# scratch folder all the same. The mock keys stay after the key swap.
+mocks=("$root"/connector/testdata/releasekey/mock-{touchid,backup}.pub)
+cat "$fixtures/air1.pub" "$fixtures/paper1.pub" "${mocks[@]}" > "$repo/connector/release_keys"
+commit "the mock keys"
+build 1.1.0 1.0.6 1.1.0
+pass "a dry run builds with the mock release keys"
 mkdir -p "$dry/home"
+refused "holds a release key whose private half is public" env -u OVENLIGHT_RELEASE_DRY HOME="$dry/home" \
+  "$repo/scripts/release-connector.sh" --unsigned 1.1.0 1.0.6 1.1.0
+# A key swap that leaves a mock key in docs/allowed_signers would let owners' own check pass
+# what its public private half signs, so a real build refuses that too.
+cat "$dry/private/stranger.pub" > "$repo/connector/release_keys"
+awk '{ print "team@snowyghost.com namespaces=\"file,ovenlight-latest\"", $1, $2 }' "${mocks[@]}" >> "$repo/docs/allowed_signers"
+commit "a mock key left in allowed_signers"
+refused "docs/allowed_signers holds a release key whose private half is public" env -u OVENLIGHT_RELEASE_DRY \
+  HOME="$dry/home" "$repo/scripts/release-connector.sh" --unsigned 1.1.0 1.0.6 1.1.0
+# So does one left with a dry run's fixture key, whose private half is public too.
 cat "$dry/private/stranger.pub" > "$repo/connector/release_keys"
 signers air1
 refused "docs/allowed_signers holds a release key whose private half is public" env -u OVENLIGHT_RELEASE_DRY \
@@ -502,12 +508,10 @@ refused "docs/allowed_signers holds a release key whose private half is public" 
 # lines aren't keys, so with them alone beside a release key it goes on, to a later refusal.
 { echo "# a comment"; echo; awk '{ print "team@snowyghost.com namespaces=\"file\"", $1, $2 }' "$dry/private/stranger.pub"; } > "$repo/docs/allowed_signers"
 commit "an old git key left in allowed_signers"
-refused "lists a key in a namespace other than the release keys'" env -u OVENLIGHT_RELEASE_DRY \
-  HOME="$dry/home" "$repo/scripts/release-connector.sh" --unsigned 1.1.0 1.0.6 1.1.0
+refused "lists a key in a namespace other than the release keys'" release 1.1.0 1.0.6 1.1.0
 { echo "# a comment"; echo; awk '{ print "team@snowyghost.com namespaces=\"file,ovenlight-latest\"", $1, $2 }' "$dry/private/stranger.pub"; } > "$repo/docs/allowed_signers"
 commit "a release key and a comment"
-refused "secure (1.2.0) is newer than the release (1.1.0)" env -u OVENLIGHT_RELEASE_DRY \
-  HOME="$dry/home" "$repo/scripts/release-connector.sh" 1.1.0 1.2.0 1.1.0
+refused "secure (1.2.0) is newer than the release (1.1.0)" release 1.1.0 1.2.0 1.1.0
 signers air1 paper1
 keys air1 paper1
 refused "a dry run builds only with --unsigned" "$repo/scripts/release-connector.sh" 1.1.0 1.0.6 1.1.0

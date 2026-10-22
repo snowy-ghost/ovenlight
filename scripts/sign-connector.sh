@@ -126,11 +126,10 @@ release)
     refuse "another build of $version is signed already: a new build takes a new version"
   fi
 
-  # The keys at the commit are the ones in the key folder, plus this one.
+  # The keys at the commit are the ones in the key folder, plus this one, all trusted.
   [ -n "$dry" ] || git -C "$root" fetch -q origin master
   git -C "$root" merge-base --is-ancestor "$commit" "$master" || refuse "$commit isn't on $master"
   git -C "$root" show "$commit:connector/release_keys" > "$b/release_keys"
-  trusted "$b/release_keys"
   n=0
   for f in "$keydir"/*.pub; do n=$((n + 1)); done
   [ "$n" -eq 2 ] || refuse "$keydir holds $n .pub files, not the two release keys"
@@ -151,15 +150,14 @@ $(diff "$tmp/want" "$tmp/have" | sed -n 's/^</  missing/p; s/^>/  extra/p')"
   echo "connector $version, built from $commit"
   echo "  latest $version, secure $secure, reinstallBelow $reinstall"
   prev=
-  for d in "$records"/*/commit; do
-    v="$(basename "$(dirname "$d")")"
-    if below "$v" "$version" && { [ -z "$prev" ] || below "$prev" "$v"; }; then prev="$v"; fi
+  for v in $promoted; do
+    if below "$v" "$version"; then prev="$v"; fi
   done
   if [ -n "$prev" ]; then
     echo "connector changes since $prev:"
     git -C "$root" log --oneline "$(cat "$records/$prev/commit")..$commit" -- connector | sed 's/^/  /'
   else
-    echo "no earlier release in $records"
+    echo "no release promoted before $version"
   fi
   echo "SHA256SUMS:"
   sed 's/^/  /' "$b/SHA256SUMS"

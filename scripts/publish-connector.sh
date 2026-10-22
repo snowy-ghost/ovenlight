@@ -3,8 +3,8 @@
 # ovenlight-downloads, from what scripts/sign-connector.sh signed on the Air:
 #   connector/<version>/<file>   each file of the release, kept for good
 #   connector/latest/<file>      the same files of the latest release
-#   connector/latest.json        its signed index, which the updater and ovenlight doctor
-#   connector/latest.json.sig    read, and its signature
+#   connector/latest.json        its signed index, which the updater reads, as an older
+#   connector/latest.json.sig    release's doctor does, and its signature
 #
 #   scripts/publish-connector.sh <version>             the version's folder, from build/release
 #   scripts/publish-connector.sh --promote <version>   makes it the latest
@@ -12,9 +12,9 @@
 #   scripts/publish-connector.sh --resign              the live index, signed again
 #
 # Signatures are checked by the one rule (connector-release-lib.sh). The folder goes up
-# alone, once its connector-v<version> tag is the commit it was built from: nothing points
-# at it until its promote. A promote, pull or resign records itself in
-# ~/Sync/ovenlight/releases/ before it uploads anything, so one that fails partway is
+# alone, once its connector-v<version> tag is the commit it was built from, here and on
+# origin: nothing points at it until its promote. A promote, pull or resign records itself
+# in ~/Sync/ovenlight/releases/ before it uploads anything, so one that fails partway is
 # finished by running it again, and it goes up only when its serial is the highest signed
 # so far. latest/ and latest.json are uploaded fresh, never copied with a version's year-long
 # cache. Uploads go through wrangler, signed in with `npx wrangler@4.147.0 login` or
@@ -121,7 +121,8 @@ fetchrelease() {
 }
 
 # documented <version> <index>: refuses files for latest/, and the index for latest.json,
-# that master's docs/allowed_signers, which owners check them with, doesn't verify.
+# that master's docs/allowed_signers doesn't verify. Owners check latest.json with it, and
+# 1.0.x's docs have them check latest/SHA256SUMS with it.
 documented() {
   if [ -z "$dry" ]; then git -C "$root" fetch -q origin master; fi
   git -C "$root" show "$master:docs/allowed_signers" > "$tmp/allowed_signers"
@@ -176,8 +177,10 @@ folder)
   [ -f SHA256SUMS ] || refuse "no SHA256SUMS in build/release: build $version"
   sig="$records/$version/SHA256SUMS.sig"
   [ -f "$sig" ] || refuse "no $sig: sign $version on the Air"
-  # Owners check a release with the allowed_signers at its tag.
+  # Owners check a release with the allowed_signers at its tag, on origin.
   built="$(cat "$records/$version/commit")"
+  [ -n "$dry" ] || git -C "$root" fetch -q origin tag "connector-v$version" ||
+    refuse "connector-v$version isn't pushed to origin as it is here: push it"
   [ "$(git -C "$root" rev-parse -q --verify "connector-v$version^{commit}")" = "$built" ] ||
     refuse "connector-v$version isn't tagged on $built, the commit $version was built from: tag it"
   # The release is what the signed SHA256SUMS lists, with or without Windows.
@@ -208,13 +211,12 @@ promote)
   esac
   idx="$records/$id.json"
   releaseindex "$version" "$(serialof "$id")" | cmp -s - "$idx" || refuse "$id isn't $version's index"
-  # Its key signed the release's SHA256SUMS, and the one rule accepts both.
+  # Its key signed the release's SHA256SUMS, so the one rule, accepting it, accepts both.
   k="$(signer "$idx" "$idx.sig" ovenlight-latest)"
   [ -n "$k" ] || refuse "$id isn't signed by a key any release lists"
   echo "$k" > "$tmp/signer"
   verify "$records/$version/SHA256SUMS" "$records/$version/SHA256SUMS.sig" file "$tmp/signer" ||
     refuse "$id and $version's SHA256SUMS are signed with different keys"
-  verifyrule "$version" "$records/$version/SHA256SUMS" "$records/$version/SHA256SUMS.sig" file
   verifyrule "$version" "$idx" "$idx.sig" ovenlight-latest
   fetchrelease "$version"
   documented "$version" "$idx"

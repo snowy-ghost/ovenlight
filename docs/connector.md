@@ -72,8 +72,7 @@ and Windows
 [x64](https://downloads.ovenlight.app/connector/latest/ovenlight-connector-windows-amd64.zip)
 and
 [Arm](https://downloads.ovenlight.app/connector/latest/ovenlight-connector-windows-arm64.zip).
-These links always point to the latest release. Each release from 1.0.1 on also stays at
-`https://downloads.ovenlight.app/connector/<version>/`. Unpack the archive if your browser
+These links always point to the latest release. Unpack the archive if your browser
 hasn't, then run `./install.sh` in its `ovenlight-connector-<version>` folder. On Windows,
 right-click that folder in File Explorer and choose Copy as path. Then, in PowerShell
 opened with Run as administrator, type `cd` and a space, paste the path, press Enter, and
@@ -194,7 +193,8 @@ windows opened after you add it. On Windows, `install.ps1` adds the bin folder t
 `ovenlight status` says whether the connector runs. On macOS:
 
 - Start: `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.snowyghost.ovenlight.connector.plist || launchctl kickstart gui/$(id -u)/com.snowyghost.ovenlight.connector`
-  (when the connector is loaded already, `bootstrap` says it failed, and `kickstart` starts it)
+  (when the connector is loaded already, `bootstrap` says it failed, and `kickstart`
+  starts it)
 - Stop, until you next log in: `launchctl bootout gui/$(id -u)/com.snowyghost.ovenlight.connector`
 - Restart: `launchctl kickstart -k gui/$(id -u)/com.snowyghost.ovenlight.connector`
 
@@ -216,19 +216,19 @@ that's only stopped starts again within a minute.
 The connector updates itself. Releases up to 1.0.9 don't: install a newer release [by
 hand](#install-a-release-by-hand) once, and from then on it does. It checks once a day,
 and installs a new release two days after it first sees it, at a quiet moment in the
-night: once nothing has used your apps or the connector for 10 minutes. Each computer's night
-starts at a time of its own between 02:00 and 04:00, and ends at 05:00, its own time. A
-release that fixes a security problem in yours goes in at the first quiet 10 minutes, day
-or night. On a computer that's never quiet, or asleep every night, it goes in at the start
-of the next night anyway, and any other update at the start of the first night a day after
-it was due. Either waits until the connector has been running and awake for 10 minutes.
-Installing restarts the connector, so the apps it runs stop and open connections drop for
-a few seconds (about 10 on Linux, up to a minute on Windows). If the new release doesn't
-serve your apps again within 10 minutes, the connector goes back to the one before, and
-tries again at the start of the next night, busy or not. A restart of your computer in
-those 10 minutes starts them again. On Windows, the Stop or Restart command above in that
-time makes it go back too, as does shutting down or signing out of a work, school or
-domain account.
+night: once nothing has used your apps or the connector for 10 minutes. Each computer's
+night starts at a time of its own between 02:00 and 04:00, and ends at 05:00, its own
+time. A release that fixes a security problem in yours goes in at the first quiet 10
+minutes, day or night. On a computer that's never quiet, or asleep every night, it goes in
+anyway, busy or not, from the start of the next night, and any other update from the
+start of the first night a day after it was due. Either waits until the connector has
+been running and awake for 10 minutes. Installing restarts the connector, so the apps it
+runs stop and open connections drop for a few seconds (about 10 on Linux, up to a minute
+on Windows). If the new release doesn't serve your apps again within 10 minutes, the
+connector goes back to the one before, and tries again at the start of the next night,
+busy or not. A restart of your computer in those 10 minutes starts them again. On
+Windows, the Stop or Restart command above in that time makes it go back too, as does
+shutting down or signing out of a work, school or domain account.
 
 `ovenlight status` shows the last check, a release waiting its turn and when it installs,
 the last update, one that failed, and whether yours has a known security problem.
