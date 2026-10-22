@@ -518,8 +518,7 @@ resign air1 1.1.1
 [ "$(field secure "$dry/bucket/connector/latest.json")" = 1.0.6 ] || fail "secure went up"
 pass "secure is still 1.0.6"
 refused "sign a fresh one" publish --promote 1.1.2
-build 1.1.3 1.0.5
-refused "1.1.3 can't go below either" sign air1 1.1.3
+refused "1.1.3 can't go below either" release 1.1.3 1.0.5
 forge 1.1.0 promote air1 1.1.0
 refused "1.1.0 was promoted already" publish --promote 1.1.0
 build 1.1.4 1.1.2
@@ -534,12 +533,17 @@ ship 1.1.0 1.0.6 air1 1.1.0
 # 1.1.2 is signed before 1.1.1 raises secure and reinstallBelow, so only its promote refuses it.
 build 1.1.2 1.0.6
 signfolder 1.1.2 air1
+# A 1.1.3 built before 1.1.1 is signed is refused when it's signed, and one built after it,
+# before it's built.
+build 1.1.3 1.0.6
+mv "$dry/build" "$dry/build-1.1.3"
 build 1.1.1 1.1.1 1.1.1
 signfolder 1.1.1 air1
-build 1.1.3 1.0.6
+rm -r "$dry/build"
+mv "$dry/build-1.1.3" "$dry/build"
 refused "1.1.3 can't go below either" sign air1 1.1.3
-build 1.1.3 1.1.1 1.1.0
-refused "1.1.3 can't go below either" sign air1 1.1.3
+refused "1.1.3 can't go below either" release 1.1.3 1.0.6
+refused "1.1.3 can't go below either" release 1.1.3 1.1.1 1.1.0
 promote 1.1.1 air1
 tick
 refused "secure would go down" sign air1 --promote 1.1.2

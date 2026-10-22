@@ -143,14 +143,7 @@ release)
   index "$version" "$secure" "$reinstall" 0 "$b/SHA256SUMS" | cmp -s - "$b/index.json" ||
     refuse "build/release's index.json doesn't match its SHA256SUMS"
   abovereleased "$version"
-  # A release signed but not promoted yet may be skipped by this one's promote, so this one
-  # keeps what it raised.
-  for f in "$records"/*/canary.json; do
-    v="$(basename "$(dirname "$f")")"
-    if below "$v" "$version" && { below "$secure" "$(field secure "$f")" || below "$reinstall" "$(field reinstallBelow "$f")"; }; then
-      refuse "$v is signed with secure $(field secure "$f") and reinstallBelow $(field reinstallBelow "$f"): $version can't go below either"
-    fi
-  done
+  keepsraised "$version" "$secure" "$reinstall"
   if [ -f "$records/$version/SHA256SUMS" ] && ! cmp -s "$records/$version/SHA256SUMS" "$b/SHA256SUMS"; then
     refuse "another build of $version is signed already: a new build takes a new version"
   fi

@@ -122,6 +122,19 @@ abovereleased() {
   done
 }
 
+# keepsraised <version> <secure> <reinstallBelow>: refuses a secure or reinstallBelow below
+# that of a lower version already signed. That one may not be promoted yet, and this one's
+# promote may skip it, so this one keeps what it raised.
+keepsraised() {
+  local f v
+  for f in "$records"/*/canary.json; do
+    v="$(basename "$(dirname "$f")")"
+    if below "$v" "$1" && { below "$2" "$(field secure "$f")" || below "$3" "$(field reinstallBelow "$f")"; }; then
+      refuse "$v is signed with secure $(field secure "$f") and reinstallBelow $(field reinstallBelow "$f"): $1 can't go below either"
+    fi
+  done
+}
+
 # ordered <serial> [<index>]: refuses a serial that isn't above every index signed so far but
 # that one, so a signature left unpublished always sits below a published one.
 ordered() {
