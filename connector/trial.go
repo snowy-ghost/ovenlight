@@ -320,8 +320,8 @@ func (t *trial) tick() bool {
 }
 
 // backstopAfter is how long past quietFor of time awake the backstop gives a trial that
-// hasn't ended. A pass waits for the updater's lock, which an update check holds a minute
-// at most.
+// hasn't ended. A pass waits for the updater's lock and its next poll, a minute or so at
+// most.
 var backstopAfter = quietFor / 2
 
 // backstop ends a trial that tick can't: a release that deadlocks its daemon blocks tick
