@@ -104,6 +104,11 @@ keyfolder() {
   done
 }
 
+# swapair: in a planned move, the other Air's key folder takes this one's place. carry: that
+# Air's last.json and published are copied into this one's.
+swapair() { mv "$dry/keys" "$dry/air"; mv "$dry/otherair" "$dry/keys"; mv "$dry/air" "$dry/otherair"; }
+carry() { cp "$dry/otherair/last.json" "$dry/otherair/published" "$dry/keys/"; }
+
 # run <command>...: runs it, and fails with its output if it fails.
 run() {
   "$@" > "$dry/log" 2>&1 || { cat "$dry/log" >&2; fail "$*"; }
@@ -451,7 +456,10 @@ keyfolder air1 paper1
 keys air1 paper1
 ship 1.1.0 1.0.6 air1 1.1.0
 # The new Air's key replaces the old one's in the old Air's key folder, and the old Air signs.
+# The new Air's folder gets its .pub files and retired list.
 keyfolder air2 paper1
+mkdir "$dry/otherair"
+cp "$dry"/keys/{touchid.pub,backup.pub,retired} "$dry/otherair/"
 keys air2 paper1 air1
 build 1.1.1 1.0.6
 signfolder 1.1.1 air1
@@ -460,14 +468,24 @@ promote 1.1.1 air1
 build 1.1.2 1.0.6
 signfolder 1.1.2 air1
 promote 1.1.2 air1
-# Computers asleep on 1.1.0 hold only the old keys, so the new key can't sign the pull yet.
-tick
-refused "Or sign the pull with the key that signed" sign air2 --pull 1.1.2
-pull 1.1.2 air1 1.1.1
-# The release after drops the old key, and the new key alone waits four weeks and four days.
+# The release after drops the old key, and the new Air signs it, with the old Air's last.json
+# and published.
 keys air2 paper1
 build 1.1.3 1.0.6
+swapair
+carry
 signfolder 1.1.3 air2
+# Computers asleep on 1.1.0 hold only the old keys, so the new key can't sign the pull yet,
+# and the old Air signs it. The new Air signs again only once both files are copied again.
+tick
+refused "Or sign the pull with the key that signed" sign air2 --pull 1.1.2
+swapair
+pull 1.1.2 air1 1.1.1
+swapair
+tick
+refused "After a planned move, copy last.json and published" sign air2 --resign
+carry
+# The new key alone waits four weeks and four days.
 tick
 refused "four weeks and four days" sign air2 --promote 1.1.3
 # An agent holding ~/Sync sets back when latest.json began naming 1.1.1, so the wait would
