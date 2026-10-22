@@ -533,8 +533,8 @@ and `updates-off`, which `--purge` deletes too.
 Only the installed service of a release checks: a build from source never contacts
 downloads.ovenlight.app. The daily check is two GETs with no cookies, query or
 identifiers. It comes at the same minute each day, picked at random when the updater first
-runs. A failed check is tried again within the hour, and a new release checks as soon as it
-starts. The check runs with updates off too, so the connector still knows when its release
+runs. A failed check is tried again within the hour, and a new release, or one a failed update
+went back to, checks as soon as it starts. The check runs with updates off too, so the connector still knows when its release
 has a security problem. An update fetches the archive, whose name and folder show this
 computer's system (on Linux and Windows, its processor type too) and the version it
 installs, and fetches the index once more just before it installs. Like any request, each
