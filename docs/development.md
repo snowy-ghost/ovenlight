@@ -326,10 +326,11 @@ of them is promoted any more. Delete `backup.pub` from `~/.ssh/ovenlight-release
 and copy only its `index.json.release-2.sig` in under the next free number. During a
 planned move, delete `backup.pub` on both Airs and run key setup on the new Air, then
 carry the new `backup.pub` to the old Air as step 1 carries the new key: the old Air signs
-R. Drop the lost key's signature and its line in `allowed_signers`, since it signed no
-release. The Air's key signs on, so nothing waits and no R+1 follows. If the Air's key is
-still inside its wait, the old paper key that signed the R bringing it in signs this R
-too: R lists it, and R+1 drops it. If the Air is lost too, the new paper key's `--resign`
+R, and the move's R+1 still follows. Drop the lost key's signature and its line in
+`allowed_signers`, since it signed no release. Outside a planned move, if the Air's key is
+still inside its wait, the old paper key, which every release so far lists, signs this R
+instead, and R+1 drops that key. Otherwise the Air's key signs this R, which waits for
+nothing, and no other R+1 follows. If the Air is lost too, the new paper key's `--resign`
 and promote wait until four weeks and four days after R's promote.
 
 A lost Air inside a new Touch ID key's wait is answered by an R signed with the paper key
