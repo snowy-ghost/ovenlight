@@ -27,7 +27,9 @@
 # replaced, which the folder's retired file lists, and the key signing. The records'
 # release_keys are only as safe as ~/Sync. It also builds only on the index it signed last,
 # which it keeps in that folder as last.json, and on the published indexes it built that one
-# on, kept there as published, so the records can't be rolled back.
+# on, kept there as published, so the records can't be rolled back. And it signs only while
+# latest.json is the newest index the records call published, so marking an index published
+# in ~/Sync can't make it the live one.
 #
 # --key signs with a key other than this Air's Touch ID handle, such as the paper backup or
 # another Touch ID key's handle, with its public half beside it as <file>.pub.
@@ -95,22 +97,24 @@ airsigned() {
     refuse "$1 isn't signed by a key in $keydir or its retired list"
 }
 
-# vouched: refuses records with a published index these keys didn't sign, whose newest
-# published index isn't the last one this Air signed, or whose others aren't the ones it
-# built that one on.
+# vouched: refuses records with a published index these keys didn't sign or kept under
+# another serial than its own, whose newest published index isn't the last one this Air
+# signed or isn't latest.json, or whose others aren't the ones it built that one on.
 vouched() {
-  local id
+  local id moved="After a planned move, copy last.json and published into $keydir from the Air that signed last."
   for id in $published; do
     verify "$records/$id.json" "$records/$id.json.sig" ovenlight-latest "$tmp/air" ||
       refuse "$id isn't signed by a key in $keydir or its retired list"
+    [ "$(field serial "$records/$id.json")" = "$(serialof "$id")" ] ||
+      refuse "$id.json is signed with serial $(field serial "$records/$id.json"), not $(serialof "$id")"
   done
-  # A new Air has no last.json, and a restored one deletes its own.
+  # A new Air has no last.json until one is copied in, and a replacement deletes its own.
   if [ -n "$newest" ] && ! cmp -s "$records/$newest.json" "$keydir/last.json"; then
     copy="curl -fsS https://downloads.ovenlight.app/connector/latest.json | cmp - $records/$newest.json && cp $records/$newest.json $keydir/last.json"
     names="the records' newest published index, $newest, names $(field latest "$records/$newest.json")"
-    [ -f "$keydir/last.json" ] || refuse "This Air has signed no index, and $names. Copy it in only once https://downloads.ovenlight.app/connector/latest.json names the release you last promoted, or the one your last pull went back to:
+    [ -f "$keydir/last.json" ] || refuse "This Air has signed no index, and $names. $moved Otherwise copy it in only once https://downloads.ovenlight.app/connector/latest.json names the release you last promoted, or the one your last pull went back to:
   $copy"
-    refuse "This Air last signed an index naming $(field latest "$keydir/last.json"), at $(date -r "$(field serial "$keydir/last.json")"), and $names. Whoever holds ~/Sync and the bucket can roll back both the records and latest.json, so copy it in only if you know this Air's last index never went out:
+    refuse "This Air last signed an index naming $(field latest "$keydir/last.json"), at $(date -r "$(field serial "$keydir/last.json")"), and $names. $moved Otherwise copy it in only if you know this Air's last index never went out, since whoever holds ~/Sync and the bucket can roll back both the records and latest.json:
   $copy"
   fi
   # The published indexes are the ones they were when this Air signed last.json, and it.
@@ -118,7 +122,14 @@ vouched() {
     { cat "$keydir/published"; echo "$newest"; } | awk 'NF && !seen[$0]++' > "$tmp/saw"
     echo "$published" | awk NF | cmp -s - "$tmp/saw" ||
       refuse "the records' published indexes changed since this Air signed $keydir/last.json:
-$(echo "$published" | awk NF | diff "$tmp/saw" - | sed -n 's/^</  no longer published:/p; s/^>/  newly published:/p')"
+$(echo "$published" | awk NF | diff "$tmp/saw" - | sed -n 's/^</  no longer published:/p; s/^>/  newly published:/p')
+$moved Otherwise find out who changed the records before signing anything."
+  fi
+  if [ -n "$newest" ]; then
+    if [ -n "$dry" ]; then cp "$dry/bucket/connector/latest.json" "$tmp/live.json"
+    else curl -fsS -o "$tmp/live.json" "https://downloads.ovenlight.app/connector/latest.json?$now" || refuse "couldn't fetch latest.json"; fi
+    cmp -s "$tmp/live.json" "$records/$newest.json" ||
+      refuse "latest.json isn't $newest, the records' newest published index: if its publish failed partway, finish it first, and otherwise find out who changed the records before signing anything"
   fi
 }
 
