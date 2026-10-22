@@ -279,10 +279,11 @@ For a planned move to a new Air, the old Air signs R:
 
 After a lost Air, the paper key signs R:
 
-1. On the replacement Air, make its Touch ID key with the two commands above. Then run key
-   setup (`~/Sync/ovenlight/release-key-setup.sh`). It makes a new paper key, files both
-   new public keys in `~/.ssh/ovenlight-release-keys/`, and signs a test signature with
-   each in `~/Sync/ovenlight/release-key-test/`.
+1. On the replacement Air, make its Touch ID key with the two commands above. An Air
+   restored from a backup moves `backup.pub` out of `~/.ssh/ovenlight-release-keys/`
+   first. Then run key setup (`~/Sync/ovenlight/release-key-setup.sh`). It makes a new
+   paper key, files both new public keys in `~/.ssh/ovenlight-release-keys/`, and signs a
+   test signature with each in `~/Sync/ovenlight/release-key-test/`.
 2. R lists the two new keys and the old paper key, and drops the lost key and its
    signature. Copy key setup's `index.json.release-1.sig` and `index.json.release-2.sig`
    in under the next two free numbers.
