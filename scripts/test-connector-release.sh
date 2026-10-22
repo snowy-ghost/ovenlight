@@ -15,6 +15,8 @@ set -euo pipefail
 shopt -s nullglob
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
+# A fixture key is made with ssh-keygen -q -N '' -t ecdsa -b 256 (-t ed25519 for a paper key)
+# -C 'ovenlight dry-run fixture key <name>, public on purpose' -f <its file in there>.
 fixtures="$root/scripts/testdata/release-keys"
 tmp="$(mktemp -d)"
 trap 'rm -r "$tmp"' EXIT
@@ -80,13 +82,18 @@ signers() {
   commit "allowed signers: $*"
 }
 
-# keyfolder <name>...: the Air's ~/.ssh/ovenlight-release-keys holds those keys' .pub files,
-# and the ones they replace move into its retired/.
+# keyfolder <Touch ID key> <paper key>: the Air's ~/.ssh/ovenlight-release-keys holds those
+# fixture keys as touchid.pub and backup.pub, and its retired list gets each one they replace.
 keyfolder() {
-  local k
-  mkdir -p "$dry/keys/retired"
-  for k in "$dry"/keys/*.pub; do mv "$k" "$dry/keys/retired/"; done
-  for k in "$@"; do cp "$fixtures/$k.pub" "$dry/keys/"; done
+  local name k
+  for name in touchid backup; do
+    k="$1"
+    shift
+    if [ -f "$dry/keys/$name.pub" ] && ! cmp -s "$dry/keys/$name.pub" "$fixtures/$k.pub"; then
+      cat "$dry/keys/$name.pub" >> "$dry/keys/retired"
+    fi
+    cp "$fixtures/$k.pub" "$dry/keys/$name.pub"
+  done
 }
 
 # run <command>...: runs it, and fails with its output if it fails.
@@ -394,7 +401,9 @@ fresh lostpaper "a lost paper key, then a lost Air: the Air's promotes don't res
 keyfolder air1 paper1
 keys air1 paper1
 ship 1.1.0 1.0.6 air1 1.1.0
-# R lists the Air's key and a new paper key, whose wait starts at R's promote.
+# R lists the Air's key and a new paper key, whose wait starts at R's promote. The lost one
+# is deleted, never retired.
+rm "$dry/keys/backup.pub"
 keyfolder air1 paper2
 keys air1 paper2
 signers air1 paper2
@@ -498,6 +507,33 @@ keys air2 paper1
 build 1.1.4 1.0.6
 signfolder 1.1.4 air2
 promote 1.1.4 air2
+
+fresh moved "a planned move, then the new Air lost and restored from a backup of it"
+keyfolder air1 paper1
+keys air1 paper1
+ship 1.1.0 1.0.6 air1 1.1.0
+keyfolder air2 paper1
+keys air2 paper1 air1
+ship 1.1.1 1.0.6 air1
+backdate 33
+keys air2 paper1
+build 1.1.2 1.0.6
+signfolder 1.1.2 air2
+signers air1 paper1 air2
+resign air2 1.1.1
+promote 1.1.2 air2
+# The restored Air retires the lost key and the paper key, beside the old Air's key the move
+# retired, and deletes last.json and published. Key setup makes air3 and paper2.
+keyfolder air3 paper2
+rm "$dry/keys/last.json" "$dry/keys/published"
+keys air3 paper2 paper1
+build 1.1.3 1.0.6
+signfolder 1.1.3 paper1
+tick
+refused "This Air has signed no index" sign paper1 --resign
+lastchecked
+resign paper1 1.1.2
+promote 1.1.3 paper1
 
 fresh rule "a release signed while its key was trusted, then promoted after a pull took that trust away"
 keyfolder air1 paper1

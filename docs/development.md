@@ -138,13 +138,14 @@ scripts/sign-connector.sh 1.2.0
 ```
 
 It copies the build's `SHA256SUMS` and index from `~/src/ovenlight/build/release` on the
-mini and prints what it signs: the index's fields, the commit, the connector changes since
-the last promoted release and `SHA256SUMS`. It refuses a commit whose
-`connector/release_keys` isn't the two keys in `~/.ssh/ovenlight-release-keys/` plus the
-key signing it, when that folder doesn't hold it. It signs `SHA256SUMS` and a canary
-index, `canary.json`, which only `ovenlight update now --index` takes, and keeps both in
-the release's folder in `~/Sync/ovenlight/releases/`. `--key <file>` signs with another
-key, such as the paper backup.
+mini and prints what it signs: the index's fields, the commit, the fingerprints of its
+`release_keys`, the connector changes since the last promoted release and `SHA256SUMS`. It
+refuses a commit whose `connector/release_keys` isn't the two keys in
+`~/.ssh/ovenlight-release-keys/` plus the key signing it, when that folder doesn't hold
+it. It signs `SHA256SUMS` and a canary index, `canary.json`, which only
+`ovenlight update now --index` takes, and keeps both in the release's folder in
+`~/Sync/ovenlight/releases/`. `--key <file>` signs with another key, such as the paper
+backup.
 
 Back on the mini, upload the version's folder, then try the release on the mini's own
 connector, the canary:
@@ -266,10 +267,13 @@ For a planned move to a new Air, the old Air signs R:
    cd ~/.ssh && ssh-keygen -w /usr/lib/ssh-keychain.dylib -K -N ''
    ```
 
-   Its public half, `~/.ssh/id_ecdsa_sk_rk_ovenlight-release.pub`, takes the place of the
-   old Air's own, `touchid.pub`, in the old Air's `~/.ssh/ovenlight-release-keys/`, and
-   the old `touchid.pub` moves into that folder's `retired/`. The new Air's folder gets
-   the same files, `retired/` included.
+   Carry its public half, `~/.ssh/id_ecdsa_sk_rk_ovenlight-release.pub`, to the old Air by
+   AirDrop or a USB stick, never through `~/Sync`, and check that `ssh-keygen -lf` shows
+   the same fingerprint for the copy as for the original on the new Air. Write that
+   fingerprint on both paper copies. In the old Air's `~/.ssh/ovenlight-release-keys/`,
+   the old `touchid.pub` goes into the retired list first (`cat touchid.pub >> retired`),
+   then the copy takes its place as `touchid.pub`. The new Air's folder gets that folder's
+   files the same way.
 2. In the new Air's clone, sign the new key's test signature (number 3 at the first
    change):
 
@@ -284,19 +288,24 @@ For a planned move to a new Air, the old Air signs R:
    weeks and four days after R's promote, and a pull back below R starts the wait again at
    the next promote. Keep the old Air until R+1 is promoted, since a pull before R+1's
    `--resign` is signed with the old key. Before that `--resign`, copy `last.json` and
-   `published` from the old Air's `~/.ssh/ovenlight-release-keys/` into the new Air's.
+   `published` from the old Air's `~/.ssh/ovenlight-release-keys/` into the new Air's the
+   same way.
 
 After a lost Air, the paper key signs R:
 
 1. On the replacement Air, make its Touch ID key with the two commands above. An Air
-   restored from a backup first moves `backup.pub` and `touchid.pub` from
-   `~/.ssh/ovenlight-release-keys/` into its `retired/`, and deletes `last.json` and
-   `published` there. Any other puts the lost key there as `touchid.pub`, its line from a
-   `release_keys` in `~/Sync/ovenlight/releases/`, once `ssh-keygen -lf` on it shows the
-   Touch ID fingerprint printed on the paper page. Then run key setup
-   (`~/Sync/ovenlight/release-key-setup.sh`). It makes a new paper key, files both new
-   public keys in `~/.ssh/ovenlight-release-keys/`, and signs a test signature with each
-   in `~/Sync/ovenlight/release-key-test/`.
+   restored from a backup first adds the lost key and the old paper key to the retired
+   list in `~/.ssh/ovenlight-release-keys/`, and deletes them there with `last.json` and
+   `published`: `cat touchid.pub backup.pub >> retired`, then
+   `rm -f touchid.pub backup.pub last.json published`. Any other writes that folder's
+   `retired` from the records: each key the `release_keys` in `~/Sync/ovenlight/releases/`
+   list whose fingerprint is on a paper page, printed or written on.
+   `cat ~/Sync/ovenlight/releases/*/release_keys | sort -u` lists those keys, and
+   `ssh-keygen -lf -` on that list prints their fingerprints in the same order. Then run
+   key setup (`~/Sync/ovenlight/release-key-setup.sh`). It makes a new paper key, files
+   both new public keys in `~/.ssh/ovenlight-release-keys/`, and signs a test signature
+   with each in `~/Sync/ovenlight/release-key-test/`. Its page also lists the retired
+   keys' fingerprints.
 2. R lists the two new keys and the old paper key, and drops the lost key and its
    signature. Copy key setup's `index.json.release-1.sig` and `index.json.release-2.sig`
    in under the next two free numbers.
@@ -306,22 +315,23 @@ After a lost Air, the paper key signs R:
    can go out is signed with it too and lists the same three keys. For each, make a folder
    with `mktemp -d`, type the key from paper into a file there and `chmod 600` it. Write
    its public half beside it with `ssh-keygen -y -f <file> > <file>.pub`, which also
-   checks the passphrase, and on an Air that wasn't restored copy it into `retired/` as
-   `backup.pub` the first time. Sign with `--key <file>`, then delete the folder.
+   checks the passphrase. Sign with `--key <file>`, then delete the folder.
 4. R+1 drops the old paper key and is signed with the new Touch ID key. Its `--resign`
    and promote wait the same four weeks and four days.
 
-After a lost paper key, the Air signs R, which lists its own key and a new paper key. Move
-`backup.pub` into `~/.ssh/ovenlight-release-keys/retired/`, run key setup, and copy only
-its `index.json.release-2.sig` in under the next free number. Drop the old paper key's
+After a lost paper key, the Air signs R, which lists its own key and a new paper key.
+Delete `backup.pub` from `~/.ssh/ovenlight-release-keys/` (the lost key may be in other
+hands, so the Air trusts nothing it signs), run key setup, and copy only its
+`index.json.release-2.sig` in under the next free number. Drop the old paper key's
 signature and its line in `allowed_signers`, since it signed no release. The Air's key
 signs on, so nothing waits and no R+1 follows. If the Air is lost too, the new paper key's
 `--resign` and promote wait until four weeks and four days after R's promote.
 
-A loss inside a new key's wait is answered by an R signed with the paper key every release
-so far lists, which waits for nothing. After a planned move, the new Air keeps its key:
-move `backup.pub` into `retired/`, run key setup, and R lists the new Air's key, the new
-paper key and the old paper key that signs it.
+A lost Air inside a new Touch ID key's wait is answered by an R signed with the paper key
+every release so far lists, which waits for nothing. After a planned move whose old Air is
+lost, the new Air keeps its key: add `backup.pub` to the retired list and delete it
+(`cat backup.pub >> retired`, then `rm backup.pub`), run key setup, and R lists the new
+Air's key, the new paper key and the old paper key that signs it.
 
 ## The iPhone app
 
