@@ -86,14 +86,26 @@ send() {
     v="${f#"$records/"}"
     v="${v%%/*}"
     mkdir -p "$s/releases/$v"
-    cp "$f" "$s/releases/$v/"
+    cp -f "$f" "$s/releases/$v/"
   done
   "$rsync" -rcq "$s/releases/" "$minisync/releases/"
 }
 
+# books: in files, the books the mini needs: every index published and the newest signed,
+# with the signed files of each release they name.
+books() {
+  local id v ids="$published"
+  files=()
+  [ "$top" = "$newest" ] || ids+=$'\n'"$top"
+  for id in $ids; do files+=("$records/$id".{base,json.sig,json}); done
+  for v in $(for id in $ids; do echo "${id%%/*}"; done | sort -u); do
+    files+=("$records/$v"/{SHA256SUMS,SHA256SUMS.sig,canary.json,canary.json.sig,release_keys,commit})
+  done
+}
+
 # observe: the header's check of latest.json. pending is a pull signed after it and never seen.
 observe() {
-  local id v ids files=() found=
+  local id files=() found=
   fetchlive || refuse "couldn't fetch latest.json"
   if [ -z "$(field serial "$tmp/live.json")" ]; then
     [ -z "$newest" ] || refuse "latest.json is unsigned, and it was $newest: publish $top on the mini"
@@ -103,15 +115,9 @@ observe() {
     done
     [ -n "$found" ] || refuse "latest.json isn't an index in $records. After a planned move, copy the other Air's history in first. After a lost Air, delete it and run --import."
   fi
-  # Only a history latest.json is in sends its books, so a stale one never refills the
-  # mini's: the indexes published and the newest signed, with their releases' signed files.
+  # Only a history latest.json is in sends its books, so a stale one never refills the mini's.
   if [ -n "$top" ] && [ "$mode" != import ]; then
-    ids="$published"
-    [ "$top" = "$newest" ] || ids+=$'\n'"$top"
-    for id in $ids; do files+=("$records/$id".{base,json.sig,json}); done
-    for v in $(for id in $ids; do echo "${id%%/*}"; done | sort -u); do
-      files+=("$records/$v"/{SHA256SUMS,SHA256SUMS.sig,canary.json,canary.json.sig,release_keys,commit})
-    done
+    books
     send "${files[@]}" || echo "couldn't send the books to the mini again: run this again once it can reach the mini" >&2
   fi
   if [ -z "$found" ]; then
@@ -262,17 +268,19 @@ $(diff "$tmp/want" "$tmp/have" | sed -n 's/^</  missing/p; s/^>/  extra/p')"
 }
 
 # keep <version> <file>...: puts the signed files in the release's folder of the history,
-# and sends them to the mini's records. An index's .json goes last, so a keep cut short
-# leaves none listed without its .base.
+# and sends them to the mini's records with the books they're now part of. An index's .json
+# goes last, so a keep cut short leaves none listed without its .base.
 keep() {
-  local v="$1" f files=()
+  local v="$1" f new=() files=()
   shift
   mkdir -p "$records/$v"
   for f in "$@"; do
     cp "$f" "$records/$v/"
-    files+=("$records/$v/${f##*/}")
+    new+=("$records/$v/${f##*/}")
   done
-  send "${files[@]}" || refuse "couldn't send what it signed to the mini: run this again"
+  readrecords
+  books
+  send "${new[@]}" ${files[@]+"${files[@]}"} || refuse "couldn't send what it signed to the mini: run this again"
 }
 
 # await <id>: waits for latest.json to be the index, and marks it seen. A dry run leaves that

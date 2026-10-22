@@ -574,6 +574,25 @@ scenario_movedout() {
   pass "the reset records are still empty"
 }
 
+scenario_behind() {
+  fresh behind "a release folder the mini lost before its promote, then the mini's newest indexes lost"
+  keyfolder air1 paper1
+  keys air1 paper1
+  ship 1.1.0 1.0.6 air1 1.1.0
+  build 1.1.1 1.0.6
+  signfolder 1.1.1 air1
+  # Its promote takes the folder's signed files along.
+  mv "$dry/sync/releases/1.1.1" "$dry/lost"
+  promote 1.1.1 air1
+  # Records that lack the index latest.json is, as an older backup restored leaves them,
+  # never take latest.json back.
+  p=("$dry"/sync/releases/1.1.1/promote-*)
+  rm "${p[@]}"
+  refused "latest.json was signed after 1.1.0/promote-" publish --promote 1.1.0
+  run nokey --check
+  resign air1 1.1.1
+}
+
 scenario_droppull() {
   fresh droppull "a promote cut short and dropped by a pull of the release before it, then shown to the Air"
   keyfolder air1 paper1
