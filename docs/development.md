@@ -190,7 +190,8 @@ history the scripts read besides two files in `~/.ssh/ovenlight-release-keys/`:
 `last.json`, the last index the Air signed, and `published`, the published indexes it
 built that one on. The Air signs no promote, pull or resign while the newest published
 index isn't `last.json`, as after an index signed and never published, or while the others
-aren't the ones in `published`. Its refusal says what to check. Each script's header says
+aren't the ones in `published`. Nor does it while `latest.json` isn't that index, as after
+a publish that failed partway. Its refusal says what to check. Each script's header says
 what it checks, and `scripts/test-connector-release.sh` dry-runs them all. Each release
 restarts every owner's connector, and one promoted within two days of the last restarts
 every owner's wait, so batch what isn't urgent. A `--resign` restarts the wait too, for

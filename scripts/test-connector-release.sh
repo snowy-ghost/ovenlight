@@ -562,6 +562,12 @@ build 1.1.2 1.1.2
 signfolder 1.1.2 air1
 tick
 run sign air1 --promote 1.1.2
+# An agent holding ~/Sync marks the promote published, so the resign would make 1.1.2 the
+# live release.
+for f in "$dry"/sync/releases/1.1.2/promote-*.json; do date +%s > "${f%.json}.published"; done
+tick
+refused "latest.json isn't 1.1.2/promote-" sign air1 --resign
+rm "$dry"/sync/releases/1.1.2/promote-*.published
 lastchecked
 resign air1 1.1.1
 [ "$(field secure "$dry/bucket/connector/latest.json")" = 1.0.6 ] || fail "secure went up"
