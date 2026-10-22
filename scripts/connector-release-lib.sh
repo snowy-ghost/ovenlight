@@ -40,6 +40,7 @@ if [ -n "${OVENLIGHT_RELEASE_DRY+set}" ]; then
   sync="$dry/sync/releases"    # ~/Sync/ovenlight/releases
   minisync="$dry/mini"         # ~/Sync/ovenlight on the mini, from the Air
   keydir="$dry/keys"           # ~/.ssh/ovenlight-release-keys
+  rsync=rsync                  # the one on PATH, which the harness can make fail
   master=master
 else
   dry=
@@ -48,6 +49,7 @@ else
   sync="$HOME/Sync/ovenlight/releases"
   minisync="mini:Sync/ovenlight"
   keydir="$HOME/.ssh/ovenlight-release-keys"
+  rsync=/usr/bin/rsync         # macOS's, which its updates keep current, never one on PATH
   master=origin/master
 fi
 # The records, and what marks an index published in them with the time latest.json began

@@ -153,6 +153,7 @@ newestsigned() {
   # shellcheck disable=SC2254 # the pattern is a glob
   case "$top" in ${version:-*}/$mode-*) ;; *) refuse "$top is the newest index signed here, and only it goes up. If the Air holds a newer one, signed since or lost here, scripts/sign-connector.sh --check there sends it here. If not, scripts/publish-connector.sh $cmd" ;; esac
   id="$top" idx="$records/$top.json"
+  [ -f "$idx.sig" ] || refuse "$id has no .sig in $records: scripts/sign-connector.sh --check on the Air sends it again"
   baseof "$id"
   readchain "$base"
 }

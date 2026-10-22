@@ -103,7 +103,7 @@ elif $unsigned; then
 fi
 if $indexed; then
   if [ -z "$reinstall" ]; then
-    for f in "$records"/*/index.json; do
+    for f in "$records"/*/canary.json; do
       below "$(basename "$(dirname "$f")")" "$version" || continue
       r="$(field reinstallBelow "$f")"
       if [ -z "$reinstall" ] || below "$reinstall" "$r"; then reinstall="$r"; fi
