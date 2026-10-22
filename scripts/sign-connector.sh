@@ -88,7 +88,7 @@ send() {
     mkdir -p "$s/releases/$v"
     cp "$f" "$s/releases/$v/"
   done
-  rsync -rcq "$s/releases/" "$minisync/releases/"
+  "$rsync" -rcq "$s/releases/" "$minisync/releases/"
 }
 
 # observe: the header's check of latest.json. pending is a pull signed after it and never seen.

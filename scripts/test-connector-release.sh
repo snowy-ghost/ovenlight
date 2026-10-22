@@ -533,6 +533,8 @@ rm "$dry"/sync/releases/1.1.0/{release_keys,canary.json,canary.json.sig}
 if publish --resign > "$dry/log" 2>&1; then fail "published with 1.1.0's signed files gone"; fi
 tail -1 "$dry/log" | grep -qF "/sync/releases/1.1.0/release_keys" || { cat "$dry/log" >&2; fail "the refusal doesn't end on the missing file"; }
 pass "refused: $(tail -1 "$dry/log")"
+rm "$dry"/sync/releases/1.1.1/resign-*.json.sig
+refused "has no .sig in" publish --resign
 mv "$dry/sync/releases/1.1.0" "$dry/lost"
 refused "--check on the Air sends the books again" publish --resign
 run nokey --check
