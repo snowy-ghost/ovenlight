@@ -1093,6 +1093,8 @@ scenario_gates() {
   # scratch folder all the same. The mock keys stay after the key swap.
   mocks=("$root"/connector/testdata/releasekey/mock-{touchid,backup}.pub)
   cat "$fixtures/air1.pub" "$fixtures/paper1.pub" "${mocks[@]}" > "$repo/connector/release_keys"
+  signers air1 paper1
+  awk '{ print "team@snowyghost.com namespaces=\"file,ovenlight-latest\"", $1, $2 }' "${mocks[@]}" >> "$repo/docs/allowed_signers"
   commit "the mock keys"
   build 1.1.0 1.0.6 1.1.0
   pass "a dry run builds with the mock release keys"
@@ -1102,7 +1104,6 @@ scenario_gates() {
   # A key swap that leaves a mock key in docs/allowed_signers would let owners' own check pass
   # what its public private half signs, so a real build refuses that too.
   cat "$dry/private/stranger.pub" > "$repo/connector/release_keys"
-  awk '{ print "team@snowyghost.com namespaces=\"file,ovenlight-latest\"", $1, $2 }' "${mocks[@]}" >> "$repo/docs/allowed_signers"
   commit "a mock key left in allowed_signers"
   refused "docs/allowed_signers holds a release key whose private half is public" env -u OVENLIGHT_RELEASE_DRY \
     HOME="$dry/home" "$repo/scripts/release-connector.sh" --unsigned 1.1.0 1.0.6 1.1.0
@@ -1119,6 +1120,13 @@ scenario_gates() {
   { echo "# a comment"; echo; awk '{ print "team@snowyghost.com namespaces=\"file,ovenlight-latest\"", $1, $2 }' "$dry/private/stranger.pub"; } > "$repo/docs/allowed_signers"
   commit "a release key and a comment"
   refused "latest (1.1.0) can't be below its secure (1.2.0)" release 1.1.0 1.2.0 1.1.0
+  # Owners check a release with docs/allowed_signers at its tag, so a build whose file lacks a
+  # release key, whatever a comment there says, would be one they couldn't check.
+  signers paper1
+  echo "# team@snowyghost.com namespaces=\"file,ovenlight-latest\" $(awk '{ print $1, $2 }' "$fixtures/air1.pub")" >> "$repo/docs/allowed_signers"
+  cat "$fixtures/air1.pub" "$fixtures/paper1.pub" > "$repo/connector/release_keys"
+  commit "a release key missing from allowed_signers"
+  refused "docs/allowed_signers lacks a key in connector/release_keys" release 1.1.0 1.0.6 1.1.0
   signers air1 paper1
   keys air1 paper1
   refused "a dry run builds only with --unsigned" "$repo/scripts/release-connector.sh" 1.1.0 1.0.6 1.1.0

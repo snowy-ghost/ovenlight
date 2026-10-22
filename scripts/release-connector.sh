@@ -20,8 +20,8 @@
 # older one, and computers below it update without waiting. <reinstallBelow> is the oldest
 # version that may update to this one by binary alone, so a release that changes what the
 # install scripts install raises it. Neither is ever lowered. <reinstallBelow> defaults to
-# the highest of the releases below it in ~/Sync/ovenlight/releases, which the first release
-# names itself.
+# the highest reinstallBelow of the releases below it in ~/Sync/ovenlight/releases, so it
+# carries forward. The first release names its own.
 #
 # It builds with the Go version on connector/go.mod's go line, as CI does, and only a
 # clean HEAD on origin/master, checking that each binary carries that commit (go1.26
@@ -34,7 +34,8 @@
 # connector/release_keys or in docs/allowed_signers, which owners check releases with. So a
 # build with the mock release keys can't go out, nor one whose docs would let a fixture
 # key's signature pass. Every key docs/allowed_signers lists must be in the release keys'
-# namespaces, file,ovenlight-latest, so no old git key is left there. Notarization uses an
+# namespaces, file,ovenlight-latest, so no old git key is left there, and every release key
+# must be in it, since owners check a release with the file at its tag. Notarization uses an
 # App Store Connect API key named by ASC_KEY_ID, ASC_ISSUER_ID and ASC_KEY_PATH in the
 # environment. Over SSH, unlock the login keychain first. Windows signing uses jsign (brew
 # install jsign) and the Azure CLI, signed in (az login) as someone with the Artifact
@@ -93,6 +94,10 @@ public "$root/docs/allowed_signers"
 if awk 'NF && $1 !~ /^#/ && $2 != "namespaces=\"file,ovenlight-latest\"" { bad = 1 } END { exit !bad }' "$root/docs/allowed_signers"; then
   refuse "docs/allowed_signers lists a key in a namespace other than the release keys', such as an old git key"
 fi
+for k in $(awk 'NF { print $2 }' "$conn/release_keys"); do
+  awk -v k="$k" '$1 !~ /^#/ && $4 == k { f = 1 } END { exit !f }' "$root/docs/allowed_signers" ||
+    refuse "docs/allowed_signers lacks a key in connector/release_keys, so owners couldn't check this release with the file at its tag"
+done
 
 # Only a build that can be signed gets an index: a real one, or a dry run's.
 indexed=true
@@ -109,7 +114,7 @@ if $indexed; then
       if [ -z "$reinstall" ] || below "$reinstall" "$r"; then reinstall="$r"; fi
     done
     [ -n "$reinstall" ] || refuse "$records has no release below $version, so name its reinstallBelow"
-    echo "reinstallBelow $reinstall, the highest in $records"
+    echo "reinstallBelow $reinstall, the highest of the releases below $version in $records"
   fi
   # The index's own checks, before minutes of building.
   index "$version" "$secure" "$reinstall" 0 /dev/null > /dev/null
