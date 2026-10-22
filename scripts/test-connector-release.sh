@@ -459,7 +459,7 @@ signfolder 1.1.2 air1
 promote 1.1.2 air1
 # Computers asleep on 1.1.0 hold only the old keys, so the new key can't sign the pull yet.
 tick
-refused "four weeks and four days" sign air2 --pull 1.1.2
+refused "Or sign the pull with the key that signed" sign air2 --pull 1.1.2
 pull 1.1.2 air1 1.1.1
 # The release after drops the old key, and the new key alone waits four weeks and four days.
 keys air2 paper1
