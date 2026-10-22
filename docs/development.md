@@ -94,8 +94,8 @@ scripts/release-connector.sh 1.2.0 1.0.6
 ```
 
 It takes the version, the oldest secure one, and optionally `reinstallBelow`, the oldest
-version that may update to it by binary alone (by default the highest one signed so far).
-`--unsigned`, before the version, skips all signing, to test the rest.
+version that may update to it by binary alone (by default the highest of the releases
+below it). `--unsigned`, before the version, skips all signing, to test the rest.
 
 `release-connector.sh` writes the release to `build/release/`, replacing the one before:
 
@@ -308,10 +308,13 @@ After a lost Air, the paper key signs R:
    `ssh-keygen -lf -` on that list prints their fingerprints in the same order. Then
    `scripts/sign-connector.sh --import <file>` copies what those keys signed into the
    history, prints it and checks `latest.json` against it: check the list against the
-   releases you published. Then run key setup (`scripts/release-key-setup.sh`). It makes a
-   new paper key, files both new public keys in `~/.ssh/ovenlight-release-keys/`, and
-   signs a test signature with each in `~/Sync/ovenlight/release-key-test/`. Its page also
-   lists the fingerprints of the keys earlier releases list.
+   releases you published. Mark one it shows as never published that you did publish
+   with `echo <serial> > ~/.ssh/ovenlight-release-keys/history/<version>/<kind>-<serial>.seen`,
+   the serial being the number in its name. Then run key setup
+   (`scripts/release-key-setup.sh`). It makes a new paper key, files both new public keys
+   in `~/.ssh/ovenlight-release-keys/`, and signs a test signature with each in
+   `~/Sync/ovenlight/release-key-test/`. Its page also lists the fingerprints of the keys
+   earlier releases list.
 2. R lists the two new keys and the old paper key, and drops the lost key and its
    signature. Copy key setup's `index.json.release-1.sig` and `index.json.release-2.sig`
    in under the next two free numbers.
@@ -327,12 +330,15 @@ After a lost Air, the paper key signs R:
 
 After a lost paper key, the Air signs R, which lists its own key and a new paper key and
 takes a version above every release signed so far, since those list the lost key and none
-of them is promoted any more. Delete `backup.pub` from `~/.ssh/ovenlight-release-keys/`
-(the lost key may be in other hands, so the Air trusts nothing it signs), run key setup,
-and copy only its `index.json.release-2.sig` in under the next free number. During a
-planned move, delete `backup.pub` on both Airs and run key setup on the new Air, then
-carry the new `backup.pub` to the old Air as step 1 carries the new key: the old Air signs
-R, and the move's R+1 still follows. Drop the lost key's signature and its line in
+of them is promoted any more. Note the lost key's fingerprint
+(`ssh-keygen -lf ~/.ssh/ovenlight-release-keys/backup.pub`), then delete `backup.pub`
+(the lost key may be in other hands, so the Air trusts nothing it signs) and run key
+setup. Its page lists the lost key among the keys earlier releases list, so cross it out
+on both copies. Copy only its `index.json.release-2.sig` in under the next free number.
+During a planned move, delete `backup.pub` on both Airs, merge the old Air's history into
+the new Air's as step 4 does, and run key setup on the new Air, then carry the new
+`backup.pub` to the old Air as step 1 carries the new key: the old Air signs R, and the
+move's R+1 still follows. Drop the lost key's signature and its line in
 `allowed_signers`, since it signed no release. Outside a planned move, if the Air's key is
 still inside its wait, the old paper key, which every release so far lists, signs this R
 instead, and R+1 drops that key. Otherwise the Air's key signs this R, which waits for
