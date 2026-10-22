@@ -137,6 +137,7 @@ nokey() {
     t="$dry/sync/releases/${d##*/}"
     mkdir -p "$t"
     for f in "$d"/*; do mv "$f" "$t/"; done
+    rmdir "$d"
   done
   return $s
 }
@@ -519,6 +520,32 @@ refused "--check on the Air sends the books again" publish --resign
 run nokey --check
 resign air1 1.1.1
 pull 1.1.1 air1 1.1.0
+
+fresh movedout "a release folder moved out of the mini's records, then the records reset"
+keyfolder air1 paper1
+keys air1 paper1
+ship 1.1.0 1.0.6 air1 1.1.0
+ship 1.1.1 1.0.6 air1
+mkdir "$dry/moved"
+mv "$dry/sync/releases/1.1.0" "$dry/moved/"
+run nokey --check
+tick
+run sign air1 --resign
+if publish --resign > "$dry/log" 2>&1; then fail "published with 1.1.0's folder moved out"; fi
+tail -1 "$dry/log" | grep -qF "/sync/releases/1.1.0/release_keys" || { cat "$dry/log" >&2; fail "the refusal doesn't end on the missing folder"; }
+pass "refused: $(tail -1 "$dry/log")"
+mv "$dry"/sync/releases/1.1.0/* "$dry/moved/1.1.0/"
+rmdir "$dry/sync/releases/1.1.0"
+mv "$dry/moved/1.1.0" "$dry/sync/releases/"
+land --resign
+latest_is 1.1.1 air1
+# An Air whose history doesn't hold latest.json sends the mini none of its books.
+mv "$dry/sync/releases" "$dry/reset"
+mkdir "$dry/sync/releases"
+cp "$dry/1.0.9.json" "$dry/bucket/connector/latest.json"
+refused "latest.json is unsigned, and it was 1.1.1/resign-" nokey --check
+[ -z "$(ls "$dry/sync/releases")" ] || fail "the Air sent its books into the reset records"
+pass "the reset records are still empty"
 
 fresh droppull "a promote cut short and dropped by a pull of the release before it, then shown to the Air"
 keyfolder air1 paper1

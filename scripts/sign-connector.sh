@@ -93,21 +93,25 @@ send() {
 observe() {
   local id files=() found=
   fetchlive || refuse "couldn't fetch latest.json"
+  if [ -z "$(field serial "$tmp/live.json")" ]; then
+    [ -z "$newest" ] || refuse "latest.json is unsigned, and it was $newest: publish $top on the mini"
+  else
+    for id in $signed; do
+      if cmp -s "$tmp/live.json" "$records/$id.json"; then found="$id"; fi
+    done
+    [ -n "$found" ] || refuse "latest.json isn't an index in $records. After a planned move, copy the other Air's history in first. After a lost Air, delete it and run --import."
+  fi
+  # Only a history latest.json is in sends its books, so a stale one never refills the mini's.
   if [ -n "$top" ] && [ "$mode" != import ]; then
     for id in $published; do files+=("$records/$id".{base,json.sig,json}); done
     [ "$top" = "$newest" ] || files+=("$records/$top".{base,json.sig,json})
     send "${files[@]}" || echo "couldn't send the books to the mini again: run this again once it can reach the mini" >&2
   fi
-  if [ -z "$(field serial "$tmp/live.json")" ]; then
-    [ -z "$newest" ] || refuse "latest.json is unsigned, and it was $newest: publish $top on the mini"
+  if [ -z "$found" ]; then
     echo "latest.json is unsigned, so nothing is promoted yet"
     pending=
     return
   fi
-  for id in $signed; do
-    if cmp -s "$tmp/live.json" "$records/$id.json"; then found="$id"; fi
-  done
-  [ -n "$found" ] || refuse "latest.json isn't an index in $records. After a planned move, copy the other Air's history in first. After a lost Air, delete it and run --import."
   if [ -n "$newest" ] && [ "$(serialof "$found")" -lt "$(serialof "$newest")" ]; then
     refuse "latest.json is $found, older than $newest, which the history marks seen: publish $top on the mini"
   fi
