@@ -422,6 +422,12 @@ func (t *trial) restore() {
 		log.Printf("updates: can't put %s back: %v", prevBinary(installed), err)
 		return
 	}
+	// The binary put back is on disk before the trial goes, so a power cut can't leave the
+	// release on trial in place with no trial to roll it back.
+	if err := syncDir(filepath.Dir(installed)); err != nil {
+		log.Printf("updates: syncing %s: %v", filepath.Dir(installed), err)
+		return
+	}
 	t.end()
 }
 
