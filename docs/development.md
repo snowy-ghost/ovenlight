@@ -185,11 +185,12 @@ scripts/publish-connector.sh --promote 1.2.0
 That puts its files in `connector/latest/` and its index in `latest.json`, and every
 owner's two-day wait starts. The mini publishes only the newest index signed, so a publish
 that fails partway is finished by running the same command again (a folder's before the
-next build replaces `build/release`). If the publish names another index as the newest,
-the Air's send didn't arrive: `scripts/sign-connector.sh --check` on the Air sends it
-again, as every run there does until `latest.json` is it. To drop a promote, pull or
-resign cut short instead, run `scripts/sign-connector.sh --check` on the Air (after a lost
-Air, `--import`). If it says `latest.json` is that index, it went out: pull it if it's a
+next build replaces `build/release`). If the publish names another index as the newest, or
+a `.base` it can't follow, the mini lacks part of what the Air signed:
+`scripts/sign-connector.sh --check` on the Air sends every index published and the newest
+signed again, as every run there does. To drop a promote, pull or resign cut short
+instead, run `scripts/sign-connector.sh --check` on the Air (after a lost Air,
+`--import`). If it says `latest.json` is that index, it went out: pull it if it's a
 promote. Otherwise sign the next index and publish that: a `--resign`, which puts the live
 release back in `connector/latest/`, or a promote of the next release when nothing is
 promoted before it, or a fresh pull for a pull.
