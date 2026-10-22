@@ -85,6 +85,9 @@ observe() {
   done
   [ -n "$found" ] || refuse "latest.json isn't an index in $records. After a planned move, copy the other Air's history in first. After a lost Air, delete it and run --import."
   if [ -n "$newest" ] && [ "$(serialof "$found")" -lt "$(serialof "$newest")" ]; then
+    case " ${neverlive:-} " in
+    *" $newest "*) refuse "latest.json is $found, and $newest, signed after it, was never seen live: publish $newest on the mini" ;;
+    esac
     refuse "latest.json is $found, older than $newest, which it has been: publish $newest again on the mini"
   fi
   [ -f "$records/$found.seen" ] || date +%s > "$records/$found.seen"
@@ -99,7 +102,8 @@ observe() {
 # import: rebuilds the history from the mini's records: each release whose SHA256SUMS and
 # canary index the keys signed, with connector/release_keys at its commit on master, and each
 # index they signed that fits its name. Every pull, and every index the records mark
-# published, counts as seen. Then latest.json must be in it.
+# published, counts as seen, and neverlive lists those the records don't mark live. Then
+# latest.json must be in it.
 import() {
   local h="$tmp/history" d v c id f s t
   [ ! -e "$records" ] || refuse "$records exists: --import rebuilds it once it's deleted, on an Air whose --check doesn't find latest.json in it"
@@ -137,7 +141,7 @@ import() {
       case "$id" in */pull-*) ;; *) [ -f "$id.published" ] || continue ;; esac
       # When latest.json began naming it, which newkeywait never takes as before it was signed.
       t="$(cat "$id.live" 2> /dev/null || true)"
-      [[ "$t" =~ ^[1-9][0-9]{9}$ ]] || t="$s"
+      [[ "$t" =~ ^[1-9][0-9]{9}$ ]] || t="$s" neverlive="${neverlive:-} $v/${id##*/}"
       echo "$t" > "$h/$v/${id##*/}.seen"
     done
   done
@@ -146,7 +150,7 @@ import() {
   echo "the history, from $sync:"
   for id in $signed; do
     if [ -f "$h/$id.seen" ]; then s=published; else s="never published"; fi
-    echo "  $id, naming $(field latest "$h/$id.json"), $s"
+    echo "  $id, signed $(date -r "$(serialof "$id")" '+%Y-%m-%d %H:%M'), naming $(field latest "$h/$id.json"), $s"
   done
   echo "  promoted: ${promoted//$'\n'/ }"
   echo "  pulled: ${pulled//$'\n'/ }"

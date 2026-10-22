@@ -155,7 +155,7 @@ ordered() {
   local id
   for id in $signed; do
     if [ "$id" != "${2:-}" ] && [ "$(serialof "$id")" -ge "$1" ]; then
-      refuse "$id is signed with a serial at or above $1: sign a fresh one"
+      refuse "$id is signed with a serial at or above $1: sign a fresh one after $(date -r "$(serialof "$id")")"
     fi
   done
 }
