@@ -369,15 +369,18 @@ func TestTrialDeadline(t *testing.T) {
 	if updateHour != time.Hour {
 		t.Skip("a compressed schedule")
 	}
-	tr, dir, installed := startTrialing(t, "coach")
-	d, _ := testDaemon(t) // coach logged in, not serving
+	tr, dir, installed := startTrialing(t, "coach", "gone")
+	d, _ := testDaemon(t) // coach logged in, not serving, and gone unpublished since
 	d.stateDir = dir
 	d.upd = &updater{d: d, now: tr.clock.now}
+	if err := jsonfile.Save(d.configPath, &Config{Apps: []App{{Name: "Interview Coach", Slug: "coach", Port: 4317}}}); err != nil {
+		t.Fatal(err)
+	}
 	tr.attach(d)
 	if !tr.pass(10 * time.Minute) {
 		t.Fatal("not over")
 	}
-	if f := rolledBack(t, dir, installed); f.Version != "1.2.0" || !strings.Contains(f.Error, "coach didn't serve again") {
+	if f := rolledBack(t, dir, installed); f.Version != "1.2.0" || !strings.Contains(f.Error, "coach, gone didn't serve again") {
 		t.Errorf("%+v", f)
 	}
 	if len(tr.exits) != 1 || !strings.Contains(tr.exits[0], "1.1.5") {
