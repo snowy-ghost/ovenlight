@@ -282,10 +282,10 @@ WAIT=$((32 * 86400))
 # release can't check yet. It waits until four weeks and four days after latest.json last
 # began naming releases that list it, so computers asleep on an older release have taken
 # one. A pull back to one that doesn't list it starts the wait again, and a promote signed
-# by another key doesn't.
+# by another key doesn't. With nothing published in the records, it counts what's signed.
 newkeywait() {
   local id v s old='' from=''
-  for id in $published; do
+  for id in ${published:-$signed}; do
     v="$(field latest "$records/$id.json")"
     if ! haskey "$1" "$records/$v/release_keys"; then old="$v" from=
     elif [ -z "$from" ] && [ -f "$records/$id.$since" ]; then
