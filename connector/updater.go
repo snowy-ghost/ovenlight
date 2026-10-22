@@ -455,8 +455,9 @@ func planUpdate(st *updateState, v string) updatePlan {
 	p := updatePlan{idx: idx, night: nightOf(st.Minute), security: ok && less(cur, idx.secure)}
 	// The wait never starts before the index was signed, so a clock that was behind when
 	// this computer first saw it, or set back since, can't shorten it once it's put right.
+	// A security fix has no wait to shorten.
 	seen := st.Seen
-	if signed := time.Unix(idx.Serial, 0); seen.Before(signed) {
+	if signed := time.Unix(idx.Serial, 0); !p.security && seen.Before(signed) {
 		seen = signed
 	}
 	var due time.Time
@@ -518,7 +519,8 @@ type updateView struct {
 	Latest string `json:"latest,omitempty"`
 	Secure string `json:"secure,omitempty"`
 	// Pending is the release it installs on its own: from InstallAfter at a quiet moment,
-	// and by InstallBy busy or not.
+	// and by InstallBy busy or not. Once its moment has come InstallAfter is now, or for a
+	// regular release outside the night the start of the next.
 	Pending      string    `json:"pending,omitempty"`
 	InstallAfter time.Time `json:"installAfter,omitzero"`
 	InstallBy    time.Time `json:"installBy,omitzero"`
@@ -530,8 +532,7 @@ type updateView struct {
 	// BelowSecure is set when the running release has a security problem: it's below Secure.
 	BelowSecure bool `json:"belowSecure,omitempty"`
 
-	since time.Time     // when the updater first ran here
-	night time.Duration // when this computer's night starts (nightOf)
+	since time.Time // when the updater first ran here
 }
 
 // when is a time as status and doctor show it.
@@ -542,36 +543,32 @@ func (u *updateView) installs(now time.Time) string {
 	if !now.Before(u.InstallBy) {
 		return "installs on its own as soon as it can"
 	}
-	after := u.InstallAfter
-	if p := (updatePlan{night: u.night}); !u.BelowSecure && now.After(after) && !p.inNight(now) {
-		after = nextAt(now, u.night) // its first night has passed
-	}
-	if !after.Before(u.InstallBy) {
+	if !u.InstallAfter.Before(u.InstallBy) {
 		return "installs on its own at " + when(u.InstallBy) + ", busy or not"
 	}
-	return fmt.Sprintf("installs on its own at a quiet moment from %s, and by %s even if busy", when(after), when(u.InstallBy))
+	return fmt.Sprintf("installs on its own at a quiet moment from %s, and by %s even if busy", when(u.InstallAfter), when(u.InstallBy))
 }
 
 // daemonUpdate is readUpdateView for the connector that sent reply, and its version: with
 // none running, for this binary.
-func daemonUpdate(stateDir string, reply *controlReply) (*updateView, string) {
+func daemonUpdate(stateDir string, reply *controlReply, now time.Time) (*updateView, string) {
 	v, self := version(), false
 	if reply != nil {
 		v, self = reply.Version, reply.SelfUpdating
 	}
-	return readUpdateView(stateDir, v, self), v
+	return readUpdateView(stateDir, v, self, now), v
 }
 
-// readUpdateView describes the updater for a connector at version v from update.json and
-// updates-off, fetching nothing.
-func readUpdateView(stateDir, v string, self bool) *updateView {
+// readUpdateView describes the updater at now for a connector at version v from
+// update.json and updates-off, fetching nothing.
+func readUpdateView(stateDir, v string, self bool, now time.Time) *updateView {
 	u := &updateView{SelfUpdating: self, Off: updatesOff(stateDir)}
 	st, err := loadUpdateState(stateDir)
 	if err != nil {
 		u.CheckError = err.Error()
 		return u
 	}
-	u.LastCheck, u.CheckError, u.LastUpdate, u.since, u.night = st.Checked, st.CheckError, st.Updated, st.Since, nightOf(st.Minute)
+	u.LastCheck, u.CheckError, u.LastUpdate, u.since = st.Checked, st.CheckError, st.Updated, st.Since
 	p := planUpdate(st, v)
 	if p.idx == nil {
 		return u
@@ -579,8 +576,11 @@ func readUpdateView(stateDir, v string, self bool) *updateView {
 	u.Latest, u.Secure, u.NeedsScript, u.BelowSecure = p.idx.Latest, p.idx.Secure, p.script, p.security
 	if p.target != "" {
 		u.Pending, u.InstallAfter, u.InstallBy = p.target, p.after, p.by
-		if !p.security && !p.inNight(p.after) {
-			u.InstallAfter = nextAt(p.after, p.night) // a quiet moment in the night
+		if now.After(p.after) {
+			u.InstallAfter = now
+		}
+		if !p.security && !p.inNight(u.InstallAfter) && u.InstallAfter.Before(p.by) {
+			u.InstallAfter = nextAt(u.InstallAfter, p.night) // a quiet moment in the night
 		}
 		// Only the release it would install: one the index no longer names was pulled.
 		if f := st.Failed; f != nil && f.Version == p.target {

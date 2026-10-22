@@ -86,7 +86,7 @@ func startFix(p *paths) string {
 var serviceCommands = map[string]struct{ start, restart, where, crash string }{
 	"darwin": {"launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.snowyghost.ovenlight.connector.plist || launchctl kickstart gui/$(id -u)/com.snowyghost.ovenlight.connector",
 		"launchctl kickstart -k gui/$(id -u)/com.snowyghost.ovenlight.connector", "", "ovenlight.stderr.log beside it"},
-	"linux":   {"systemctl --user enable --now ovenlight", "systemctl --user restart ovenlight", "", "`journalctl --user -u ovenlight`"},
+	"linux":   {"systemctl --user enable --now ovenlight", "systemctl --user restart ovenlight", "", "`journalctl --user -eu ovenlight`"},
 	"windows": {"Enable-ScheduledTask ovenlight; Start-ScheduledTask ovenlight", "Stop-ScheduledTask ovenlight; Start-ScheduledTask ovenlight", " in an administrator PowerShell", "ovenlight.stderr.log beside it"},
 }
 
@@ -226,18 +226,6 @@ func cmdRun(args []string) error {
 			return err
 		}
 		log.SetOutput(f)
-		if runtime.GOOS == "windows" {
-			// A scheduled task's standard error goes nowhere, so a crash is kept beside the log.
-			crash, err := os.OpenFile(filepath.Join(filepath.Dir(*logFile), "ovenlight.stderr.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
-			if err != nil {
-				return err
-			}
-			err = debug.SetCrashOutput(crash, debug.CrashOptions{}) // keeps its own copy of the file
-			crash.Close()
-			if err != nil {
-				return err
-			}
-		}
 	}
 	log.Printf("ovenlight %s", version())
 	if os.Getenv("OVENLIGHT_DEV") != "1" {
@@ -907,7 +895,7 @@ func collectStatus(p *paths) (*statusOut, error) {
 		return nil, daemonErr
 	}
 	out := &statusOut{Version: version(), Daemon: reply != nil, Apps: []appStatus{}}
-	out.Update, _ = daemonUpdate(p.state, reply)
+	out.Update, _ = daemonUpdate(p.state, reply, time.Now())
 	live := map[string]NodeStatus{}
 	var processes map[string]ProcessStatus
 	if reply != nil {

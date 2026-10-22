@@ -8,6 +8,8 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
+	"runtime/debug"
 	"slices"
 	"strings"
 	"sync"
@@ -85,11 +87,19 @@ func startTrial() {
 		return
 	}
 	// What the trial logs as it starts goes to the service's --log, which cmdRun opens later:
-	// the log owners are pointed at, and a scheduled task's standard error goes nowhere.
+	// the log owners are pointed at, and a scheduled task's standard error goes nowhere. So
+	// on Windows a crash from here on, before cmdRun too, is kept beside the log.
 	if i := slices.Index(os.Args, "--log"); i > 0 && i+1 < len(os.Args) {
 		if f, err := os.OpenFile(os.Args[i+1], os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600); err == nil {
 			log.SetOutput(f)
 			defer func() { log.SetOutput(os.Stderr); f.Close() }()
+		}
+		if runtime.GOOS == "windows" {
+			crash, err := os.OpenFile(filepath.Join(filepath.Dir(os.Args[i+1]), "ovenlight.stderr.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+			if err == nil {
+				debug.SetCrashOutput(crash, debug.CrashOptions{}) // keeps its own copy of the file
+				crash.Close()
+			}
 		}
 	}
 	t, exit := beginTrial(filepath.Dir(filepath.Dir(exe)), version(), func() time.Time { return time.Now().Round(0) })

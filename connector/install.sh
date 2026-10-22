@@ -91,7 +91,7 @@ if [ "$os" = Linux ]; then
   systemctl --user enable --quiet "$label"
   # Starts a stopped service, and puts a running one on the new binary.
   systemctl --user restart "$label"
-  echo "installed the $label user service (log: $log; what bypasses it, such as a panic: journalctl --user -u $label)"
+  echo "installed the $label user service (log: $log; what bypasses it, such as a panic: journalctl --user -eu $label)"
   # Linger starts your user's services at boot and keeps them running with nobody logged in.
   user="$(id -un)"
   if [ "$(loginctl show-user "$user" -p Linger --value 2>/dev/null)" != yes ] && ! loginctl enable-linger "$user" 2>/dev/null; then
