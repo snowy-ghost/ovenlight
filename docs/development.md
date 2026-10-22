@@ -251,9 +251,9 @@ A change of release keys takes two releases. R brings in the new keys, signed wi
 one, and R+1 drops that old key. R's `connector/release_keys` is the two keys that sign
 from then on plus the old key that signs R, as `sign-connector.sh` requires.
 `docs/allowed_signers` adds the new keys. A key that leaves `release_keys` stays in
-`allowed_signers` until R+1 is promoted, since a pull back to a release it signed puts
-that release's files in `latest/` again, and 1.0.x's docs check those with master's
-`allowed_signers`. `publish-connector.sh --pull` says when one has to come back.
+`allowed_signers` until the release after R+1 is promoted, since a pull back to a release
+it signed puts that release's files in `latest/` again, and 1.0.x's docs check those with
+master's `allowed_signers`. `publish-connector.sh --pull` says when one has to come back.
 
 `TestReleaseKeySignatures` wants one test signature in `connector/testdata/update/` for
 each key in `release_keys`. R adds one for each new key, as the next free
