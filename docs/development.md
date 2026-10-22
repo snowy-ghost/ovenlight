@@ -216,6 +216,8 @@ The first release that updates itself, 1.1.0 here, goes out once, with 1.1.1 aft
      with the two real keys, are copied from `~/Sync/ovenlight/release-key-test/` into
      `connector/testdata/update/`.
    - The comment in `connector/keys.go` loses its sentence about the mock keys.
+   - `connector/testdata/update/sign.sh` loses the lines that delete
+     `index.json.release-*.sig` and sign them with the mock keys, and their comment.
    - The Air's `~/.ssh/ovenlight-release-keys/` holds the two real public keys.
 
    `connector/testdata/releasekey/mock-*.pub` stay: `release-connector.sh` refuses any key
@@ -247,9 +249,7 @@ to come back.
 
 `TestReleaseKeySignatures` wants one test signature in `connector/testdata/update/` for
 each key in `release_keys`. R adds one for each new key, as the next free
-`index.json.release-<n>.sig`, and the commit that drops a key deletes its signature. Never
-run `connector/testdata/update/sign.sh` after the key swap: it replaces the real keys'
-signatures with the mock keys'.
+`index.json.release-<n>.sig`, and the commit that drops a key deletes its signature.
 
 For a planned move to a new Air, the old Air signs R:
 

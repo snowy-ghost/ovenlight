@@ -3,9 +3,8 @@
 # test key in each namespace the tests check, and with sha256, and each mock release key in
 # ../releasekey only in ovenlight-test, which nothing that ships accepts. The real keys'
 # index.json.release-*.sig come from key setup, which signs a copy of index.json, so
-# index.json never changes: those signatures are of it, byte for byte. After the key swap
-# this would replace them with the mock keys', so it's never run then: docs/development.md's
-# Changing a release key adds a new key's.
+# index.json never changes: those signatures are of it, byte for byte. The key swap takes
+# the mock keys out of this script.
 #
 # index.json.ovenlight-latest.sk.sig is from a Secure Enclave key that was deleted after
 # signing, so it stays as it is.
