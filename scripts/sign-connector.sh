@@ -136,7 +136,7 @@ $moved Otherwise find out who changed the records before signing anything."
     { case "$newest" in */pull-*) below "$n" "${newest%%/*}" ;; *) [ "$n" = "${newest%%/*}" ] ;; esac && [ "$n" = "$live" ]; } ||
       refuse "$newest.json names $n, which doesn't fit its name, or the live release the records make of it, ${live:-none}: find out who changed the records before signing anything"
     cmp -s "$tmp/live.json" "$records/$newest.json" ||
-      refuse "latest.json isn't $newest, the records' newest published index: if its publish failed partway, finish it first, and otherwise find out who changed the records before signing anything"
+      refuse "latest.json isn't $newest, the records' newest published index. If you ran its publish and it failed partway, run that publish again on the mini. If you never ran it, the records were changed: find out who before signing anything."
   else
     [ -z "$(field serial "$tmp/live.json")" ] || refuse "latest.json is a signed index, and the records call none published: find out who changed the records before signing anything"
   fi
