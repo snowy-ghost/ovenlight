@@ -12,7 +12,8 @@
 # records. The Air's are its history, ~/.ssh/ovenlight-release-keys/history/, which only
 # sign-connector.sh writes, marking an index with <kind>-<serial>.seen, the time it first
 # saw latest.json be that index. It sends what it signs with scp to the mini's records,
-# ~/Sync/ovenlight/releases/ there, and never writes to the Air's own ~/Sync, where a link
+# ~/Sync/ovenlight/releases/ there, and the newest index signed again on each run until it's
+# the head, and never writes to the Air's own ~/Sync, where a link
 # an agent syncs would write into its files. There publish-connector.sh marks an index with
 # <kind>-<serial>.live, the time latest.json began naming it. A script that sets air=1
 # before sourcing this reads the Air's.
@@ -108,7 +109,7 @@ serialof() { echo "${1##*-}"; }
 # doesn't name an index signed before it.
 baseof() {
   base="$(cat "$records/$1.base" 2> /dev/null)" ||
-    refuse "$1 has no .base in $records: if its send from the Air was cut short, sign it again there"
+    refuse "$1 has no .base in $records: if its send from the Air was cut short, scripts/sign-connector.sh --check there sends it again"
   [ -z "$base" ] || { grep -qxF "$base" <<< "$signed" && [ "$(serialof "$base")" -lt "$(serialof "$1")" ]; } ||
     refuse "$records/$1.base names $base, not an index signed before it"
 }
@@ -177,8 +178,8 @@ keepsraised() {
   done
 }
 
-# ordered <serial>: refuses a serial that isn't above the newest index signed, so a
-# signature left unpublished always sits below a published one.
+# ordered <serial>: refuses a serial that isn't above the newest index signed, so the index
+# signed next is the newest, the one the mini publishes.
 ordered() {
   [ -z "$top" ] || [ "$(serialof "$top")" -lt "$1" ] ||
     refuse "$top is signed with a serial at or above $1: sign a fresh one after $(date -r "$(serialof "$top")")"

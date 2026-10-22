@@ -145,7 +145,7 @@ newestsigned() {
   cmd="${cmd%-*}"
   [ "$cmd" = --resign ] || cmd="$cmd ${top%%/*}"
   # shellcheck disable=SC2254 # the pattern is a glob
-  case "$top" in ${version:-*}/$mode-*) ;; *) refuse "$top is the newest index signed, and only it goes up: scripts/publish-connector.sh $cmd" ;; esac
+  case "$top" in ${version:-*}/$mode-*) ;; *) refuse "$top is the newest index signed here, and only it goes up. If the Air signed one since, scripts/sign-connector.sh --check there sends it here. If not, scripts/publish-connector.sh $cmd" ;; esac
   id="$top" idx="$records/$top.json"
   baseof "$id"
   readchain "$base"
