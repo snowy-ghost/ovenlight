@@ -54,9 +54,10 @@ var serviceTrial *trial
 // trial is an update's trial in the binary on trial, the release it installed, started
 // as the service. It runs quietFor of time awake from the start, before flag parsing, so
 // a release that hangs while starting is caught too. It passes when the daemon is up,
-// every app recorded at the swap has served again with its node logged in, and the
-// binary has verified the index that brought it. Otherwise .prev comes back, and a
-// release that deadlocks its daemon, so the trial can't end, is caught by backstop.
+// every app recorded at the swap has served again with its node logged in, the binary
+// has verified the index that brought it, and its updater polls. Otherwise .prev comes
+// back: at the deadline, or by backstop when the trial can't end there, as when the
+// daemon deadlocks or the updater doesn't poll.
 type trial struct {
 	rec  updateTrial
 	dir  string // the state folder, the binary's bin/..
@@ -268,15 +269,18 @@ func (t *trial) tick() bool {
 		return false
 	}
 	err := t.failure(d)
-	// A pass holds the updater's lock, taken before the trial's as poll takes them: a
-	// release whose updater hangs holding it would never update again, so it's left to
-	// the backstop.
+	// A pass holds the updater's lock, taken before the trial's as poll takes them, and
+	// needs its loop to have polled lately: a release whose updater hangs holding the lock,
+	// or never polls, would never update again, so it's left to the backstop.
 	var u *updater
-	if err == nil && d.upd != nil {
+	if err == nil {
 		if u = d.upd; !u.mu.TryLock() {
 			return false
 		}
 		defer u.mu.Unlock()
+		if now.Sub(u.lastRan) > 3*updateMinute {
+			return false
+		}
 	}
 	t.mu.Lock()
 	givingUp := t.givingUp
@@ -296,13 +300,8 @@ func (t *trial) tick() bool {
 	// which passed.
 	t.end()
 	log.Printf("updates: %s passed its trial", t.rec.To)
-	passed := func(st *updateState) { st.Updated = &updateEvent{From: t.rec.From, To: t.rec.To, At: t.rec.At} }
-	if u != nil {
-		passed(&u.st)
-		u.save()
-	} else if err := recordFile(t.dir, passed); err != nil {
-		log.Printf("updates: recording the update to %s: %v", t.rec.To, err)
-	}
+	u.st.Updated = &updateEvent{From: t.rec.From, To: t.rec.To, At: t.rec.At}
+	u.save()
 	return true
 }
 
@@ -364,6 +363,9 @@ func (t *trial) giveUp() bool {
 func (t *trial) failure(d *daemon) error {
 	if d == nil {
 		return fmt.Errorf("%s didn't finish starting within its trial", t.rec.To)
+	}
+	if d.upd == nil {
+		return fmt.Errorf("%s's updater didn't start", t.rec.To)
 	}
 	cfg, found, err := loadConfigFile(d.configPath)
 	t.mu.Lock()
