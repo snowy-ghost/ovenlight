@@ -143,8 +143,8 @@ the last release and `SHA256SUMS`. It refuses a commit whose `connector/release_
 isn't the two keys in `~/.ssh/ovenlight-release-keys/` plus the key signing it, when that
 folder doesn't hold it. It signs `SHA256SUMS` and a canary index, `canary.json`, which
 only `ovenlight update now --index` takes, and keeps both in the release's folder in
-`~/Sync/ovenlight/releases/`. `--key <file>` signs with another key: the paper backup, or
-another Touch ID key, such as a new Air's, by its handle.
+`~/Sync/ovenlight/releases/`. `--key <file>` signs with another key, such as the paper
+backup.
 
 Back on the mini, upload the version's folder, then try the release on the mini's own
 connector, the canary:
