@@ -150,17 +150,18 @@ Air writes to its own `~/Sync`, where a link an agent syncs would write into the
 files. `--key <file>` signs with another key, such as the paper backup.
 
 Back on the mini, upload the version's folder, then try the release on the mini's own
-connector, the canary:
+connector, the canary. The mini's connector must run the live release first: after a pull,
+a dropped promote, or a canary that failed once its trial passed, it may still run a
+release that isn't live, so install the live one by hand from its folder. The live index
+must also be signed with a key the new release lists, so after a key change, `--resign` it
+first.
 
 ```sh
 scripts/publish-connector.sh 1.2.0
 ovenlight update now --index ~/Sync/ovenlight/releases/1.2.0/canary.json
 ```
 
-The mini's connector must run the live release first: after a pull, or a canary that
-failed once its trial passed, it may still run a release that isn't live, so install the
-live one by hand from its folder. The live index must also be signed with a key the new
-release lists, so after a key change, `--resign` it first. The canary passes once the apps
+The canary passes once the apps
 serve again and `ovenlight status` shows 1.2.0 running with a check made since it started.
 A release that raises `reinstallBelow` passes once `update now` says it needs its install
 script, the mini installs it by hand from `connector/1.2.0/`
@@ -184,9 +185,13 @@ scripts/publish-connector.sh --promote 1.2.0
 That puts its files in `connector/latest/` and its index in `latest.json`, and every
 owner's two-day wait starts. A publish that fails partway is finished by running the same
 command again (a folder's before the next build replaces `build/release`). Until then the
-mini publishes no other promote, pull or resign. To drop one cut short that mustn't go
-out, delete its `.published` from its folder in `~/Sync/ovenlight/releases/` instead, then
-sign and publish a `--resign`, which puts the live release back in `connector/latest/`.
+mini publishes no other promote, pull or resign. To drop a promote cut short that mustn't
+go out, sign a `--resign` on the Air instead. If it names the promote's release, the
+promote went out, so pull it. Otherwise publish the resign, and once the mini refuses
+because `latest.json` isn't the promote, delete the promote's `.published` from its folder
+in `~/Sync/ovenlight/releases/` and publish the resign again, which puts the live release
+back in `connector/latest/`. With nothing promoted before it, promote the next release
+instead. A pull cut short only goes out.
 `--pull`, the same way, takes the live release back out by publishing the index of the
 release before it, signed again. Computers that already took the pulled release keep it,
 since the connector never installs an older one, so the fix is the next release.
@@ -301,11 +306,12 @@ After a lost Air, the paper key signs R:
 
 1. On the replacement Air, make its Touch ID key with the two commands above. In
    `~/.ssh/ovenlight-release-keys/`, if the Air has one, delete what a backup may have
-   brought back (`rm -f touchid.pub backup.pub index.json.release-*.sig`). Keep `history` only if it came from a
-   disk only the lost Air used and `scripts/sign-connector.sh --check` finds `latest.json`
-   in it. Otherwise `rm -r history`, then write into a new file each key
-   the `release_keys` in `~/Sync/ovenlight/releases/` list whose fingerprint is on the
-   current paper key's page, printed or written on, except a paper key that was lost.
+   brought back (`rm -f touchid.pub backup.pub index.json.release-*.sig`). Keep
+   `history` only if it came from a disk only the lost Air used and
+   `scripts/sign-connector.sh --check` finds `latest.json` in it. Otherwise
+   `rm -r history`, then write into a new file each key the `release_keys` in
+   `~/Sync/ovenlight/releases/` list whose fingerprint is on the current paper key's page,
+   printed or written on, except a paper key that was lost.
    `cat ~/Sync/ovenlight/releases/*/release_keys | sort -u` lists those keys, and
    `ssh-keygen -lf -` on that list prints their fingerprints in the same order. Then
    `scripts/sign-connector.sh --import <file>` copies what those keys signed into the
@@ -353,6 +359,16 @@ lost, the new Air keeps its key and history and deletes `backup.pub`. If
 signed past the last merge: delete `history` and import it, as after a lost Air. Run key
 setup and copy only its `index.json.release-2.sig` in, as after a lost paper key. R lists
 the new Air's key, the new paper key and the old paper key that signs it.
+
+After losing both keys, no computer can verify a release signed with new ones, so every
+owner installs the next release by hand once. On the mini, move
+`~/Sync/ovenlight/releases/` aside. On the Air, move `~/.ssh/ovenlight-release-keys/`
+aside, make the Touch ID key with the two commands above and run key setup. Upload an
+unsigned `latest.json` naming the live release and its `secure`, as 1.0.9's was (for
+example `{"latest": "1.2.0", "secure": "1.0.6"}`), with the `wrangler r2 object put` that
+`publish-connector.sh` runs for it. Then release as in the first updater release: a
+version above every release so far, naming its own `reinstallBelow`, whose `release_keys`
+and `allowed_signers` list only the new keys.
 
 ## The iPhone app
 
