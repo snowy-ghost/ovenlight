@@ -535,6 +535,9 @@ func (u *updateView) installs(now time.Time) string {
 	if !now.Before(u.InstallBy) {
 		return "installs on its own as soon as it can"
 	}
+	if !u.InstallAfter.Before(u.InstallBy) {
+		return "installs on its own at " + when(u.InstallBy) + ", busy or not"
+	}
 	return fmt.Sprintf("installs on its own at a quiet moment from %s, and by %s even if busy", when(u.InstallAfter), when(u.InstallBy))
 }
 
