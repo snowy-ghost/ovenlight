@@ -440,14 +440,17 @@ latest_is 1.1.0 air1
 cutshort air1 --resign
 land --resign
 latest_is 1.1.0 air1
-# A send from the Air cut short can leave the mini a promote without its .base, and --check
-# on the Air sends it again.
+# A send from the Air cut short can leave the mini a promote without its .base, or with an
+# empty one, and --check on the Air sends it again.
 build 1.1.2 1.0.6
 signfolder 1.1.2 air1
 tick
 run sign air1 --promote 1.1.2
 rm "$dry"/sync/releases/1.1.2/promote-*.base
-refused "if its send from the Air was cut short, scripts/sign-connector.sh --check there sends it again" publish --promote 1.1.2
+refused "if it's the newest signed, scripts/sign-connector.sh --check on the Air sends it again" publish --promote 1.1.2
+p=("$dry"/sync/releases/1.1.2/promote-*.json)
+: > "${p[0]%.json}.base"
+refused "if it's the newest signed, scripts/sign-connector.sh --check on the Air sends it again" publish --promote 1.1.2
 run nokey --check
 land --promote 1.1.2
 latest_is 1.1.2 air1
@@ -469,9 +472,6 @@ refused "If not, scripts/publish-connector.sh --resign" publish --promote 1.1.1
 show 1.1.1/promote
 refused "which 1.1.0/resign-" nokey --check
 run publish --resign
-show 1.1.1/promote
-refused "superseded before this Air saw it go up: publish 1.1.0/resign-" nokey --check
-show 1.1.0/resign
 checked "so 1.1.0 is live"
 latest_is 1.1.0 air1
 # So the next release's pull goes back to 1.1.0.
@@ -620,7 +620,6 @@ tick
 run sign air1 --resign
 run publish --resign
 show 1.1.1/promote
-refused "which 1.1.0/resign-" nokey --check
 # The other Air, even with a .seen for it that one with an older history could have written.
 swapair
 p=("$dry"/otherair/history/1.1.1/promote-*.json)

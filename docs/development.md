@@ -187,9 +187,9 @@ owner's two-day wait starts. The mini publishes only the newest index signed, so
 that fails partway is finished by running the same command again (a folder's before the
 next build replaces `build/release`). If the publish names another index as the newest,
 the Air's send didn't arrive: `scripts/sign-connector.sh --check` on the Air sends it
-again, as every run there does until `latest.json` is it. To drop a promote, pull or resign cut
-short instead, run `scripts/sign-connector.sh --check` on the Air (after a lost Air,
-`--import`). If it says `latest.json` is that index, it went out: pull it if it's a
+again, as every run there does until `latest.json` is it. To drop a promote, pull or
+resign cut short instead, run `scripts/sign-connector.sh --check` on the Air (after a lost
+Air, `--import`). If it says `latest.json` is that index, it went out: pull it if it's a
 promote. Otherwise sign the next index and publish that: a `--resign`, which puts the live
 release back in `connector/latest/`, or a promote of the next release when nothing is
 promoted before it, or a fresh pull for a pull.
@@ -304,7 +304,9 @@ For a planned move to a new Air, the old Air signs R:
    in with `cp -Rn <copy>/ ~/.ssh/ovenlight-release-keys/history`. Without it, the Air
    refuses to sign once `latest.json` is an index it lacks.
 
-After a lost Air, the paper key signs R:
+After a lost Air, the paper key signs R. If the lost Air turns up, delete its
+`~/.ssh/ovenlight-release-keys/history` before running a release script there, since each
+run sends the newest index in it to the mini.
 
 1. On the replacement Air, make its Touch ID key with the two commands above. In
    `~/.ssh/ovenlight-release-keys/`, if the Air has one, delete what a backup may have
