@@ -115,26 +115,6 @@ func prevBinary(installed string) string {
 	return installed + ".prev"
 }
 
-// linkAndRename puts next in place of installed on macOS and Linux, keeping the running
-// binary as .prev. Neither is ever written into: macOS kills a binary whose pages change
-// after it ran. installed is never missing: a crash before the rename leaves the old
-// binary in place, and after it the new one with .prev beside it.
-func linkAndRename(installed, next string) error {
-	prev := prevBinary(installed)
-	// An ovenlight mcp still running an older .prev keeps its open copy.
-	if err := os.Remove(prev); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	if err := os.Link(installed, prev); err != nil {
-		return err
-	}
-	// .prev is on disk before the new binary is, so a trial always has it.
-	if err := syncDir(filepath.Dir(installed)); err != nil {
-		return err
-	}
-	return os.Rename(next, installed)
-}
-
 // syncDir flushes a folder's entries to disk, so a rename or a new file in it survives a
 // power cut. Windows can't open a folder for this, and NTFS journals its entries in order.
 func syncDir(dir string) error {

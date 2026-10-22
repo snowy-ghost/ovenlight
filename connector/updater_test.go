@@ -563,6 +563,26 @@ func TestUpdaterFetchBeforeTheSwap(t *testing.T) {
 	}
 }
 
+// A computer that wakes before its network does, as its release comes due, doesn't spend
+// the night's try on a download: that waits for the check's retry too.
+func TestUpdaterDownloadWaitsForAFailedCheck(t *testing.T) {
+	srv := newReleaseServer(t)
+	srv.publish("1.2.0", "1.1.0", "1.1.0", 100)
+	tu := newTestUpdater(t, srv, t.TempDir(), "1.1.5", at(0, 9, 0), false)
+	tu.st.Minute = 10 * 60 // its night starts at 02:00
+	tu.pollAt(at(0, 9, 0))
+	srv.setDown(true)
+	tu.pollAt(at(2, 9, 0))
+	if tu.st.CheckError == "" || tu.st.Failed != nil || tu.ready != "" {
+		t.Fatalf("a download after a failed check: %+v", tu.st)
+	}
+	srv.setDown(false)
+	tu.pollAt(tu.st.NextCheck)
+	if tu.ready != "1.2.0" || tu.st.Failed != nil {
+		t.Errorf("no download at the check's retry: %+v", tu.st)
+	}
+}
+
 // updates-off is read before the swap, after its fetch.
 func TestUpdaterOffBeforeTheSwap(t *testing.T) {
 	srv, tu, _ := readyAt(t, false)
@@ -885,8 +905,11 @@ func TestUpdateFinding(t *testing.T) {
 		has     string
 	}{
 		{"up to date", view(nil), "1.2.0", true, statusOK, "1.2.0 is up to date"},
+		{"on a pulled release", view(nil), "1.2.1", true, statusOK, "1.2.1 is newer than the latest release, 1.2.0, and stays until the next one"},
+		{"checks failing", view(func(u *updateView) { u.CheckError = "offline" }), "1.2.0", true, statusOK, "up to date (checked " + when(now.Add(-time.Hour)) + "); the last check failed: offline"},
 		{"waiting its turn", view(pending), "1.1.5", true, statusOK, "1.2.0 is out, and installs on its own at a quiet moment from"},
 		{"past its install-by", view(func(u *updateView) { pending(u); u.InstallBy = now.Add(-time.Hour) }), "1.1.5", true, statusOK, "installs on its own as soon as it can"},
+		{"past its install-by, checks failing", view(func(u *updateView) { pending(u); u.InstallBy, u.CheckError = now.Add(-time.Hour), "offline" }), "1.1.5", true, statusOK, "installs on its own once a check works; the last check failed: offline"},
 		{"after a failure", view(func(u *updateView) { pending(u); u.InstallAfter = u.InstallBy }), "1.1.5", true, statusOK, "installs on its own at " + when(now.Add(day)) + ", busy or not"},
 		{"no check yet", view(func(u *updateView) { u.Latest, u.LastCheck = "", time.Time{} }), "1.1.5", true, statusOK, "no update check has worked yet"},
 		{"below secure, waiting", view(func(u *updateView) { pending(u); u.BelowSecure = true }), "1.0.9", true, statusFail, "Nothing to do: 1.2.0 installs on its own"},
@@ -909,7 +932,7 @@ func TestUpdateFinding(t *testing.T) {
 		{"doesn't run here", view(func(u *updateView) {
 			pending(u)
 			u.Failure = &updateFailure{Version: "1.2.0", Count: 3, Error: "the downloaded 1.2.0 " + notRunnable + ": exec format error"}
-		}), "1.1.5", true, statusWarn, "newer version of the operating system"},
+		}), "1.1.5", true, statusWarn, "a newer "},
 		{"6 days without a check", view(func(u *updateView) { u.LastCheck = now.Add(-6 * day) }), "1.2.0", true, statusOK, "up to date"},
 		{"8 days without a check", view(func(u *updateView) { u.LastCheck, u.CheckError = now.Add(-8*day), "offline" }), "1.2.0", true, statusWarn, "for 7 days: offline"},
 		{"8 days without a check, after a key change", view(func(u *updateView) { u.LastCheck = now.Add(-8 * day) }), "1.2.0", true, statusWarn, "If it does, install the latest release with the verified steps in " + installDocs},

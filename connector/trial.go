@@ -372,6 +372,9 @@ func (t *trial) giveUp() bool {
 	}
 	why := fmt.Errorf("%s didn't end its trial within %s: it hung", t.rec.To, humanDuration(quietFor+backstopAfter))
 	log.Printf("updates: rolling back from %s to %s: %v", t.rec.To, t.rec.From, why)
+	// Where it hung, for the release's fix.
+	buf := make([]byte, 1<<20)
+	log.Printf("updates: %s's goroutines:\n%s", t.rec.To, buf[:runtime.Stack(buf, true)])
 	// Through the updater when it's free, and holding its lock until the exit, so no save
 	// of its own comes after this one. Otherwise in the file.
 	if d := t.daemon(); d != nil && d.upd != nil && d.upd.mu.TryLock() {

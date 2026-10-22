@@ -300,14 +300,18 @@ func (u *updater) advance(ctx context.Context) {
 	if p.target == "" || now.Before(p.after) || updatesOff(u.d.stateDir) || u.d.onTrial() {
 		return
 	}
+	// A fetch that failed waits for its retry, as the daily check does, so a computer that
+	// wakes before its network does doesn't spend the night's try on a download that can't work.
+	if u.st.CheckError != "" && now.Before(u.st.NextCheck) {
+		return
+	}
 	if u.ready != p.target {
 		if err := u.download(ctx, p.idx); err != nil && ctx.Err() == nil {
 			u.fail(p.target, err)
 		}
 		return // its swap comes at a later poll
 	}
-	// A fetch that failed waits for its retry, as the daily check does.
-	if !swapNow(now, p, u.d.lastRequestTime(), u.awake) || (u.st.CheckError != "" && now.Before(u.st.NextCheck)) {
+	if !swapNow(now, p, u.d.lastRequestTime(), u.awake) {
 		return
 	}
 	data, sig, idx, err := u.check(ctx)
@@ -543,6 +547,9 @@ func when(t time.Time) string { return t.Local().Format("2 Jan 15:04") }
 // installs says when Pending installs on its own, as status and doctor put it.
 func (u *updateView) installs(now time.Time) string {
 	if !now.Before(u.InstallBy) {
+		if u.CheckError != "" {
+			return "installs on its own once a check works" // the swap needs a fresh index
+		}
 		return "installs on its own as soon as it can"
 	}
 	if !u.InstallAfter.Before(u.InstallBy) {
