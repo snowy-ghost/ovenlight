@@ -488,8 +488,7 @@ trusts never come from the commit alone. Even so, a signature vouches for what i
 and for the Mac that built it, and no more. Whoever can sign a release, or get code onto
 master and through that Mac, can run code on your computer within a day (an index that
 raises `secure` skips the two-day wait), as you, beside your Tailscale API credential, and
-on Windows with administrator rights.
-`ovenlight update off` opts out.
+on Windows with administrator rights. `ovenlight update off` opts out.
 
 When one key is lost, the next release, signed with the other, replaces it. A computer
 that doesn't install that release within four weeks of it coming out, because it was off or

@@ -76,14 +76,14 @@ and Windows: `go vet` (with and without the `e2e` tag), the tests (with `-race` 
 and `govulncheck`, then the install scripts as a user runs them: install, a killed
 connector restarting, reinstall and `uninstall --purge`. The install jobs then run the
 updater end to end, on macOS too, where the job also dry-runs the release scripts with
-`scripts/test-connector-release.sh`. On Linux it also runs `gofmt`,
-`go vet` and `govulncheck` for darwin/arm64 with cgo off, a check that
-`scripts/third-party-notices.sh` still finds a license kept below a module's root, and the
-end-to-end test against Headscale. It also renders the docs with `scripts/sitedocs`,
-which fails on a link or `#anchor` that goes nowhere. Its `android` job checks the Android
-app, its side of the wire files included ([Android tests](#android-tests)). The iPhone
-app's side runs only in Xcode, locally and before shipping, never in CI, so a change to
-`testdata/wire/` must also pass the [iPhone app's tests](#tests-1).
+`scripts/test-connector-release.sh`. On Linux it also runs `gofmt`, `go vet` and
+`govulncheck` for darwin/arm64 with cgo off, a check that `scripts/third-party-notices.sh`
+still finds a license kept below a module's root, and the end-to-end test against
+Headscale. It also renders the docs with `scripts/sitedocs`, which fails on a link or
+`#anchor` that goes nowhere. Its `android` job checks the Android app, its side of the wire
+files included ([Android tests](#android-tests)). The iPhone app's side runs only in Xcode,
+locally and before shipping, never in CI, so a change to `testdata/wire/` must also pass
+the [iPhone app's tests](#tests-1).
 
 ### Releases
 
