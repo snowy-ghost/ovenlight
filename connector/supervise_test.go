@@ -1157,7 +1157,7 @@ func TestStartFix(t *testing.T) {
 	}
 	fix := startFix(&paths{config: defaultConfigPath(), state: defaultStateDir()})
 	// The whole command, and only the command, in backticks, so it copies as it runs.
-	if !strings.Contains(fix, "`"+serviceCommands[runtime.GOOS].start+"`") || !strings.Contains(fix, defaultLogPath()) ||
+	if !strings.Contains(fix, "`"+serviceCommands[runtime.GOOS].start+"`") || !strings.Contains(fix, defaultLogPath()) || !strings.Contains(fix, serviceCommands[runtime.GOOS].crash) ||
 		strings.Contains(fix, "install script") || strings.Contains(fix, "ovenlight run") {
 		t.Errorf("default paths: %s", fix)
 	}
