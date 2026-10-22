@@ -279,6 +279,14 @@ ship 1.1.1 1.0.6 air1
 build 1.1.2 1.0.6
 signfolder 1.1.2 air1
 latest_is 1.1.1 air1
+# An agent holding ~/Sync copies 1.1.2's canary index, which failed, into the live release's
+# folder.
+d="$dry/sync/releases"
+cp "$d"/1.1.1/canary.json* "$dry/"
+cp "$d"/1.1.2/canary.json* "$d/1.1.1/"
+tick
+refused "is 1.1.2's index, not 1.1.1's" sign air1 --resign
+cp "$dry"/canary.json* "$d/1.1.1/"
 refused "1.1.2 isn't the live release (1.1.1)" sign air1 --pull 1.1.2
 forge 1.1.2 pull air1 1.1.1
 refused "1.1.2 isn't the live release (1.1.1)" publish --pull 1.1.2

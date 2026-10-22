@@ -83,6 +83,7 @@ releaseindex() {
   local f="$records/$1/canary.json"
   [ -f "$f" ] || refuse "no $f: $1 isn't signed"
   verifyrule "$1" "$f" "$f.sig" ovenlight-canary
+  [ "$(field latest "$f")" = "$1" ] || refuse "$f is $(field latest "$f")'s index, not $1's"
   sed -E "s/(\"serial\": )[0-9]+/\1$2/" "$f"
 }
 
