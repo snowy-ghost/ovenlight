@@ -108,7 +108,7 @@ vouched() {
     [ "$(field serial "$records/$id.json")" = "$(serialof "$id")" ] ||
       refuse "$id.json is signed with serial $(field serial "$records/$id.json"), not $(serialof "$id")"
   done
-  # A new Air has no last.json, and a restored one deletes its own.
+  # A new Air has no last.json until one is copied in, and a replacement deletes its own.
   if [ -n "$newest" ] && ! cmp -s "$records/$newest.json" "$keydir/last.json"; then
     copy="curl -fsS https://downloads.ovenlight.app/connector/latest.json | cmp - $records/$newest.json && cp $records/$newest.json $keydir/last.json"
     names="the records' newest published index, $newest, names $(field latest "$records/$newest.json")"

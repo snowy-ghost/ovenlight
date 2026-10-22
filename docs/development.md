@@ -295,19 +295,17 @@ For a planned move to a new Air, the old Air signs R:
 
 After a lost Air, the paper key signs R:
 
-1. On the replacement Air, make its Touch ID key with the two commands above. An Air
-   restored from a backup first adds the lost key and the old paper key to the retired
-   list in `~/.ssh/ovenlight-release-keys/`, and deletes them there with `last.json` and
-   `published`: `cat touchid.pub backup.pub >> retired`, then
-   `rm -f touchid.pub backup.pub last.json published`. Any other writes that folder's
-   `retired` from the records: each key the `release_keys` in `~/Sync/ovenlight/releases/`
-   list whose fingerprint is on a paper page, printed or written on.
-   `cat ~/Sync/ovenlight/releases/*/release_keys | sort -u` lists those keys, and
-   `ssh-keygen -lf -` on that list prints their fingerprints in the same order. Then run
-   key setup (`~/Sync/ovenlight/release-key-setup.sh`). It makes a new paper key, files
-   both new public keys in `~/.ssh/ovenlight-release-keys/`, and signs a test signature
-   with each in `~/Sync/ovenlight/release-key-test/`. Its page also lists the retired
-   keys' fingerprints.
+1. On the replacement Air, make its Touch ID key with the two commands above. In
+   `~/.ssh/ovenlight-release-keys/`, delete what a backup may have brought back
+   (`rm -f touchid.pub backup.pub last.json published`), then write that folder's
+   `retired` afresh from the records: each key the `release_keys` in
+   `~/Sync/ovenlight/releases/` list whose fingerprint is on the current paper key's page,
+   printed or written on. `cat ~/Sync/ovenlight/releases/*/release_keys | sort -u` lists
+   those keys, and `ssh-keygen -lf -` on that list prints their fingerprints in the same
+   order. Then run key setup (`~/Sync/ovenlight/release-key-setup.sh`). It makes a new
+   paper key, files both new public keys in `~/.ssh/ovenlight-release-keys/`, and signs a
+   test signature with each in `~/Sync/ovenlight/release-key-test/`. Its page also lists
+   the retired keys' fingerprints.
 2. R lists the two new keys and the old paper key, and drops the lost key and its
    signature. Copy key setup's `index.json.release-1.sig` and `index.json.release-2.sig`
    in under the next two free numbers.

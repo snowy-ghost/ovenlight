@@ -542,8 +542,9 @@ signfolder 1.1.2 air2
 signers air1 paper1 air2
 resign air2 1.1.1
 promote 1.1.2 air2
-# The restored Air retires the lost key and the paper key, beside the old Air's key the move
-# retired, and deletes last.json and published. Key setup makes air3 and paper2.
+# The replacement deletes the key files a backup brought back. Its retired list, written
+# from the records and the paper page, holds the old Air's key, the lost one and the paper
+# key. Key setup makes air3 and paper2.
 keyfolder air3 paper2
 rm "$dry/keys/last.json" "$dry/keys/published"
 keys air3 paper2 paper1
