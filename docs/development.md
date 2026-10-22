@@ -191,7 +191,8 @@ the newest index recorded isn't that one, as after an index signed and never pub
 and its refusal says what to check before copying the newest in. Each script's header
 says what it checks, and `scripts/test-connector-release.sh` dry-runs them all. Each
 release restarts every owner's connector, and one promoted within two days of the last
-restarts every owner's wait, so batch what isn't urgent.
+restarts every owner's wait, so batch what isn't urgent. A `--resign` within a release's
+two days restarts the wait too, for computers that haven't taken it.
 
 Uploads go to the R2 bucket behind `https://downloads.ovenlight.app`, through `wrangler`
 (signed in with `npx wrangler@4.147.0 login`, or `CLOUDFLARE_API_TOKEN` and
