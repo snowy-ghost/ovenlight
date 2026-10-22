@@ -476,10 +476,9 @@ over its control socket, and applies it once without keeping it as the index it 
 
 Two keys sign releases: one in a Mac's Secure Enclave, which signs only with Touch ID, and
 a backup printed on paper, kept in two places and off every computer until it signs the
-release that replaces it. Their
-public halves are built into the connector and listed in [allowed_signers](allowed_signers),
-and the connector trusts no other key: not our Apple Developer ID, and nothing fetched at
-update time.
+release that replaces it. Their public halves are built into the connector and listed in
+[allowed_signers](allowed_signers), and the connector trusts no other key: not our Apple
+Developer ID, and nothing fetched at update time.
 
 A release is built on one Mac from a commit on this repository's master branch, and signed
 on another. Touch ID approves a signature but doesn't show what is signed, so the signing

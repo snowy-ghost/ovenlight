@@ -193,7 +193,8 @@ windows opened after you add it. On Windows, `install.ps1` adds the bin folder t
 `ovenlight status` says whether the connector runs. On macOS:
 
 - Start: `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.snowyghost.ovenlight.connector.plist || launchctl kickstart gui/$(id -u)/com.snowyghost.ovenlight.connector`
-  (when the connector is loaded already, `bootstrap` says it failed, and `kickstart` starts it)
+  (when the connector is loaded already, `bootstrap` says it failed, and `kickstart`
+  starts it)
 - Stop, until you next log in: `launchctl bootout gui/$(id -u)/com.snowyghost.ovenlight.connector`
 - Restart: `launchctl kickstart -k gui/$(id -u)/com.snowyghost.ovenlight.connector`
 
