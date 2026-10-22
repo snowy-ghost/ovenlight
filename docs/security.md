@@ -493,13 +493,13 @@ master and through that Mac, can run code on your computer within a day (an inde
 raises `secure` skips the two-day wait), as you, beside your Tailscale API credential, and
 on Windows with administrator rights. `ovenlight update off` opts out.
 
-When one key is lost, the next release, signed with the other, replaces it, and the four
-weeks the signing script then waits before signing with only the new key rest on the key
-lists in the files it shares with the Mac that builds. A computer that stays off, or has
-updates off, for four weeks after that release comes out can't verify the releases signed
-with only the new key: its checks fail, `doctor` warns after seven days, and it needs one
-install by hand. If both keys were lost, every computer would be in that position once we
-publish a release signed with a new key.
+When one key is lost, the next release, signed with the other, replaces it. The signing
+script then waits four weeks and four days before signing with only the new key, and that
+wait rests on the key lists in the files it shares with the Mac that builds. A computer
+that stays off, or has updates off, for four weeks after that release comes out can't
+verify the releases signed with only the new key: its checks fail, `doctor` warns after
+seven days, and it needs one install by hand. If both keys were lost, every computer would
+be in that position once we publish a release signed with a new key.
 
 ### The files it keeps
 
