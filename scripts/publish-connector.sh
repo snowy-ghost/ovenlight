@@ -80,10 +80,10 @@ put() {
     printf 'Content-Type: %s\nCache-Control: %s\n' "$type" "$3" > "$dry/headers/$1"
     return
   fi
-  npx wrangler@4.147.0 r2 object put "$BUCKET/$1" --file "$2" --content-type "$type" --cache-control "$3" --remote
+  npx --yes wrangler@4.147.0 r2 object put "$BUCKET/$1" --file "$2" --content-type "$type" --cache-control "$3" --remote
 }
 signin() {
-  if [ -z "$dry" ]; then npx wrangler@4.147.0 r2 bucket info "$BUCKET" > /dev/null; fi
+  if [ -z "$dry" ]; then npx --yes wrangler@4.147.0 r2 bucket info "$BUCKET" > /dev/null; fi
 }
 
 # checkarchive <archive>: refuses one the updater would, over the cap or with no binary in

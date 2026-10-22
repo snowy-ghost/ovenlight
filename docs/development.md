@@ -94,8 +94,9 @@ scripts/release-connector.sh 1.2.0 1.0.6
 ```
 
 It takes the version, the oldest secure one, and optionally `reinstallBelow`, the oldest
-version that may update to it by binary alone (by default the highest of the releases
-below it). `--unsigned`, before the version, skips all signing, to test the rest.
+version that may update to it by binary alone (by default the highest `reinstallBelow` of
+the releases below it, so it carries forward). `--unsigned`, before the version, skips
+all signing, to test the rest.
 
 `release-connector.sh` writes the release to `build/release/`, replacing the one before:
 
@@ -243,8 +244,9 @@ The first release that updates itself, 1.1.0 here, goes out once, with 1.1.1 aft
 
    `connector/testdata/releasekey/mock-*.pub` stay: `release-connector.sh` refuses any key
    there in `release_keys` or `allowed_signers`.
-2. Merge the updater to master. Check that `~/Sync/ovenlight/releases/` holds no records
-   yet, so 1.1.0 names its own `reinstallBelow`:
+2. Merge the updater to master. Check that `~/Sync/ovenlight/releases/` on the mini and
+   `~/.ssh/ovenlight-release-keys/history/` on the Air hold no records yet, so 1.1.0
+   names its own `reinstallBelow`:
    `scripts/release-connector.sh 1.1.0 1.0.6 1.1.0`. Sign and publish its folder, then
    build, sign and publish 1.1.1 from the same commit.
 3. Nothing before 1.1.0 updates itself, so it has no canary. The mini installs it by hand
@@ -254,8 +256,10 @@ The first release that updates itself, 1.1.0 here, goes out once, with 1.1.1 aft
    1.1.0's promote completes the canary. The mini's Windows on Arm VM installs 1.1.0 by
    hand too, with no canary, and stays on it, to take 1.1.1 the way owners will.
 4. Deploy the site, so its privacy policy covers the update check, then promote 1.1.0.
-   Until that promote, the verified install steps fail on 1.0.9's unsigned
-   `latest.json`, so promote soon after the merge. Promote 1.1.1 a day later, the owners'
+   From the merge until that promote, both sets of install steps fail: the new ones on
+   1.0.9's unsigned `latest.json`, and 1.0.x's, still on the site, on `latest/`'s
+   `SHA256SUMS`, since master's `allowed_signers` no longer lists 1.0.9's key. So promote
+   soon after the merge. Promote 1.1.1 a day later, the owners'
    first automatic update.
 
 #### Changing a release key
@@ -311,8 +315,9 @@ run sends the newest index in it to the mini.
 
 1. On the replacement Air, make its Touch ID key with the two commands above. In
    `~/.ssh/ovenlight-release-keys/`, if the Air has one, delete what a backup may have
-   brought back (`rm -f touchid.pub backup.pub index.json.release-*.sig`). Keep
-   `history` only if it came from a disk only the lost Air used and
+   brought back
+   (`rm -f touchid.pub backup.pub index.json.release-1.sig index.json.release-2.sig`).
+   Keep `history` only if it came from a disk only the lost Air used and
    `scripts/sign-connector.sh --check` finds `latest.json` in it. Otherwise
    `rm -r history`, then write into a new file each key the `release_keys` in
    `~/Sync/ovenlight/releases/` list whose fingerprint is on the current paper key's page,
@@ -368,12 +373,12 @@ After losing both keys, no computer can verify a release signed with new ones, s
 owner installs the next release by hand once. On the mini, move
 `~/Sync/ovenlight/releases/` aside. On the Air, move `~/.ssh/ovenlight-release-keys/`
 aside, make the Touch ID key with the two commands above and run key setup. On the mini,
-write an unsigned index naming the live release and its `secure` to `latest.json` in the
-repo, as 1.0.9's was (for example `{"latest": "1.2.0", "secure": "1.0.6"}`), and upload
+write an unsigned index naming the live release and its `secure` to `build/latest.json` in
+the repo, as 1.0.9's was (for example `{"latest": "1.2.0", "secure": "1.0.6"}`), and upload
 it:
 
 ```sh
-npx wrangler@4.147.0 r2 object put ovenlight-downloads/connector/latest.json --file latest.json --content-type application/json --cache-control "public, max-age=300" --remote
+npx wrangler@4.147.0 r2 object put ovenlight-downloads/connector/latest.json --file build/latest.json --content-type application/json --cache-control "public, max-age=300" --remote
 ```
 
 Then release as in the first updater release: a version above every release so far,
@@ -655,9 +660,9 @@ To build and sign your own copy, change to your own:
   bucket and site in `scripts/publish-connector.sh`, and `releaseBase`, `installDocs` and
   `olderDocs` in `connector/update.go`. A fork signs with release keys of its own: list
   them in `connector/release_keys`, which every build trusts, and in `docs/allowed_signers`
-  (a test checks it lists each one), put their public halves in
+  (a test and the build check it lists each one), put their public halves in
   `~/.ssh/ovenlight-release-keys/` on the computer that signs, and change `HANDLE` and the
-  `mini` host in `scripts/sign-connector.sh`, `minirelease` in
+  `mini` host in `scripts/sign-connector.sh`, `minirelease` and `minisync` in
   `scripts/connector-release-lib.sh`, and the `team@snowyghost.com` principal that
   `publish-connector.sh` and connector.md verify `SHA256SUMS.sig` and `latest.json.sig`
   with.

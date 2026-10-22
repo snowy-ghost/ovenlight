@@ -572,8 +572,13 @@ func updateFinding(u *updateView, v string, running bool, now time.Time) *Check 
 		}
 		warn(msg, fix)
 	case failed && strings.Contains(u.Failure.Error, notRunnable):
+		fix := "It most likely needs a newer version of the operating system. Once that's installed"
+		if runtime.GOOS == "windows" {
+			// Any Windows the connector supports runs a new release, so a block is likelier.
+			fix = "Windows or its security software may be blocking it, or it may need a newer Windows. Once it's allowed or Windows is updated"
+		}
 		warn(fmt.Sprintf("%s doesn't run on this computer, so updating to it has failed %d times in a row: %s", u.Failure.Version, u.Failure.Count, u.Failure.Error),
-			"It most likely needs a newer version of the operating system. Once that's installed, the connector installs "+u.Failure.Version+" on its own the next night")
+			fix+", the connector installs "+u.Failure.Version+" on its own the next night")
 	case failed:
 		warn(fmt.Sprintf("updating to %s has failed %d times in a row, last on %s: %s", u.Failure.Version, u.Failure.Count, when(u.Failure.At), u.Failure.Error),
 			"It tries again each night. "+byHand(u.Failure.Version)+". If it then keeps stopping, install "+v+" again with the steps for an older release in "+olderDocs)
@@ -600,16 +605,29 @@ func updateFinding(u *updateView, v string, running bool, now time.Time) *Check 
 		return c
 	case stuck != nil:
 		return stuck
+	}
+	cur, _ := semver(v)
+	latest, ok := semver(u.Latest)
+	var msg string
+	switch {
 	case u.Pending != "":
-		msg := u.Pending + " is out"
+		msg = u.Pending + " is out"
 		if running {
 			msg += ", and " + u.installs(now)
 		}
-		return &Check{ID: "update", Status: statusOK, Message: msg}
 	case u.Latest == "":
-		return &Check{ID: "update", Status: statusOK, Message: "no update check has worked yet"}
+		msg = "no update check has worked yet"
+	case ok && less(latest, cur):
+		// A pulled release: the index went back to the one before it.
+		msg = fmt.Sprintf("%s is newer than the latest release, %s, and stays until the next one (checked %s)", v, u.Latest, when(u.LastCheck))
+	default:
+		msg = fmt.Sprintf("%s is up to date (checked %s)", v, when(u.LastCheck))
 	}
-	return &Check{ID: "update", Status: statusOK, Message: fmt.Sprintf("%s is up to date (checked %s)", v, when(u.LastCheck))}
+	// Failed checks warn only after 7 days, but say so before.
+	if u.CheckError != "" {
+		msg += "; the last check failed: " + u.CheckError
+	}
+	return &Check{ID: "update", Status: statusOK, Message: msg}
 }
 
 // heldByOther is portHeldCheck for check and doctor, for an app the connector runs: with

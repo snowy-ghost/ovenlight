@@ -241,9 +241,11 @@ again.
 - `ovenlight update off` stops installing updates. The connector still checks daily.
   `ovenlight doctor` warns while updates are off, says so when no check has worked for
   seven days, and still fails when your release has a known security problem. Turn updates
-  back on at least once every four weeks: a connector that misses a change of release keys
-  can't verify updates after that.
-- `ovenlight update on` turns them back on.
+  back on at least once every four weeks, and leave them on until `ovenlight status` shows
+  no release waiting: a connector that misses a change of release keys can't verify updates
+  after that.
+- `ovenlight update on` turns them back on. A release already overdue then installs within
+  the hour, busy or not.
 
 ### Install a release by hand
 

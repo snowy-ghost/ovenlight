@@ -30,7 +30,7 @@ func replaceBinary(installed, next string) error {
 		os.Remove(f) // still running, or held: it goes next time
 	}
 	if exists(prev) {
-		r, err := holdForRename(prev, renameWait)
+		r, err := holdForRename(prev)
 		if err != nil {
 			return err
 		}
@@ -56,12 +56,12 @@ func restorePrev(installed string) error {
 // binary goes back through its handle, tried every second until something is at the
 // service's path again, since until then there's nothing there for the service to start.
 func moveIn(installed, from, aside string) error {
-	src, err := holdForRename(from, renameWait)
+	src, err := holdForRename(from)
 	if err != nil {
 		return err
 	}
 	defer src.Close()
-	cur, err := holdForRename(installed, renameWait)
+	cur, err := holdForRename(installed)
 	if err != nil {
 		return err
 	}
@@ -93,14 +93,14 @@ const renameWait = 30 * time.Second
 // needs no new open, so nothing can make it wait.
 type renamer struct{ h windows.Handle }
 
-// holdForRename opens path for renaming, trying again for up to wait while something
+// holdForRename opens path for renaming, trying again for up to renameWait while something
 // holds it.
-func holdForRename(path string, wait time.Duration) (*renamer, error) {
+func holdForRename(path string) (*renamer, error) {
 	p, err := windows.UTF16PtrFromString(path)
 	if err != nil {
 		return nil, err
 	}
-	for end := time.Now().Add(wait); ; time.Sleep(100 * time.Millisecond) {
+	for end := time.Now().Add(renameWait); ; time.Sleep(100 * time.Millisecond) {
 		h, err := windows.CreateFile(p, windows.DELETE, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE,
 			nil, windows.OPEN_EXISTING, 0, 0)
 		if err == nil {
