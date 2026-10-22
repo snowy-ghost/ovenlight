@@ -136,6 +136,13 @@ documented() {
     refuse "$master's docs/allowed_signers doesn't verify $2, which owners check latest.json with: add its key first"
 }
 
+# isindex <version>: refuses the index unless it's the release's, with its serial, after
+# releaseindex's own refusals.
+isindex() {
+  releaseindex "$1" "$(serialof "$id")" > "$tmp/want.json"
+  cmp -s "$tmp/want.json" "$idx" || refuse "$id isn't $1's index"
+}
+
 # newestsigned: refuses another mode or version than the newest index signed has, since
 # only it goes up, and reads the records as they were when it was signed.
 newestsigned() {
@@ -196,7 +203,7 @@ folder)
 
 promote)
   newestsigned
-  releaseindex "$version" "$(serialof "$id")" | cmp -s - "$idx" || refuse "$id isn't $version's index"
+  isindex "$version"
   # Its key signed the release's SHA256SUMS, so the one rule, accepting it, accepts both.
   k="$(signer "$idx" "$idx.sig" ovenlight-latest)"
   [ -n "$k" ] || refuse "$id isn't signed by a key any release lists"
@@ -216,7 +223,7 @@ promote)
 pull)
   newestsigned
   target="$(field latest "$idx")"
-  releaseindex "$target" "$(serialof "$id")" | cmp -s - "$idx" || refuse "$id isn't $target's index"
+  isindex "$target"
   signer "$idx" "$idx.sig" ovenlight-latest > "$tmp/signer"
   [ -s "$tmp/signer" ] || refuse "$id isn't signed by a key any release lists"
   pullsigned "$tmp/signer" "$newest" "$version"
@@ -233,7 +240,7 @@ pull)
 resign)
   newestsigned
   version="${id%%/*}"
-  releaseindex "$version" "$(serialof "$id")" | cmp -s - "$idx" || refuse "$id isn't $version's index"
+  isindex "$version"
   # Checked against the keys of the live release, and of the pulled ones above it.
   for f in $(livekeys); do
     verify "$idx" "$idx.sig" ovenlight-latest "$f" || refuse "$id isn't signed by a key $f lists"

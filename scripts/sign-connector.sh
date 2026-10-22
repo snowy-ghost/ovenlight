@@ -22,16 +22,16 @@
 #       records
 #
 # Each index gets the time now as its serial. What it signs goes in this Air's history,
-# ~/.ssh/ovenlight-release-keys/history/, the only record it reads, and is sent with scp to
-# the release's folder in the mini's ~/Sync/ovenlight/releases/, which
+# ~/.ssh/ovenlight-release-keys/history/, the only record it reads, and is sent with rsync
+# to the release's folder in the mini's ~/Sync/ovenlight/releases/, which
 # scripts/publish-connector.sh publishes from. Each run sends the books again, every index
-# published and the newest signed, so one the mini lacks or holds changed is put right on
-# the next run. Touch ID shows a prompt and not what it signs, so this prints that first,
-# and refuses before it whatever publish-connector.sh would refuse. A release is signed and
-# promoted only when its connector/release_keys is exactly the two keys in
-# ~/.ssh/ovenlight-release-keys/ plus the key signing it, so the keys a release trusts
-# never come from the commit alone. The paper key signs only a release that replaces it, so
-# its .pub has left that folder.
+# published and the newest signed with their releases' signed files, so one the mini lacks
+# or holds changed is put right on the next run. Touch ID shows a prompt and not what it
+# signs, so this prints that first, and refuses before it whatever publish-connector.sh
+# would refuse. A release is signed and promoted only when its connector/release_keys is
+# exactly the two keys in ~/.ssh/ovenlight-release-keys/ plus the key signing it, so the
+# keys a release trusts never come from the commit alone. The paper key signs only a
+# release that replaces it, so its .pub has left that folder.
 #
 # Each run first fetches latest.json, which must be the head of the history, as
 # connector-release-lib.sh names it (1.0.9's unsigned index while nothing is published).
@@ -77,6 +77,8 @@ fetchlive() {
 }
 
 # send <file>...: sends files of the history to their release's folder in the mini's records.
+# rsync leaves a file the mini holds the same untouched and puts a changed one in place
+# whole, so a send cut short never spoils a good copy.
 send() {
   local s f v
   s="$(mktemp -d "$tmp/send.XXXXXX")"
@@ -86,28 +88,37 @@ send() {
     mkdir -p "$s/releases/$v"
     cp "$f" "$s/releases/$v/"
   done
-  scp -rq "$s/releases" "$minisync/"
+  rsync -rcq "$s/releases/" "$minisync/releases/"
 }
 
 # observe: the header's check of latest.json. pending is a pull signed after it and never seen.
 observe() {
-  local id files=() found=
+  local id v ids files=() found=
   fetchlive || refuse "couldn't fetch latest.json"
-  if [ -n "$top" ] && [ "$mode" != import ]; then
-    for id in $published; do files+=("$records/$id".{base,json.sig,json}); done
-    [ "$top" = "$newest" ] || files+=("$records/$top".{base,json.sig,json})
-    send "${files[@]}" || echo "couldn't send the books to the mini again: run this again once it can reach the mini" >&2
-  fi
   if [ -z "$(field serial "$tmp/live.json")" ]; then
     [ -z "$newest" ] || refuse "latest.json is unsigned, and it was $newest: publish $top on the mini"
+  else
+    for id in $signed; do
+      if cmp -s "$tmp/live.json" "$records/$id.json"; then found="$id"; fi
+    done
+    [ -n "$found" ] || refuse "latest.json isn't an index in $records. After a planned move, copy the other Air's history in first. After a lost Air, delete it and run --import."
+  fi
+  # Only a history latest.json is in sends its books, so a stale one never refills the
+  # mini's: the indexes published and the newest signed, with their releases' signed files.
+  if [ -n "$top" ] && [ "$mode" != import ]; then
+    ids="$published"
+    [ "$top" = "$newest" ] || ids+=$'\n'"$top"
+    for id in $ids; do files+=("$records/$id".{base,json.sig,json}); done
+    for v in $(for id in $ids; do echo "${id%%/*}"; done | sort -u); do
+      files+=("$records/$v"/{SHA256SUMS,SHA256SUMS.sig,canary.json,canary.json.sig,release_keys,commit})
+    done
+    send "${files[@]}" || echo "couldn't send the books to the mini again: run this again once it can reach the mini" >&2
+  fi
+  if [ -z "$found" ]; then
     echo "latest.json is unsigned, so nothing is promoted yet"
     pending=
     return
   fi
-  for id in $signed; do
-    if cmp -s "$tmp/live.json" "$records/$id.json"; then found="$id"; fi
-  done
-  [ -n "$found" ] || refuse "latest.json isn't an index in $records. After a planned move, copy the other Air's history in first. After a lost Air, delete it and run --import."
   if [ -n "$newest" ] && [ "$(serialof "$found")" -lt "$(serialof "$newest")" ]; then
     refuse "latest.json is $found, older than $newest, which the history marks seen: publish $top on the mini"
   fi

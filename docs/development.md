@@ -145,7 +145,7 @@ refuses a commit whose `connector/release_keys` isn't the two keys in
 it. It signs `SHA256SUMS` and a canary index, `canary.json`, which only
 `ovenlight update now --index` takes, and keeps both in its history,
 `~/.ssh/ovenlight-release-keys/history/`, the only record it reads, and sends a copy with
-`scp` to the release's folder in the mini's `~/Sync/ovenlight/releases/`. Nothing on the
+`rsync` to the release's folder in the mini's `~/Sync/ovenlight/releases/`. Nothing on the
 Air writes to its own `~/Sync`, where a link an agent syncs would write into the Air's
 files. `--key <file>` signs with another key, such as the paper backup.
 
@@ -188,12 +188,12 @@ that fails partway is finished by running the same command again (a folder's bef
 next build replaces `build/release`). If the publish names another index as the newest, or
 a `.base` it can't follow, the mini lacks part of what the Air signed:
 `scripts/sign-connector.sh --check` on the Air sends every index published and the newest
-signed again, as every run there does. To drop a promote, pull or resign cut short
-instead, run `scripts/sign-connector.sh --check` on the Air (after a lost Air,
-`--import`). If it says `latest.json` is that index, it went out: pull it if it's a
-promote. Otherwise sign the next index and publish that: a `--resign`, which puts the live
-release back in `connector/latest/`, or a promote of the next release when nothing is
-promoted before it, or a fresh pull for a pull.
+signed again, with their releases' signed files, as every run there does. To drop a
+promote, pull or resign cut short instead, run `scripts/sign-connector.sh --check` on the
+Air (after a lost Air, `--import`). If it says `latest.json` is that index, it went out:
+pull it if it's a promote. Otherwise sign the next index and publish that: a `--resign`,
+which puts the live release back in `connector/latest/`, or a promote of the next release
+when nothing is promoted before it, or a fresh pull for a pull.
 
 `--pull`, signed and published like a promote, takes the live release back out by
 publishing the index of the release before it, signed again. Computers that already took

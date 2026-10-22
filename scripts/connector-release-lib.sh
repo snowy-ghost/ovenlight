@@ -11,7 +11,7 @@
 # left off was superseded by the index signed after it. Each side reads only its own
 # records. The Air's are its history, ~/.ssh/ovenlight-release-keys/history/, which only
 # sign-connector.sh writes, marking an index with <kind>-<serial>.seen, the time it first
-# saw latest.json be that index. It sends what it signs with scp to the mini's records,
+# saw latest.json be that index. It sends what it signs with rsync to the mini's records,
 # ~/Sync/ovenlight/releases/ there, and never writes to the Air's own ~/Sync, where a link
 # an agent syncs would write into its files. There publish-connector.sh marks an index with
 # <kind>-<serial>.live, the time latest.json began naming it. A script that sets air=1

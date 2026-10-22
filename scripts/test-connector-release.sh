@@ -26,13 +26,14 @@ cat > "$tmp/bin/date" <<'EOF'
 #!/bin/sh
 if [ "$1" = +%s ]; then echo $(($(/bin/date +%s) + ${ahead:-0})); else exec /bin/date "$@"; fi
 EOF
-# scp fails while the scenario's folder holds a noscp file, as when the Air can't reach the mini.
-cat > "$tmp/bin/scp" <<'EOF'
+# rsync fails while the scenario's folder holds a nosend file, as when the Air can't reach the
+# mini.
+cat > "$tmp/bin/rsync" <<'EOF'
 #!/bin/sh
-if [ -e "$OVENLIGHT_RELEASE_DRY/noscp" ]; then exit 1; fi
-exec /usr/bin/scp "$@"
+if [ -e "$OVENLIGHT_RELEASE_DRY/nosend" ]; then exit 1; fi
+exec /usr/bin/rsync "$@"
 EOF
-chmod +x "$tmp/bin/date" "$tmp/bin/scp"
+chmod +x "$tmp/bin/date" "$tmp/bin/rsync"
 export PATH="$tmp/bin:$PATH"
 checks=0
 
@@ -137,6 +138,7 @@ nokey() {
     t="$dry/sync/releases/${d##*/}"
     mkdir -p "$t"
     for f in "$d"/*; do mv "$f" "$t/"; done
+    rmdir "$d"
   done
   return $s
 }
@@ -495,9 +497,9 @@ signfolder 1.1.1 air1
 cutshort air1 --promote 1.1.1
 checked "latest.json is 1.1.0/promote-"
 tick
-touch "$dry/noscp"
+touch "$dry/nosend"
 refused "couldn't send what it signed to the mini: run this again" sign air1 --resign
-rm "$dry/noscp"
+rm "$dry/nosend"
 # The mini still holds the promote as the newest, and points back to the Air before it.
 refused "If the Air holds a newer one, signed since or lost here, scripts/sign-connector.sh --check there sends it here. If not, scripts/publish-connector.sh --promote 1.1.1" publish --resign
 # The promote's publish lands late: --check refuses it, and sends the resign.
@@ -519,6 +521,31 @@ refused "--check on the Air sends the books again" publish --resign
 run nokey --check
 resign air1 1.1.1
 pull 1.1.1 air1 1.1.0
+
+fresh movedout "a promoted release's folder the mini lost, sent again by the Air, then the records reset"
+keyfolder air1 paper1
+keys air1 paper1
+ship 1.1.0 1.0.6 air1 1.1.0
+ship 1.1.1 1.0.6 air1
+tick
+run sign air1 --resign
+rm "$dry"/sync/releases/1.1.0/{release_keys,canary.json,canary.json.sig}
+if publish --resign > "$dry/log" 2>&1; then fail "published with 1.1.0's signed files gone"; fi
+tail -1 "$dry/log" | grep -qF "/sync/releases/1.1.0/release_keys" || { cat "$dry/log" >&2; fail "the refusal doesn't end on the missing file"; }
+pass "refused: $(tail -1 "$dry/log")"
+mv "$dry/sync/releases/1.1.0" "$dry/lost"
+refused "--check on the Air sends the books again" publish --resign
+run nokey --check
+land --resign
+latest_is 1.1.1 air1
+pull 1.1.1 air1 1.1.0
+# An Air whose history doesn't hold latest.json sends the mini none of its books.
+mv "$dry/sync/releases" "$dry/reset"
+mkdir "$dry/sync/releases"
+cp "$dry/1.0.9.json" "$dry/bucket/connector/latest.json"
+refused "latest.json is unsigned, and it was 1.1.1/pull-" nokey --check
+[ -z "$(ls "$dry/sync/releases")" ] || fail "the Air sent its books into the reset records"
+pass "the reset records are still empty"
 
 fresh droppull "a promote cut short and dropped by a pull of the release before it, then shown to the Air"
 keyfolder air1 paper1
