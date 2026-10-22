@@ -121,7 +121,8 @@ fetchrelease() {
 }
 
 # documented <version> <index>: refuses files for latest/, and the index for latest.json,
-# that master's docs/allowed_signers, which owners check them with, doesn't verify.
+# that master's docs/allowed_signers doesn't verify. Owners check latest.json with it, and
+# 1.0.x's docs have them check latest/SHA256SUMS with it.
 documented() {
   if [ -z "$dry" ]; then git -C "$root" fetch -q origin master; fi
   git -C "$root" show "$master:docs/allowed_signers" > "$tmp/allowed_signers"
