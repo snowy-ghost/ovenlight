@@ -137,6 +137,12 @@ sign() {
 }
 nokey() { "$repo/scripts/sign-connector.sh" "$@"; }
 publish() { "$repo/scripts/publish-connector.sh" "$@"; }
+# land <option>...: published on the mini, then seen by --check on the Air, which stands in
+# for the wait a dry run skips.
+land() {
+  run publish "$@"
+  run nokey --check
+}
 
 # Serials are seconds, and each must be above the last one signed.
 tick() { sleep 1; }
@@ -155,24 +161,21 @@ signfolder() {
 promote() {
   tick
   run sign "$2" --promote "$1"
-  run publish --promote "$1"
-  run nokey --check
+  land --promote "$1"
   latest_is "$1" "$2"
 }
 # pull <version> <key> <back to>
 pull() {
   tick
   run sign "$2" --pull "$1"
-  run publish --pull "$1"
-  run nokey --check
+  land --pull "$1"
   latest_is "$3" "$2"
 }
 # resign <key> <live>
 resign() {
   tick
   run sign "$1" --resign
-  run publish --resign
-  run nokey --check
+  land --resign
   latest_is "$2" "$1"
 }
 # ship <version> <secure> <key> [<reinstallBelow>]: built, signed, published and promoted.
@@ -293,8 +296,7 @@ d="$dry/sync/releases"
 cp "$d"/1.1.1/promote-*.json "$dry/bucket/connector/latest.json"
 cp "$d"/1.1.1/promote-*.json.sig "$dry/bucket/connector/latest.json.sig"
 refused "older than 1.1.1/pull-" nokey --check
-run publish --pull 1.1.1
-run nokey --check
+land --pull 1.1.1
 latest_is 1.1.0 air1
 build 1.1.1 1.0.6
 refused "1.1.1 was promoted already" sign air1 1.1.1
@@ -416,21 +418,27 @@ signfolder 1.1.0 air1
 cutshort air1 --promote 1.1.0
 cmp -s "$dry/bucket/connector/latest.json" "$dry/1.0.9.json" || fail "latest.json changed"
 pass "the publish cut short left latest.json as it was"
-run publish --promote 1.1.0
-run nokey --check
+land --promote 1.1.0
 latest_is 1.1.0 air1
 run publish --promote 1.1.0
 latest_is 1.1.0 air1
 ship 1.1.1 1.0.6 air1
 cutshort air1 --pull 1.1.1
 run publish --pull 1.1.1
-run publish --pull 1.1.1
-run nokey --check
+land --pull 1.1.1
 latest_is 1.1.0 air1
 cutshort air1 --resign
-run publish --resign
-run nokey --check
+land --resign
 latest_is 1.1.0 air1
+# A send from the Air cut short can leave the mini a promote without its .base, and the
+# Air signs it again.
+build 1.1.2 1.0.6
+signfolder 1.1.2 air1
+tick
+run sign air1 --promote 1.1.2
+rm "$dry"/sync/releases/1.1.2/promote-*.base
+refused "if its send from the Air was cut short, sign it again there" publish --promote 1.1.2
+promote 1.1.2 air1
 
 fresh dropped "a promote, pull and resign each cut short and dropped by the next signature, which supersedes them"
 keyfolder air1 paper1
@@ -448,6 +456,7 @@ refused "and only it goes up: scripts/publish-connector.sh --resign" publish --p
 # after. Either way the Air never counts it.
 show 1.1.1/promote
 refused "which 1.1.0/resign-" nokey --check
+refused "or, to drop it, sign the next index once latest.json is 1.1.0/promote-" nokey --check
 run publish --resign
 show 1.1.1/promote
 refused "superseded before this Air saw it go up: publish 1.1.0/resign-" nokey --check
@@ -495,7 +504,7 @@ signfolder 1.1.0 air1
 build 1.1.1 1.0.6
 signfolder 1.1.1 air1
 cutshort air1 --promote 1.1.0
-run nokey --check
+checked "latest.json is unsigned, so nothing is promoted yet"
 tick
 run sign air1 --promote 1.1.1
 run publish --promote 1.1.1
@@ -505,6 +514,38 @@ show 1.1.1/promote
 checked "so 1.1.1 is live"
 tick
 refused "nothing promoted before 1.1.1" sign air1 --pull 1.1.1
+
+fresh seenresign "a promote cut short, then shown to the Air by the resign that would drop it"
+keyfolder air1 paper1
+keys air1 paper1
+ship 1.1.0 1.0.6 air1 1.1.0
+build 1.1.1 1.0.6
+signfolder 1.1.1 air1
+cutshort air1 --promote 1.1.1
+checked "latest.json is 1.1.0/promote-"
+show 1.1.1/promote
+tick
+refused "went up to 1.1.1/promote-" sign air1 --resign
+checked "so 1.1.1 is live"
+pull 1.1.1 air1 1.1.0
+
+fresh seenfirst "the first promote cut short, then shown to the Air by the next release's promote"
+keyfolder air1 paper1
+keys air1 paper1
+build 1.1.0 1.0.6 1.1.0
+signfolder 1.1.0 air1
+build 1.1.1 1.0.6
+signfolder 1.1.1 air1
+cutshort air1 --promote 1.1.0
+run nokey --check
+show 1.1.0/promote
+tick
+refused "went up to 1.1.0/promote-" sign air1 --promote 1.1.1
+checked "so 1.1.0 is live"
+tick
+refused "fix it forward with the next release" sign air1 --pull 1.1.0
+promote 1.1.1 air1
+pull 1.1.1 air1 1.1.0
 
 fresh droplost "a promote dropped by a resign signed on an Air lost before it's published"
 keyfolder air1 paper1
@@ -529,6 +570,7 @@ latest_is 1.1.0 air1
 show 1.1.1/promote
 refused "which 1.1.0/resign-" nokey --check
 show 1.1.0/resign
+checked "so 1.1.0 is live"
 tick
 run sign paper1 --resign
 lastsigned 1.1.0
@@ -708,8 +750,7 @@ swapair
 carry
 tick
 refused "1.1.2/pull-" sign air2 --resign
-run publish --pull 1.1.2
-run nokey --check
+land --pull 1.1.2
 latest_is 1.1.1 air1
 # The new key alone waits four weeks and four days.
 tick
@@ -733,7 +774,7 @@ tick
 run sign air2 --resign
 refused "which owners check latest.json with" publish --resign
 signers air1 paper1 air2
-run publish --resign
+land --resign
 latest_is 1.1.1 air2
 # Computers on 1.1.0 can't check the new key, so until 1.1.3 is promoted the old Air signs a
 # pull of 1.1.1 too.
@@ -745,7 +786,7 @@ tick
 run sign air2 --pull 1.1.3
 refused "add its key back first" publish --pull 1.1.3
 signers air2 paper1 air1
-run publish --pull 1.1.3
+land --pull 1.1.3
 latest_is 1.1.1 air2
 # Computers that took 1.1.3 keep it, so the live index can't be signed again with the key it
 # dropped.
@@ -824,8 +865,7 @@ for f in "$dry"/sync/releases/1.1.2/promote-*.json; do date +%s > "${f%.json}.li
 tick
 run sign air1 --resign
 lastsigned 1.1.1
-run publish --resign
-run nokey --check
+land --resign
 latest_is 1.1.1 air1
 [ "$(field secure "$dry/bucket/connector/latest.json")" = 1.0.6 ] || fail "secure went up"
 pass "secure is still 1.0.6"
