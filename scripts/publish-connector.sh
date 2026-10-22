@@ -13,10 +13,10 @@
 #
 # Signatures are checked by the one rule (connector-release-lib.sh). The folder goes up
 # alone, once its connector-v<version> tag is the commit it was built from, here and on
-# origin: nothing points at it until its promote. A promote, pull or resign records itself
-# in ~/Sync/ovenlight/releases/ before it uploads anything, so one that fails partway is
-# finished by running it again, and no other goes up until it is, or until its .published
-# is deleted, which drops it. It goes up only when its serial is the highest signed so far.
+# origin: nothing points at it until its promote. A promote, pull or resign goes up only
+# when it's the newest index signed, checked against the records as they were when it was
+# signed, so one that fails partway is finished by running it again, and dropped by signing
+# the next one.
 # latest/ and latest.json are uploaded fresh, never copied with a version's year-long cache.
 # Uploads go through wrangler, signed in with `npx wrangler@4.147.0 login` or
 # CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID.
@@ -137,45 +137,18 @@ documented() {
     refuse "$master's docs/allowed_signers doesn't verify $2, which owners check latest.json with: add its key first"
 }
 
-# newestof <pattern>: the newest index signed whose name matches.
-newestof() {
-  local id found=
-  for id in $signed; do
-    # shellcheck disable=SC2254 # the pattern is a glob
-    case "$id" in $1) found="$id" ;; esac
-  done
-  [ -n "$found" ] || refuse "no index matching $1 is signed in $records"
-  echo "$found"
-}
-
-# begin <id>: whether this finishes a publish of that index that failed partway, which the
-# record it wrote first says. Only the newest published can be finished.
-begin() {
-  if [ ! -f "$records/$1.published" ]; then return 1; fi
-  [ "$1" = "$newest" ] || refuse "$1 was published, and $newest after it"
-  echo "finishing the publish of $1 begun $(date -r "$(cat "$records/$1.published")")"
-}
-
-# settled <id>: refuses another index while latest.json isn't the newest one published, as
-# after a publish cut short, since what's live would then differ here and on the Air. One
-# whose upload went through is marked live.
-settled() {
-  local id
-  if [ -z "$newest" ] || [ "$newest" = "$1" ]; then return 0; fi
-  if fetch "connector/latest.json?$(date +%s)" "$tmp/live.json" && cmp -s "$tmp/live.json" "$records/$newest.json"; then
-    [ -f "$records/$newest.live" ] || date +%s > "$records/$newest.live"
-    return
-  fi
-  for id in $signed; do
-    if [ ! -f "$records/$id.published" ] && cmp -s "$tmp/live.json" "$records/$id.json"; then refuse "latest.json is $id, which has no .published here: if you deleted it, put it back"; fi
-  done
-  refuse "latest.json isn't $newest, whose publish was cut short: run it again, or drop it by moving $records/$newest.published out (see docs/development.md)"
-}
-
-# based <id>: refuses an index built on one that's no longer the newest published.
-based() {
-  [ "$(cat "$records/$1.base")" = "$newest" ] ||
-    refuse "$1 was built on $(cat "$records/$1.base"), and $newest is published now: sign a fresh one"
+# newestsigned: refuses another mode or version than the newest index signed has, since
+# only it goes up, and reads the records as they were when it was signed.
+newestsigned() {
+  local cmd="--${top#*/}"
+  [ -n "$top" ] || refuse "no promote, pull or resign is signed in $records"
+  cmd="${cmd%-*}"
+  [ "$cmd" = --resign ] || cmd="$cmd ${top%%/*}"
+  # shellcheck disable=SC2254 # the pattern is a glob
+  case "$top" in ${version:-*}/$mode-*) ;; *) refuse "$top is the newest index signed, and only it goes up: scripts/publish-connector.sh $cmd" ;; esac
+  id="$top" idx="$records/$top.json"
+  baseof "$id"
+  readchain "$base"
 }
 
 # goes <id> <version>: publishes the index, after the files of the version it names.
@@ -223,14 +196,7 @@ folder)
   ;;
 
 promote)
-  # The last index published, when it's this version's promote, may be one that failed
-  # partway: it's finished, rather than a newer signature that has no record.
-  case "$newest" in
-  "$version"/promote-*) id="$newest" ;;
-  *) id="$(newestof "$version/promote-*")" ;;
-  esac
-  settled "$id"
-  idx="$records/$id.json"
+  newestsigned
   releaseindex "$version" "$(serialof "$id")" | cmp -s - "$idx" || refuse "$id isn't $version's index"
   # Its key signed the release's SHA256SUMS, so the one rule, accepting it, accepts both.
   k="$(signer "$idx" "$idx.sig" ovenlight-latest)"
@@ -241,48 +207,33 @@ promote)
   verifyrule "$version" "$idx" "$idx.sig" ovenlight-latest
   fetchrelease "$version"
   documented "$version" "$idx"
-  if ! begin "$id"; then
-    based "$id"
-    abovereleased "$version"
-    ordered "$(serialof "$id")" "$id"
-    nodrop "$idx"
-    newkeywait "${k#* }" "$(date +%s)"
-    signin
-    date +%s > "$records/$id.published"
-  fi
+  abovereleased "$version"
+  nodrop "$idx"
+  newkeywait "${k#* }" "$(date +%s)"
+  signin
   goes "$id" "$version"
   ;;
 
 pull)
-  id="$(newestof "$version/pull-*")"
-  settled "$id"
-  idx="$records/$id.json"
+  newestsigned
   target="$(field latest "$idx")"
   [ "$target" != "$version" ] || refuse "$id names $version, the release it pulls"
   releaseindex "$target" "$(serialof "$id")" | cmp -s - "$idx" || refuse "$id isn't $target's index"
-  base="$(cat "$records/$id.base")"
   signer "$idx" "$idx.sig" ovenlight-latest > "$tmp/signer"
   [ -s "$tmp/signer" ] || refuse "$id isn't signed by a key any release lists"
-  pullsigned "$tmp/signer" "$base" "$version"
+  pullsigned "$tmp/signer" "$newest" "$version"
   verifyrule "$target" "$records/$target/SHA256SUMS" "$records/$target/SHA256SUMS.sig" file
   fetchrelease "$target"
   documented "$target" "$idx"
-  if ! begin "$id"; then
-    [ "$version" = "$live" ] || refuse "$version isn't the live release (${live:-nothing is promoted})"
-    [ "$target" = "$(keptbelow "$version")" ] || refuse "$id goes back to $target, not $(keptbelow "$version")"
-    based "$id"
-    ordered "$(serialof "$id")" "$id"
-    nodrop "$idx"
-    signin
-    date +%s > "$records/$id.published"
-  fi
+  [ "$version" = "$live" ] || refuse "$version isn't the live release (${live:-nothing is promoted})"
+  [ "$target" = "$(keptbelow "$version")" ] || refuse "$id goes back to $target, not $(keptbelow "$version")"
+  nodrop "$idx"
+  signin
   goes "$id" "$target"
   ;;
 
 resign)
-  id="$(newestof "*/resign-*")"
-  settled "$id"
-  idx="$records/$id.json"
+  newestsigned
   version="${id%%/*}"
   releaseindex "$version" "$(serialof "$id")" | cmp -s - "$idx" || refuse "$id isn't $version's index"
   # Checked against the keys of the live release, and of the pulled ones above it.
@@ -293,14 +244,9 @@ resign)
   # latest/ goes up again, since a promote cut short and then dropped may have left its files.
   fetchrelease "$version"
   documented "$version" "$idx"
-  if ! begin "$id"; then
-    [ "$version" = "$live" ] || refuse "$id is for $version, and the live release is ${live:-none}"
-    based "$id"
-    ordered "$(serialof "$id")" "$id"
-    newkeywait "${k#* }" "$(date +%s)"
-    signin
-    date +%s > "$records/$id.published"
-  fi
+  [ "$version" = "$live" ] || refuse "$id is for $version, and the live release is ${live:-none}"
+  newkeywait "${k#* }" "$(date +%s)"
+  signin
   goes "$id" "$version"
   ;;
 esac

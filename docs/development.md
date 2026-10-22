@@ -183,26 +183,23 @@ scripts/publish-connector.sh --promote 1.2.0
 ```
 
 That puts its files in `connector/latest/` and its index in `latest.json`, and every
-owner's two-day wait starts. A publish that fails partway is finished by running the same
-command again (a folder's before the next build replaces `build/release`). Until then the
-mini publishes no other promote, pull or resign. To drop a promote cut short that mustn't
-go out, run `scripts/sign-connector.sh --check` on the Air instead (after a lost Air,
-`--import`, with the promote's `.published` moved out first). If it says the promote's
-release is live, the promote went out: put back its `.published` if you moved it, and
-pull it. Otherwise move the promote's `.published` out of its folder in
-`~/Sync/ovenlight/releases/`, then sign and publish a `--resign`, which puts the live
-release back in `connector/latest/`. With nothing promoted before it, promote the next
-release instead. A pull or resign cut short goes out, or once a fresh one is signed, is
-dropped the same way: move its `.published` out and publish the fresh one.
+owner's two-day wait starts. The mini publishes only the newest index signed, so a publish
+that fails partway is finished by running the same command again (a folder's before the
+next build replaces `build/release`). To drop a promote, pull or resign cut short instead,
+run `scripts/sign-connector.sh --check` on the Air (after a lost Air, `--import`). If it
+says `latest.json` is that index, it went out: pull it if it's a promote. Otherwise sign
+the next index and publish that: a `--resign`, which puts the live release back in
+`connector/latest/`, or a promote of the next release when nothing is promoted before it,
+or a fresh pull for a pull.
 
 `--pull`, signed and published like a promote, takes the live release back out by
 publishing the index of the release before it, signed again. Computers that already took
 the pulled release keep it, since the connector never installs an older one, so the fix is
 the next release. `--resign` publishes the live index signed again, to supersede a signed
 promote that mustn't ship. Before signing anything the Air fetches `latest.json`, which
-must be an index in the history and never one older than an index it has been, and after
-signing an index for `latest.json` it waits until `latest.json` is that index, which
-Ctrl-C leaves to the next run or `--check`. Its refusals say what to do, as when a pull
+must be the last index it saw go up or the newest it signed, and after signing an index
+for `latest.json` it waits until `latest.json` is that index, which Ctrl-C leaves to the
+next run or `--check`. Its refusals say what to do, as when a pull
 signed and not yet published blocks a promote or resign. Each script's header says what it
 checks, and `scripts/test-connector-release.sh` dry-runs them all. Each release restarts
 every owner's connector, and one promoted within two days of the last restarts every
@@ -317,10 +314,9 @@ After a lost Air, the paper key signs R:
    `cat ~/Sync/ovenlight/releases/*/release_keys | sort -u` lists those keys, and
    `ssh-keygen -lf -` on that list prints their fingerprints in the same order. Then
    `scripts/sign-connector.sh --import <file>` copies what those keys signed into the
-   history, prints it and checks `latest.json` against it: check the list against the
-   releases you published. Mark one it shows as never published that you did publish
-   with `echo <serial> > ~/.ssh/ovenlight-release-keys/history/<version>/<kind>-<serial>.seen`,
-   the serial being the number in its name. Then run key setup
+   history, with the index each was built on, checks `latest.json` against it and prints
+   it: check the list against the releases you published. If it's wrong, find out who
+   changed the records before you delete `history` and import again. Then run key setup
    (`scripts/release-key-setup.sh`). It makes a new paper key, files both new public keys
    and a test signature by each in `~/.ssh/ovenlight-release-keys/`. Its page also lists
    the fingerprints of the keys earlier releases list.
