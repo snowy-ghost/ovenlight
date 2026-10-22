@@ -455,8 +455,9 @@ func planUpdate(st *updateState, v string) updatePlan {
 	p := updatePlan{idx: idx, night: nightOf(st.Minute), security: ok && less(cur, idx.secure)}
 	// The wait never starts before the index was signed, so a clock that was behind when
 	// this computer first saw it, or set back since, can't shorten it once it's put right.
+	// A security fix has no wait to shorten.
 	seen := st.Seen
-	if signed := time.Unix(idx.Serial, 0); seen.Before(signed) {
+	if signed := time.Unix(idx.Serial, 0); !p.security && seen.Before(signed) {
 		seen = signed
 	}
 	var due time.Time

@@ -498,19 +498,23 @@ func TestUpdaterSwapsAtAQuietMoment(t *testing.T) {
 	}
 }
 
-// A security fix takes any quiet 10 minutes, day or night.
+// A security fix takes any quiet 10 minutes, day or night, even when its index was signed
+// after this computer's time: by an Air whose clock runs up to an hour ahead, or here on a
+// clock days behind.
 func TestUpdaterSecurityFixByDay(t *testing.T) {
-	srv := newReleaseServer(t)
-	srv.publish("1.2.0", "1.2.0", "1.1.0", 100)
-	tu := newTestUpdater(t, srv, t.TempDir(), "1.1.5", at(0, 9, 0), false)
-	tu.busyAt(at(0, 9, 0))
-	tu.pollAt(at(0, 9, 9))
-	if len(tu.swaps) != 0 {
-		t.Fatal("swapped within 10 minutes of a request")
-	}
-	tu.pollAt(at(0, 9, 10))
-	if len(tu.swaps) != 1 {
-		t.Error("a security fix waited for the night")
+	for _, signed := range []int64{100, at(0, 10, 0).Unix(), at(3, 9, 0).Unix()} {
+		srv := newReleaseServer(t)
+		srv.publish("1.2.0", "1.2.0", "1.1.0", signed)
+		tu := newTestUpdater(t, srv, t.TempDir(), "1.1.5", at(0, 9, 0), false)
+		tu.busyAt(at(0, 9, 0))
+		tu.pollAt(at(0, 9, 9))
+		if len(tu.swaps) != 0 {
+			t.Fatalf("signed %d: swapped within 10 minutes of a request", signed)
+		}
+		tu.pollAt(at(0, 9, 10))
+		if len(tu.swaps) != 1 {
+			t.Errorf("signed %d: a security fix waited", signed)
+		}
 	}
 }
 
