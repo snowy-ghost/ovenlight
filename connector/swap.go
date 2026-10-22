@@ -55,12 +55,7 @@ func (d *daemon) swapIn(p pendingSwap) error {
 		jsonfile.Remove(path)
 		return err
 	}
-	installed := installedBinary(d.stateDir)
-	err := replaceBinary(installed, p.Next)
-	if err == nil {
-		_, err = os.Stat(installed) // the service's path, which the exit needs
-	}
-	if err != nil {
+	if err := replaceBinary(installedBinary(d.stateDir), p.Next); err != nil {
 		jsonfile.Remove(path)
 		return err
 	}

@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -79,7 +80,16 @@ func startTrial() {
 	if err != nil {
 		return
 	}
-	t, exit := beginTrial(filepath.Dir(filepath.Dir(exe)), version(), func() time.Time { return time.Now().Round(0) })
+	dir := filepath.Dir(filepath.Dir(exe))
+	if runtime.GOOS == "windows" {
+		// A scheduled task's standard error goes nowhere, and cmdRun opens the task's --log
+		// later: what the trial logs as it starts goes to that log, which install.ps1 puts here.
+		if f, err := os.OpenFile(filepath.Join(dir, "ovenlight.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600); err == nil {
+			log.SetOutput(f)
+			defer func() { log.SetOutput(os.Stderr); f.Close() }()
+		}
+	}
+	t, exit := beginTrial(dir, version(), func() time.Time { return time.Now().Round(0) })
 	if exit {
 		os.Exit(1)
 	}
@@ -109,9 +119,10 @@ func startTrial() {
 // the swap didn't finish, a rollback did, or an install script put another release in
 // place. So does one with nothing to roll back to, or that isn't a trial record. One that
 // can't be read now stays for the next start, and so does every trial while another
-// connector holds the state folder: run --service started by hand while the service runs
-// then fails on that lock. A second start with no clean stop or Windows restart since the
-// last counted start rolls back at once, and exit says the connector should then exit.
+// connector answers for the state folder: run --service started by hand while the
+// service runs then fails on its lock. A second start with no clean stop or Windows
+// restart since the last counted start rolls back at once, and exit says the connector
+// should then exit.
 func beginTrial(dir, v string, now func() time.Time) (t *trial, exit bool) {
 	path := filepath.Join(dir, updateTrialFile)
 	data, err := jsonfile.ReadFile(path)
@@ -122,11 +133,11 @@ func beginTrial(dir, v string, now func() time.Time) (t *trial, exit bool) {
 		log.Printf("updates: can't read the last update's trial: %v", err)
 		return nil, false
 	}
-	lock, err := lockStateDir(dir)
-	if err != nil {
+	// The state lock can't tell: it's the code on trial, and a release whose lock fails
+	// would never count a start. A connector that answers is the service, though.
+	if reply, _ := callDaemon(dir, "status", 3*time.Second); reply != nil {
 		return nil, false
 	}
-	defer lock.Close()
 	t = &trial{dir: dir, now: now, served: map[string]bool{}}
 	switch err := json.Unmarshal(data, &t.rec); {
 	case err != nil:
@@ -259,6 +270,16 @@ func (t *trial) tick() bool {
 		return false
 	}
 	err := t.failure(d)
+	// A pass holds the updater's lock, taken before the trial's as poll takes them: a
+	// release whose updater hangs holding it would never update again, so it's left to
+	// the backstop.
+	var u *updater
+	if err == nil && d.upd != nil {
+		if u = d.upd; !u.mu.TryLock() {
+			return false
+		}
+		defer u.mu.Unlock()
+	}
 	t.mu.Lock()
 	givingUp := t.givingUp
 	if err == nil && !givingUp {
@@ -277,14 +298,19 @@ func (t *trial) tick() bool {
 	// which passed.
 	t.end()
 	log.Printf("updates: %s passed its trial", t.rec.To)
-	if err := t.record(func(st *updateState) { st.Updated = &updateEvent{From: t.rec.From, To: t.rec.To, At: t.rec.At} }); err != nil {
+	passed := func(st *updateState) { st.Updated = &updateEvent{From: t.rec.From, To: t.rec.To, At: t.rec.At} }
+	if u != nil {
+		passed(&u.st)
+		u.save()
+	} else if err := recordFile(t.dir, passed); err != nil {
 		log.Printf("updates: recording the update to %s: %v", t.rec.To, err)
 	}
 	return true
 }
 
 // backstopAfter is how long past quietFor of time awake the backstop gives a trial that
-// hasn't ended. A tick that ends the trial waits a minute at most, for an update check.
+// hasn't ended. A pass waits for the updater's lock, which an update check holds a minute
+// at most.
 var backstopAfter = quietFor / 2
 
 // backstop ends a trial that tick can't: a release that deadlocks its daemon blocks tick
@@ -311,8 +337,8 @@ func (t *trial) backstop(exit func()) {
 	}
 }
 
-// giveUp is backstop's rollback. It writes the failure to update.json itself, and puts
-// .prev back. It reports whether it rolled back: not once the trial has ended.
+// giveUp is backstop's rollback. It records the failure, and puts .prev back. It reports
+// whether it rolled back: not once the trial has ended.
 func (t *trial) giveUp() bool {
 	t.mu.Lock()
 	ended := t.ended
@@ -321,9 +347,14 @@ func (t *trial) giveUp() bool {
 	if ended {
 		return false
 	}
-	why := fmt.Errorf("%s didn't end its trial within %s: it hung", t.rec.To, quietFor+backstopAfter)
+	why := fmt.Errorf("%s didn't end its trial within %s: it hung", t.rec.To, humanDuration(quietFor+backstopAfter))
 	log.Printf("updates: rolling back from %s to %s: %v", t.rec.To, t.rec.From, why)
-	if err := recordFile(t.dir, t.failed(why)); err != nil {
+	// Through the updater when it's free, and holding its lock until the exit, so no save
+	// of its own comes after this one. Otherwise in the file.
+	if d := t.daemon(); d != nil && d.upd != nil && d.upd.mu.TryLock() {
+		t.failed(why)(&d.upd.st)
+		d.upd.save()
+	} else if err := recordFile(t.dir, t.failed(why)); err != nil {
 		log.Printf("updates: recording the failure of %s: %v", t.rec.To, err)
 	}
 	t.restore()

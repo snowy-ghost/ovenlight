@@ -179,21 +179,14 @@ func TestUpdateTarget(t *testing.T) {
 	}
 }
 
-func TestFirstSeen(t *testing.T) {
-	now := time.Date(2026, 10, 21, 9, 0, 0, 0, time.UTC)
-	before, after := now.Add(-time.Hour), now.Add(time.Hour)
-	for _, c := range []struct {
-		latest, held string
-		seen, want   time.Time
-	}{
-		{"1.2.0", "1.2.0", before, before},
-		{"1.2.1", "1.2.0", before, now},
-		{"1.2.0", "", time.Time{}, now},
-		{"1.2.0", "1.2.0", after, now}, // the clock was set back
-	} {
-		if got := firstSeen(c.latest, c.held, c.seen, now); !got.Equal(c.want) {
-			t.Errorf("%+v: %v", c, got)
-		}
+// A time read back from update.json keeps the offset it was saved in: its time of day is
+// the one where the computer is now.
+func TestDayTimeIsLocal(t *testing.T) {
+	here := time.Date(2026, 10, 21, 2, 30, 0, 0, time.Local)
+	_, offset := here.Zone()
+	saved := here.In(time.FixedZone("", offset-5*60*60)) // 21:30 the evening before
+	if dayTime(saved) != dayTime(here) {
+		t.Errorf("%v: %v, not %v", saved, dayTime(saved), dayTime(here))
 	}
 }
 

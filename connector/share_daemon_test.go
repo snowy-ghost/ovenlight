@@ -53,7 +53,7 @@ func testDaemon(t *testing.T) (*daemon, *tsapitest.Fake) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	d := &daemon{configPath: configPath, stateDir: state, sh: sh, nodes: map[string]*appNode{},
+	d := &daemon{configPath: configPath, stateDir: state, sh: sh, nodes: map[string]*appNode{}, exits: make(chan string, 1),
 		cfg: Config{Owner: "alex@example.com", OwnerLabel: "Alex"}}
 	addApp(d, App{Name: "Interview Coach", Slug: "coach", Port: 4317, Shareable: true})
 	limiter = &feedbackLimiter{sent: map[string][]time.Time{}}

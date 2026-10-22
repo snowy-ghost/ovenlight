@@ -403,8 +403,8 @@ func TestUpdaterWaitsTwoDays(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(tu.bin(), "ovenlight.download")); err == nil {
 		t.Error("the download was kept")
 	}
-	u := readUpdateView(dir, "1.1.5", true)
-	if u.Pending != "1.2.0" || !u.InstallAfter.Equal(at(2, 9, 0)) || !u.InstallBy.Equal(at(4, 2, 0)) {
+	u := readUpdateView(dir, "1.1.5", true) // from the night after it's due
+	if u.Pending != "1.2.0" || !u.InstallAfter.Equal(at(3, 2, 0)) || !u.InstallBy.Equal(at(4, 2, 0)) {
 		t.Errorf("%+v", u)
 	}
 }
@@ -521,7 +521,7 @@ func TestUpdaterSecurityFixBusy(t *testing.T) {
 	tu := newTestUpdater(t, srv, t.TempDir(), "1.1.5", at(0, 9, 0), false)
 	tu.st.Minute = 10 * 60 // its night starts at 02:00
 	tu.busyAt(at(0, 9, 0))
-	if u := readUpdateView(tu.d.stateDir, "1.1.5", true); !u.InstallBy.Equal(at(1, 2, 0)) {
+	if u := readUpdateView(tu.d.stateDir, "1.1.5", true); !u.InstallAfter.Equal(at(0, 9, 0)) || !u.InstallBy.Equal(at(1, 2, 0)) {
 		t.Errorf("%+v", u)
 	}
 	tu.busyAt(at(1, 1, 59))

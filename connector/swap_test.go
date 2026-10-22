@@ -141,7 +141,7 @@ func TestSwapIn(t *testing.T) {
 		t.Errorf("%+v", rec)
 	}
 	select {
-	case why := <-d.exiting():
+	case why := <-d.exits:
 		if !strings.Contains(why, "1.2.0") {
 			t.Error(why)
 		}
@@ -174,7 +174,7 @@ func TestSwapInRefuses(t *testing.T) {
 				t.Error("something was swapped or left behind")
 			}
 			select {
-			case <-d.exiting():
+			case <-d.exits:
 				t.Error("an exit")
 			default:
 			}
