@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -183,15 +182,12 @@ func dayTime(t time.Time) time.Duration {
 // Windows, the system's when the environment names none. Unlike Tailscale, it logs no
 // line for each CONNECT.
 var updateClient = &http.Client{
-	Transport: &http.Transport{
-		Proxy: tshttpproxy.ProxyFromEnvironment,
-		GetProxyConnectHeader: func(_ context.Context, proxy *url.URL, _ string) (http.Header, error) {
-			if v, err := tshttpproxy.GetAuthHeader(proxy); err == nil && v != "" {
-				return http.Header{"Proxy-Authorization": {v}}, nil
-			}
-			return nil, nil
-		},
-	},
+	Transport: func() *http.Transport {
+		tr := &http.Transport{Proxy: tshttpproxy.ProxyFromEnvironment}
+		tshttpproxy.SetTransportGetProxyConnectHeader(tr)
+		tr.OnProxyConnectResponse = nil
+		return tr
+	}(),
 	CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 }
 
