@@ -211,9 +211,9 @@ works in PowerShell windows opened after the install.
 
 #### Updating
 
-The connector updates itself, at a quiet moment in the night two days after a release
-comes out, and sooner for a security fix. `ovenlight update off` stops it. Releases up to
-1.0.9 don't update themselves: install a newer one by hand once.
+The connector updates itself, at a quiet moment in the night two days after it first sees
+a new release, and sooner for a security fix. `ovenlight update off` stops it. Releases up
+to 1.0.9 don't update themselves: install a newer one by hand once.
 [docs/connector.md](docs/connector.md#update) has the details, and how to install a
 release by hand with its signature checked.
 
