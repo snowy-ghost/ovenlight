@@ -518,9 +518,10 @@ type updateView struct {
 	// Latest and Secure are as the index held names them.
 	Latest string `json:"latest,omitempty"`
 	Secure string `json:"secure,omitempty"`
-	// Pending is the release it installs on its own: from InstallAfter at a quiet moment,
-	// and by InstallBy busy or not. Once its moment has come InstallAfter is now, or for a
-	// regular release outside the night the start of the next.
+	// Pending is the release it installs next. With SelfUpdating set and Off not, it does
+	// so on its own from InstallAfter at a quiet moment, and by InstallBy busy or not, set
+	// only then. Once its moment has come InstallAfter is now, or for a regular release
+	// outside the night the start of the next.
 	Pending      string    `json:"pending,omitempty"`
 	InstallAfter time.Time `json:"installAfter,omitzero"`
 	InstallBy    time.Time `json:"installBy,omitzero"`
@@ -575,12 +576,15 @@ func readUpdateView(stateDir, v string, self bool, now time.Time) *updateView {
 	}
 	u.Latest, u.Secure, u.NeedsScript, u.BelowSecure = p.idx.Latest, p.idx.Secure, p.script, p.security
 	if p.target != "" {
-		u.Pending, u.InstallAfter, u.InstallBy = p.target, p.after, p.by
-		if now.After(p.after) {
-			u.InstallAfter = now
-		}
-		if !p.security && !p.inNight(u.InstallAfter) && u.InstallAfter.Before(p.by) {
-			u.InstallAfter = nextAt(u.InstallAfter, p.night) // a quiet moment in the night
+		u.Pending = p.target
+		if self && !u.Off {
+			u.InstallAfter, u.InstallBy = p.after, p.by
+			if now.After(p.after) {
+				u.InstallAfter = now
+			}
+			if !p.security && !p.inNight(u.InstallAfter) && u.InstallAfter.Before(p.by) {
+				u.InstallAfter = nextAt(u.InstallAfter, p.night) // a quiet moment in the night
+			}
 		}
 		// Only the release it would install: one the index no longer names was pulled.
 		if f := st.Failed; f != nil && f.Version == p.target {

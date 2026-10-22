@@ -987,7 +987,8 @@ func TestUpdateLines(t *testing.T) {
 }
 
 // Once an update's moment has come, status names now, or for a regular release outside
-// the night the start of the next, in its text and its JSON alike.
+// the night the start of the next, in its text and its JSON alike. With updates off or
+// no connector updating itself, the JSON names no install times either.
 func TestInstallsFromNow(t *testing.T) {
 	if updateHour != time.Hour {
 		t.Skip("a compressed schedule")
@@ -1010,6 +1011,13 @@ func TestInstallsFromNow(t *testing.T) {
 		u := readUpdateView(dir, "1.1.5", true, c.now)
 		if got := u.installs(c.now); !u.InstallAfter.Equal(c.from) || !strings.Contains(got, when(c.from)) {
 			t.Errorf("%s at %v: from %v, %s", c.secure, c.now, u.InstallAfter, got)
+		}
+	}
+	notSelf := readUpdateView(dir, "1.1.5", false, at(0, 14, 0))
+	os.WriteFile(filepath.Join(dir, updatesOffFile), nil, 0o600)
+	for name, u := range map[string]*updateView{"not updating itself": notSelf, "off": readUpdateView(dir, "1.1.5", true, at(0, 14, 0))} {
+		if u.Pending != "1.2.0" || !u.InstallAfter.IsZero() || !u.InstallBy.IsZero() {
+			t.Errorf("%s: %+v", name, u)
 		}
 	}
 }
