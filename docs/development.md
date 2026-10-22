@@ -76,14 +76,14 @@ and Windows: `go vet` (with and without the `e2e` tag), the tests (with `-race` 
 and `govulncheck`, then the install scripts as a user runs them: install, a killed
 connector restarting, reinstall and `uninstall --purge`. The install jobs then run the
 updater end to end, on macOS too, where the job also dry-runs the release scripts with
-`scripts/test-connector-release.sh`. On Linux it also runs `gofmt`,
-`go vet` and `govulncheck` for darwin/arm64 with cgo off, a check that
-`scripts/third-party-notices.sh` still finds a license kept below a module's root, and the
-end-to-end test against Headscale. It also renders the docs with `scripts/sitedocs`,
-which fails on a link or `#anchor` that goes nowhere. Its `android` job checks the Android
-app, its side of the wire files included ([Android tests](#android-tests)). The iPhone
-app's side runs only in Xcode, locally and before shipping, never in CI, so a change to
-`testdata/wire/` must also pass the [iPhone app's tests](#tests-1).
+`scripts/test-connector-release.sh`. On Linux it also runs `gofmt`, `go vet` and
+`govulncheck` for darwin/arm64 with cgo off, a check that `scripts/third-party-notices.sh`
+still finds a license kept below a module's root, and the end-to-end test against
+Headscale. It also renders the docs with `scripts/sitedocs`, which fails on a link or
+`#anchor` that goes nowhere. Its `android` job checks the Android app, its side of the wire
+files included ([Android tests](#android-tests)). The iPhone app's side runs only in Xcode,
+locally and before shipping, never in CI, so a change to `testdata/wire/` must also pass
+the [iPhone app's tests](#tests-1).
 
 ### Releases
 
@@ -215,7 +215,8 @@ The first release that updates itself, 1.1.0 here, goes out once, with 1.1.1 aft
    - `index.json.release-1.sig` and `index.json.release-2.sig`, which key setup signed
      with the two real keys, are copied from `~/Sync/ovenlight/release-key-test/` into
      `connector/testdata/update/`.
-   - The comment in `connector/keys.go` loses its sentence about the mock keys.
+   - The comments in `connector/keys.go` and `connector/sshsig_test.go` lose what they say
+     about the mock keys.
    - `connector/testdata/update/sign.sh` loses the lines that delete
      `index.json.release-*.sig` and sign them with the mock keys, and their comment.
    - The Air's `~/.ssh/ovenlight-release-keys/` holds the two real public keys.
@@ -274,15 +275,17 @@ For a planned move to a new Air, the old Air signs R:
    before R+1 can go out is signed there too and lists the same three keys.
 4. R+1 drops the old key and is signed on the new Air. Its canary needs the live index
    signed with the new key (`--resign`). That and R+1's promote are refused until four
-   weeks and four days after the last promote signed with the old key. Keep the old Air
-   until R+1 is promoted, since a pull before R+1's `--resign` is signed with the old key.
+   weeks and four days after R's promote, and a pull back below R starts the wait again at
+   the next promote. Keep the old Air until R+1 is promoted, since a pull before R+1's
+   `--resign` is signed with the old key.
 
 After a lost Air, the paper key signs R:
 
-1. On the replacement Air, make its Touch ID key with the two commands above. Then run key
-   setup (`~/Sync/ovenlight/release-key-setup.sh`). It makes a new paper key, files both
-   new public keys in `~/.ssh/ovenlight-release-keys/`, and signs a test signature with
-   each in `~/Sync/ovenlight/release-key-test/`.
+1. On the replacement Air, make its Touch ID key with the two commands above. An Air
+   restored from a backup moves `backup.pub` out of `~/.ssh/ovenlight-release-keys/`
+   first. Then run key setup (`~/Sync/ovenlight/release-key-setup.sh`). It makes a new
+   paper key, files both new public keys in `~/.ssh/ovenlight-release-keys/`, and signs a
+   test signature with each in `~/Sync/ovenlight/release-key-test/`.
 2. R lists the two new keys and the old paper key, and drops the lost key and its
    signature. Copy key setup's `index.json.release-1.sig` and `index.json.release-2.sig`
    in under the next two free numbers.
@@ -299,7 +302,8 @@ After a lost paper key, the Air signs R, which lists its own key and a new paper
 `backup.pub` out of `~/.ssh/ovenlight-release-keys/`, run key setup, and copy only its
 `index.json.release-2.sig` in under the next free number. Drop the old paper key's
 signature and its line in `allowed_signers`, since it signed no release. The Air's key
-signs on, so nothing waits and no R+1 follows.
+signs on, so nothing waits and no R+1 follows. If the Air is lost too, the new paper key's
+`--resign` and promote wait until four weeks and four days after R's promote.
 
 ## The iPhone app
 

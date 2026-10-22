@@ -284,6 +284,11 @@ run sign air1 --pull 1.1.1
 resign air1 1.1.1
 refused "sign a fresh one" publish --pull 1.1.1
 pull 1.1.1 air1 1.1.0
+# A resign takes the archives' hashes from the records only as the signed canary index has
+# them.
+sed -i '' -E '1s/^[0-9a-f]{8}/deadbeef/' "$dry/sync/releases/1.1.0/SHA256SUMS"
+tick
+refused "isn't the one 1.1.0's canary index lists" sign air1 --resign
 
 fresh early "a promote signed before a pull"
 keyfolder air1 paper1
@@ -335,6 +340,28 @@ pull 1.1.1 paper1 1.1.0
 build 1.1.2 1.0.6
 signfolder 1.1.2 paper1
 promote 1.1.2 paper1
+
+fresh lostpaper "a lost paper key, then a lost Air: the Air's promotes don't restart the new paper key's wait"
+keyfolder air1 paper1
+keys air1 paper1
+ship 1.1.0 1.0.6 air1 1.1.0
+# R lists the Air's key and a new paper key, whose wait starts at R's promote.
+keyfolder air1 paper2
+keys air1 paper2
+signers air1 paper2
+ship 1.1.1 1.0.6 air1
+tick
+refused "four weeks and four days" sign paper2 --resign
+backdate 33
+ship 1.1.2 1.0.6 air1
+# The Air is lost, and the new paper key signs what the next R needs at once, with paper1
+# standing in for the paper key after it.
+keyfolder air2 paper1
+keys air2 paper1 paper2
+build 1.1.3 1.0.6
+signfolder 1.1.3 paper2
+resign paper2 1.1.2
+promote 1.1.3 paper2
 
 fresh paperpull "the Air that signed the live index lost before its pull, which the paper key signs"
 keyfolder air1 paper1

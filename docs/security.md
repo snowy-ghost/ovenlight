@@ -454,12 +454,12 @@ replaces only the binary: never the install scripts, the service, the config or 
 5. It records a trial, keeps the running binary as `ovenlight.prev` (`ovenlight.prev.exe`
    on Windows), puts the new one in its place and exits. The service starts the new one.
 6. The new release has 10 minutes of time awake to serve every app that was serving before,
-   with its node logged in, and to verify the signed index that brought it, with its own
-   built-in keys. If it crashes, or doesn't do both in that time, the previous binary goes
-   back and the update is tried again at the start of the next night, busy or not. One
-   that hangs so that its trial can't end goes back after 15 minutes awake. A restart
-   starts the 10 minutes again, though on Windows some stops count as a crash
-   ([connector.md](connector.md#update)).
+   with its node logged in, to verify the signed index that brought it with its own
+   built-in keys, and to have its own updater running. If it crashes, or misses any of
+   these in that time, the previous binary goes back and the update is tried again at the
+   start of the next night, busy or not. One that hangs so that its trial can't end goes
+   back after 15 minutes awake. A restart starts the 10 minutes again, though on Windows
+   some stops count as a crash ([connector.md](connector.md#update)).
 
 A failure before the swap leaves the running connector as it was. `ovenlight status`
 shows a failed update of the release it installs next, and `doctor` warns once one
@@ -488,8 +488,7 @@ trusts never come from the commit alone. Even so, a signature vouches for what i
 and for the Mac that built it, and no more. Whoever can sign a release, or get code onto
 master and through that Mac, can run code on your computer within a day (an index that
 raises `secure` skips the two-day wait), as you, beside your Tailscale API credential, and
-on Windows with administrator rights.
-`ovenlight update off` opts out.
+on Windows with administrator rights. `ovenlight update off` opts out.
 
 When one key is lost, the next release, signed with the other, replaces it. A computer
 that doesn't install that release within four weeks of it coming out, because it was off or

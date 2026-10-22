@@ -19,9 +19,8 @@ The `ovenlight` connector on that computer publishes each app and tells it who i
    words: a computer that stays on and awake (a laptop with its lid open), a Tailscale
    account, the Ovenlight app on their phone, and the connector, a free download.
    https://ovenlight.app/support#own-computer has the steps. Then wait for them; don't
-   look for workarounds. If it is installed but not running, the person
-   starts it with the command `ovenlight status` gives. Don't run `ovenlight run`
-   yourself.
+   look for workarounds. If it is installed but not running, the person starts it with
+   the command `ovenlight status` gives. Don't run `ovenlight run` yourself.
 3. **Use the tools for the loop**: publish, restart the app after changing the server,
    check it, read its logs, and read the feedback the person sends from their phone. The
    command that keeps the app running is set only in a terminal: with a shell, publish
@@ -38,8 +37,7 @@ The `ovenlight` connector on that computer publishes each app and tells it who i
 5. **The connector updates itself.** When `status` shows a failed update, tell the
    person what failed, in plain words. With updates on, it tries again the next night, and
    a release waiting its turn needs nothing from either of you. When `doctor`'s `update`
-   check gives a fix, pass it on. A release to install by hand, including one an older
-   connector's `doctor` names with a download link, goes in with the verified install
-   steps in
-   https://github.com/snowy-ghost/ovenlight/blob/master/docs/connector.md#check-a-download-first.
-   Offer those, never a bare download.
+   check gives a fix, pass it on. Offer the verified install steps in
+   https://github.com/snowy-ghost/ovenlight/blob/master/docs/connector.md#check-a-download-first
+   for a release to install by hand, including one an older connector's `doctor` names
+   with a download link, never a bare download.

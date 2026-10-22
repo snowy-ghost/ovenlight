@@ -85,8 +85,9 @@ signin() {
   if [ -z "$dry" ]; then npx wrangler@4.147.0 r2 bucket info "$BUCKET" > /dev/null; fi
 }
 
-# checkarchive <archive>: refuses one the updater would: anything outside
-# ovenlight-connector-$version/, no binary there, or over the cap.
+# checkarchive <archive>: refuses one the updater would, over the cap or with no binary in
+# ovenlight-connector-$version/, and one holding anything outside that folder, since an
+# install by hand unpacks every entry with its first folder stripped.
 checkarchive() {
   local top="ovenlight-connector-$version/" exe=ovenlight list n
   [ $(($(wc -c < "$1"))) -le "$cap" ] || refuse "$1 is over the updater's cap of $cap bytes"
