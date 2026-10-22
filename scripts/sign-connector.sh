@@ -9,9 +9,9 @@
 #       its index for latest.json (namespace ovenlight-latest), with the same key
 #   scripts/sign-connector.sh [--key <file>] --pull <version>
 #       the live release's pull: the index of the newest promoted release before it that
-#       wasn't pulled, with the key that signed the live index, or one every release a
-#       computer it reaches may run lists: the paper key, or a new Touch ID key once its
-#       four weeks and four days are over
+#       wasn't pulled, with the key that signed the live index if that release lists it, or
+#       one every release a computer it reaches may run lists: the paper key, or a new Touch
+#       ID key once its four weeks and four days are over
 #   scripts/sign-connector.sh [--key <file>] --resign
 #       the live index again, with a key the live release lists, as does every pulled
 #       release above it
@@ -19,17 +19,20 @@
 # Each index gets the time now as its serial. What it signs goes in the release's folder in
 # ~/Sync/ovenlight/releases/, which scripts/publish-connector.sh publishes from on the mini.
 # Touch ID shows a prompt and not what it signs, so this prints that first, and refuses
-# before it whatever publish-connector.sh would refuse. A release is signed only when its
-# connector/release_keys is exactly the two keys in ~/.ssh/ovenlight-release-keys/ plus the
-# key signing it, so the keys a release trusts never come from the commit alone. The paper
-# key signs only a release that replaces it, so its .pub has left that folder. A promote,
-# pull or resign builds only on what this Air's own keys signed: those two, the ones they
-# replaced, which the folder's retired file lists, and the key signing. The records'
-# release_keys are only as safe as ~/Sync. It also builds only on the index it signed last,
-# which it keeps in that folder as last.json, and on the published indexes it built that one
-# on, kept there as published, so the records can't be rolled back. And it signs only while
-# latest.json is the newest index the records call published, so marking an index published
-# in ~/Sync can't make it the live one.
+# before it whatever publish-connector.sh would refuse. A release is signed and promoted only
+# when its connector/release_keys is exactly the two keys in ~/.ssh/ovenlight-release-keys/
+# plus the key signing it, so the keys a release trusts never come from the commit alone.
+# The paper key signs only a release that replaces it, so its .pub has left that folder. A
+# promote, pull or resign builds only on what this Air's own keys signed: those two, the
+# ones they replaced, which the folder's retired file lists, and the key signing. The
+# records' release_keys are only as safe as ~/Sync, as are their index.json and canary.json
+# files, which carry a release's raise of secure or reinstallBelow forward to later ones. It
+# also builds only on the index it signed last, which it keeps in that folder as last.json,
+# and on the published indexes it built that one on, kept there as published, so the records
+# can't be rolled back. And it signs a promote, pull or resign only while latest.json is the
+# newest index the records call published (unsigned while they call none published), and
+# that index names the release the records' names make live, so marking or renaming an index
+# in ~/Sync can't change the live one.
 #
 # --key signs with a key other than this Air's Touch ID handle, such as the paper backup or
 # another Touch ID key's handle, with its public half beside it as <file>.pub.
@@ -98,10 +101,11 @@ airsigned() {
 }
 
 # vouched: refuses records with a published index these keys didn't sign or kept under
-# another serial than its own, whose newest published index isn't the last one this Air
-# signed or isn't latest.json, or whose others aren't the ones it built that one on.
+# another serial than its own, with none while latest.json is signed, whose newest published
+# index isn't the last one this Air signed, isn't latest.json or names a release that
+# doesn't fit its name or the live one, or whose others aren't the ones it built that one on.
 vouched() {
-  local id moved="After a planned move, copy last.json and published into $keydir from the Air that signed last."
+  local id n moved="After a planned move, copy last.json and published into $keydir from the Air that signed last."
   for id in $published; do
     verify "$records/$id.json" "$records/$id.json.sig" ovenlight-latest "$tmp/air" ||
       refuse "$id isn't signed by a key in $keydir or its retired list"
@@ -112,9 +116,9 @@ vouched() {
   if [ -n "$newest" ] && ! cmp -s "$records/$newest.json" "$keydir/last.json"; then
     copy="curl -fsS https://downloads.ovenlight.app/connector/latest.json | cmp - $records/$newest.json && cp $records/$newest.json $keydir/last.json"
     names="the records' newest published index, $newest, names $(field latest "$records/$newest.json")"
-    [ -f "$keydir/last.json" ] || refuse "This Air has signed no index, and $names. $moved Otherwise copy it in only once https://downloads.ovenlight.app/connector/latest.json names the release you last promoted, or the one your last pull went back to:
+    [ -f "$keydir/last.json" ] || refuse "This Air has signed no index, and $names. $moved Otherwise copy the records' newest index in only once https://downloads.ovenlight.app/connector/latest.json names the release you last promoted, or the one your last pull went back to:
   $copy"
-    refuse "This Air last signed an index naming $(field latest "$keydir/last.json"), at $(date -r "$(field serial "$keydir/last.json")"), and $names. $moved Otherwise copy it in only if you know this Air's last index never went out, since whoever holds ~/Sync and the bucket can roll back both the records and latest.json:
+    refuse "This Air last signed an index naming $(field latest "$keydir/last.json"), at $(date -r "$(field serial "$keydir/last.json")"), and $names. $moved Otherwise copy the records' newest index in only if you know this Air's last index never went out, since whoever holds ~/Sync and the bucket can roll back both the records and latest.json:
   $copy"
   fi
   # The published indexes are the ones they were when this Air signed last.json, and it.
@@ -125,11 +129,16 @@ vouched() {
 $(echo "$published" | awk NF | diff "$tmp/saw" - | sed -n 's/^</  no longer published:/p; s/^>/  newly published:/p')
 $moved Otherwise find out who changed the records before signing anything."
   fi
+  if [ -n "$dry" ]; then cp "$dry/bucket/connector/latest.json" "$tmp/live.json"
+  else curl -fsS -o "$tmp/live.json" "https://downloads.ovenlight.app/connector/latest.json?$now" || refuse "couldn't fetch latest.json"; fi
   if [ -n "$newest" ]; then
-    if [ -n "$dry" ]; then cp "$dry/bucket/connector/latest.json" "$tmp/live.json"
-    else curl -fsS -o "$tmp/live.json" "https://downloads.ovenlight.app/connector/latest.json?$now" || refuse "couldn't fetch latest.json"; fi
+    n="$(field latest "$records/$newest.json")"
+    { case "$newest" in */pull-*) below "$n" "${newest%%/*}" ;; *) [ "$n" = "${newest%%/*}" ] ;; esac && [ "$n" = "$live" ]; } ||
+      refuse "$newest.json names $n, which doesn't fit its name, or the live release the records make of it, ${live:-none}: find out who changed the records before signing anything"
     cmp -s "$tmp/live.json" "$records/$newest.json" ||
-      refuse "latest.json isn't $newest, the records' newest published index: if its publish failed partway, finish it first, and otherwise find out who changed the records before signing anything"
+      refuse "latest.json isn't $newest, the records' newest published index. If you ran its publish and it failed partway, run that publish again on the mini. If you never ran it, the records were changed: find out who before signing anything."
+  else
+    [ -z "$(field serial "$tmp/live.json")" ] || refuse "latest.json is a signed index, and the records call none published: find out who changed the records before signing anything"
   fi
 }
 
@@ -140,6 +149,22 @@ rulehas() {
     [ -f "$k" ] || refuse "no $k"
     haskey "$kblob" "$k" || refuse "$k doesn't list this key, and updaters installing $1 hold those keys"
   done
+}
+
+# folderkeys <release_keys> <what they are>: refuses keys that aren't the two in the key
+# folder plus the one signing.
+folderkeys() {
+  local f n=0
+  for f in "$keydir"/*.pub; do n=$((n + 1)); done
+  [ "$n" -eq 2 ] || refuse "$keydir holds $n .pub files, not the two release keys"
+  cat "$keydir"/*.pub > "$tmp/folder"
+  trusted "$tmp/folder"
+  cat "$tmp/folder" "$tmp/signer" | awk 'NF >= 2 { print $2 }' | sort -u > "$tmp/want"
+  awk 'NF >= 2 { print $2 }' "$1" | sort -u > "$tmp/have"
+  if ! cmp -s "$tmp/want" "$tmp/have"; then
+    refuse "$2 isn't the two keys in $keydir plus the one signing:
+$(diff "$tmp/want" "$tmp/have" | sed -n 's/^</  missing/p; s/^>/  extra/p')"
+  fi
 }
 
 # keep <file> <name>...: puts the signed files in the release's folder.
@@ -183,17 +208,7 @@ release)
   [ -n "$dry" ] || git -C "$root" fetch -q origin master
   git -C "$root" merge-base --is-ancestor "$commit" "$master" || refuse "$commit isn't on $master"
   git -C "$root" show "$commit:connector/release_keys" > "$b/release_keys"
-  n=0
-  for f in "$keydir"/*.pub; do n=$((n + 1)); done
-  [ "$n" -eq 2 ] || refuse "$keydir holds $n .pub files, not the two release keys"
-  cat "$keydir"/*.pub > "$tmp/folder"
-  trusted "$tmp/folder"
-  cat "$tmp/folder" "$tmp/signer" | awk 'NF >= 2 { print $2 }' | sort -u > "$tmp/want"
-  awk 'NF >= 2 { print $2 }' "$b/release_keys" | sort -u > "$tmp/have"
-  if ! cmp -s "$tmp/want" "$tmp/have"; then
-    refuse "connector/release_keys at $commit isn't the two keys in $keydir plus the one signing:
-$(diff "$tmp/want" "$tmp/have" | sed -n 's/^</  missing/p; s/^>/  extra/p')"
-  fi
+  folderkeys "$b/release_keys" "connector/release_keys at $commit"
   # The paper key, the one ssh-ed25519 key, signs only the release that replaces it.
   if [ "$(awk '{ print $1 }' "$tmp/signer")" = ssh-ed25519 ] && haskey "$kblob" "$tmp/folder"; then
     refuse "$keydir still holds this key: the paper key signs only the release that brings in its successor"
@@ -232,6 +247,7 @@ promote)
     refuse "$version's SHA256SUMS was signed with another key, which signs its promote too"
   abovereleased "$version"
   ordered "$now"
+  folderkeys "$d/release_keys" "$version's release_keys"
   rulehas "$version"
   airsigned "$version"
   releaseindex "$version" "$now" > "$tmp/promote-$now.json"
