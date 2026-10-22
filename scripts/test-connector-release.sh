@@ -746,7 +746,23 @@ refused "1.1.3 can't go below either" sign air1 1.1.3
 cp "$dry/canary.json" "$dry/sync/releases/1.1.1/"
 refused "1.1.3 can't go below either" release 1.1.3 1.0.6
 refused "1.1.3 can't go below either" release 1.1.3 1.1.1 1.1.0
-promote 1.1.1 air1
+# Even when whoever holds the bucket shows the Air the index before 1.1.1's promote.
+j="$dry/bucket/connector/latest.json"
+cp "$j" "$dry/before.json"
+cp "$j.sig" "$dry/before.json.sig"
+tick
+run sign air1 --promote 1.1.1
+run publish --promote 1.1.1
+cp "$j" "$dry/raised.json"
+cp "$j.sig" "$dry/raised.json.sig"
+cp "$dry/before.json" "$j"
+cp "$dry/before.json.sig" "$j.sig"
+tick
+refused "1.1.2 can't go below either" sign air1 --promote 1.1.2
+cp "$dry/raised.json" "$j"
+cp "$dry/raised.json.sig" "$j.sig"
+run nokey --check
+latest_is 1.1.1 air1
 tick
 refused "secure would go down" sign air1 --promote 1.1.2
 forge 1.1.2 promote air1 1.1.2

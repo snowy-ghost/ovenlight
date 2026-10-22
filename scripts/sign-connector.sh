@@ -309,6 +309,7 @@ promote)
   rulehas "$version"
   releaseindex "$version" "$now" > "$tmp/promote-$now.json"
   nodrop "$tmp/promote-$now.json"
+  keepsraised "$version" "$(field secure "$d/canary.json")" "$(field reinstallBelow "$d/canary.json")"
   newkeywait "$kblob" "$now"
   echo "promoting $version: latest.json becomes"
   echo "  $(cat "$tmp/promote-$now.json")"
