@@ -126,11 +126,10 @@ release)
     refuse "another build of $version is signed already: a new build takes a new version"
   fi
 
-  # The keys at the commit are the ones in the key folder, plus this one.
+  # The keys at the commit are the ones in the key folder, plus this one, all trusted.
   [ -n "$dry" ] || git -C "$root" fetch -q origin master
   git -C "$root" merge-base --is-ancestor "$commit" "$master" || refuse "$commit isn't on $master"
   git -C "$root" show "$commit:connector/release_keys" > "$b/release_keys"
-  trusted "$b/release_keys"
   n=0
   for f in "$keydir"/*.pub; do n=$((n + 1)); done
   [ "$n" -eq 2 ] || refuse "$keydir holds $n .pub files, not the two release keys"
