@@ -275,7 +275,7 @@ For a planned move to a new Air, the old Air signs R:
 4. R+1 drops the old key and is signed on the new Air. Its canary needs the live index
    signed with the new key (`--resign`). That and R+1's promote are refused until four
    weeks and four days after the last promote signed with the old key. Keep the old Air
-   until R+1 is promoted, since a pull before then is signed with the old key.
+   until R+1 is promoted, since a pull before R+1's `--resign` is signed with the old key.
 
 After a lost Air, the paper key signs R:
 

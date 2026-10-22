@@ -33,12 +33,11 @@
 # connector/release_keys or in docs/allowed_signers, which owners check releases with. So a
 # build with the mock release keys can't go out, nor one whose docs would let a fixture
 # key's signature pass. Every key docs/allowed_signers lists must be in the release keys'
-# namespaces, file,ovenlight-latest, so no old git key is left there.
-# Notarization uses an App Store
-# Connect API key named by ASC_KEY_ID, ASC_ISSUER_ID and ASC_KEY_PATH in the environment.
-# Over SSH, unlock the login keychain first. Windows signing uses jsign (brew install jsign)
-# and the Azure CLI, signed in (az login) as someone with the Artifact Signing Certificate
-# Profile Signer role on the profile below.
+# namespaces, file,ovenlight-latest, so no old git key is left there. Notarization uses an
+# App Store Connect API key named by ASC_KEY_ID, ASC_ISSUER_ID and ASC_KEY_PATH in the
+# environment. Over SSH, unlock the login keychain first. Windows signing uses jsign (brew
+# install jsign) and the Azure CLI, signed in (az login) as someone with the Artifact
+# Signing Certificate Profile Signer role on the profile below.
 set -euo pipefail
 
 IDENTITY="Developer ID Application: Snowy Ghost LLC (A84T8TANK8)"
