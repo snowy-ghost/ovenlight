@@ -369,7 +369,7 @@ func TestUpdaterWaitsTwoDays(t *testing.T) {
 		if got := srv.count(archive) > before; got != want.download {
 			t.Errorf("%s: downloaded %v", v, got)
 		}
-		if u := readUpdateView(dir, v, true); u.NeedsScript != want.script || (u.Pending != "") != (v == "1.0.9" || v == "1.1.5") ||
+		if u := readUpdateView(dir, v, true, at(1, 9, 0)); u.NeedsScript != want.script || (u.Pending != "") != (v == "1.0.9" || v == "1.1.5") ||
 			u.BelowSecure != (v == "1.0.9" || v == "1.0.5") {
 			t.Errorf("%s: %+v", v, u)
 		}
@@ -403,7 +403,7 @@ func TestUpdaterWaitsTwoDays(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(tu.bin(), "ovenlight.download")); err == nil {
 		t.Error("the download was kept")
 	}
-	u := readUpdateView(dir, "1.1.5", true) // from the night after it's due
+	u := readUpdateView(dir, "1.1.5", true, at(2, 9, 1)) // from the night after it's due
 	if u.Pending != "1.2.0" || !u.InstallAfter.Equal(at(3, 2, 0)) || !u.InstallBy.Equal(at(4, 2, 0)) {
 		t.Errorf("%+v", u)
 	}
@@ -525,7 +525,7 @@ func TestUpdaterSecurityFixBusy(t *testing.T) {
 	tu := newTestUpdater(t, srv, t.TempDir(), "1.1.5", at(0, 9, 0), false)
 	tu.st.Minute = 10 * 60 // its night starts at 02:00
 	tu.busyAt(at(0, 9, 0))
-	if u := readUpdateView(tu.d.stateDir, "1.1.5", true); !u.InstallAfter.Equal(at(0, 9, 0)) || !u.InstallBy.Equal(at(1, 2, 0)) {
+	if u := readUpdateView(tu.d.stateDir, "1.1.5", true, tu.clock.t); !u.InstallAfter.Equal(at(0, 9, 0)) || !u.InstallBy.Equal(at(1, 2, 0)) {
 		t.Errorf("%+v", u)
 	}
 	tu.busyAt(at(1, 1, 59))
@@ -558,7 +558,7 @@ func TestUpdaterFetchBeforeTheSwap(t *testing.T) {
 	if len(tu.swaps) != 0 || !bytes.Equal(tu.st.Index, pull) {
 		t.Errorf("swapped to a release the index no longer names: %+v", tu.swaps)
 	}
-	if u := readUpdateView(tu.d.stateDir, "1.1.5", true); u.Pending != "1.1.9" || !u.InstallAfter.Equal(tu.clock.t.Add(48*time.Hour)) {
+	if u := readUpdateView(tu.d.stateDir, "1.1.5", true, tu.clock.t); u.Pending != "1.1.9" || !u.InstallAfter.Equal(tu.clock.t.Add(48*time.Hour)) {
 		t.Errorf("after the pull: %+v", u)
 	}
 }
@@ -599,7 +599,7 @@ func TestUpdaterSwapFailure(t *testing.T) {
 	}
 	// It's tried again the next night, busy or not: a computer that's never quiet would
 	// otherwise take it only every other night.
-	u := readUpdateView(tu.d.stateDir, "1.1.5", true)
+	u := readUpdateView(tu.d.stateDir, "1.1.5", true, tu.clock.t)
 	if u.Failure == nil || u.Pending != "1.2.0" || !u.InstallAfter.Equal(at(4, 2, 0)) || !u.InstallBy.Equal(at(4, 2, 0)) {
 		t.Errorf("%+v", u)
 	}
@@ -608,14 +608,14 @@ func TestUpdaterSwapFailure(t *testing.T) {
 	if srv.count(archive) != n+1 || tu.st.Failed.Count != 2 {
 		t.Errorf("the next night: %d downloads, %+v", srv.count(archive)-n, tu.st.Failed)
 	}
-	if u := readUpdateView(tu.d.stateDir, "1.2.0", true); u.Failure != nil {
+	if u := readUpdateView(tu.d.stateDir, "1.2.0", true, tu.clock.t); u.Failure != nil {
 		t.Error("a failure of the running version is shown")
 	}
 	// Once the index no longer names it, a pull, its failure isn't shown.
 	srv.publish("1.1.9", "1.1.0", "1.1.0", 101)
 	tu.st.NextCheck = time.Time{}
 	tu.pollAt(at(4, 9, 0))
-	if u := readUpdateView(tu.d.stateDir, "1.1.5", true); u.Failure != nil || u.Pending != "1.1.9" {
+	if u := readUpdateView(tu.d.stateDir, "1.1.5", true, tu.clock.t); u.Failure != nil || u.Pending != "1.1.9" {
 		t.Errorf("after a pull: %+v", u)
 	}
 }
@@ -677,7 +677,7 @@ func TestUpdaterClockBehind(t *testing.T) {
 		tu.sleepUntil(at(0, 9, 30)) // put right
 		tu.busyAt(at(0, 9, 45))
 		tu.busyAt(at(0, 9, 46))
-		if u := readUpdateView(tu.d.stateDir, "1.1.5", true); len(tu.swaps) != 0 || !u.InstallAfter.Equal(at(3, 2, 0)) || !u.InstallBy.Equal(at(4, 2, 0)) {
+		if u := readUpdateView(tu.d.stateDir, "1.1.5", true, tu.clock.t); len(tu.swaps) != 0 || !u.InstallAfter.Equal(at(3, 2, 0)) || !u.InstallBy.Equal(at(4, 2, 0)) {
 			t.Errorf("%s: %d swaps, %+v", name, len(tu.swaps), u)
 		}
 	}
@@ -986,19 +986,30 @@ func TestUpdateLines(t *testing.T) {
 	}
 }
 
-// Once a release's first night has passed busy, status names the next night.
-func TestInstallsAfterTheFirstNight(t *testing.T) {
+// Once an update's moment has come, status names now, or for a regular release outside
+// the night the start of the next, in its text and its JSON alike.
+func TestInstallsFromNow(t *testing.T) {
 	if updateHour != time.Hour {
 		t.Skip("a compressed schedule")
 	}
-	u := &updateView{Pending: "1.2.0", InstallAfter: at(0, 3, 0), InstallBy: at(2, 2, 0), night: nightStart} // due at 03:00, in its night
-	for now, want := range map[time.Time]string{
-		at(0, 4, 0): "at a quiet moment from " + when(at(0, 3, 0)) + ",",
-		at(0, 9, 0): "at a quiet moment from " + when(at(1, 2, 0)) + ",",
-		at(1, 9, 0): "at " + when(at(2, 2, 0)) + ", busy or not",
+	dir := t.TempDir()
+	for _, c := range []struct {
+		secure    string
+		seen, now time.Time
+		from      time.Time
+	}{
+		{"1.1.0", at(-2, 3, 0), at(0, 4, 0), at(0, 4, 0)}, // due at 03:00, in its night
+		{"1.1.0", at(-2, 3, 0), at(0, 9, 0), at(1, 2, 0)},
+		{"1.1.0", at(-2, 3, 0), at(1, 2, 30), at(1, 2, 30)},
+		{"1.1.0", at(-2, 3, 0), at(1, 9, 0), at(2, 2, 0)},  // busy or not from then
+		{"1.2.0", at(0, 9, 0), at(0, 14, 0), at(0, 14, 0)}, // a security fix
 	} {
-		if got := u.installs(now); !strings.Contains(got, want) {
-			t.Errorf("at %v: %s", now, got)
+		recordFile(dir, func(st *updateState) {
+			st.Index, st.Seen, st.Minute = testIndex("1.2.0", c.secure, "1.1.0", 100, "x"), c.seen, 0 // its night starts at 02:00
+		})
+		u := readUpdateView(dir, "1.1.5", true, c.now)
+		if got := u.installs(c.now); !u.InstallAfter.Equal(c.from) || !strings.Contains(got, when(c.from)) {
+			t.Errorf("%s at %v: from %v, %s", c.secure, c.now, u.InstallAfter, got)
 		}
 	}
 }

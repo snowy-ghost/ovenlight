@@ -470,8 +470,9 @@ func runDoctor(cfg *Config, stateDir, configPath string) []Check {
 	} else {
 		checks = append(checks, Check{ID: "daemon", Status: statusOK, Message: fmt.Sprintf("running (pid %d)", reply.PID)})
 	}
-	u, v := daemonUpdate(stateDir, reply)
-	if c := updateFinding(u, v, reply != nil, time.Now()); c != nil {
+	now := time.Now()
+	u, v := daemonUpdate(stateDir, reply, now)
+	if c := updateFinding(u, v, reply != nil, now); c != nil {
 		checks = append(checks, *c)
 	}
 	if len(cfg.Apps) == 0 {

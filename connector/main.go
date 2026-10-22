@@ -907,7 +907,7 @@ func collectStatus(p *paths) (*statusOut, error) {
 		return nil, daemonErr
 	}
 	out := &statusOut{Version: version(), Daemon: reply != nil, Apps: []appStatus{}}
-	out.Update, _ = daemonUpdate(p.state, reply)
+	out.Update, _ = daemonUpdate(p.state, reply, time.Now())
 	live := map[string]NodeStatus{}
 	var processes map[string]ProcessStatus
 	if reply != nil {

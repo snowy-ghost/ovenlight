@@ -97,7 +97,7 @@ func TestTrialSecondStart(t *testing.T) {
 	if f.Version != "1.2.0" || !f.At.Equal(clock.t) || f.Count != 1 || !strings.Contains(f.Error, "started again within its trial") {
 		t.Errorf("%+v", f)
 	}
-	if u := readUpdateView(dir, "1.1.5", true); u.Failure == nil {
+	if u := readUpdateView(dir, "1.1.5", true, time.Now()); u.Failure == nil {
 		t.Error("status doesn't show the rollback")
 	}
 }
