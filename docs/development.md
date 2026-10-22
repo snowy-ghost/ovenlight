@@ -163,8 +163,9 @@ serve again and `ovenlight status` shows 1.2.0 running with a check made since i
 A release that raises `reinstallBelow` passes once `update now` says it needs its install
 script, the mini installs it by hand from `connector/1.2.0/`
 ([connector.md](connector.md#install-a-release-by-hand)), and status shows a check made
-since. A release whose canary fails is never promoted: fix it under a new version, since a
-published folder never changes.
+since. A canary that rolls back says why in the mini's `~/Library/Logs/ovenlight.log`, on
+the line starting `updates: rolling back from 1.2.0`. A release whose canary fails is never
+promoted: fix it under a new version, since a published folder never changes.
 
 Then promote it. Sign the promote on the Air:
 
