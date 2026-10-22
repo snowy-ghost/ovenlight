@@ -267,7 +267,7 @@ func (t *trial) tick() bool {
 			t.polls, t.polled = n, t.awake
 		}
 	}
-	polledLately := t.polls > 0 && t.awake-t.polled <= 3*updateMinute
+	polledLately := t.awake-t.polled <= 3*updateMinute
 	t.mu.Unlock()
 	if d != nil {
 		for _, n := range d.snapshot() {

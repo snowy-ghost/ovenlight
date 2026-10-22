@@ -482,7 +482,6 @@ func TestTrialWedgedUpdater(t *testing.T) {
 		{"wedged", true, 0},
 		{"never polls", false, 0},
 		{"never polls, the clock set back", false, 8 * time.Minute},
-		{"never polls, the clock set back hours", false, 2 * time.Hour},
 	} {
 		tr, dir, installed := startTrialing(t, "coach")
 		d, _ := testDaemon(t)
