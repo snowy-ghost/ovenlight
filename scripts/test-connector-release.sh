@@ -502,12 +502,10 @@ refused "docs/allowed_signers holds a release key whose private half is public" 
 # lines aren't keys, so with them alone beside a release key it goes on, to a later refusal.
 { echo "# a comment"; echo; awk '{ print "team@snowyghost.com namespaces=\"file\"", $1, $2 }' "$dry/private/stranger.pub"; } > "$repo/docs/allowed_signers"
 commit "an old git key left in allowed_signers"
-refused "lists a key in a namespace other than the release keys'" env -u OVENLIGHT_RELEASE_DRY \
-  HOME="$dry/home" "$repo/scripts/release-connector.sh" --unsigned 1.1.0 1.0.6 1.1.0
+refused "lists a key in a namespace other than the release keys'" release 1.1.0 1.0.6 1.1.0
 { echo "# a comment"; echo; awk '{ print "team@snowyghost.com namespaces=\"file,ovenlight-latest\"", $1, $2 }' "$dry/private/stranger.pub"; } > "$repo/docs/allowed_signers"
 commit "a release key and a comment"
-refused "secure (1.2.0) is newer than the release (1.1.0)" env -u OVENLIGHT_RELEASE_DRY \
-  HOME="$dry/home" "$repo/scripts/release-connector.sh" 1.1.0 1.2.0 1.1.0
+refused "secure (1.2.0) is newer than the release (1.1.0)" release 1.1.0 1.2.0 1.1.0
 signers air1 paper1
 keys air1 paper1
 refused "a dry run builds only with --unsigned" "$repo/scripts/release-connector.sh" 1.1.0 1.0.6 1.1.0

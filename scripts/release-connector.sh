@@ -32,8 +32,8 @@
 # scripts/testdata/release-keys, all of whose private halves are public, in a binary, in
 # connector/release_keys or in docs/allowed_signers, which owners check releases with. So a
 # build with the mock release keys can't go out, nor one whose docs would let a fixture
-# key's signature pass. Outside a dry run, every key docs/allowed_signers lists must be in
-# the release keys' namespaces, file,ovenlight-latest, so no old git key is left there.
+# key's signature pass. Every key docs/allowed_signers lists must be in the release keys'
+# namespaces, file,ovenlight-latest, so no old git key is left there.
 # Notarization uses an App Store
 # Connect API key named by ASC_KEY_ID, ASC_ISSUER_ID and ASC_KEY_PATH in the environment.
 # Over SSH, unlock the login keychain first. Windows signing uses jsign (brew install jsign)
@@ -90,7 +90,7 @@ public() {
 }
 public "$conn/release_keys"
 public "$root/docs/allowed_signers"
-if [ -z "$dry" ] && awk 'NF && $1 !~ /^#/ && $2 != "namespaces=\"file,ovenlight-latest\"" { bad = 1 } END { exit !bad }' "$root/docs/allowed_signers"; then
+if awk 'NF && $1 !~ /^#/ && $2 != "namespaces=\"file,ovenlight-latest\"" { bad = 1 } END { exit !bad }' "$root/docs/allowed_signers"; then
   refuse "docs/allowed_signers lists a key in a namespace other than the release keys', such as an old git key"
 fi
 
