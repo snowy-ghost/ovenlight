@@ -72,8 +72,7 @@ and Windows
 [x64](https://downloads.ovenlight.app/connector/latest/ovenlight-connector-windows-amd64.zip)
 and
 [Arm](https://downloads.ovenlight.app/connector/latest/ovenlight-connector-windows-arm64.zip).
-These links always point to the latest release. Each release from 1.0.1 on also stays at
-`https://downloads.ovenlight.app/connector/<version>/`. Unpack the archive if your browser
+These links always point to the latest release. Unpack the archive if your browser
 hasn't, then run `./install.sh` in its `ovenlight-connector-<version>` folder. On Windows,
 right-click that folder in File Explorer and choose Copy as path. Then, in PowerShell
 opened with Run as administrator, type `cd` and a space, paste the path, press Enter, and
