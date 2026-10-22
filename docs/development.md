@@ -275,8 +275,9 @@ For a planned move to a new Air, the old Air signs R:
    before R+1 can go out is signed there too and lists the same three keys.
 4. R+1 drops the old key and is signed on the new Air. Its canary needs the live index
    signed with the new key (`--resign`). That and R+1's promote are refused until four
-   weeks and four days after the last promote signed with the old key. Keep the old Air
-   until R+1 is promoted, since a pull before R+1's `--resign` is signed with the old key.
+   weeks and four days after R's promote, and a pull back below R starts the wait again at
+   the next promote. Keep the old Air until R+1 is promoted, since a pull before R+1's
+   `--resign` is signed with the old key.
 
 After a lost Air, the paper key signs R:
 
@@ -301,7 +302,8 @@ After a lost paper key, the Air signs R, which lists its own key and a new paper
 `backup.pub` out of `~/.ssh/ovenlight-release-keys/`, run key setup, and copy only its
 `index.json.release-2.sig` in under the next free number. Drop the old paper key's
 signature and its line in `allowed_signers`, since it signed no release. The Air's key
-signs on, so nothing waits and no R+1 follows.
+signs on, so nothing waits and no R+1 follows. If the Air is lost too, the new paper key's
+`--resign` and promote wait until four weeks and four days after R's promote.
 
 ## The iPhone app
 

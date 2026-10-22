@@ -240,22 +240,21 @@ verifyrule() {
 WAIT=$((32 * 86400))
 
 # newkeywait <blob> <now>: refuses a key that computers still on an older release can't check
-# yet. The newest promoted release that doesn't list the key was replaced by releases signed
-# with a key it does list, and the key waits until four weeks and four days after the last of
-# those promotes, so computers asleep through it have taken one.
+# yet. It waits until four weeks and four days after latest.json last began naming releases
+# that list it, so computers asleep on an older release have taken one. A pull back to one
+# that doesn't list it starts the wait again, and a promote signed by another key doesn't.
 newkeywait() {
-  local v old='' id s t last=0
+  local v old='' id from=''
   for v in $promoted; do
     if ! haskey "$1" "$records/$v/release_keys"; then old="$v"; fi
   done
   if [ -z "$old" ]; then return 0; fi
   for id in $published; do
-    case "$id" in */promote-*) ;; *) continue ;; esac
-    s="$(signer "$records/$id.json" "$records/$id.json.sig" ovenlight-latest)"
-    t="$(cat "$records/$id.published")"
-    if [ -n "$s" ] && haskey "${s#* }" "$records/$old/release_keys" && [ "$t" -gt "$last" ]; then last="$t"; fi
+    if ! haskey "$1" "$records/$(field latest "$records/$id.json")/release_keys"; then from=
+    elif [ -z "$from" ]; then from="$(cat "$records/$id.published")"; fi
   done
-  if [ "$2" -lt $((last + WAIT)) ]; then
-    refuse "$old doesn't list this key, and computers asleep on it may not have updated yet: not before $(date -r $((last + WAIT))), four weeks and four days after the last promote signed with a key it lists"
+  from="${from:-$2}"
+  if [ "$2" -lt $((from + WAIT)) ]; then
+    refuse "$old doesn't list this key, and computers asleep on it may not have updated yet: not before $(date -r $((from + WAIT))), four weeks and four days after latest.json began naming releases that list it"
   fi
 }

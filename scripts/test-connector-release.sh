@@ -341,6 +341,28 @@ build 1.1.2 1.0.6
 signfolder 1.1.2 paper1
 promote 1.1.2 paper1
 
+fresh lostpaper "a lost paper key, then a lost Air: the Air's promotes don't restart the new paper key's wait"
+keyfolder air1 paper1
+keys air1 paper1
+ship 1.1.0 1.0.6 air1 1.1.0
+# R lists the Air's key and a new paper key, whose wait starts at R's promote.
+keyfolder air1 paper2
+keys air1 paper2
+signers air1 paper2
+ship 1.1.1 1.0.6 air1
+tick
+refused "four weeks and four days" sign paper2 --resign
+backdate 33
+ship 1.1.2 1.0.6 air1
+# The Air is lost, and the new paper key signs what the next R needs at once, with paper1
+# standing in for the paper key after it.
+keyfolder air2 paper1
+keys air2 paper1 paper2
+build 1.1.3 1.0.6
+signfolder 1.1.3 paper2
+resign paper2 1.1.2
+promote 1.1.3 paper2
+
 fresh paperpull "the Air that signed the live index lost before its pull, which the paper key signs"
 keyfolder air1 paper1
 keys air1 paper1
