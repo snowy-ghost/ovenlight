@@ -185,7 +185,8 @@ That puts its files in `connector/latest/` and its index in `latest.json`, and e
 owner's two-day wait starts. A publish that fails partway is finished by running the same
 command again (a folder's before the next build replaces `build/release`). Until then the
 mini publishes no other promote, pull or resign. To drop one cut short that mustn't go
-out, delete its `.published` from its folder in `~/Sync/ovenlight/releases/` instead.
+out, delete its `.published` from its folder in `~/Sync/ovenlight/releases/` instead, then
+sign and publish a `--resign`, which puts the live release back in `connector/latest/`.
 `--pull`, the same way, takes the live release back out by publishing the index of the
 release before it, signed again. Computers that already took the pulled release keep it,
 since the connector never installs an older one, so the fix is the next release.

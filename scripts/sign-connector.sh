@@ -314,7 +314,8 @@ promote)
   echo "promoting $version: latest.json becomes"
   echo "  $(cat "$tmp/promote-$now.json")"
   sign ovenlight-latest "$tmp/promote-$now.json"
-  keep "$version" "$tmp/promote-$now.json" "$tmp/promote-$now.json.sig"
+  echo "$newest" > "$tmp/promote-$now.base"
+  keep "$version" "$tmp/promote-$now.json" "$tmp/promote-$now.json.sig" "$tmp/promote-$now.base"
   echo "signed: on the mini, scripts/publish-connector.sh --promote $version"
   await "$version/promote-$now"
   ;;

@@ -4,8 +4,8 @@
 # signature check follows.
 #
 # Every promote, pull and resign index sign-connector.sh signs sits in its release's folder
-# as <kind>-<serial>.json and its .sig, and here it's named <version>/<kind>-<serial>. A pull
-# or resign also notes, in <kind>-<serial>.base, the published index it was built on. Each
+# as <kind>-<serial>.json and its .sig, and here it's named <version>/<kind>-<serial>. Each
+# also notes, in <kind>-<serial>.base, the published index it was built on. Each
 # side reads only its own records. The Air's are its history,
 # ~/.ssh/ovenlight-release-keys/history/, which only sign-connector.sh writes, adding
 # <kind>-<serial>.seen, the time it first saw latest.json be that index. It sends what it

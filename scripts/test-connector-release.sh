@@ -121,7 +121,7 @@ refused() {
 release() { "$repo/scripts/release-connector.sh" --unsigned "$@"; }
 # sign <key> <option>...: signs on the Air, which never writes to its ~/Sync, so no link an
 # agent syncs there can redirect a write. What it sends the mini, in mini/, is then filed in
-# the records as Syncthing brings it.
+# the records, which stand in for the mini's own folder.
 sign() {
   local k="$1" s=0 d f t
   shift
@@ -428,6 +428,20 @@ resign air1 1.1.1
 records=("$dry"/sync/releases/1.1.1/promote-*.live)
 [ ${#records[@]} -eq 1 ] || fail "the promote cut short once latest.json was it isn't marked live"
 pass "the resign marks live the promote cut short once latest.json was it"
+# A promote cut short, then finished after the Air signed the next on the one before it.
+build 1.1.2 1.0.6
+signfolder 1.1.2 air1
+tick
+run sign air1 --promote 1.1.2
+chmod 444 "$dry/bucket/connector/latest.json"
+if publish --promote 1.1.2 > "$dry/log" 2>&1; then fail "the upload of latest.json didn't fail"; fi
+chmod 644 "$dry/bucket/connector/latest.json"
+build 1.1.3 1.0.6
+signfolder 1.1.3 air1
+tick
+run sign air1 --promote 1.1.3
+run publish --promote 1.1.2
+refused "and 1.1.2/promote-" publish --promote 1.1.3
 
 fresh lost "a lost Air: its history imported, then the backup key brings in two new keys, and signs a pull"
 keyfolder air1 paper1
