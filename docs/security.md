@@ -485,17 +485,17 @@ A release is built on one Mac from a commit on this repository's master branch, 
 on another. Touch ID approves a signature but doesn't show what is signed, so the signing
 script prints the commit, the index and the checksums first. It signs only a commit whose
 `connector/release_keys` lists exactly the keys that Mac keeps plus the key signing it, so
-the keys a release trusts never come from the commit alone. It re-signs only what its own
-keys signed, on top of the index it signed last, so the files it shares with the Mac that
-builds can't change what it signs. Even so, a signature vouches for what is on master and
-for the Mac that built it, and no more. Whoever can sign a release, or get code onto
-master and through that Mac, can run code on your computer within a day (an index that
-raises `secure` skips the two-day wait), as you, beside your Tailscale API credential, and
-on Windows with administrator rights. `ovenlight update off` opts out.
+the keys a release trusts never come from the commit alone. It keeps its own record of
+what it signed and which index went live, and checks the live index against it before
+every signature, so the files it shares with the Mac that builds can't change what it
+signs. Even so, a signature vouches for what is on master and for the Mac that built it,
+and no more. Whoever can sign a release, or get code onto master and through that Mac, can
+run code on your computer within a day (an index that raises `secure` skips the two-day
+wait), as you, beside your Tailscale API credential, and on Windows with administrator
+rights. `ovenlight update off` opts out.
 
 When one key is lost, the next release, signed with the other, replaces it. The signing
-script then waits four weeks and four days before signing with only the new key, and
-whoever can change the files it shares with the Mac that builds can shorten that wait. A
+script then waits four weeks and four days before signing with only the new key. A
 computer that stays off, or has updates off, for four weeks after that release comes out
 can't verify the releases signed with only the new key: its checks fail, `doctor` warns
 after seven days, and it needs one install by hand. If both keys were lost, every computer
