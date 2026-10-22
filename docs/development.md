@@ -295,6 +295,12 @@ After a lost Air, the paper key signs R:
 4. R+1 drops the old paper key and is signed with the new Touch ID key. Its `--resign`
    and promote wait the same four weeks and four days.
 
+After a lost paper key, the Air signs R, which lists its own key and a new paper key. Move
+`backup.pub` out of `~/.ssh/ovenlight-release-keys/`, run key setup, and copy only its
+`index.json.release-2.sig` in under the next free number. Drop the old paper key's
+signature and its line in `allowed_signers`, since it signed no release. The Air's key
+signs on, so nothing waits and no R+1 follows.
+
 ## The iPhone app
 
 Building the app needs Xcode 26 or later, for the Icon Composer icon and the iOS 26 glass
