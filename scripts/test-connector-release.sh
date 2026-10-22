@@ -40,7 +40,7 @@ fresh() {
   echo "$2"
   dry="$tmp/$1"
   repo="$dry/repo"
-  mkdir -p "$dry"/{build,sync/releases,keys,private,bucket/connector/latest,headers/connector/latest} "$repo"
+  mkdir -p "$dry"/{build,sync/releases,mini,keys,private,bucket/connector/latest,headers/connector/latest} "$repo"
   touch "$dry/.release-dry-run"
   export OVENLIGHT_RELEASE_DRY="$dry" ahead=0
   echo '{"latest": "1.0.9", "secure": "1.0.6"}' > "$dry/bucket/connector/latest.json"
@@ -119,7 +119,20 @@ refused() {
 }
 
 release() { "$repo/scripts/release-connector.sh" --unsigned "$@"; }
-sign() { local k="$1"; shift; "$repo/scripts/sign-connector.sh" --key "$dry/private/$k" "$@"; }
+# sign <key> <option>...: signs on the Air. What it sends the mini, in mini/, is then filed
+# in the records as Syncthing brings it, replacing a link there rather than writing through.
+sign() {
+  local k="$1" s=0 d f t
+  shift
+  "$repo/scripts/sign-connector.sh" --key "$dry/private/$k" "$@" || s=$?
+  for d in "$dry"/mini/releases/*; do
+    t="$dry/sync/releases/${d##*/}"
+    if [ -L "$t" ]; then rm "$t"; fi
+    mkdir -p "$t"
+    for f in "$d"/*; do rm -f "$t/${f##*/}"; mv "$f" "$t/"; done
+  done
+  return $s
+}
 nokey() { "$repo/scripts/sign-connector.sh" "$@"; }
 publish() { "$repo/scripts/publish-connector.sh" "$@"; }
 
@@ -321,8 +334,6 @@ run sign air1 --resign
 lastsigned 1.1.1
 mv "$dry"/hidden/* "$d/1.1.1/"
 for f in "$d"/1.1.2/promote-*; do mv "$f" "$d/1.1.1/"; done
-run publish --resign
-latest_is 1.1.1 air1
 refused "1.1.2 isn't the live release (1.1.1)" sign air1 --pull 1.1.2
 forge 1.1.2 pull air1 1.1.1
 refused "1.1.2 isn't the live release (1.1.1)" publish --pull 1.1.2
@@ -332,9 +343,6 @@ mv "$d"/1.1.1/pull-* "$dry/hidden/"
 tick
 run sign air1 --resign
 lastsigned 1.1.0
-mv "$dry"/hidden/* "$d/1.1.1/"
-run publish --resign
-latest_is 1.1.0 air1
 
 fresh stale "a pull signed and not yet published"
 keyfolder air1 paper1
@@ -347,7 +355,6 @@ run sign air1 --pull 1.1.1
 build 1.1.2 1.0.6
 signfolder 1.1.2 air1
 tick
-refused "1.1.1/pull-" sign air1 --resign
 refused "isn't published: publish it on the mini, or sign a fresh pull" sign air1 --promote 1.1.2
 pull 1.1.1 air1 1.1.0
 # An agent holding ~/Sync swaps an archive's hash, signs SHA256SUMS and the canary index to
@@ -376,7 +383,7 @@ pull 1.1.1 air1 1.1.0
 refused "sign a fresh one" publish --promote 1.1.2
 promote 1.1.2 air1
 
-fresh rerun "a publish that fails after writing its record, finished by running it again"
+fresh rerun "a publish that fails after writing its record, finished by running it again or dropped"
 keyfolder air1 paper1
 keys air1 paper1
 build 1.1.0 1.0.6 1.1.0
@@ -396,11 +403,35 @@ run publish --promote 1.1.0
 grep -q "^finishing the publish of 1.1.0/promote-" "$dry/log" || fail "the rerun didn't finish the publish"
 pass "the rerun finished it: $(head -1 "$dry/log")"
 latest_is 1.1.0 air1
+# A promote cut short and never finished, which the Air never saw: no other index goes up
+# until it's finished, or dropped by deleting its .published.
+build 1.1.1 1.0.6
+signfolder 1.1.1 air1
+tick
+run sign air1 --promote 1.1.1
+chmod 444 "$dry/bucket/connector/latest.json"
+if publish --promote 1.1.1 > "$dry/log" 2>&1; then fail "the upload of latest.json didn't fail"; fi
+chmod 644 "$dry/bucket/connector/latest.json"
+tick
+run sign air1 --resign
+refused "the publish of 1.1.1/promote-" publish --resign
+rm "$dry"/sync/releases/1.1.1/promote-*.published
+run publish --resign
+run nokey --check
+latest_is 1.1.0 air1
+# One cut short once latest.json is it is marked live by the next.
+promote 1.1.1 air1
+rm "$dry"/sync/releases/1.1.1/promote-*.live
+resign air1 1.1.1
+records=("$dry"/sync/releases/1.1.1/promote-*.live)
+[ ${#records[@]} -eq 1 ] || fail "the promote cut short once latest.json was it isn't marked live"
+pass "the resign marks live the promote cut short once latest.json was it"
 
 fresh lost "a lost Air: its history imported, then the backup key brings in two new keys, and signs a pull"
 keyfolder air1 paper1
 keys air1 paper1
 ship 1.1.0 1.0.6 air1 1.1.0
+cp -R "$dry/keys/history" "$dry/stale"
 ship 1.1.1 1.0.6 air1
 pull 1.1.1 air1 1.1.0
 # The replacement Air starts with an empty key folder, and imports its history with the keys
@@ -408,7 +439,17 @@ pull 1.1.1 air1 1.1.0
 newair
 cp "$fixtures/air2.pub" "$dry/keys/touchid.pub"
 cat "$fixtures/air1.pub" "$fixtures/paper1.pub" > "$dry/import"
-refused "isn't an index in" nokey --check
+# A backup of the history from before the last promote is deleted, then imported.
+cp -R "$dry/stale" "$dry/keys/history"
+refused "After a lost Air, delete it and run --import" nokey --check
+refused "once it's deleted" nokey --import "$dry/import"
+rm -r "$dry/keys/history"
+# A pull renamed by an agent holding ~/Sync, so it sorts before the promote it pulls, is
+# skipped, and latest.json, which is that pull, isn't in what's imported.
+d="$dry/sync/releases/1.1.1"
+for f in "$d"/pull-*; do mv "$f" "$d/pull-0-${f##*/pull-}"; done
+refused "skipped 1.1.1/pull-0-" nokey --import "$dry/import"
+for f in "$d"/pull-0-*; do mv "$f" "$d/pull-${f##*/pull-0-}"; done
 # An agent holding ~/Sync deletes the pull's record of being published, makes up a promote of
 # 1.1.1 signed with another key, and points 1.1.0's commit at one whose release_keys lists the
 # new key.
@@ -482,6 +523,27 @@ build 1.1.5 1.0.6
 signfolder 1.1.5 paper2
 resign paper2 1.1.4
 promote 1.1.5 paper2
+
+fresh links "links an agent syncs into ~/Sync, which the Air never writes through"
+keyfolder air1 paper1
+keys air1 paper1
+ship 1.1.0 1.0.6 air1 1.1.0
+# One links a release's folder to a folder of the Air's history, and one a file the Air
+# signs to another file of the Air's.
+d="$dry/sync/releases"
+cp -R "$dry/keys/history/1.1.0" "$dry/before"
+echo "the Air's own" > "$dry/airfile"
+ln -s "$dry/keys/history/1.1.0" "$d/1.1.1"
+build 1.1.1 1.0.6
+signfolder 1.1.1 air1
+mkdir "$d/1.1.2"
+ln -s "$dry/airfile" "$d/1.1.2/release_keys"
+build 1.1.2 1.0.6
+signfolder 1.1.2 air1
+diff -r "$dry/before" "$dry/keys/history/1.1.0" > /dev/null || fail "a link in ~/Sync wrote into the Air's history"
+[ "$(cat "$dry/airfile")" = "the Air's own" ] || fail "a link in ~/Sync wrote into a file of the Air's"
+pass "links in ~/Sync leave the Air's history and files as they were"
+promote 1.1.2 air1
 
 fresh paperpull "the Air that signed the live index lost before its pull, which the paper key signs"
 keyfolder air1 paper1
@@ -690,7 +752,23 @@ refused "1.1.3 can't go below either" sign air1 1.1.3
 cp "$dry/canary.json" "$dry/sync/releases/1.1.1/"
 refused "1.1.3 can't go below either" release 1.1.3 1.0.6
 refused "1.1.3 can't go below either" release 1.1.3 1.1.1 1.1.0
-promote 1.1.1 air1
+# Even when whoever holds the bucket shows the Air the index before 1.1.1's promote.
+j="$dry/bucket/connector/latest.json"
+cp "$j" "$dry/before.json"
+cp "$j.sig" "$dry/before.json.sig"
+tick
+run sign air1 --promote 1.1.1
+run publish --promote 1.1.1
+cp "$j" "$dry/raised.json"
+cp "$j.sig" "$dry/raised.json.sig"
+cp "$dry/before.json" "$j"
+cp "$dry/before.json.sig" "$j.sig"
+tick
+refused "1.1.2 can't go below either" sign air1 --promote 1.1.2
+cp "$dry/raised.json" "$j"
+cp "$dry/raised.json.sig" "$j.sig"
+run nokey --check
+latest_is 1.1.1 air1
 tick
 refused "secure would go down" sign air1 --promote 1.1.2
 forge 1.1.2 promote air1 1.1.2
@@ -763,6 +841,16 @@ refused "is a dry-run fixture key" env -u OVENLIGHT_RELEASE_DRY HOME="$dry/home"
   "$repo/scripts/sign-connector.sh" --key "$dry/private/air1" 1.1.0
 refused "isn't the two keys in" sign paper2 1.1.0
 refused "the paper key signs only the release that brings in its successor" sign paper1 1.1.0
+# A SHA256SUMS line that names no archive, here one that adds a secure of its own to the
+# index, which Go would take over the first.
+b="$dry/build"
+cp "$b/SHA256SUMS" "$b/index.json" "$dry/"
+echo "$(printf 'f%.0s' {1..64})  x\",\"secure\":\"1.0.0\",\"z" >> "$b/SHA256SUMS"
+{ printf '{"latest": "1.1.0", "secure": "1.0.6", "reinstallBelow": "1.1.0", "serial": 0, "archives": {'
+  awk 'NR > 1 { printf ", " } { printf "\"%s\": \"%s\"", $2, $1 }' "$b/SHA256SUMS"
+  printf '}}\n'; } > "$b/index.json"
+refused "holds a line that isn't an archive's SHA-256 and name" sign air1 1.1.0
+cp "$dry/SHA256SUMS" "$dry/index.json" "$b/"
 # An archive with another version's folder in it.
 a=ovenlight-connector-linux-amd64.tar.gz
 old="$(awk -v a="$a" '$2 == a { print $1 }' "$dry/build/SHA256SUMS")"

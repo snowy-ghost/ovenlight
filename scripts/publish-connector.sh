@@ -15,9 +15,10 @@
 # alone, once its connector-v<version> tag is the commit it was built from, here and on
 # origin: nothing points at it until its promote. A promote, pull or resign records itself
 # in ~/Sync/ovenlight/releases/ before it uploads anything, so one that fails partway is
-# finished by running it again, and it goes up only when its serial is the highest signed
-# so far. latest/ and latest.json are uploaded fresh, never copied with a version's year-long
-# cache. Uploads go through wrangler, signed in with `npx wrangler@4.147.0 login` or
+# finished by running it again, and no other goes up until it is, or until its .published
+# is deleted, which drops it. It goes up only when its serial is the highest signed so far.
+# latest/ and latest.json are uploaded fresh, never copied with a version's year-long cache.
+# Uploads go through wrangler, signed in with `npx wrangler@4.147.0 login` or
 # CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID.
 set -euo pipefail
 
@@ -49,12 +50,13 @@ cap="$(sed -En 's|^const maxArchiveBytes = ([0-9][0-9 <]*)(//.*)?$|\1|p' "$root/
 cap=$((cap))
 
 # fetch <key> <file>: saves an object of the bucket, or fails when it doesn't exist (404).
-# Any other answer, or none, stops the publish, since it would skip a guard.
+# Any other answer, or none, stops the publish, since it would skip a guard. A query after
+# the key skips the cache.
 fetch() {
   local code
   if [ -n "$dry" ]; then
-    [ -f "$dry/bucket/$1" ] || return 1
-    cp "$dry/bucket/$1" "$2"
+    [ -f "$dry/bucket/${1%%\?*}" ] || return 1
+    cp "$dry/bucket/${1%%\?*}" "$2"
     return
   fi
   code="$(curl -sS -o "$2" -w '%{http_code}' "$SITE/$1")" || refuse "couldn't fetch $SITE/$1"
@@ -154,6 +156,18 @@ begin() {
   echo "finishing the publish of $1 begun $(date -r "$(cat "$records/$1.published")")"
 }
 
+# settled <id>: refuses another index while the publish of the newest one published was cut
+# short, so latest.json isn't it, since what's live would then differ here and on the Air.
+# One whose upload went through is marked live.
+settled() {
+  if [ -z "$newest" ] || [ "$newest" = "$1" ] || [ -f "$records/$newest.live" ]; then return 0; fi
+  if fetch "connector/latest.json?$(date +%s)" "$tmp/live.json" && cmp -s "$tmp/live.json" "$records/$newest.json"; then
+    date +%s > "$records/$newest.live"
+    return
+  fi
+  refuse "the publish of $newest was cut short: run it again, or delete $records/$newest.published if it mustn't go out"
+}
+
 # based <id>: refuses an index built on one that's no longer the newest published.
 based() {
   [ "$(cat "$records/$1.base")" = "$newest" ] ||
@@ -211,6 +225,7 @@ promote)
   "$version"/promote-*) id="$newest" ;;
   *) id="$(newestof "$version/promote-*")" ;;
   esac
+  settled "$id"
   idx="$records/$id.json"
   releaseindex "$version" "$(serialof "$id")" | cmp -s - "$idx" || refuse "$id isn't $version's index"
   # Its key signed the release's SHA256SUMS, so the one rule, accepting it, accepts both.
@@ -235,6 +250,7 @@ promote)
 
 pull)
   id="$(newestof "$version/pull-*")"
+  settled "$id"
   idx="$records/$id.json"
   target="$(field latest "$idx")"
   [ "$target" != "$version" ] || refuse "$id names $version, the release it pulls"
@@ -260,6 +276,7 @@ pull)
 
 resign)
   id="$(newestof "*/resign-*")"
+  settled "$id"
   idx="$records/$id.json"
   version="${id%%/*}"
   releaseindex "$version" "$(serialof "$id")" | cmp -s - "$idx" || refuse "$id isn't $version's index"
@@ -268,7 +285,7 @@ resign)
     verify "$idx" "$idx.sig" ovenlight-latest "$f" || refuse "$id isn't signed by a key $f lists"
   done
   k="$(signer "$idx" "$idx.sig" ovenlight-latest)"
-  # latest/ goes up again, so a promote cut short before it can't leave a mix of releases.
+  # latest/ goes up again, since a promote cut short and then dropped may have left its files.
   fetchrelease "$version"
   documented "$version" "$idx"
   if ! begin "$id"; then

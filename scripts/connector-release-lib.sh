@@ -8,18 +8,21 @@
 # or resign also notes, in <kind>-<serial>.base, the published index it was built on. Each
 # side reads only its own records. The Air's are its history,
 # ~/.ssh/ovenlight-release-keys/history/, which only sign-connector.sh writes, adding
-# <kind>-<serial>.seen, the time it first saw latest.json be that index. It copies what it
-# signs to the mini's, ~/Sync/ovenlight/releases/, where publish-connector.sh adds
-# <kind>-<serial>.published, holding the time its publish began, before it uploads it, and
-# <kind>-<serial>.live, the time latest.json began naming it, once it has. A script that
-# sets air=1 before sourcing this reads the Air's.
+# <kind>-<serial>.seen, the time it first saw latest.json be that index. It sends what it
+# signs with scp to the mini's records, ~/Sync/ovenlight/releases/ there, and never writes
+# to the Air's own ~/Sync, where a link an agent syncs would write into its files. There
+# publish-connector.sh adds <kind>-<serial>.published, holding the time its publish began,
+# before it uploads it, and <kind>-<serial>.live, the time latest.json began naming it, once
+# it has. A script that sets air=1 before sourcing this reads the Air's.
 #
 # OVENLIGHT_RELEASE_DRY=<folder> makes a dry run, which scripts/test-connector-release.sh does
 # in folders it marks with a .release-dry-run file, which this requires: that folder stands
 # in for everything outside the repo (build/release on the mini, the records, the release
 # key folder and the bucket), no real one is reachable, and only fixture keys are trusted:
 # those in scripts/testdata/release-keys and connector/testdata/releasekey, whose private
-# halves are public. Outside a dry run they never are.
+# halves are public. Outside a dry run they never are. What the Air sends the mini lands in
+# its mini/ folder, apart from the Air's files as the real mini is, and the harness files it
+# in sync/releases.
 shopt -s nullglob
 
 refuse() { echo "$*" >&2; exit 1; }
@@ -35,6 +38,7 @@ if [ -n "${OVENLIGHT_RELEASE_DRY+set}" ]; then
   release="$dry/build"         # build/release, on the mini
   minirelease="$dry/build"     # the same, from the Air
   sync="$dry/sync/releases"    # ~/Sync/ovenlight/releases
+  minisync="$dry/mini"         # ~/Sync/ovenlight on the mini, from the Air
   keydir="$dry/keys"           # ~/.ssh/ovenlight-release-keys
   master=master
 else
@@ -42,6 +46,7 @@ else
   release="$root/build/release"
   minirelease="mini:src/ovenlight/build/release"
   sync="$HOME/Sync/ovenlight/releases"
+  minisync="mini:Sync/ovenlight"
   keydir="$HOME/.ssh/ovenlight-release-keys"
   master=origin/master
 fi
@@ -79,6 +84,8 @@ index() {
   { atleast "$2" "$1" && atleast "$3" "$1"; } ||
     refuse "an index's latest ($1) can't be below its secure ($2) or reinstallBelow ($3)"
   [[ "$4" =~ ^[0-9]+$ ]] || refuse "an index's serial is a number of seconds, not \"$4\""
+  ! grep -Evq '^[0-9a-f]{64}  ovenlight-connector-[a-z0-9-]+\.(tar\.gz|zip)$' "$5" ||
+    refuse "$5 holds a line that isn't an archive's SHA-256 and name"
   s="$(printf '{"latest": "%s", "secure": "%s", "reinstallBelow": "%s", "serial": %s, "archives": {' "$1" "$2" "$3" "$4"
     awk 'NR > 1 { printf ", " } { printf "\"%s\": \"%s\"", $2, $1 }' "$5"
     printf '}}')"
@@ -155,7 +162,7 @@ ordered() {
   local id
   for id in $signed; do
     if [ "$id" != "${2:-}" ] && [ "$(serialof "$id")" -ge "$1" ]; then
-      refuse "$id is signed with a serial at or above $1: sign a fresh one"
+      refuse "$id is signed with a serial at or above $1: sign a fresh one after $(date -r "$(serialof "$id")")"
     fi
   done
 }
@@ -275,10 +282,10 @@ WAIT=$((32 * 86400))
 # release can't check yet. It waits until four weeks and four days after latest.json last
 # began naming releases that list it, so computers asleep on an older release have taken
 # one. A pull back to one that doesn't list it starts the wait again, and a promote signed
-# by another key doesn't.
+# by another key doesn't. With nothing published in the records, it counts what's signed.
 newkeywait() {
   local id v s old='' from=''
-  for id in $published; do
+  for id in ${published:-$signed}; do
     v="$(field latest "$records/$id.json")"
     if ! haskey "$1" "$records/$v/release_keys"; then old="$v" from=
     elif [ -z "$from" ] && [ -f "$records/$id.$since" ]; then

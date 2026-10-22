@@ -22,14 +22,14 @@
 #       records
 #
 # Each index gets the time now as its serial. What it signs goes in this Air's history,
-# ~/.ssh/ovenlight-release-keys/history/, the only record it reads, and is copied to the
-# release's folder in ~/Sync/ovenlight/releases/, which scripts/publish-connector.sh
-# publishes from on the mini. Touch ID shows a prompt and not what it signs, so this prints
-# that first, and refuses before it whatever publish-connector.sh would refuse. A release is
-# signed and promoted only when its connector/release_keys is exactly the two keys in
-# ~/.ssh/ovenlight-release-keys/ plus the key signing it, so the keys a release trusts never
-# come from the commit alone. The paper key signs only a release that replaces it, so its
-# .pub has left that folder.
+# ~/.ssh/ovenlight-release-keys/history/, the only record it reads, and is sent with scp to
+# the release's folder in the mini's ~/Sync/ovenlight/releases/, which
+# scripts/publish-connector.sh publishes from. It never writes to this Air's ~/Sync. Touch
+# ID shows a prompt and not what it signs, so this prints that first, and refuses before it
+# whatever publish-connector.sh would refuse. A release is signed and promoted only when its
+# connector/release_keys is exactly the two keys in ~/.ssh/ovenlight-release-keys/ plus the
+# key signing it, so the keys a release trusts never come from the commit alone. The paper
+# key signs only a release that replaces it, so its .pub has left that folder.
 #
 # Each run first fetches latest.json, which must be an index in the history, never one below
 # an index it has been (1.0.9's unsigned one until then), and marks it seen: it's the live
@@ -71,8 +71,7 @@ fetchlive() {
   else curl -fsS -o "$tmp/live.json" "https://downloads.ovenlight.app/connector/latest.json?$(date +%s)"; fi
 }
 
-# observe: refuses a latest.json that isn't an index in the history, or is one below an index
-# it has been, and marks it seen. pending is a pull signed above it and never seen.
+# observe: the header's check of latest.json. pending is a pull signed above it and never seen.
 observe() {
   local id found=
   fetchlive || refuse "couldn't fetch latest.json"
@@ -84,8 +83,11 @@ observe() {
   for id in $signed; do
     if cmp -s "$tmp/live.json" "$records/$id.json"; then found="$id"; fi
   done
-  [ -n "$found" ] || refuse "latest.json isn't an index in $records. After a planned move, copy the other Air's history in first. After a lost Air, run --import."
+  [ -n "$found" ] || refuse "latest.json isn't an index in $records. After a planned move, copy the other Air's history in first. After a lost Air, delete it and run --import."
   if [ -n "$newest" ] && [ "$(serialof "$found")" -lt "$(serialof "$newest")" ]; then
+    case " ${neverlive:-} " in
+    *" $newest "*) refuse "latest.json is $found, and $newest, signed after it, was never seen live: publish $newest on the mini" ;;
+    esac
     refuse "latest.json is $found, older than $newest, which it has been: publish $newest again on the mini"
   fi
   [ -f "$records/$found.seen" ] || date +%s > "$records/$found.seen"
@@ -100,11 +102,11 @@ observe() {
 # import: rebuilds the history from the mini's records: each release whose SHA256SUMS and
 # canary index the keys signed, with connector/release_keys at its commit on master, and each
 # index they signed that fits its name. Every pull, and every index the records mark
-# published, counts as seen. Then latest.json must be in it.
+# published, counts as seen, and neverlive lists those the records don't mark live. Then
+# latest.json must be in it.
 import() {
   local h="$tmp/history" d v c id f s t
-  [ ! -e "$records" ] || refuse "$records exists: --import rebuilds it only on a replacement Air"
-  trusted "$importkeys"
+  [ ! -e "$records" ] || refuse "$records exists: --import rebuilds it once it's deleted, on an Air whose --check doesn't find latest.json in it"
   [ -n "$dry" ] || git -C "$root" fetch -q origin master
   # This Air's keys made since the loss, which no release before it lists.
   { cat /dev/null "$keydir"/*.pub; [ -n "$dry" ] || cat "$HANDLE.pub"; } |
@@ -126,21 +128,21 @@ import() {
       if haskey "$f" "$h/$v/release_keys"; then refuse "connector/release_keys at $c, $v's commit, lists one of this Air's new keys"; fi
     done < "$tmp/new"
     echo "$c" > "$h/$v/commit"
-    cp "$d"/{SHA256SUMS,SHA256SUMS.sig,index.json,canary.json,canary.json.sig} "$h/$v/"
+    cp "$d"/{SHA256SUMS,SHA256SUMS.sig,canary.json,canary.json.sig} "$h/$v/"
     for f in "$d"/promote-*.json "$d"/pull-*.json "$d"/resign-*.json; do
       id="${f%.json}"
       s="$(serialof "$id")"
-      if ! { verify "$f" "$f.sig" ovenlight-latest "$importkeys" && [ "$(field serial "$f")" = "$s" ] &&
+      if ! { [[ "${id##*/}" =~ ^(promote|pull|resign)-[0-9]+$ ]] && verify "$f" "$f.sig" ovenlight-latest "$importkeys" &&
+        [ "$(field serial "$f")" = "$s" ] &&
         case "$id" in */pull-*) below "$(field latest "$f")" "$v" ;; *) [ "$(field latest "$f")" = "$v" ] ;; esac; }; then
         echo "skipped $v/${id##*/}: not signed by those keys for $v"
         continue
       fi
       cp "$f" "$f.sig" "$h/$v/"
-      if [ -f "$id.base" ]; then cp "$id.base" "$h/$v/"; fi
       case "$id" in */pull-*) ;; *) [ -f "$id.published" ] || continue ;; esac
-      # When latest.json began naming it, never before it was signed.
+      # When latest.json began naming it, which newkeywait never takes as before it was signed.
       t="$(cat "$id.live" 2> /dev/null || true)"
-      [[ "$t" =~ ^[0-9]+$ ]] && [ "$t" -ge "$s" ] || t="$s"
+      [[ "$t" =~ ^[1-9][0-9]{9}$ ]] || t="$s" neverlive="${neverlive:-} $v/${id##*/}"
       echo "$t" > "$h/$v/${id##*/}.seen"
     done
   done
@@ -149,7 +151,7 @@ import() {
   echo "the history, from $sync:"
   for id in $signed; do
     if [ -f "$h/$id.seen" ]; then s=published; else s="never published"; fi
-    echo "  $id, naming $(field latest "$h/$id.json"), $s"
+    echo "  $id, signed $(date -r "$(serialof "$id")" '+%Y-%m-%d %H:%M'), naming $(field latest "$h/$id.json"), $s"
   done
   echo "  promoted: ${promoted//$'\n'/ }"
   echo "  pulled: ${pulled//$'\n'/ }"
@@ -216,13 +218,14 @@ $(diff "$tmp/want" "$tmp/have" | sed -n 's/^</  missing/p; s/^>/  extra/p')"
 }
 
 # keep <version> <file>...: puts the signed files in the release's folder of the history,
-# and copies them to the mini's records.
+# and sends them to the mini's records.
 keep() {
   local v="$1"
   shift
-  mkdir -p "$records/$v" "$sync/$v"
+  mkdir -p "$records/$v" "$tmp/send/releases/$v"
   cp "$@" "$records/$v/"
-  cp "$@" "$sync/$v/"
+  cp "$@" "$tmp/send/releases/$v/"
+  scp -rq "$tmp/send/releases" "$minisync/"
 }
 
 # await <id>: waits for latest.json to be the index, and marks it seen. A dry run leaves that
@@ -307,6 +310,7 @@ promote)
   rulehas "$version"
   releaseindex "$version" "$now" > "$tmp/promote-$now.json"
   nodrop "$tmp/promote-$now.json"
+  keepsraised "$version" "$(field secure "$d/canary.json")" "$(field reinstallBelow "$d/canary.json")"
   newkeywait "$kblob" "$now"
   echo "promoting $version: latest.json becomes"
   echo "  $(cat "$tmp/promote-$now.json")"
