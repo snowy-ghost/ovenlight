@@ -713,7 +713,7 @@ commit "an old git key left in allowed_signers"
 refused "lists a key in a namespace other than the release keys'" release 1.1.0 1.0.6 1.1.0
 { echo "# a comment"; echo; awk '{ print "team@snowyghost.com namespaces=\"file,ovenlight-latest\"", $1, $2 }' "$dry/private/stranger.pub"; } > "$repo/docs/allowed_signers"
 commit "a release key and a comment"
-refused "secure (1.2.0) is newer than the release (1.1.0)" release 1.1.0 1.2.0 1.1.0
+refused "latest (1.1.0) can't be below its secure (1.2.0)" release 1.1.0 1.2.0 1.1.0
 signers air1 paper1
 keys air1 paper1
 refused "a dry run builds only with --unsigned" "$repo/scripts/release-connector.sh" 1.1.0 1.0.6 1.1.0

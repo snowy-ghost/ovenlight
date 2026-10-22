@@ -101,9 +101,6 @@ elif $unsigned; then
   indexed=false
 fi
 if $indexed; then
-  for v in "$version" "$secure" $reinstall; do
-    canonical "$v" || refuse "a release's versions look like 1.2.3, with no leading zeros or suffix, not $v"
-  done
   if [ -z "$reinstall" ]; then
     for f in "$records"/*/index.json; do
       r="$(field reinstallBelow "$f")"
@@ -112,8 +109,8 @@ if $indexed; then
     [ -n "$reinstall" ] || refuse "$records has no release yet, so name the first one's reinstallBelow"
     echo "reinstallBelow $reinstall, the highest in $records"
   fi
-  atleast "$secure" "$version" || refuse "secure ($secure) is newer than the release ($version)"
-  atleast "$reinstall" "$version" || refuse "reinstallBelow ($reinstall) is newer than the release ($version)"
+  # The index's own checks, before minutes of building.
+  index "$version" "$secure" "$reinstall" 0 /dev/null > /dev/null
   keepsraised "$version" "$secure" "$reinstall"
 fi
 

@@ -65,7 +65,7 @@ canonical() { [[ "$1" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]];
 index() {
   local s v
   for v in "$1" "$2" "$3"; do
-    canonical "$v" || refuse "an index's versions look like 1.2.3, not \"$v\""
+    canonical "$v" || refuse "versions look like 1.2.3, with no leading zeros or suffix, not $v"
   done
   { atleast "$2" "$1" && atleast "$3" "$1"; } ||
     refuse "an index's latest ($1) can't be below its secure ($2) or reinstallBelow ($3)"
