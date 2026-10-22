@@ -183,12 +183,12 @@ command again (a folder's before the next build replaces `build/release`). `--pu
 same way, takes the live release back out by publishing the index of the release before
 it, signed again. Computers that already took the pulled release keep it, since the
 connector never installs an older one, so the fix is the next release. `--resign`
-publishes the live index signed again, before a canary after a key change or to supersede
-a signed promote that mustn't ship. Every promote, pull and resign is recorded in
-`~/Sync/ovenlight/releases/`, the only history the scripts read. Each script's header says
-what it checks, and `scripts/test-connector-release.sh` dry-runs them all. Each release
-restarts every owner's connector, and one promoted within two days of the last restarts
-every owner's wait, so batch what isn't urgent.
+publishes the live index signed again, to supersede a signed promote that mustn't ship.
+Every promote, pull and resign is recorded in `~/Sync/ovenlight/releases/`, the only
+history the scripts read. Each script's header says what it checks, and
+`scripts/test-connector-release.sh` dry-runs them all. Each release restarts every owner's
+connector, and one promoted within two days of the last restarts every owner's wait, so
+batch what isn't urgent.
 
 Uploads go to the R2 bucket behind `https://downloads.ovenlight.app`, through `wrangler`
 (signed in with `npx wrangler@4.147.0 login`, or `CLOUDFLARE_API_TOKEN` and
