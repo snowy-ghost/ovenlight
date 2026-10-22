@@ -45,7 +45,7 @@ func cmdUpdate(args []string) error {
 		}
 		msg := "Updates are on."
 		if _, ok := semver(version()); ok {
-			msg += " The connector installs a new release on its own at a quiet moment two days after it comes out, and a security fix sooner."
+			msg += " The connector installs a new release on its own two days after it first sees it, at a quiet moment in the night, and a security fix sooner."
 		}
 		fmt.Println(msg)
 	case "now":
