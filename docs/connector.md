@@ -268,6 +268,7 @@ curl -fsSL -o allowed_signers "https://raw.githubusercontent.com/snowy-ghost/ove
 ssh-keygen -Y verify -f allowed_signers -I team@snowyghost.com -n file \
   -s SHA256SUMS.sig < SHA256SUMS
 shasum -a 256 -c --ignore-missing SHA256SUMS
+tar tzf "$archive" | cut -d / -f 1 | sort -u
 ```
 
 On Windows, check it in an administrator PowerShell, with its version in place of `1.0.9`:
@@ -281,11 +282,13 @@ curl.exe -fsSL --remote-name-all "$base/$archive" "$base/SHA256SUMS" "$base/SHA2
 curl.exe -fsSL -o allowed_signers "https://raw.githubusercontent.com/snowy-ghost/ovenlight/connector-v$release/docs/allowed_signers"
 cmd /c 'ssh-keygen -Y verify -f allowed_signers -I team@snowyghost.com -n file -s SHA256SUMS.sig < SHA256SUMS'
 [bool](Select-String -SimpleMatch "$((Get-FileHash $archive).Hash.ToLower())  $archive" SHA256SUMS)
+tar -tf $archive | ForEach-Object { ($_ -split '/')[0] } | Sort-Object -Unique
 ```
 
-If the first check prints `Good "file" signature`, and the second the archive's name with
-`OK` (`True` on Windows), unpack and install it as the
-[verified steps](#check-a-download-first) do, in the same window.
+If the first check prints `Good "file" signature`, the second the archive's name with `OK`
+(`True` on Windows), and the third only the release's own folder, such as
+`ovenlight-connector-1.0.9` (an archive's name carries no version), unpack and install it
+as the [verified steps](#check-a-download-first) do, in the same window.
 
 ## Publish an app
 
