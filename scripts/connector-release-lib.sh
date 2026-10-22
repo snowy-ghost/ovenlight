@@ -20,9 +20,7 @@
 # in for everything outside the repo (build/release on the mini, the records, the release
 # key folder and the bucket), no real one is reachable, and only fixture keys are trusted:
 # those in scripts/testdata/release-keys and connector/testdata/releasekey, whose private
-# halves are public. Outside a dry run they never are. What the Air sends the mini lands in
-# its mini/ folder, apart from the Air's files as the real mini is, and the harness files it
-# in sync/releases.
+# halves are public. Outside a dry run they never are.
 shopt -s nullglob
 
 refuse() { echo "$*" >&2; exit 1; }

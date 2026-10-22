@@ -24,12 +24,12 @@
 # Each index gets the time now as its serial. What it signs goes in this Air's history,
 # ~/.ssh/ovenlight-release-keys/history/, the only record it reads, and is sent with scp to
 # the release's folder in the mini's ~/Sync/ovenlight/releases/, which
-# scripts/publish-connector.sh publishes from. It never writes to this Air's ~/Sync. Touch
-# ID shows a prompt and not what it signs, so this prints that first, and refuses before it
-# whatever publish-connector.sh would refuse. A release is signed and promoted only when its
-# connector/release_keys is exactly the two keys in ~/.ssh/ovenlight-release-keys/ plus the
-# key signing it, so the keys a release trusts never come from the commit alone. The paper
-# key signs only a release that replaces it, so its .pub has left that folder.
+# scripts/publish-connector.sh publishes from. Touch ID shows a prompt and not what it signs,
+# so this prints that first, and refuses before it whatever publish-connector.sh would
+# refuse. A release is signed and promoted only when its connector/release_keys is exactly
+# the two keys in ~/.ssh/ovenlight-release-keys/ plus the key signing it, so the keys a
+# release trusts never come from the commit alone. The paper key signs only a release that
+# replaces it, so its .pub has left that folder.
 #
 # Each run first fetches latest.json, which must be an index in the history, never one below
 # an index it has been (1.0.9's unsigned one until then), and marks it seen: it's the live
@@ -85,10 +85,7 @@ observe() {
   done
   [ -n "$found" ] || refuse "latest.json isn't an index in $records. After a planned move, copy the other Air's history in first. After a lost Air, delete it and run --import."
   if [ -n "$newest" ] && [ "$(serialof "$found")" -lt "$(serialof "$newest")" ]; then
-    case " ${neverlive:-} " in
-    *" $newest "*) refuse "latest.json is $found, and $newest, signed after it, was never seen live: publish $newest on the mini" ;;
-    esac
-    refuse "latest.json is $found, older than $newest, which it has been: publish $newest again on the mini"
+    refuse "latest.json is $found, older than $newest, which the history marks seen: publish $newest on the mini"
   fi
   [ -f "$records/$found.seen" ] || date +%s > "$records/$found.seen"
   readrecords
@@ -102,8 +99,7 @@ observe() {
 # import: rebuilds the history from the mini's records: each release whose SHA256SUMS and
 # canary index the keys signed, with connector/release_keys at its commit on master, and each
 # index they signed that fits its name. Every pull, and every index the records mark
-# published, counts as seen, and neverlive lists those the records don't mark live. Then
-# latest.json must be in it.
+# published, counts as seen. Then latest.json must be in it.
 import() {
   local h="$tmp/history" d v c id f s t
   [ ! -e "$records" ] || refuse "$records exists: --import rebuilds it once it's deleted, on an Air whose --check doesn't find latest.json in it"
@@ -143,7 +139,7 @@ import() {
       case "$id" in */pull-*) ;; *) [ -f "$id.published" ] || continue ;; esac
       # When latest.json began naming it, which newkeywait never takes as before it was signed.
       t="$(cat "$id.live" 2> /dev/null || true)"
-      [[ "$t" =~ ^[1-9][0-9]{9}$ ]] || t="$s" neverlive="${neverlive:-} $v/${id##*/}"
+      [[ "$t" =~ ^[1-9][0-9]{9}$ ]] || t="$s"
       echo "$t" > "$h/$v/${id##*/}.seen"
     done
   done
@@ -313,7 +309,6 @@ promote)
   folderkeys "$d/release_keys" "$version's release_keys"
   rulehas "$version"
   releaseindex "$version" "$now" > "$tmp/promote-$now.json"
-  nodrop "$tmp/promote-$now.json"
   keepsraised "$version" "$(field secure "$d/canary.json")" "$(field reinstallBelow "$d/canary.json")"
   newkeywait "$kblob" "$now"
   echo "promoting $version: latest.json becomes"
