@@ -546,6 +546,19 @@ refused "secure would go down" sign air1 --promote 1.1.2
 forge 1.1.2 promote air1 1.1.2
 refused "secure would go down" publish --promote 1.1.2
 
+fresh repull "a rotation pulled back and repeated: the new key's wait starts again"
+keyfolder air1 paper1
+keys air1 paper1
+ship 1.1.0 1.0.6 air1 1.1.0
+keyfolder air2 paper1
+keys air2 paper1 air1
+ship 1.1.1 1.0.6 air1
+backdate 33
+pull 1.1.1 air1 1.1.0
+ship 1.1.2 1.0.6 air1
+tick
+refused "four weeks and four days" sign air2 --resign
+
 fresh gates "what no release gets past"
 keyfolder air1 paper1
 ssh-keygen -q -t ed25519 -N '' -C stranger -f "$dry/private/stranger"
