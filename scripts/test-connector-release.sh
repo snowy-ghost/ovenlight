@@ -456,7 +456,6 @@ refused "and only it goes up: scripts/publish-connector.sh --resign" publish --p
 # after. Either way the Air never counts it.
 show 1.1.1/promote
 refused "which 1.1.0/resign-" nokey --check
-refused "or, to drop it, sign the next index once latest.json is 1.1.0/promote-" nokey --check
 run publish --resign
 show 1.1.1/promote
 refused "superseded before this Air saw it go up: publish 1.1.0/resign-" nokey --check

@@ -76,11 +76,10 @@ fetchlive() {
 
 # observe: the header's check of latest.json. pending is a pull signed after it and never seen.
 observe() {
-  local id found='' drop=''
+  local id found=
   fetchlive || refuse "couldn't fetch latest.json"
-  [ "$top" = "$newest" ] || drop=", or, to drop it, sign the next index once latest.json is ${newest:-unsigned} again"
   if [ -z "$(field serial "$tmp/live.json")" ]; then
-    [ -z "$newest" ] || refuse "latest.json is unsigned, and it was $newest: publish $top on the mini$drop"
+    [ -z "$newest" ] || refuse "latest.json is unsigned, and it was $newest: publish $top on the mini"
     echo "latest.json is unsigned, so nothing is promoted yet"
     pending=
     return
@@ -90,10 +89,10 @@ observe() {
   done
   [ -n "$found" ] || refuse "latest.json isn't an index in $records. After a planned move, copy the other Air's history in first. After a lost Air, delete it and run --import."
   if [ -n "$newest" ] && [ "$(serialof "$found")" -lt "$(serialof "$newest")" ]; then
-    refuse "latest.json is $found, older than $newest, which the history marks seen: publish $top on the mini$drop"
+    refuse "latest.json is $found, older than $newest, which the history marks seen: publish $top on the mini"
   fi
   [ "$found" = "$newest" ] || [ "$found" = "$top" ] ||
-    refuse "latest.json is $found, which $top superseded before this Air saw it go up: publish $top on the mini$drop. Computers that took $found in between keep its release, as after a pull."
+    refuse "latest.json is $found, which $top superseded before this Air saw it go up: publish $top on the mini. Computers that took $found in between keep its release, as after a pull."
   # A signature is built only on the head the owner was last shown: here only --check and
   # --import move it.
   if [ "$found" != "$newest" ] && [ "$mode" != check ] && [ "$mode" != import ]; then
