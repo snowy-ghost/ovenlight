@@ -322,10 +322,12 @@ After a lost Air, the paper key signs R:
 After a lost paper key, the Air signs R, which lists its own key and a new paper key.
 Delete `backup.pub` from `~/.ssh/ovenlight-release-keys/` (the lost key may be in other
 hands, so the Air trusts nothing it signs), run key setup, and copy only its
-`index.json.release-2.sig` in under the next free number. Drop the old paper key's
-signature and its line in `allowed_signers`, since it signed no release. The Air's key
-signs on, so nothing waits and no R+1 follows. If the Air is lost too, the new paper key's
-`--resign` and promote wait until four weeks and four days after R's promote.
+`index.json.release-2.sig` in under the next free number. Drop the lost key's signature
+and its line in `allowed_signers`, since it signed no release. The Air's key signs on, so
+nothing waits and no R+1 follows. If the Air's key is still inside its wait, the old paper
+key that signed the R bringing it in signs this R too: R lists it, and R+1 drops it. If
+the Air is lost too, the new paper key's `--resign` and promote wait until four weeks and
+four days after R's promote.
 
 A lost Air inside a new Touch ID key's wait is answered by an R signed with the paper key
 every release so far lists, which waits for nothing. After a planned move whose old Air is
