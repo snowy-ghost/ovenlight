@@ -443,8 +443,9 @@ type updatePlan struct {
 
 // planUpdate is the update st's index names for version v, as updateTarget times it. One
 // still waiting a day after it's due (a security fix, from when it's due) goes at the
-// start of the next night, or as soon as the connector runs after that. A version that failed is tried again the next night (the
-// first start of one at least an hour after it failed), busy or not.
+// start of the next night, or as soon as the connector runs after that. A version that
+// failed is tried again the next night (the first start of one at least an hour after it
+// failed), busy or not.
 func planUpdate(st *updateState, v string) updatePlan {
 	idx, err := parseIndex(st.Index)
 	if err != nil {
@@ -452,8 +453,14 @@ func planUpdate(st *updateState, v string) updatePlan {
 	}
 	cur, ok := semver(v)
 	p := updatePlan{idx: idx, night: nightOf(st.Minute), security: ok && less(cur, idx.secure)}
+	// The wait never starts before the index was signed, so a clock that was behind when
+	// this computer first saw it, or set back since, can't shorten it once it's put right.
+	seen := st.Seen
+	if signed := time.Unix(idx.Serial, 0); seen.Before(signed) {
+		seen = signed
+	}
 	var due time.Time
-	if p.target, due, p.script = updateTarget(v, idx, st.Seen); p.target == "" {
+	if p.target, due, p.script = updateTarget(v, idx, seen); p.target == "" {
 		return p
 	}
 	p.after, p.by = due, nextAt(due.Add(updateDay), p.night)
@@ -463,12 +470,8 @@ func planUpdate(st *updateState, v string) updatePlan {
 	// A retry that comes later moves both: a computer that's never quiet takes it that
 	// night too.
 	if f := st.Failed; f != nil && f.Version == p.target {
-		retry := nextAt(f.At.Add(updateHour), p.night)
-		if retry.After(p.after) {
-			p.after = retry
-		}
-		if retry.After(p.by) {
-			p.by = retry
+		if retry := nextAt(f.At.Add(updateHour), p.night); retry.After(p.after) {
+			p.after, p.by = retry, retry
 		}
 	}
 	return p
@@ -527,7 +530,8 @@ type updateView struct {
 	// BelowSecure is set when the running release has a security problem: it's below Secure.
 	BelowSecure bool `json:"belowSecure,omitempty"`
 
-	since time.Time // when the updater first ran here
+	since time.Time     // when the updater first ran here
+	night time.Duration // when this computer's night starts (nightOf)
 }
 
 // when is a time as status and doctor show it.
@@ -538,10 +542,14 @@ func (u *updateView) installs(now time.Time) string {
 	if !now.Before(u.InstallBy) {
 		return "installs on its own as soon as it can"
 	}
-	if !u.InstallAfter.Before(u.InstallBy) {
+	after := u.InstallAfter
+	if p := (updatePlan{night: u.night}); !u.BelowSecure && now.After(after) && !p.inNight(now) {
+		after = nextAt(now, u.night) // its first night has passed
+	}
+	if !after.Before(u.InstallBy) {
 		return "installs on its own at " + when(u.InstallBy) + ", busy or not"
 	}
-	return fmt.Sprintf("installs on its own at a quiet moment from %s, and by %s even if busy", when(u.InstallAfter), when(u.InstallBy))
+	return fmt.Sprintf("installs on its own at a quiet moment from %s, and by %s even if busy", when(after), when(u.InstallBy))
 }
 
 // daemonUpdate is readUpdateView for the connector that sent reply, and its version: with
@@ -563,7 +571,7 @@ func readUpdateView(stateDir, v string, self bool) *updateView {
 		u.CheckError = err.Error()
 		return u
 	}
-	u.LastCheck, u.CheckError, u.LastUpdate, u.since = st.Checked, st.CheckError, st.Updated, st.Since
+	u.LastCheck, u.CheckError, u.LastUpdate, u.since, u.night = st.Checked, st.CheckError, st.Updated, st.Since, nightOf(st.Minute)
 	p := planUpdate(st, v)
 	if p.idx == nil {
 		return u

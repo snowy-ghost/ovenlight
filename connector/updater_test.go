@@ -616,6 +616,19 @@ func TestUpdaterSwapFailure(t *testing.T) {
 	}
 }
 
+// A computer whose daily check comes in its own night has a release due in the night, and
+// one that fails there is still tried again the next night, busy or not.
+func TestUpdaterRetryOfAReleaseDueInTheNight(t *testing.T) {
+	if updateHour != time.Hour {
+		t.Skip("a compressed schedule")
+	}
+	st := &updateState{Index: testIndex("1.2.0", "1.1.0", "1.1.0", 100, "x"), Minute: 150, Seen: at(0, 2, 31)} // its night starts at 02:30
+	st.Failed = &updateFailure{Version: "1.2.0", At: at(2, 2, 45), Count: 1}
+	if p := planUpdate(st, "1.1.5"); !p.after.Equal(at(3, 2, 30)) || !p.by.Equal(at(3, 2, 30)) {
+		t.Errorf("tried again from %v, busy or not from %v", p.after, p.by)
+	}
+}
+
 // Times noted while the clock ran ahead don't hold the wait or a retry back.
 func TestUpdaterClockRanAhead(t *testing.T) {
 	_, tu, _ := readyAt(t, false)
@@ -637,6 +650,31 @@ func TestUpdaterClockRanAhead(t *testing.T) {
 	for name, got := range map[string]time.Time{"seen": tu.st.Seen, "checked": tu.st.Checked, "since": tu.st.Since, "last request": tu.d.lastRequestTime()} {
 		if !got.Equal(at(0, 9, 1)) {
 			t.Errorf("%s %v", name, got)
+		}
+	}
+}
+
+// A clock that was behind doesn't shorten the wait, which never starts before the index
+// was signed: one set back since the release was first seen (the poll then pulls Seen back
+// to it), or one behind when it was.
+func TestUpdaterClockBehind(t *testing.T) {
+	for name, clock := range map[string][]time.Time{
+		"set back":         {at(0, 9, 0), time.Date(2001, 1, 1, 0, 0, 0, 0, time.Local)},
+		"behind when seen": {at(-4, 9, 0)},
+	} {
+		srv := newReleaseServer(t)
+		srv.publish("1.2.0", "1.1.0", "1.1.0", at(0, 8, 0).Unix())
+		tu := newTestUpdater(t, srv, t.TempDir(), "1.1.5", clock[0], false)
+		tu.st.Minute = 10 * 60 // its night starts at 02:00
+		tu.pollAt(clock[0])
+		for _, c := range clock[1:] {
+			tu.sleepUntil(c)
+		}
+		tu.sleepUntil(at(0, 9, 30)) // put right
+		tu.busyAt(at(0, 9, 45))
+		tu.busyAt(at(0, 9, 46))
+		if u := readUpdateView(tu.d.stateDir, "1.1.5", true); len(tu.swaps) != 0 || !u.InstallAfter.Equal(at(3, 2, 0)) || !u.InstallBy.Equal(at(4, 2, 0)) {
+			t.Errorf("%s: %d swaps, %+v", name, len(tu.swaps), u)
 		}
 	}
 }
@@ -862,7 +900,7 @@ func TestUpdateFinding(t *testing.T) {
 		{"failed three times", view(func(u *updateView) {
 			pending(u)
 			u.Failure = &updateFailure{Version: "1.2.0", Count: 3, Error: "swap not implemented"}
-		}), "1.1.5", true, statusWarn, "has failed 3 times in a row"},
+		}), "1.1.5", true, statusWarn, "If it then keeps stopping, install 1.1.5 again with the steps for an older release in " + olderDocs},
 		{"doesn't run here", view(func(u *updateView) {
 			pending(u)
 			u.Failure = &updateFailure{Version: "1.2.0", Count: 3, Error: "the downloaded 1.2.0 " + notRunnable + ": exec format error"}
@@ -941,5 +979,22 @@ func TestUpdateLines(t *testing.T) {
 	}
 	if updateLines(u, "devel-9cd108a0f732", now) != nil {
 		t.Error("a development build")
+	}
+}
+
+// Once a release's first night has passed busy, status names the next night.
+func TestInstallsAfterTheFirstNight(t *testing.T) {
+	if updateHour != time.Hour {
+		t.Skip("a compressed schedule")
+	}
+	u := &updateView{Pending: "1.2.0", InstallAfter: at(0, 3, 0), InstallBy: at(2, 2, 0), night: nightStart} // due at 03:00, in its night
+	for now, want := range map[time.Time]string{
+		at(0, 4, 0): "at a quiet moment from " + when(at(0, 3, 0)) + ",",
+		at(0, 9, 0): "at a quiet moment from " + when(at(1, 2, 0)) + ",",
+		at(1, 9, 0): "at " + when(at(2, 2, 0)) + ", busy or not",
+	} {
+		if got := u.installs(now); !strings.Contains(got, want) {
+			t.Errorf("at %v: %s", now, got)
+		}
 	}
 }

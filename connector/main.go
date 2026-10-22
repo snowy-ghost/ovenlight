@@ -74,19 +74,20 @@ func startFix(p *paths) string {
 		return fmt.Sprintf("No connector is running for --config %s and --state %s. The connector the person installed uses the default paths, "+
 			"so nothing for these paths is served until the person runs a connector with them; an agent must not start one itself", p.config, p.state)
 	}
-	return serviceFix("Start it", serviceCommands[runtime.GOOS].start) + ". If it starts but keeps stopping, the reason is at the end of " + defaultLogPath()
+	return serviceFix("Start it", serviceCommands[runtime.GOOS].start) + ". If it starts but keeps stopping, the reason is at the end of " + defaultLogPath() +
+		", or of " + serviceCommands[runtime.GOOS].crash + " after a crash"
 }
 
 // serviceCommands start and restart the installed connector on each OS, as
-// docs/connector.md gives them, and say where they run. Starting also undoes the stops it
-// describes, and on macOS starts an agent that's already loaded. They name the service,
-// never the install script: an older release's script would bring back a connector that
-// doesn't update itself.
-var serviceCommands = map[string]struct{ start, restart, where string }{
+// docs/connector.md gives them, and say where they run and where a crash, which bypasses
+// the log, leaves its reason. Starting also undoes the stops it describes, and on macOS
+// starts an agent that's already loaded. They name the service, never the install script:
+// an older release's script would bring back a connector that doesn't update itself.
+var serviceCommands = map[string]struct{ start, restart, where, crash string }{
 	"darwin": {"launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.snowyghost.ovenlight.connector.plist || launchctl kickstart gui/$(id -u)/com.snowyghost.ovenlight.connector",
-		"launchctl kickstart -k gui/$(id -u)/com.snowyghost.ovenlight.connector", ""},
-	"linux":   {"systemctl --user enable --now ovenlight", "systemctl --user restart ovenlight", ""},
-	"windows": {"Enable-ScheduledTask ovenlight; Start-ScheduledTask ovenlight", "Stop-ScheduledTask ovenlight; Start-ScheduledTask ovenlight", " in an administrator PowerShell"},
+		"launchctl kickstart -k gui/$(id -u)/com.snowyghost.ovenlight.connector", "", "ovenlight.stderr.log beside it"},
+	"linux":   {"systemctl --user enable --now ovenlight", "systemctl --user restart ovenlight", "", "`journalctl --user -u ovenlight`"},
+	"windows": {"Enable-ScheduledTask ovenlight; Start-ScheduledTask ovenlight", "Stop-ScheduledTask ovenlight; Start-ScheduledTask ovenlight", " in an administrator PowerShell", "ovenlight.stderr.log beside it"},
 }
 
 // serviceFix is a fix that runs command, one of serviceCommands: "Start it with `...`",
