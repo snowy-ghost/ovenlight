@@ -75,13 +75,15 @@ index() {
   echo "$s"
 }
 
-# releaseindex <version> <serial>: the release's index from its folder, with that serial, and
-# its secure and reinstallBelow from the canary index signed for it, not the unsigned
-# index.json.
+# releaseindex <version> <serial>: the canary index signed for the release, with that serial:
+# its secure and reinstallBelow, not the unsigned index.json's, and the archives in the
+# records' SHA256SUMS, refused unless they're the ones it lists.
 releaseindex() {
   local f="$records/$1/canary.json"
   [ -f "$f" ] || refuse "no $f: $1 isn't signed"
   verifyrule "$1" "$f" "$f.sig" ovenlight-canary
+  index "$1" "$(field secure "$f")" "$(field reinstallBelow "$f")" "$(field serial "$f")" "$records/$1/SHA256SUMS" |
+    cmp -s - "$f" || refuse "$records/$1/SHA256SUMS isn't the one $1's canary index lists"
   index "$1" "$(field secure "$f")" "$(field reinstallBelow "$f")" "$2" "$records/$1/SHA256SUMS"
 }
 
