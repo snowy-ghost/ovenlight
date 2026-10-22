@@ -19,18 +19,18 @@
 # Each index gets the time now as its serial. What it signs goes in the release's folder in
 # ~/Sync/ovenlight/releases/, which scripts/publish-connector.sh publishes from on the mini.
 # Touch ID shows a prompt and not what it signs, so this prints that first, and refuses
-# before it whatever publish-connector.sh would refuse. A release is signed only when its
-# connector/release_keys is exactly the two keys in ~/.ssh/ovenlight-release-keys/ plus the
-# key signing it, so the keys a release trusts never come from the commit alone. The paper
-# key signs only a release that replaces it, so its .pub has left that folder. A promote,
-# pull or resign builds only on what this Air's own keys signed: those two, the ones they
-# replaced, which the folder's retired file lists, and the key signing. The records'
-# release_keys are only as safe as ~/Sync. It also builds only on the index it signed last,
-# which it keeps in that folder as last.json, and on the published indexes it built that one
-# on, kept there as published, so the records can't be rolled back. And it signs only while
-# latest.json is the newest index the records call published (unsigned while they call none
-# published), and that index names the release the records' names make live, so marking or
-# renaming an index in ~/Sync can't change the live one.
+# before it whatever publish-connector.sh would refuse. A release is signed and promoted only
+# when its connector/release_keys is exactly the two keys in ~/.ssh/ovenlight-release-keys/
+# plus the key signing it, so the keys a release trusts never come from the commit alone.
+# The paper key signs only a release that replaces it, so its .pub has left that folder. A
+# promote, pull or resign builds only on what this Air's own keys signed: those two, the
+# ones they replaced, which the folder's retired file lists, and the key signing. The
+# records' release_keys are only as safe as ~/Sync. It also builds only on the index it
+# signed last, which it keeps in that folder as last.json, and on the published indexes it
+# built that one on, kept there as published, so the records can't be rolled back. And it
+# signs only while latest.json is the newest index the records call published (unsigned
+# while they call none published), and that index names the release the records' names make
+# live, so marking or renaming an index in ~/Sync can't change the live one.
 #
 # --key signs with a key other than this Air's Touch ID handle, such as the paper backup or
 # another Touch ID key's handle, with its public half beside it as <file>.pub.
@@ -149,6 +149,22 @@ rulehas() {
   done
 }
 
+# folderkeys <release_keys> <what they are>: refuses keys that aren't the two in the key
+# folder plus the one signing.
+folderkeys() {
+  local f n=0
+  for f in "$keydir"/*.pub; do n=$((n + 1)); done
+  [ "$n" -eq 2 ] || refuse "$keydir holds $n .pub files, not the two release keys"
+  cat "$keydir"/*.pub > "$tmp/folder"
+  trusted "$tmp/folder"
+  cat "$tmp/folder" "$tmp/signer" | awk 'NF >= 2 { print $2 }' | sort -u > "$tmp/want"
+  awk 'NF >= 2 { print $2 }' "$1" | sort -u > "$tmp/have"
+  if ! cmp -s "$tmp/want" "$tmp/have"; then
+    refuse "$2 isn't the two keys in $keydir plus the one signing:
+$(diff "$tmp/want" "$tmp/have" | sed -n 's/^</  missing/p; s/^>/  extra/p')"
+  fi
+}
+
 # keep <file> <name>...: puts the signed files in the release's folder.
 keep() {
   local d="$records/$1"
@@ -190,17 +206,7 @@ release)
   [ -n "$dry" ] || git -C "$root" fetch -q origin master
   git -C "$root" merge-base --is-ancestor "$commit" "$master" || refuse "$commit isn't on $master"
   git -C "$root" show "$commit:connector/release_keys" > "$b/release_keys"
-  n=0
-  for f in "$keydir"/*.pub; do n=$((n + 1)); done
-  [ "$n" -eq 2 ] || refuse "$keydir holds $n .pub files, not the two release keys"
-  cat "$keydir"/*.pub > "$tmp/folder"
-  trusted "$tmp/folder"
-  cat "$tmp/folder" "$tmp/signer" | awk 'NF >= 2 { print $2 }' | sort -u > "$tmp/want"
-  awk 'NF >= 2 { print $2 }' "$b/release_keys" | sort -u > "$tmp/have"
-  if ! cmp -s "$tmp/want" "$tmp/have"; then
-    refuse "connector/release_keys at $commit isn't the two keys in $keydir plus the one signing:
-$(diff "$tmp/want" "$tmp/have" | sed -n 's/^</  missing/p; s/^>/  extra/p')"
-  fi
+  folderkeys "$b/release_keys" "connector/release_keys at $commit"
   # The paper key, the one ssh-ed25519 key, signs only the release that replaces it.
   if [ "$(awk '{ print $1 }' "$tmp/signer")" = ssh-ed25519 ] && haskey "$kblob" "$tmp/folder"; then
     refuse "$keydir still holds this key: the paper key signs only the release that brings in its successor"
@@ -239,6 +245,7 @@ promote)
     refuse "$version's SHA256SUMS was signed with another key, which signs its promote too"
   abovereleased "$version"
   ordered "$now"
+  folderkeys "$d/release_keys" "$version's release_keys"
   rulehas "$version"
   airsigned "$version"
   releaseindex "$version" "$now" > "$tmp/promote-$now.json"

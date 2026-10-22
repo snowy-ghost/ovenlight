@@ -419,6 +419,8 @@ fresh lostpaper "a lost paper key, then a lost Air: the Air's promotes don't res
 keyfolder air1 paper1
 keys air1 paper1
 ship 1.1.0 1.0.6 air1 1.1.0
+build 1.1.3 1.0.6
+signfolder 1.1.3 air1
 # R lists the Air's key and a new paper key, whose wait starts at R's promote. The lost one
 # is deleted, never retired.
 rm "$dry/keys/backup.pub"
@@ -427,6 +429,8 @@ keys air1 paper2
 signers air1 paper2
 ship 1.1.1 1.0.6 air1
 tick
+# 1.1.3, signed before, lists the lost key, so it's never promoted.
+refused "1.1.3's release_keys isn't the two keys in" sign air1 --promote 1.1.3
 refused "four weeks and four days" sign paper2 --resign
 # A release that mustn't ship goes out, and the new paper key pulls it, as it would after a
 # lost Air, without waiting.
