@@ -307,7 +307,7 @@ func (tr *trialing) pass(d time.Duration) bool {
 	for end := tr.clock.t.Add(d); tr.clock.t.Before(end); {
 		tr.clock.t = tr.clock.t.Add(awakeTick)
 		if dm := tr.daemon(); dm != nil && dm.upd != nil && !tr.noPoll {
-			dm.upd.lastRan = tr.clock.t
+			dm.upd.polls.Add(1)
 		}
 		if tr.tick() {
 			return true
@@ -468,31 +468,101 @@ func TestTrialBackstopOrTick(t *testing.T) {
 }
 
 // A release whose updater hangs holding its lock, or whose loop never polls, would never
-// update again: it doesn't pass, and the backstop rolls it back.
+// update again: it doesn't pass, even with the clock set back during its trial, and the
+// backstop rolls it back.
 func TestTrialWedgedUpdater(t *testing.T) {
 	if updateHour != time.Hour {
 		t.Skip("a compressed schedule")
 	}
-	for _, wedged := range []bool{true, false} {
+	for _, c := range []struct {
+		name   string
+		wedged bool
+		back   time.Duration // the clock set back a minute in
+	}{
+		{"wedged", true, 0},
+		{"never polls", false, 0},
+		{"never polls, the clock set back", false, 8 * time.Minute},
+		{"never polls, the clock set back hours", false, 2 * time.Hour},
+	} {
 		tr, dir, installed := startTrialing(t, "coach")
 		d, _ := testDaemon(t)
 		d.stateDir = dir
 		d.upd = &updater{d: d, now: tr.clock.now}
+		d.upd.start()
 		d.nodes["coach"].serving = true
 		tr.attach(d)
-		if wedged {
+		if c.wedged {
 			d.upd.mu.Lock()
 		} else {
 			tr.noPoll = true
 		}
-		if tr.pass(11*time.Minute) || !tr.running() {
-			t.Fatalf("wedged %v: passed", wedged)
+		tr.pass(time.Minute)
+		tr.clock.t = tr.clock.t.Add(-c.back)
+		if tr.pass(10*time.Minute) || !tr.running() {
+			t.Fatalf("%s: passed", c.name)
 		}
 		if !tr.giveUp() {
-			t.Fatalf("wedged %v: the backstop didn't roll back", wedged)
+			t.Fatalf("%s: the backstop didn't roll back", c.name)
 		}
 		if f := rolledBack(t, dir, installed); !strings.Contains(f.Error, "didn't end its trial within 15 minutes") {
-			t.Errorf("wedged %v: %+v", wedged, f)
+			t.Errorf("%s: %+v", c.name, f)
+		}
+	}
+}
+
+// A release whose updater polls passes through every pause in its checks: updates off, a
+// check that fails, the clock set back or ahead, and a sleep at the deadline whose first
+// poll after it comes late.
+func TestTrialPassesWithItsUpdater(t *testing.T) {
+	if updateHour != time.Hour {
+		t.Skip("a compressed schedule")
+	}
+	// run moves the clock on by dur, awake all along, with the updater polling each minute
+	// from the start of it, as its ticker does after a sleep.
+	run := func(tr *trialing, d *daemon, dur time.Duration) {
+		for i := 1; i <= int(dur/awakeTick); i++ {
+			tr.clock.t = tr.clock.t.Add(awakeTick)
+			if i%int(updateMinute/awakeTick) == 0 {
+				d.upd.poll(context.Background())
+			}
+			if tr.tick() {
+				return
+			}
+		}
+	}
+	for name, pause := range map[string]func(tr *trialing, d *daemon, srv *releaseServer){
+		"updates off": func(tr *trialing, d *daemon, srv *releaseServer) {
+			writeFile(t, filepath.Join(d.stateDir, updatesOffFile), "")
+		},
+		"checks failing": func(tr *trialing, d *daemon, srv *releaseServer) { srv.setDown(true) },
+		"the clock set back": func(tr *trialing, d *daemon, srv *releaseServer) {
+			run(tr, d, 5*time.Minute)
+			tr.clock.t = tr.clock.t.Add(-time.Hour)
+		},
+		"the clock set ahead": func(tr *trialing, d *daemon, srv *releaseServer) {
+			run(tr, d, 5*time.Minute)
+			tr.clock.t = tr.clock.t.Add(time.Hour)
+		},
+		"asleep at the deadline": func(tr *trialing, d *daemon, srv *releaseServer) {
+			run(tr, d, 9*time.Minute+50*time.Second)
+			tr.clock.t = tr.clock.t.Add(8 * time.Hour)
+		},
+	} {
+		tr, dir, installed := startTrialing(t, "coach")
+		srv := newReleaseServer(t)
+		srv.publish("1.2.0", "1.1.0", "1.1.0", 101)
+		d, _ := testDaemon(t)
+		d.stateDir, d.trial = dir, tr.trial
+		d.nodes["coach"].serving = true
+		st, _ := loadUpdateState(dir)
+		d.upd = &updater{d: d, base: srv.URL, v: "1.2.0", now: tr.clock.now, st: *st, swap: func(pendingSwap) error { return nil }}
+		d.upd.start()
+		tr.attach(d)
+		d.upd.poll(context.Background()) // the loop's first, at once
+		pause(tr, d, srv)
+		run(tr, d, 12*time.Minute)
+		if tr.running() || len(tr.exits) != 0 || readFile(t, installed) != "new" || exists(filepath.Join(dir, updateTrialFile)) {
+			t.Errorf("%s: didn't pass (exits %q)", name, tr.exits)
 		}
 	}
 }

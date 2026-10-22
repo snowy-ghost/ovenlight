@@ -72,6 +72,9 @@ type trial struct {
 	last     time.Time
 	ended    bool
 	givingUp bool // backstop is rolling back, and tick leaves the trial to it
+	// polls is the updater's count of polls tick saw last, and polled the time awake then.
+	polls  int64
+	polled time.Duration
 }
 
 // startTrial reads the trial beside the running binary, first thing in main. A start it
@@ -259,6 +262,12 @@ func (t *trial) tick() bool {
 	t.awake += awakeFor(t.last, now)
 	t.last = now
 	d, due := t.d, t.awake >= quietFor
+	if d != nil && d.upd != nil {
+		if n := d.upd.polls.Load(); n != t.polls {
+			t.polls, t.polled = n, t.awake
+		}
+	}
+	polledLately := t.polls > 0 && t.awake-t.polled <= 3*updateMinute
 	t.mu.Unlock()
 	if d != nil {
 		for _, n := range d.snapshot() {
@@ -274,15 +283,16 @@ func (t *trial) tick() bool {
 	}
 	err := t.failure(d)
 	// A pass holds the updater's lock, taken before the trial's as poll takes them, and
-	// needs its loop to have polled lately: a release whose updater hangs holding the lock,
-	// or never polls, would never update again, so it's left to the backstop.
+	// needs its loop to have polled within the last 3 minutes awake, which a clock set back
+	// can't fake: a release whose updater hangs holding the lock, or never polls, would
+	// never update again, so it's left to the backstop.
 	var u *updater
 	if err == nil {
 		if u = d.upd; !u.mu.TryLock() {
 			return false
 		}
 		defer u.mu.Unlock()
-		if now.Sub(u.lastRan) > 3*updateMinute {
+		if !polledLately {
 			return false
 		}
 	}

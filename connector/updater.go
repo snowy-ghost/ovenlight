@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/snowy-ghost/ovenlight/connector/internal/jsonfile"
@@ -150,8 +151,9 @@ type updater struct {
 	ready string // the release extracted into next, waiting for its moment
 	next  string
 	// awake is since when the connector has been up and awake, and lastRan when the
-	// updater last looked.
+	// updater last looked. polls counts its looks, which a trial watches.
 	awake, lastRan time.Time
+	polls          atomic.Int64
 }
 
 // newUpdater starts the updater from update.json. One it can't read would stop updates
@@ -213,6 +215,7 @@ func (u *updater) noteAwake(now time.Time) time.Time {
 		u.awake = now
 	}
 	u.lastRan = now
+	u.polls.Add(1)
 	return u.awake
 }
 
