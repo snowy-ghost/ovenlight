@@ -156,8 +156,9 @@ land() {
   run nokey --check
 }
 
-# Serials are seconds, and each must be above the last one signed.
-tick() { sleep 1; }
+# Serials are seconds, and each must be above the last one signed, so the scenario's clock
+# steps a second on.
+tick() { ahead=$((ahead + 1)); }
 
 # build <version> <secure> [<reinstallBelow>]: built and tagged; signfolder <version> <key>:
 # the folder signed and published.
