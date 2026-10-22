@@ -83,7 +83,7 @@ observe() {
   for id in $signed; do
     if cmp -s "$tmp/live.json" "$records/$id.json"; then found="$id"; fi
   done
-  [ -n "$found" ] || refuse "latest.json isn't an index in $records. After a planned move, copy the other Air's history in first. After a lost Air, run --import."
+  [ -n "$found" ] || refuse "latest.json isn't an index in $records. After a planned move, copy the other Air's history in first. After a lost Air, delete it and run --import."
   if [ -n "$newest" ] && [ "$(serialof "$found")" -lt "$(serialof "$newest")" ]; then
     refuse "latest.json is $found, older than $newest, which it has been: publish $newest again on the mini"
   fi
@@ -102,7 +102,7 @@ observe() {
 # published, counts as seen. Then latest.json must be in it.
 import() {
   local h="$tmp/history" d v c id f s t
-  [ ! -e "$records" ] || refuse "$records exists: --import rebuilds it only on a replacement Air"
+  [ ! -e "$records" ] || refuse "$records exists: --import rebuilds it once it's deleted, on an Air whose --check doesn't find latest.json in it"
   [ -n "$dry" ] || git -C "$root" fetch -q origin master
   # This Air's keys made since the loss, which no release before it lists.
   { cat /dev/null "$keydir"/*.pub; [ -n "$dry" ] || cat "$HANDLE.pub"; } |

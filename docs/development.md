@@ -299,8 +299,9 @@ After a lost Air, the paper key signs R:
 
 1. On the replacement Air, make its Touch ID key with the two commands above. In
    `~/.ssh/ovenlight-release-keys/`, if the Air has one, delete what a backup may have
-   brought back (`rm -f touchid.pub backup.pub`, and `rm -r history` unless it came from a
-   disk only the lost Air used). Unless `history` stays, write into a new file each key
+   brought back (`rm -f touchid.pub backup.pub`). Keep `history` only if it came from a
+   disk only the lost Air used and `scripts/sign-connector.sh --check` finds `latest.json`
+   in it. Otherwise `rm -r history`, then write into a new file each key
    the `release_keys` in `~/Sync/ovenlight/releases/` list whose fingerprint is on the
    current paper key's page, printed or written on, except a paper key that was lost.
    `cat ~/Sync/ovenlight/releases/*/release_keys | sort -u` lists those keys, and

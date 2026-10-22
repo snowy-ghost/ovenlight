@@ -418,6 +418,7 @@ fresh lost "a lost Air: its history imported, then the backup key brings in two 
 keyfolder air1 paper1
 keys air1 paper1
 ship 1.1.0 1.0.6 air1 1.1.0
+cp -R "$dry/keys/history" "$dry/stale"
 ship 1.1.1 1.0.6 air1
 pull 1.1.1 air1 1.1.0
 # The replacement Air starts with an empty key folder, and imports its history with the keys
@@ -425,6 +426,11 @@ pull 1.1.1 air1 1.1.0
 newair
 cp "$fixtures/air2.pub" "$dry/keys/touchid.pub"
 cat "$fixtures/air1.pub" "$fixtures/paper1.pub" > "$dry/import"
+# A backup of the history from before the last promote is deleted, then imported.
+cp -R "$dry/stale" "$dry/keys/history"
+refused "After a lost Air, delete it and run --import" nokey --check
+refused "once it's deleted" nokey --import "$dry/import"
+rm -r "$dry/keys/history"
 # An agent holding ~/Sync deletes the pull's record of being published, makes up a promote of
 # 1.1.1 signed with another key, and points 1.1.0's commit at one whose release_keys lists the
 # new key.
