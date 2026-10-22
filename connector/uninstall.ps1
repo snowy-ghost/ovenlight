@@ -27,9 +27,8 @@ if (-not ([Security.Principal.WindowsPrincipal]$me).IsInRole([Security.Principal
   Fail 'uninstall.ps1 needs an administrator PowerShell: right-click PowerShell, choose Run as administrator, and run it again.'
 }
 
-# Windows can't delete a binary that runs, such as a coding agent's MCP server, which may
-# run one the updater kept.
-if (Get-CimInstance Win32_Process -Filter "Name LIKE 'ovenlight%.exe'" | Where-Object { $_.ExecutablePath -like "$binDir\*" -and $_.CommandLine -notlike '* run *' }) {
+# Windows can't delete a binary that runs, such as a coding agent's MCP server.
+if (Get-CimInstance Win32_Process -Filter "Name = 'ovenlight.exe'" | Where-Object { $_.ExecutablePath -like "$binDir\*" -and $_.CommandLine -notlike '* run *' }) {
   Fail 'ovenlight is in use outside the connector (by a coding agent''s MCP server, say): close it, then run uninstall.ps1 again'
 }
 
