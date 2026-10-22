@@ -19,6 +19,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"tailscale.com/net/tshttpproxy"
 )
 
 // releaseBase is where releases come from: each in its version's folder, beside the
@@ -176,8 +178,12 @@ func dayTime(t time.Time) time.Duration {
 }
 
 // updateClient fetches updates. It follows no redirect, which could lead off the release
-// host.
-var updateClient = &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+// host, and takes the proxy Tailscale does: on Windows, the system's when the environment
+// names none.
+var updateClient = &http.Client{
+	Transport:     &http.Transport{Proxy: tshttpproxy.ProxyFromEnvironment},
+	CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+}
 
 // downloadTimeout bounds an archive's download: the cap at 1 Mbit/s takes 18 minutes.
 const downloadTimeout = 30 * time.Minute
