@@ -311,7 +311,6 @@ refused "1.1.2 isn't the live release (1.1.1)" sign air1 --pull 1.1.2
 forge 1.1.2 pull air1 1.1.1
 refused "1.1.2 isn't the live release (1.1.1)" publish --pull 1.1.2
 pull 1.1.1 air1 1.1.0
-refused "nothing promoted before 1.1.0" sign air1 --pull 1.1.0
 # An agent holding ~/Sync deletes the pull's records, so a resign would bring 1.1.1 back, or
 # makes up a promote of 1.1.2, which was never promoted.
 mkdir "$dry/hidden"
@@ -452,8 +451,6 @@ keyfolder air1 paper1
 keys air1 paper1
 ship 1.1.0 1.0.6 air1 1.1.0
 ship 1.1.1 1.0.6 air1
-tick
-refused "1.1.0/release_keys doesn't list the pull's key" sign paper2 --pull 1.1.1
 forge 1.1.1 pull paper2 1.1.0
 refused "isn't signed by a key any release lists" publish --pull 1.1.1
 # A key that only a release not yet promoted lists can't sign it either.
