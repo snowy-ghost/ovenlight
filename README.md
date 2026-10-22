@@ -336,6 +336,38 @@ screenshot with Send feedback, and `ovenlight feedback` lists what arrives.
 removing someone from one app and unpublishing a shareable app, and
 [docs/security.md](docs/security.md#the-policy-change) explains the policy change.
 
+## At work
+
+Ovenlight can serve a team's internal apps. Put them on one computer the team controls,
+which stays on and awake, and share each with the colleagues who need it. Each app is
+told who's calling, so it needs no login of its own, and removing someone ends their
+access at once. Know the limits first:
+
+- **Phones only.** Colleagues open shared apps in Ovenlight on their phone, not in a
+  laptop browser. Each phone joins your tailnet as a guest device that reaches only its
+  apps, without waiting for device approval.
+- **One sharing computer, one owner.** Only one connector per tailnet can share apps, and
+  one person's login owns every app it shares.
+- **A Mac or work PC stays logged in.** A Mac runs the connector only while you're logged
+  in, and so does a Windows PC on a work, school or domain account
+  ([details](docs/connector.md#what-the-computer-needs)).
+- **A Tailscale admin's credential.** Sharing edits your tailnet's access rules and
+  deletes devices, so its API access token or OAuth client must come from the tailnet's
+  [Owner or an Admin](https://tailscale.com/kb/1138/user-roles). A token lasts at most 90
+  days. An OAuth client lasts until revoked but needs each shared app's tags
+  ([details](docs/security.md#the-api-credential)).
+- **Everything on that computer is trusted.** Anything that runs as you there, apps and
+  coding agents included, can read every app's data and that admin credential. The
+  computer's other accounts can reach every app directly and claim to be anyone.
+- **A paid Tailscale plan.** Tailscale's free Personal plan is for non-commercial use.
+
+Colleagues don't sign in. Each is known by the invite they opened, under the name you
+gave them, so removing someone from your company's identity provider doesn't remove them
+here. Nor can an app add your identity provider's sign-in, which
+[doesn't work](docs/building-apps.md#dont-build-these) inside Ovenlight. Tailscale's admin
+console lists each app as a device, but only the sharing computer knows who can open it.
+If your team needs more, write to team@snowyghost.com.
+
 ## Security
 
 - **Two locks on every guest request.** Your tailnet policy lets a guest's phone reach only
