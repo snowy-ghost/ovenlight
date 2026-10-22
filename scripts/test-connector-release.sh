@@ -284,11 +284,13 @@ run sign air1 --pull 1.1.1
 resign air1 1.1.1
 refused "sign a fresh one" publish --pull 1.1.1
 pull 1.1.1 air1 1.1.0
-# A resign takes the archives' hashes from the records only as the signed canary index has
-# them.
+# A resign signs the archives' hashes the canary index has, never the records' SHA256SUMS.
 sed -i '' -E '1s/^[0-9a-f]{8}/deadbeef/' "$dry/sync/releases/1.1.0/SHA256SUMS"
 tick
-refused "isn't the one 1.1.0's canary index lists" sign air1 --resign
+run sign air1 --resign
+if grep -q deadbeef "$dry"/sync/releases/1.1.0/resign-*.json; then fail "the resign signed the records' SHA256SUMS"; fi
+pass "the resign signed the canary index's hashes"
+refused "isn't the one signed for 1.1.0" publish --resign
 
 fresh early "a promote signed before a pull"
 keyfolder air1 paper1
