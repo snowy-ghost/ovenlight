@@ -274,7 +274,7 @@ For a planned move to a new Air, the old Air signs R:
    fingerprint on both paper copies. In the old Air's `~/.ssh/ovenlight-release-keys/`,
    the old `touchid.pub` goes into the retired list first (`cat touchid.pub >> retired`),
    then the copy takes its place as `touchid.pub`. The new Air's folder gets that folder's
-   files the same way.
+   `touchid.pub`, `backup.pub` and `retired` the same way.
 2. In the new Air's clone, sign the new key's test signature (number 3 at the first
    change):
 
@@ -288,9 +288,10 @@ For a planned move to a new Air, the old Air signs R:
    signed with the new key (`--resign`). That and R+1's promote are refused until four
    weeks and four days after R's promote, and a pull back below R starts the wait again at
    the next promote. Keep the old Air until R+1 is promoted, since a pull before R+1's
-   `--resign` is signed with the old key. Before that `--resign`, copy `last.json` and
-   `published` from the old Air's `~/.ssh/ovenlight-release-keys/` into the new Air's the
-   same way.
+   `--resign` is signed with the old key. Right before the new Air first runs
+   `sign-connector.sh`, copy `last.json` and `published` from the old Air's
+   `~/.ssh/ovenlight-release-keys/` into the new Air's the same way, and again after
+   anything the old Air signs later, such as a pull.
 
 After a lost Air, the paper key signs R:
 
@@ -330,9 +331,10 @@ signs on, so nothing waits and no R+1 follows. If the Air is lost too, the new p
 
 A lost Air inside a new Touch ID key's wait is answered by an R signed with the paper key
 every release so far lists, which waits for nothing. After a planned move whose old Air is
-lost, the new Air keeps its key: add `backup.pub` to the retired list and delete it
-(`cat backup.pub >> retired`, then `rm backup.pub`), run key setup, and R lists the new
-Air's key, the new paper key and the old paper key that signs it.
+lost, the new Air keeps its key: add `backup.pub` to the retired list, then delete it with
+`last.json` and `published`, which the old Air may have signed past
+(`cat backup.pub >> retired`, then `rm -f backup.pub last.json published`). Run key setup,
+and R lists the new Air's key, the new paper key and the old paper key that signs it.
 
 ## The iPhone app
 

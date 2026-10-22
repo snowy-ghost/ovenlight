@@ -101,7 +101,7 @@ airsigned() {
 # another serial than its own, whose newest published index isn't the last one this Air
 # signed or isn't latest.json, or whose others aren't the ones it built that one on.
 vouched() {
-  local id
+  local id moved="After a planned move, copy last.json and published into $keydir from the Air that signed last."
   for id in $published; do
     verify "$records/$id.json" "$records/$id.json.sig" ovenlight-latest "$tmp/air" ||
       refuse "$id isn't signed by a key in $keydir or its retired list"
@@ -112,9 +112,9 @@ vouched() {
   if [ -n "$newest" ] && ! cmp -s "$records/$newest.json" "$keydir/last.json"; then
     copy="curl -fsS https://downloads.ovenlight.app/connector/latest.json | cmp - $records/$newest.json && cp $records/$newest.json $keydir/last.json"
     names="the records' newest published index, $newest, names $(field latest "$records/$newest.json")"
-    [ -f "$keydir/last.json" ] || refuse "This Air has signed no index, and $names. Copy it in only once https://downloads.ovenlight.app/connector/latest.json names the release you last promoted, or the one your last pull went back to:
+    [ -f "$keydir/last.json" ] || refuse "This Air has signed no index, and $names. $moved Otherwise copy it in only once https://downloads.ovenlight.app/connector/latest.json names the release you last promoted, or the one your last pull went back to:
   $copy"
-    refuse "This Air last signed an index naming $(field latest "$keydir/last.json"), at $(date -r "$(field serial "$keydir/last.json")"), and $names. Whoever holds ~/Sync and the bucket can roll back both the records and latest.json, so copy it in only if you know this Air's last index never went out:
+    refuse "This Air last signed an index naming $(field latest "$keydir/last.json"), at $(date -r "$(field serial "$keydir/last.json")"), and $names. $moved Otherwise copy it in only if you know this Air's last index never went out, since whoever holds ~/Sync and the bucket can roll back both the records and latest.json:
   $copy"
   fi
   # The published indexes are the ones they were when this Air signed last.json, and it.
@@ -122,7 +122,8 @@ vouched() {
     { cat "$keydir/published"; echo "$newest"; } | awk 'NF && !seen[$0]++' > "$tmp/saw"
     echo "$published" | awk NF | cmp -s - "$tmp/saw" ||
       refuse "the records' published indexes changed since this Air signed $keydir/last.json:
-$(echo "$published" | awk NF | diff "$tmp/saw" - | sed -n 's/^</  no longer published:/p; s/^>/  newly published:/p')"
+$(echo "$published" | awk NF | diff "$tmp/saw" - | sed -n 's/^</  no longer published:/p; s/^>/  newly published:/p')
+$moved Otherwise find out who changed the records before signing anything."
   fi
   if [ -n "$newest" ]; then
     if [ -n "$dry" ]; then cp "$dry/bucket/connector/latest.json" "$tmp/live.json"
