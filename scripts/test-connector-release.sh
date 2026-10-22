@@ -148,6 +148,15 @@ ship() {
   promote "$1" "$3"
 }
 
+# newestpublished: the newest index the records say was published.
+newestpublished() {
+  local d="$dry/sync/releases" f
+  for f in "$d"/*/*.published; do f="${f#"$d/"}"; echo "${f%.published}"; done | sort -t- -k2,2n | tail -1
+}
+# lastchecked: the owner's step when the Air's last.json isn't the newest index published,
+# once latest.json is checked against the tags: that index becomes the last one signed.
+lastchecked() { cp "$dry/sync/releases/$(newestpublished).json" "$dry/keys/last.json"; }
+
 # forge <version> <kind> <key> <release>: an index signed straight with ssh-keygen, for a
 # publish to refuse on its own, as sign-connector.sh would have first: <release>'s index,
 # with the time now as its serial, built on the newest index published.
@@ -158,7 +167,7 @@ forge() {
   f="$d/$1/$2-$s"
   sed "s/\"serial\": 0,/\"serial\": $s,/" "$d/$4/index.json" > "$f.json"
   ssh-keygen -Y sign -q -f "$dry/private/$3" -n ovenlight-latest < "$f.json" > "$f.json.sig"
-  for s in "$d"/*/*.published; do s="${s#"$d/"}"; echo "${s%.published}"; done | sort -t- -k2,2n | tail -1 > "$f.base"
+  newestpublished > "$f.base"
 }
 
 # header <key> <cache-control>: the object's cache, as uploaded.
@@ -275,6 +284,16 @@ forge 1.1.2 pull air1 1.1.1
 refused "1.1.2 isn't the live release (1.1.1)" publish --pull 1.1.2
 pull 1.1.1 air1 1.1.0
 refused "nothing promoted before 1.1.0" sign air1 --pull 1.1.0
+# An agent holding ~/Sync deletes the pull's records, so a resign would bring 1.1.1 back, or
+# makes up a promote of 1.1.2, which was never promoted.
+mkdir "$dry/hidden"
+mv "$dry"/sync/releases/1.1.1/pull-* "$dry/hidden/"
+tick
+refused "the last one this Air signed" sign air1 --resign
+mv "$dry"/hidden/* "$dry/sync/releases/1.1.1/"
+forge 1.1.2 promote air2 1.1.2
+for f in "$dry"/sync/releases/1.1.2/promote-*.json; do date +%s > "${f%.json}.published"; done
+refused "isn't signed by a key in" sign air1 --resign
 
 fresh stale "a pull gone stale before it's published"
 keyfolder air1 paper1
@@ -283,6 +302,10 @@ ship 1.1.0 1.0.6 air1 1.1.0
 ship 1.1.1 1.0.6 air1
 tick
 run sign air1 --pull 1.1.1
+# The pull is signed and never published, so the Air signs again only once the owner checks.
+tick
+refused "the last one this Air signed" sign air1 --resign
+lastchecked
 resign air1 1.1.1
 refused "sign a fresh one" publish --pull 1.1.1
 pull 1.1.1 air1 1.1.0
@@ -306,6 +329,7 @@ build 1.1.2 1.0.6
 signfolder 1.1.2 air1
 tick
 run sign air1 --promote 1.1.2
+lastchecked
 pull 1.1.1 air1 1.1.0
 refused "sign a fresh one" publish --promote 1.1.2
 promote 1.1.2 air1
@@ -335,12 +359,17 @@ fresh lost "a lost Air: the backup key brings in two new keys, and signs a pull"
 keyfolder air1 paper1
 keys air1 paper1
 ship 1.1.0 1.0.6 air1 1.1.0
-# The replacement Air makes two new keys, and the release lists them and the paper key.
+# The replacement Air makes two new keys, and the release lists them and the paper key. It
+# has no last.json until the owner checks.
 keyfolder air2 paper2
+rm "$dry/keys/last.json"
 keys air2 paper2 paper1
 build 1.1.1 1.0.6
 refused "isn't the two keys in" sign air2 1.1.1
 signfolder 1.1.1 paper1
+tick
+refused "the last one this Air signed" sign paper1 --promote 1.1.1
+lastchecked
 promote 1.1.1 paper1
 pull 1.1.1 paper1 1.1.0
 # The pulled rotation leaves owners on the old keys, so the next release repeats it.
@@ -477,6 +506,7 @@ build 1.1.2 1.1.2
 signfolder 1.1.2 air1
 tick
 run sign air1 --promote 1.1.2
+lastchecked
 resign air1 1.1.1
 [ "$(field secure "$dry/bucket/connector/latest.json")" = 1.0.6 ] || fail "secure went up"
 pass "secure is still 1.0.6"

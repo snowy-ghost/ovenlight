@@ -7,8 +7,9 @@
 # the records, ~/Sync/ovenlight/releases/<version>/, as <kind>-<serial>.json and its .sig, and
 # here it's named <version>/<kind>-<serial>. publish-connector.sh adds <kind>-<serial>.published,
 # holding the time it was published, before it uploads it. A pull or resign also notes, in
-# <kind>-<serial>.base, the published index it was built on. Those records are the only history
-# the scripts read, never the bucket.
+# <kind>-<serial>.base, the published index it was built on. Those records, and the last index
+# sign-connector.sh signed, which it keeps beside the Air's keys, are the only history the
+# scripts read, never the bucket.
 #
 # OVENLIGHT_RELEASE_DRY=<folder> makes a dry run, which scripts/test-connector-release.sh does
 # in folders it marks with a .release-dry-run file, which this requires: that folder stands

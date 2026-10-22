@@ -24,7 +24,9 @@
 # key signs only a release that replaces it, so its .pub has left that folder. A promote,
 # pull or resign builds only on what this Air's own keys signed: those two, the ones they
 # replaced, whose .pub files move into the folder's retired/, and the key signing. The
-# records' release_keys are only as safe as ~/Sync.
+# records' release_keys are only as safe as ~/Sync. It also builds only on the index it
+# signed last, which it keeps in that folder as last.json, so the records can't be rolled
+# back.
 #
 # --key signs with a key other than this Air's Touch ID handle, such as the paper backup or
 # another Touch ID key's handle, with its public half beside it as <file>.pub.
@@ -75,6 +77,7 @@ if [ -n "$dry" ]; then mini="$now"; else mini="$(ssh mini date +%s)"; fi
 sign() {
   ssh-keygen -Y sign -q -f "$key" -n "$1" < "$2" > "$2.sig"
   verify "$2" "$2.sig" "$1" "$tmp/signer" || refuse "the signature of $2 doesn't verify with $key.pub"
+  if [ "$1" = ovenlight-latest ]; then cp "$2" "$keydir/last.json"; fi
 }
 
 # This Air's own keys, none from ~/Sync.
@@ -85,6 +88,18 @@ airsigned() {
   { verify "$records/$1/SHA256SUMS" "$records/$1/SHA256SUMS.sig" file "$tmp/air" &&
     verify "$records/$1/canary.json" "$records/$1/canary.json.sig" ovenlight-canary "$tmp/air"; } ||
     refuse "$1 isn't signed by a key in $keydir or its retired/"
+}
+
+# vouched: refuses records with a published index these keys didn't sign, or whose newest
+# published index isn't the last one this Air signed.
+vouched() {
+  local id
+  for id in $published; do
+    verify "$records/$id.json" "$records/$id.json.sig" ovenlight-latest "$tmp/air" ||
+      refuse "$id isn't signed by a key in $keydir or its retired/"
+  done
+  [ -z "$newest" ] || cmp -s "$records/$newest.json" "$keydir/last.json" ||
+    refuse "$records/$newest.json, the newest index the records say was published, isn't $keydir/last.json, the last one this Air signed (none on a new Air, an older one on a restored Air, a newer one after an index signed and never published): check that the version https://downloads.ovenlight.app/connector/latest.json names is the newest connector-v* tag on GitHub that was promoted, then copy $records/$newest.json to $keydir/last.json"
 }
 
 # rulehas <version> [<own release_keys>]: refuses a key the one rule won't accept for it.
@@ -105,6 +120,7 @@ keep() {
 }
 
 echo "signing with $(ssh-keygen -lf "$key.pub")"
+if [ "$mode" != release ]; then vouched; fi
 case "$mode" in
 release)
   b="$tmp/build"
