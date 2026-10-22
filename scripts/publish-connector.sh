@@ -148,6 +148,12 @@ isindex() {
 newestsigned() {
   local cmd="--${top#*/}"
   [ -n "$top" ] || refuse "no promote, pull or resign is signed in $records"
+  # A latest.json signed after the newest index here means these records lack what put it
+  # up, and publishing would take latest.json back.
+  if fetch connector/latest.json "$tmp/live.json" && [[ "$(field serial "$tmp/live.json")" =~ ^[0-9]+$ ]] &&
+    [ "$(field serial "$tmp/live.json")" -gt "$(serialof "$top")" ]; then
+    refuse "latest.json was signed after $top, the newest index here, so these records lack what put it up: scripts/sign-connector.sh --check on the Air sends the books again"
+  fi
   cmd="${cmd%-*}"
   [ "$cmd" = --resign ] || cmd="$cmd ${top%%/*}"
   # shellcheck disable=SC2254 # the pattern is a glob
