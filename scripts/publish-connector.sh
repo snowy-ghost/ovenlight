@@ -160,12 +160,16 @@ begin() {
 # after a publish cut short, since what's live would then differ here and on the Air. One
 # whose upload went through is marked live.
 settled() {
+  local id
   if [ -z "$newest" ] || [ "$newest" = "$1" ]; then return 0; fi
   if fetch "connector/latest.json?$(date +%s)" "$tmp/live.json" && cmp -s "$tmp/live.json" "$records/$newest.json"; then
     [ -f "$records/$newest.live" ] || date +%s > "$records/$newest.live"
     return
   fi
-  refuse "latest.json names $(field latest "$tmp/live.json"), not $newest. If its publish was cut short, run it again. A promote that mustn't go out is dropped by deleting $records/$newest.published and publishing a --resign, which puts the live release back in latest/ (with nothing promoted before it, promote the next release instead). If latest.json is an index whose .published you deleted, put it back."
+  for id in $signed; do
+    if [ ! -f "$records/$id.published" ] && cmp -s "$tmp/live.json" "$records/$id.json"; then refuse "latest.json is $id, which has no .published here: if you deleted it, put it back"; fi
+  done
+  refuse "latest.json isn't $newest, whose publish was cut short: run it again, or drop it by moving $records/$newest.published out (see docs/development.md)"
 }
 
 # based <id>: refuses an index built on one that's no longer the newest published.

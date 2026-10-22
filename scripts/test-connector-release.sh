@@ -416,7 +416,7 @@ if publish --promote 1.1.1 > "$dry/log" 2>&1; then fail "the upload of latest.js
 chmod 644 "$dry/bucket/connector/latest.json"
 tick
 run sign air1 --resign
-refused "not 1.1.1/promote-" publish --resign
+refused "isn't 1.1.1/promote-" publish --resign
 rm "$dry"/sync/releases/1.1.1/promote-*.published
 run publish --resign
 run nokey --check
@@ -433,7 +433,7 @@ r=("$dry"/sync/releases/1.1.1/resign-*.published)
 mv "${r[0]}" "$dry/kept"
 tick
 run sign air1 --resign
-refused "latest.json names 1.1.1, not 1.1.1/promote-" publish --resign
+refused "which has no .published here: if you deleted it, put it back" publish --resign
 mv "$dry/kept" "${r[0]}"
 run publish --resign
 # A promote cut short, then finished after the Air signed the next on the one before it.
@@ -802,7 +802,7 @@ if publish --promote 1.1.1 > "$dry/log" 2>&1; then fail "the upload of latest.js
 chmod 644 "$dry/bucket/connector/latest.json"
 tick
 run sign air1 --resign
-refused "not 1.1.1/promote-" publish --resign
+refused "isn't 1.1.1/promote-" publish --resign
 rm "$dry"/sync/releases/1.1.1/promote-*.published
 run publish --resign
 p=("$dry"/sync/releases/1.1.1/promote-*.json)

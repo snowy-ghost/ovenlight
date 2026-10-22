@@ -186,26 +186,28 @@ That puts its files in `connector/latest/` and its index in `latest.json`, and e
 owner's two-day wait starts. A publish that fails partway is finished by running the same
 command again (a folder's before the next build replaces `build/release`). Until then the
 mini publishes no other promote, pull or resign. To drop a promote cut short that mustn't
-go out, run `scripts/sign-connector.sh --check` on the Air instead. If it says the
-promote's release is live, the promote went out, so pull it. Otherwise sign and publish a
-`--resign`, and once the mini refuses because `latest.json` isn't the promote, delete the
-promote's `.published` from its folder in `~/Sync/ovenlight/releases/` and publish the
-resign again, which puts the live release back in `connector/latest/`. With nothing
-promoted before it, promote the next release instead. A pull cut short only goes out.
-`--pull`, the same way, takes the live release back out by publishing the index of the
-release before it, signed again. Computers that already took the pulled release keep it,
-since the connector never installs an older one, so the fix is the next release.
-`--resign` publishes the live index signed again, to supersede a signed promote that
-mustn't ship.
-Before signing anything the Air fetches `latest.json`, which must be an index in the
-history and never one older than an index it has been, and after signing an index for
-`latest.json` it waits until `latest.json` is that index, which Ctrl-C leaves to the next
-run or `--check`. Its refusals say what to do, as when a pull signed and not yet published
-blocks a promote or resign. Each script's header says what it checks, and
-`scripts/test-connector-release.sh` dry-runs them all. Each release restarts every owner's
-connector, and one promoted within two days of the last restarts every owner's wait, so
-batch what isn't urgent. A `--resign` restarts the wait too, for computers that haven't
-taken the live release.
+go out, run `scripts/sign-connector.sh --check` on the Air instead (after a lost Air,
+`--import`, with the promote's `.published` moved out first). If it says the promote's
+release is live, the promote went out: put back its `.published` if you moved it, and
+pull it. Otherwise move the promote's `.published` out of its folder in
+`~/Sync/ovenlight/releases/`, then sign and publish a `--resign`, which puts the live
+release back in `connector/latest/`. With nothing promoted before it, promote the next
+release instead. A pull or resign cut short goes out, or once a fresh one is signed, is
+dropped the same way: move its `.published` out and publish the fresh one.
+
+`--pull`, signed and published like a promote, takes the live release back out by
+publishing the index of the release before it, signed again. Computers that already took
+the pulled release keep it, since the connector never installs an older one, so the fix is
+the next release. `--resign` publishes the live index signed again, to supersede a signed
+promote that mustn't ship. Before signing anything the Air fetches `latest.json`, which
+must be an index in the history and never one older than an index it has been, and after
+signing an index for `latest.json` it waits until `latest.json` is that index, which
+Ctrl-C leaves to the next run or `--check`. Its refusals say what to do, as when a pull
+signed and not yet published blocks a promote or resign. Each script's header says what it
+checks, and `scripts/test-connector-release.sh` dry-runs them all. Each release restarts
+every owner's connector, and one promoted within two days of the last restarts every
+owner's wait, so batch what isn't urgent. A `--resign` restarts the wait too, for
+computers that haven't taken the live release.
 
 Uploads go to the R2 bucket behind `https://downloads.ovenlight.app`, through `wrangler`
 (signed in with `npx wrangler@4.147.0 login`, or `CLOUDFLARE_API_TOKEN` and
@@ -363,12 +365,18 @@ the new Air's key, the new paper key and the old paper key that signs it.
 After losing both keys, no computer can verify a release signed with new ones, so every
 owner installs the next release by hand once. On the mini, move
 `~/Sync/ovenlight/releases/` aside. On the Air, move `~/.ssh/ovenlight-release-keys/`
-aside, make the Touch ID key with the two commands above and run key setup. Upload an
-unsigned `latest.json` naming the live release and its `secure`, as 1.0.9's was (for
-example `{"latest": "1.2.0", "secure": "1.0.6"}`), with the `wrangler r2 object put` that
-`publish-connector.sh` runs for it. Then release as in the first updater release: a
-version above every release so far, naming its own `reinstallBelow`, whose `release_keys`
-and `allowed_signers` list only the new keys.
+aside, make the Touch ID key with the two commands above and run key setup. On the mini,
+write an unsigned index naming the live release and its `secure` to `latest.json` in the
+repo, as 1.0.9's was (for example `{"latest": "1.2.0", "secure": "1.0.6"}`), and upload
+it:
+
+```sh
+npx wrangler@4.147.0 r2 object put ovenlight-downloads/connector/latest.json --file latest.json --content-type application/json --cache-control "public, max-age=300" --remote
+```
+
+Then release as in the first updater release: a version above every release so far,
+naming its own `reinstallBelow`, whose `release_keys` and `allowed_signers` list only the
+new keys.
 
 ## The iPhone app
 
