@@ -164,7 +164,7 @@ A release that raises `reinstallBelow` passes once `update now` says it needs it
 script, the mini installs it by hand from `connector/1.2.0/`
 ([connector.md](connector.md#install-a-release-by-hand)), and status shows a check made
 since. A canary that rolls back says why in the mini's `~/Library/Logs/ovenlight.log`, on
-the line starting `updates: rolling back from 1.2.0`. A release whose canary fails is never
+its `updates: rolling back from 1.2.0` line. A release whose canary fails is never
 promoted: fix it under a new version, since a published folder never changes.
 
 Then promote it. Sign the promote on the Air:
@@ -296,16 +296,16 @@ For a planned move to a new Air, the old Air signs R:
 After a lost Air, the paper key signs R:
 
 1. On the replacement Air, make its Touch ID key with the two commands above. In
-   `~/.ssh/ovenlight-release-keys/`, delete what a backup may have brought back
-   (`rm -f touchid.pub backup.pub last.json published`), then write that folder's
-   `retired` afresh from the records: each key the `release_keys` in
-   `~/Sync/ovenlight/releases/` list whose fingerprint is on the current paper key's page,
-   printed or written on. `cat ~/Sync/ovenlight/releases/*/release_keys | sort -u` lists
-   those keys, and `ssh-keygen -lf -` on that list prints their fingerprints in the same
-   order. Then run key setup (`~/Sync/ovenlight/release-key-setup.sh`). It makes a new
-   paper key, files both new public keys in `~/.ssh/ovenlight-release-keys/`, and signs a
-   test signature with each in `~/Sync/ovenlight/release-key-test/`. Its page also lists
-   the retired keys' fingerprints.
+   `~/.ssh/ovenlight-release-keys/`, made with `mkdir -p` if the Air has none, delete what
+   a backup may have brought back (`rm -f touchid.pub backup.pub last.json published`),
+   then write that folder's `retired` afresh from the records: each key the `release_keys`
+   in `~/Sync/ovenlight/releases/` list whose fingerprint is on the current paper key's
+   page, printed or written on. `cat ~/Sync/ovenlight/releases/*/release_keys | sort -u`
+   lists those keys, and `ssh-keygen -lf -` on that list prints their fingerprints in the
+   same order. Then run key setup (`~/Sync/ovenlight/release-key-setup.sh`). It makes a
+   new paper key, files both new public keys in `~/.ssh/ovenlight-release-keys/`, and
+   signs a test signature with each in `~/Sync/ovenlight/release-key-test/`. Its page also
+   lists the retired keys' fingerprints.
 2. R lists the two new keys and the old paper key, and drops the lost key and its
    signature. Copy key setup's `index.json.release-1.sig` and `index.json.release-2.sig`
    in under the next two free numbers.

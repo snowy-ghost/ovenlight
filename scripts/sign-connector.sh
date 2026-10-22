@@ -29,10 +29,10 @@
 # files, which carry a release's raise of secure or reinstallBelow forward to later ones. It
 # also builds only on the index it signed last, which it keeps in that folder as last.json,
 # and on the published indexes it built that one on, kept there as published, so the records
-# can't be rolled back. And it signs only while latest.json is the newest index the records
-# call published (unsigned while they call none published), and that index names the release
-# the records' names make live, so marking or renaming an index in ~/Sync can't change the
-# live one.
+# can't be rolled back. And it signs a promote, pull or resign only while latest.json is the
+# newest index the records call published (unsigned while they call none published), and
+# that index names the release the records' names make live, so marking or renaming an index
+# in ~/Sync can't change the live one.
 #
 # --key signs with a key other than this Air's Touch ID handle, such as the paper backup or
 # another Touch ID key's handle, with its public half beside it as <file>.pub.
@@ -116,9 +116,9 @@ vouched() {
   if [ -n "$newest" ] && ! cmp -s "$records/$newest.json" "$keydir/last.json"; then
     copy="curl -fsS https://downloads.ovenlight.app/connector/latest.json | cmp - $records/$newest.json && cp $records/$newest.json $keydir/last.json"
     names="the records' newest published index, $newest, names $(field latest "$records/$newest.json")"
-    [ -f "$keydir/last.json" ] || refuse "This Air has signed no index, and $names. $moved Otherwise copy it in only once https://downloads.ovenlight.app/connector/latest.json names the release you last promoted, or the one your last pull went back to:
+    [ -f "$keydir/last.json" ] || refuse "This Air has signed no index, and $names. $moved Otherwise copy the records' newest index in only once https://downloads.ovenlight.app/connector/latest.json names the release you last promoted, or the one your last pull went back to:
   $copy"
-    refuse "This Air last signed an index naming $(field latest "$keydir/last.json"), at $(date -r "$(field serial "$keydir/last.json")"), and $names. $moved Otherwise copy it in only if you know this Air's last index never went out, since whoever holds ~/Sync and the bucket can roll back both the records and latest.json:
+    refuse "This Air last signed an index naming $(field latest "$keydir/last.json"), at $(date -r "$(field serial "$keydir/last.json")"), and $names. $moved Otherwise copy the records' newest index in only if you know this Air's last index never went out, since whoever holds ~/Sync and the bucket can roll back both the records and latest.json:
   $copy"
   fi
   # The published indexes are the ones they were when this Air signed last.json, and it.
