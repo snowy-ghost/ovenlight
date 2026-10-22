@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"path/filepath"
 	"slices"
@@ -118,8 +119,8 @@ func startTrial() {
 // the swap didn't finish, a rollback did, or an install script put another release in
 // place. So does one with nothing to roll back to, or that isn't a trial record. One that
 // can't be read now stays for the next start, and so does every trial while another
-// connector answers for the state folder: run --service started by hand while the
-// service runs then fails on its lock. A second start with no clean stop or Windows
+// connector listens on the state folder's socket: run --service started by hand while
+// the service runs then fails on its lock. A second start with no clean stop or Windows
 // restart since the last counted start rolls back at once, and exit says the connector
 // should then exit.
 func beginTrial(dir, v string, now func() time.Time) (t *trial, exit bool) {
@@ -133,8 +134,11 @@ func beginTrial(dir, v string, now func() time.Time) (t *trial, exit bool) {
 		return nil, false
 	}
 	// The state lock can't tell: it's the code on trial, and a release whose lock fails
-	// would never count a start. A connector that answers is the service, though.
-	if reply, _ := callDaemon(dir, "status", 3*time.Second); reply != nil {
+	// would never count a start. A connector listening on the folder's socket is the
+	// service, though, even one that won't answer this process, as an elevated one on
+	// Windows won't answer one run by hand.
+	if c, err := net.DialTimeout("unix", socketPath(dir), time.Second); err == nil {
+		c.Close()
 		return nil, false
 	}
 	t = &trial{dir: dir, now: now, served: map[string]bool{}}

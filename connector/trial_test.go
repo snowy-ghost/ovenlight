@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -193,9 +193,10 @@ func TestTrialEnds(t *testing.T) {
 	}
 }
 
-// While another connector answers for the state folder, a start changes nothing: it's
-// run --service by hand, which then fails on the lock. With none answering, a start whose
-// lock fails is counted, so a release that breaks the lock still rolls back.
+// While another connector listens on the state folder's socket, answering or not, a start
+// changes nothing: it's run --service by hand, which then fails on the lock. With none
+// listening, even beside the socket file a crash leaves, a start whose lock fails is
+// counted, so a release that breaks the lock still rolls back.
 func TestTrialLocked(t *testing.T) {
 	for _, starts := range []int{0, 1} {
 		rec := trialTo(t, "1.2.0", nsLatest)
@@ -207,8 +208,7 @@ func TestTrialLocked(t *testing.T) {
 		}
 		go func() {
 			for conn, err := ln.Accept(); err == nil; conn, err = ln.Accept() {
-				json.NewEncoder(conn).Encode(controlReply{OK: true})
-				conn.Close()
+				conn.Close() // unanswered, as an elevated connector leaves one run by hand
 			}
 		}()
 		if tr, exit := beginTrial(dir, "1.2.0", time.Now); tr != nil || exit {
@@ -230,8 +230,14 @@ func TestTrialLocked(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer lock.Close()
+	ln, err := listenControl(socketPath(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ln.(*net.UnixListener).SetUnlinkOnClose(false)
+	ln.Close()
 	if _, exit := beginTrial(dir, "1.2.0", time.Now); !exit {
-		t.Error("a second start with the lock held and no connector answering went on")
+		t.Error("a second start with the lock held and no connector listening went on")
 	}
 	rolledBack(t, dir, installed)
 }
