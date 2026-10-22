@@ -302,6 +302,11 @@ cp "$d"/1.1.2/canary.json* "$d/1.1.1/"
 tick
 refused "is 1.1.2's index, not 1.1.1's" sign air1 --resign
 cp "$dry"/canary.json* "$d/1.1.1/"
+# Or it renames the live promote into 1.1.2's folder, so a resign would make 1.1.2 live.
+n="$(newestpublished)"
+for f in "$d/$n".*; do mv "$f" "$d/1.1.2/${f#"$d/1.1.1/"}"; done
+refused "names 1.1.1, which doesn't fit its name" sign air1 --resign
+for f in "$d"/1.1.2/promote-*; do mv "$f" "$d/1.1.1/"; done
 refused "1.1.2 isn't the live release (1.1.1)" sign air1 --pull 1.1.2
 forge 1.1.2 pull air1 1.1.1
 refused "1.1.2 isn't the live release (1.1.1)" publish --pull 1.1.2
