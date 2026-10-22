@@ -20,7 +20,8 @@
 # older one, and computers below it update without waiting. <reinstallBelow> is the oldest
 # version that may update to this one by binary alone, so a release that changes what the
 # install scripts install raises it. Neither is ever lowered. <reinstallBelow> defaults to
-# the highest in ~/Sync/ovenlight/releases, which the first release names itself.
+# the highest of the releases below it in ~/Sync/ovenlight/releases, which the first release
+# names itself.
 #
 # It builds with the Go version on connector/go.mod's go line, as CI does, and only a
 # clean HEAD on origin/master, checking that each binary carries that commit (go1.26
@@ -101,19 +102,17 @@ elif $unsigned; then
   indexed=false
 fi
 if $indexed; then
-  for v in "$version" "$secure" $reinstall; do
-    canonical "$v" || refuse "a release's versions look like 1.2.3, with no leading zeros or suffix, not $v"
-  done
   if [ -z "$reinstall" ]; then
     for f in "$records"/*/index.json; do
+      below "$(basename "$(dirname "$f")")" "$version" || continue
       r="$(field reinstallBelow "$f")"
       if [ -z "$reinstall" ] || below "$reinstall" "$r"; then reinstall="$r"; fi
     done
-    [ -n "$reinstall" ] || refuse "$records has no release yet, so name the first one's reinstallBelow"
+    [ -n "$reinstall" ] || refuse "$records has no release below $version, so name its reinstallBelow"
     echo "reinstallBelow $reinstall, the highest in $records"
   fi
-  atleast "$secure" "$version" || refuse "secure ($secure) is newer than the release ($version)"
-  atleast "$reinstall" "$version" || refuse "reinstallBelow ($reinstall) is newer than the release ($version)"
+  # The index's own checks, before minutes of building.
+  index "$version" "$secure" "$reinstall" 0 /dev/null > /dev/null
   keepsraised "$version" "$secure" "$reinstall"
 fi
 

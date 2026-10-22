@@ -91,23 +91,18 @@ signers() {
 }
 
 # keyfolder <Touch ID key> <paper key>: the Air's ~/.ssh/ovenlight-release-keys holds those
-# fixture keys as touchid.pub and backup.pub, and its retired list gets each one they replace.
+# fixture keys as touchid.pub and backup.pub.
 keyfolder() {
-  local name k
-  for name in touchid backup; do
-    k="$1"
-    shift
-    if [ -f "$dry/keys/$name.pub" ] && ! cmp -s "$dry/keys/$name.pub" "$fixtures/$k.pub"; then
-      cat "$dry/keys/$name.pub" >> "$dry/keys/retired"
-    fi
-    cp "$fixtures/$k.pub" "$dry/keys/$name.pub"
-  done
+  cp "$fixtures/$1.pub" "$dry/keys/touchid.pub"
+  cp "$fixtures/$2.pub" "$dry/keys/backup.pub"
 }
 
 # swapair: in a planned move, the other Air's key folder takes this one's place. carry: that
-# Air's last.json and published are copied into this one's.
+# Air's history is merged into this one's. newair: a replacement Air, with an empty key folder.
 swapair() { mv "$dry/keys" "$dry/air"; mv "$dry/otherair" "$dry/keys"; mv "$dry/air" "$dry/otherair"; }
-carry() { cp "$dry/otherair/last.json" "$dry/otherair/published" "$dry/keys/"; }
+# macOS's cp -n exits 1 when it skips a file.
+carry() { cp -Rn "$dry/otherair/history/" "$dry/keys/history" || true; }
+newair() { mv "$dry/keys" "$dry/lostair"; mkdir "$dry/keys"; }
 
 # run <command>...: runs it, and fails with its output if it fails.
 run() {
@@ -125,6 +120,7 @@ refused() {
 
 release() { "$repo/scripts/release-connector.sh" --unsigned "$@"; }
 sign() { local k="$1"; shift; "$repo/scripts/sign-connector.sh" --key "$dry/private/$k" "$@"; }
+nokey() { "$repo/scripts/sign-connector.sh" "$@"; }
 publish() { "$repo/scripts/publish-connector.sh" "$@"; }
 
 # Serials are seconds, and each must be above the last one signed.
@@ -145,6 +141,7 @@ promote() {
   tick
   run sign "$2" --promote "$1"
   run publish --promote "$1"
+  run nokey --check
   latest_is "$1" "$2"
 }
 # pull <version> <key> <back to>
@@ -152,6 +149,7 @@ pull() {
   tick
   run sign "$2" --pull "$1"
   run publish --pull "$1"
+  run nokey --check
   latest_is "$3" "$2"
 }
 # resign <key> <live>
@@ -159,6 +157,7 @@ resign() {
   tick
   run sign "$1" --resign
   run publish --resign
+  run nokey --check
   latest_is "$2" "$1"
 }
 # ship <version> <secure> <key> [<reinstallBelow>]: built, signed, published and promoted.
@@ -173,9 +172,15 @@ newestpublished() {
   local d="$dry/sync/releases" f
   for f in "$d"/*/*.published; do f="${f#"$d/"}"; echo "${f%.published}"; done | sort -t- -k2,2n | tail -1
 }
-# lastchecked: the owner's step when the Air's last.json isn't the newest index published,
-# once they've done the check its refusal names: that index becomes the last one signed.
-lastchecked() { cp "$dry/sync/releases/$(newestpublished).json" "$dry/keys/last.json"; }
+# lastsigned <version>: the index this Air signed last names that release.
+lastsigned() {
+  local f last=
+  for f in "$dry"/keys/history/*/*-[0-9]*.json; do
+    if [ -z "$last" ] || [[ "${f##*-}" > "${last##*-}" ]]; then last="$f"; fi
+  done
+  [ "$(field latest "$last")" = "$1" ] || fail "the Air signed an index naming $(field latest "$last"), not $1"
+  pass "the Air signed an index naming $1"
+}
 
 # forge <version> <kind> <key> <release>: an index signed straight with ssh-keygen, for a
 # publish to refuse on its own, as sign-connector.sh would have first: <release>'s index,
@@ -245,11 +250,19 @@ promote 1.1.0 air1
 pass "the promote takes secure from the signed canary index, not index.json"
 promote 1.1.1 air1
 pull 1.1.1 air1 1.1.0
+# Whoever holds the bucket rolls latest.json back to the promote before, which the Air saw.
+d="$dry/sync/releases"
+cp "$d"/1.1.1/promote-*.json "$dry/bucket/connector/latest.json"
+cp "$d"/1.1.1/promote-*.json.sig "$dry/bucket/connector/latest.json.sig"
+refused "older than 1.1.1/pull-" nokey --check
+run publish --pull 1.1.1
+run nokey --check
+latest_is 1.1.0 air1
 build 1.1.1 1.0.6
 refused "1.1.1 was promoted already" sign air1 1.1.1
 tick
 refused "nothing promoted before 1.1.0" sign air1 --pull 1.1.0
-refused "with no leading zeros or suffix, not 1.01.0" release 1.01.0 1.0.6
+refused "with no leading zeros or suffix, not 1.01.0" release 1.01.0 1.0.6 1.1.0
 refused "with no leading zeros or suffix, not 01.1.0" publish --promote 01.1.0
 
 fresh canary "a failed canary before U's promote"
@@ -295,47 +308,47 @@ build 1.1.2 1.0.6
 signfolder 1.1.2 air1
 latest_is 1.1.1 air1
 # An agent holding ~/Sync copies 1.1.2's canary index, which failed, into the live release's
-# folder.
+# folder, and renames the live promote into 1.1.2's, so a resign would make 1.1.2 live. The
+# Air reads neither.
 d="$dry/sync/releases"
-cp "$d"/1.1.1/canary.json* "$dry/"
+mkdir "$dry/hidden"
+cp "$d"/1.1.1/canary.json* "$dry/hidden/"
 cp "$d"/1.1.2/canary.json* "$d/1.1.1/"
-tick
-refused "is 1.1.2's index, not 1.1.1's" sign air1 --resign
-cp "$dry"/canary.json* "$d/1.1.1/"
-# Or it renames the live promote into 1.1.2's folder, so a resign would make 1.1.2 live.
 n="$(newestpublished)"
 for f in "$d/$n".*; do mv "$f" "$d/1.1.2/${f#"$d/1.1.1/"}"; done
-refused "names 1.1.1, which doesn't fit its name" sign air1 --resign
+tick
+run sign air1 --resign
+lastsigned 1.1.1
+mv "$dry"/hidden/* "$d/1.1.1/"
 for f in "$d"/1.1.2/promote-*; do mv "$f" "$d/1.1.1/"; done
+run publish --resign
+latest_is 1.1.1 air1
 refused "1.1.2 isn't the live release (1.1.1)" sign air1 --pull 1.1.2
 forge 1.1.2 pull air1 1.1.1
 refused "1.1.2 isn't the live release (1.1.1)" publish --pull 1.1.2
 pull 1.1.1 air1 1.1.0
-refused "nothing promoted before 1.1.0" sign air1 --pull 1.1.0
-# An agent holding ~/Sync deletes the pull's records, so a resign would bring 1.1.1 back, or
-# makes up a promote of 1.1.2, which was never promoted.
-mkdir "$dry/hidden"
-mv "$dry"/sync/releases/1.1.1/pull-* "$dry/hidden/"
+# It deletes the pull's records, so a resign would bring 1.1.1 back.
+mv "$d"/1.1.1/pull-* "$dry/hidden/"
 tick
-refused "this Air's last index never went out" sign air1 --resign
-mv "$dry"/hidden/* "$dry/sync/releases/1.1.1/"
-forge 1.1.2 promote air2 1.1.2
-for f in "$dry"/sync/releases/1.1.2/promote-*.json; do date +%s > "${f%.json}.published"; done
-refused "isn't signed by a key in" sign air1 --resign
+run sign air1 --resign
+lastsigned 1.1.0
+mv "$dry"/hidden/* "$d/1.1.1/"
+run publish --resign
+latest_is 1.1.0 air1
 
-fresh stale "a pull gone stale before it's published"
+fresh stale "a pull signed and not yet published"
 keyfolder air1 paper1
 keys air1 paper1
 ship 1.1.0 1.0.6 air1 1.1.0
 ship 1.1.1 1.0.6 air1
 tick
 run sign air1 --pull 1.1.1
-# The pull is signed and never published, so the Air signs again only once the owner checks.
+# Until it's published, or a fresh pull is, the Air signs no promote or resign.
+build 1.1.2 1.0.6
+signfolder 1.1.2 air1
 tick
-refused "this Air's last index never went out" sign air1 --resign
-lastchecked
-resign air1 1.1.1
-refused "sign a fresh one" publish --pull 1.1.1
+refused "1.1.1/pull-" sign air1 --resign
+refused "isn't published: publish it on the mini, or sign a fresh pull" sign air1 --promote 1.1.2
 pull 1.1.1 air1 1.1.0
 # An agent holding ~/Sync swaps an archive's hash, signs SHA256SUMS and the canary index to
 # match with a key of its own, and lists that key in every release's release_keys.
@@ -346,7 +359,9 @@ ssh-keygen -Y sign -q -f "$dry/private/air2" -n file < "$d/SHA256SUMS" > "$d/SHA
 ssh-keygen -Y sign -q -f "$dry/private/air2" -n ovenlight-canary < "$d/canary.json" > "$d/canary.json.sig"
 for f in "$dry"/sync/releases/*/release_keys; do cat "$fixtures/air2.pub" >> "$f"; done
 tick
-refused "1.1.0 isn't signed by a key in" sign air1 --resign
+run sign air1 --resign
+! grep -q deadbeef "$dry"/keys/history/1.1.0/resign-*.json || fail "the resign took the hash from ~/Sync"
+pass "the resign takes 1.1.0's index from the Air's history"
 
 fresh early "a promote signed before a pull"
 keyfolder air1 paper1
@@ -357,7 +372,6 @@ build 1.1.2 1.0.6
 signfolder 1.1.2 air1
 tick
 run sign air1 --promote 1.1.2
-lastchecked
 pull 1.1.1 air1 1.1.0
 refused "sign a fresh one" publish --promote 1.1.2
 promote 1.1.2 air1
@@ -383,37 +397,53 @@ grep -q "^finishing the publish of 1.1.0/promote-" "$dry/log" || fail "the rerun
 pass "the rerun finished it: $(head -1 "$dry/log")"
 latest_is 1.1.0 air1
 
-fresh lost "a lost Air: the backup key brings in two new keys, and signs a pull"
+fresh lost "a lost Air: its history imported, then the backup key brings in two new keys, and signs a pull"
 keyfolder air1 paper1
 keys air1 paper1
 ship 1.1.0 1.0.6 air1 1.1.0
-# The replacement Air makes two new keys, and the release lists them and the paper key. It
-# has no last.json until the owner checks.
-keyfolder air2 paper2
-rm "$dry/keys/last.json" "$dry/keys/published"
+ship 1.1.1 1.0.6 air1
+pull 1.1.1 air1 1.1.0
+# The replacement Air starts with an empty key folder, and imports its history with the keys
+# checked against the paper page. Its Touch ID key's .pub stands in for the handle.
+newair
+cp "$fixtures/air2.pub" "$dry/keys/touchid.pub"
+cat "$fixtures/air1.pub" "$fixtures/paper1.pub" > "$dry/import"
+refused "isn't an index in" nokey --check
+# An agent holding ~/Sync deletes the pull's record of being published, makes up a promote of
+# 1.1.1 signed with another key, and points 1.1.0's commit at one whose release_keys lists the
+# new key.
 keys air2 paper2 paper1
-build 1.1.1 1.0.6
-refused "isn't the two keys in" sign air2 1.1.1
-signfolder 1.1.1 paper1
-tick
-refused "This Air has signed no index" sign paper1 --promote 1.1.1
-# An agent holding ~/Sync hides every record of a publish, so there'd be no index to check.
+d="$dry/sync/releases"
 mkdir "$dry/hidden"
-mv "$dry"/sync/releases/1.1.0/promote-*.published "$dry/hidden/"
-refused "latest.json is a signed index, and the records call none published" sign paper1 --promote 1.1.1
-mv "$dry"/hidden/* "$dry/sync/releases/1.1.0/"
-lastchecked
-promote 1.1.1 paper1
-pull 1.1.1 paper1 1.1.0
-# The pulled rotation leaves owners on the old keys, so the next release repeats it.
+mv "$d"/1.1.1/pull-*.published "$dry/hidden/"
+forge 1.1.1 promote paper2 1.1.1
+for f in "$d"/1.1.1/promote-*.json; do
+  f="${f%.json}"
+  if [ ! -f "$f.published" ]; then date +%s > "$f.published"; break; fi
+done
+cp "$d/1.1.0/commit" "$dry/commit"
+git -C "$repo" rev-parse HEAD > "$d/1.1.0/commit"
+refused "1.1.0's commit, lists one of this Air's new keys" nokey --import "$dry/import"
+cp "$dry/commit" "$d/1.1.0/commit"
+run nokey --import "$dry/import"
+grep -q "^skipped 1.1.1/promote-" "$dry/log" || { cat "$dry/log" >&2; fail "the import took the made-up promote"; }
+grep -qx "  pulled: 1.1.1" "$dry/log" || { cat "$dry/log" >&2; fail "the import lost the pull"; }
+grep -q "^latest.json is 1.1.1/pull-" "$dry/log" || { cat "$dry/log" >&2; fail "the import didn't find latest.json"; }
+pass "the import skips the made-up promote, keeps the pull, and finds latest.json in what it imported"
+rm "$f".*
+mv "$dry"/hidden/* "$d/1.1.1/"
+refused "exists" nokey --import "$dry/import"
+# Key setup makes the two new keys, and the release lists them and the paper key.
+keyfolder air2 paper2
 build 1.1.2 1.0.6
+refused "isn't the two keys in" sign air2 1.1.2
 signfolder 1.1.2 paper1
 promote 1.1.2 paper1
-# An agent holding ~/Sync deletes the pull's record of being published, so the next pull
-# would go back to the release it pulled.
-rm "$dry"/sync/releases/1.1.1/pull-*.published
-tick
-refused "no longer published: 1.1.1/pull-" sign paper1 --pull 1.1.2
+pull 1.1.2 paper1 1.1.0
+# The pulled rotation leaves owners on the old keys, so the next release repeats it.
+build 1.1.3 1.0.6
+signfolder 1.1.3 paper1
+promote 1.1.3 paper1
 
 fresh lostpaper "a lost paper key, then a lost Air: the Air's promotes don't restart the new paper key's wait"
 keyfolder air1 paper1
@@ -421,15 +451,16 @@ keys air1 paper1
 ship 1.1.0 1.0.6 air1 1.1.0
 build 1.1.3 1.0.6
 signfolder 1.1.3 air1
-# R lists the Air's key and a new paper key, whose wait starts at R's promote. The lost one
-# is deleted, never retired.
+# R lists the Air's key and a new paper key, whose wait starts at R's promote.
 rm "$dry/keys/backup.pub"
 keyfolder air1 paper2
 keys air1 paper2
 signers air1 paper2
 ship 1.1.1 1.0.6 air1
 tick
-# 1.1.3, signed before, lists the lost key, so it's never promoted.
+# 1.1.3, signed before, lists the lost key, so it's never promoted, even once an agent holding
+# ~/Sync edits its release_keys there.
+cat "$fixtures/air1.pub" "$fixtures/paper2.pub" > "$dry/sync/releases/1.1.3/release_keys"
 refused "1.1.3's release_keys isn't the two keys in" sign air1 --promote 1.1.3
 refused "four weeks and four days" sign paper2 --resign
 # A release that mustn't ship goes out, and the new paper key pulls it, as it would after a
@@ -439,7 +470,12 @@ pull 1.1.2 paper2 1.1.1
 later 33
 ship 1.1.4 1.0.6 air1
 # The Air is lost, and the new paper key signs what the next R needs at once, with paper1
-# standing in for the paper key after it.
+# standing in for the paper key after it. The lost paper key signed nothing, so the import
+# doesn't trust it.
+newair
+cp "$fixtures/air2.pub" "$dry/keys/touchid.pub"
+cat "$fixtures/air1.pub" "$fixtures/paper2.pub" > "$dry/import"
+run nokey --import "$dry/import"
 keyfolder air2 paper1
 keys air2 paper1 paper2
 build 1.1.5 1.0.6
@@ -452,8 +488,6 @@ keyfolder air1 paper1
 keys air1 paper1
 ship 1.1.0 1.0.6 air1 1.1.0
 ship 1.1.1 1.0.6 air1
-tick
-refused "1.1.0/release_keys doesn't list the pull's key" sign paper2 --pull 1.1.1
 forge 1.1.1 pull paper2 1.1.0
 refused "isn't signed by a key any release lists" publish --pull 1.1.1
 # A key that only a release not yet promoted lists can't sign it either.
@@ -470,10 +504,10 @@ keyfolder air1 paper1
 keys air1 paper1
 ship 1.1.0 1.0.6 air1 1.1.0
 # The new Air's key replaces the old one's in the old Air's key folder, and the old Air signs.
-# The new Air's folder gets its .pub files and retired list.
+# The new Air's folder gets the same .pub files.
 keyfolder air2 paper1
 mkdir "$dry/otherair"
-cp "$dry"/keys/{touchid.pub,backup.pub,retired} "$dry/otherair/"
+cp "$dry"/keys/{touchid.pub,backup.pub} "$dry/otherair/"
 keys air2 paper1 air1
 build 1.1.1 1.0.6
 signfolder 1.1.1 air1
@@ -482,43 +516,37 @@ promote 1.1.1 air1
 build 1.1.2 1.0.6
 signfolder 1.1.2 air1
 promote 1.1.2 air1
-# The release after drops the old key, and the new Air signs it, with the old Air's last.json
-# and published.
+# The release after drops the old key, and the new Air signs it once it has the old Air's
+# history.
 keys air2 paper1
 build 1.1.3 1.0.6
 swapair
+refused "After a planned move, copy the other Air's history in first" sign air2 1.1.3
 carry
 signfolder 1.1.3 air2
 # Computers asleep on 1.1.0 hold only the old keys, so the new key can't sign the pull yet,
-# and the old Air signs it. The new Air signs again only once both files are copied again.
+# and the old Air signs it. Until it's published, the new Air, with that history, signs no
+# promote or resign.
 tick
 refused "Or sign the pull with the key that signed" sign air2 --pull 1.1.2
 swapair
-pull 1.1.2 air1 1.1.1
-swapair
-tick
-refused "After a planned move, copy last.json and published" sign air2 --resign
 carry
+tick
+run sign air1 --pull 1.1.2
+swapair
+carry
+tick
+refused "1.1.2/pull-" sign air2 --resign
+run publish --pull 1.1.2
+run nokey --check
+latest_is 1.1.1 air1
 # The new key alone waits four weeks and four days.
 tick
 refused "four weeks and four days" sign air2 --promote 1.1.3
 # An agent holding ~/Sync sets back when latest.json began naming 1.1.1, so the wait would
-# seem over, or copies 1.1.1's promote over 1.1.0's, so no published index would name a
-# release without the new key.
-for f in "$dry"/sync/releases/1.1.1/promote-*.live; do
-  cp "$f" "$dry/live"
-  echo $(($(cat "$f") - 33 * 86400)) > "$f"
-done
+# seem over.
+for f in "$dry"/sync/releases/1.1.1/promote-*.live; do echo $(($(cat "$f") - 33 * 86400)) > "$f"; done
 refused "four weeks and four days" sign air2 --promote 1.1.3
-for f in "$dry"/sync/releases/1.1.1/promote-*.live; do cp "$dry/live" "$f"; done
-mkdir "$dry/hidden"
-for f in "$dry"/sync/releases/1.1.0/promote-*.json; do
-  mv "$f" "$f.sig" "$dry/hidden/"
-  cp "$dry"/sync/releases/1.1.1/promote-*.json "$f"
-  cp "$dry"/sync/releases/1.1.1/promote-*.json.sig "$f.sig"
-done
-refused "is signed with serial" sign air2 --promote 1.1.3
-mv "$dry"/hidden/* "$dry/sync/releases/1.1.0/"
 tick
 refused "four weeks and four days" sign air2 --resign
 forge 1.1.3 promote air2 1.1.3
@@ -578,17 +606,17 @@ signfolder 1.1.2 air2
 signers air1 paper1 air2
 resign air2 1.1.1
 promote 1.1.2 air2
-# The replacement deletes the key files a backup brought back. Its retired list, written
-# from the records and the paper page, holds the old Air's key, the lost one and the paper
-# key. Key setup makes air3 and paper2.
+# The replacement deletes the key folder a backup an agent could reach brought back, and
+# imports the history with the old Air's key, the lost one and the paper key. Key setup
+# makes air3 and paper2.
+newair
+cp "$fixtures/air3.pub" "$dry/keys/touchid.pub"
+cat "$fixtures/air1.pub" "$fixtures/air2.pub" "$fixtures/paper1.pub" > "$dry/import"
+run nokey --import "$dry/import"
 keyfolder air3 paper2
-rm "$dry/keys/last.json" "$dry/keys/published"
 keys air3 paper2 paper1
 build 1.1.3 1.0.6
 signfolder 1.1.3 paper1
-tick
-refused "This Air has signed no index" sign paper1 --resign
-lastchecked
 resign paper1 1.1.2
 promote 1.1.3 paper1
 
@@ -619,22 +647,19 @@ build 1.1.2 1.1.2
 signfolder 1.1.2 air1
 tick
 run sign air1 --promote 1.1.2
-# An agent holding ~/Sync marks the promote published, so the resign would make 1.1.2 the
-# live release.
+# A resign supersedes it with no other step, even once an agent holding ~/Sync marks the
+# promote published there, so the resign would make 1.1.2 the live release.
 for f in "$dry"/sync/releases/1.1.2/promote-*.json; do date +%s > "${f%.json}.published"; done
 tick
-refused "latest.json isn't 1.1.2/promote-" sign air1 --resign
+run sign air1 --resign
+lastsigned 1.1.1
 rm "$dry"/sync/releases/1.1.2/promote-*.published
-lastchecked
-resign air1 1.1.1
+run publish --resign
+run nokey --check
+latest_is 1.1.1 air1
 [ "$(field secure "$dry/bucket/connector/latest.json")" = 1.0.6 ] || fail "secure went up"
 pass "secure is still 1.0.6"
 refused "sign a fresh one" publish --promote 1.1.2
-# An agent holding ~/Sync marks that promote published, so a resign would sign it again.
-for f in "$dry"/sync/releases/1.1.2/promote-*.json; do date +%s > "${f%.json}.published"; done
-tick
-refused "newly published: 1.1.2/promote-" sign air1 --resign
-rm "$dry"/sync/releases/1.1.2/promote-*.published
 refused "1.1.3 can't go below either" release 1.1.3 1.0.5
 forge 1.1.0 promote air1 1.1.0
 refused "1.1.0 was promoted already" publish --promote 1.1.0
@@ -658,7 +683,11 @@ build 1.1.1 1.1.1 1.1.1
 signfolder 1.1.1 air1
 rm -r "$dry/build"
 mv "$dry/build-1.1.3" "$dry/build"
+# Even once an agent holding ~/Sync lowers 1.1.1's raise there.
+cp "$dry/sync/releases/1.1.1/canary.json" "$dry/"
+sed -i '' 's/"secure": "1.1.1", "reinstallBelow": "1.1.1"/"secure": "1.0.6", "reinstallBelow": "1.1.0"/' "$dry/sync/releases/1.1.1/canary.json"
 refused "1.1.3 can't go below either" sign air1 1.1.3
+cp "$dry/canary.json" "$dry/sync/releases/1.1.1/"
 refused "1.1.3 can't go below either" release 1.1.3 1.0.6
 refused "1.1.3 can't go below either" release 1.1.3 1.1.1 1.1.0
 promote 1.1.1 air1
@@ -716,7 +745,7 @@ commit "an old git key left in allowed_signers"
 refused "lists a key in a namespace other than the release keys'" release 1.1.0 1.0.6 1.1.0
 { echo "# a comment"; echo; awk '{ print "team@snowyghost.com namespaces=\"file,ovenlight-latest\"", $1, $2 }' "$dry/private/stranger.pub"; } > "$repo/docs/allowed_signers"
 commit "a release key and a comment"
-refused "secure (1.2.0) is newer than the release (1.1.0)" release 1.1.0 1.2.0 1.1.0
+refused "latest (1.1.0) can't be below its secure (1.2.0)" release 1.1.0 1.2.0 1.1.0
 signers air1 paper1
 keys air1 paper1
 refused "a dry run builds only with --unsigned" "$repo/scripts/release-connector.sh" 1.1.0 1.0.6 1.1.0
