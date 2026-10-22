@@ -317,6 +317,11 @@ signature and its line in `allowed_signers`, since it signed no release. The Air
 signs on, so nothing waits and no R+1 follows. If the Air is lost too, the new paper key's
 `--resign` and promote wait until four weeks and four days after R's promote.
 
+A loss inside a new key's wait is answered by an R signed with the paper key every release
+so far lists, which waits for nothing. After a planned move, the new Air keeps its key:
+move `backup.pub` into `retired/`, run key setup, and R lists the new Air's key, the new
+paper key and the old paper key that signs it.
+
 ## The iPhone app
 
 Building the app needs Xcode 26 or later, for the Icon Composer icon and the iOS 26 glass
