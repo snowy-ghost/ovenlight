@@ -616,6 +616,19 @@ func TestUpdaterSwapFailure(t *testing.T) {
 	}
 }
 
+// A computer whose daily check comes in its own night has a release due in the night, and
+// one that fails there is still tried again the next night, busy or not.
+func TestUpdaterRetryOfAReleaseDueInTheNight(t *testing.T) {
+	if updateHour != time.Hour {
+		t.Skip("a compressed schedule")
+	}
+	st := &updateState{Index: testIndex("1.2.0", "1.1.0", "1.1.0", 100, "x"), Minute: 150, Seen: at(0, 2, 31)} // its night starts at 02:30
+	st.Failed = &updateFailure{Version: "1.2.0", At: at(2, 2, 45), Count: 1}
+	if p := planUpdate(st, "1.1.5"); !p.after.Equal(at(3, 2, 30)) || !p.by.Equal(at(3, 2, 30)) {
+		t.Errorf("tried again from %v, busy or not from %v", p.after, p.by)
+	}
+}
+
 // Times noted while the clock ran ahead don't hold the wait or a retry back.
 func TestUpdaterClockRanAhead(t *testing.T) {
 	_, tu, _ := readyAt(t, false)

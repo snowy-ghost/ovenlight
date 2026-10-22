@@ -443,8 +443,9 @@ type updatePlan struct {
 
 // planUpdate is the update st's index names for version v, as updateTarget times it. One
 // still waiting a day after it's due (a security fix, from when it's due) goes at the
-// start of the next night, or as soon as the connector runs after that. A version that failed is tried again the next night (the
-// first start of one at least an hour after it failed), busy or not.
+// start of the next night, or as soon as the connector runs after that. A version that
+// failed is tried again the next night (the first start of one at least an hour after it
+// failed), busy or not.
 func planUpdate(st *updateState, v string) updatePlan {
 	idx, err := parseIndex(st.Index)
 	if err != nil {
@@ -463,12 +464,8 @@ func planUpdate(st *updateState, v string) updatePlan {
 	// A retry that comes later moves both: a computer that's never quiet takes it that
 	// night too.
 	if f := st.Failed; f != nil && f.Version == p.target {
-		retry := nextAt(f.At.Add(updateHour), p.night)
-		if retry.After(p.after) {
-			p.after = retry
-		}
-		if retry.After(p.by) {
-			p.by = retry
+		if retry := nextAt(f.At.Add(updateHour), p.night); retry.After(p.after) {
+			p.after, p.by = retry, retry
 		}
 	}
 	return p
