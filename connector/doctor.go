@@ -563,7 +563,7 @@ func updateFinding(u *updateView, v string, running bool, now time.Time) *Check 
 	case u.Off:
 		msg := "updates are off, so the connector installs no release on its own"
 		if stale {
-			msg += ", and no update check has worked for 7 days, so it can't tell when its release has a security problem"
+			msg += ", and no update check has worked for 7 days, so it can't learn of a new security problem"
 		}
 		warn(msg, "Turn them back on with `ovenlight update on`")
 	case failed && strings.Contains(u.Failure.Error, notRunnable):
