@@ -184,13 +184,6 @@ func (u *updater) start() {
 	if u.st.CheckedBy != u.v {
 		u.st.NextCheck = time.Time{}
 	}
-	// A rollback happens before the connector's log is open, so the release put back says so.
-	if f := u.st.Failed; f != nil {
-		cur, okC := semver(u.v)
-		if fv, okF := semver(f.Version); okC && okF && less(cur, fv) {
-			log.Printf("updates: updating to %s failed on %s: %s", f.Version, when(f.At), f.Error)
-		}
-	}
 	u.save()
 }
 
