@@ -225,10 +225,11 @@ start of the first night a day after it was due. Either waits until the connecto
 been running and awake for 10 minutes. Installing restarts the connector, so the apps it
 runs stop and open connections drop for a few seconds (about 10 on Linux, up to a minute
 on Windows). If the new release doesn't serve your apps again within 10 minutes, the
-connector goes back to the one before, and tries again at the start of the next night,
-busy or not. A restart of your computer in those 10 minutes starts them again. On
-Windows, the Stop or Restart command above in that time makes it go back too, as does
-shutting down or signing out of a work, school or domain account.
+connector goes back to the one before. A restart of your computer in those 10 minutes
+starts them again. On Windows, the Stop or Restart command above in that time makes it go
+back too, as does shutting down or signing out of a work, school or domain account. An
+update that fails, whether it went back or its download broke off, is tried again at the
+start of the next night, busy or not.
 
 `ovenlight status` shows the last check, a release waiting its turn and when it installs,
 the last update, one that failed, and whether yours has a known security problem.
@@ -268,6 +269,7 @@ curl -fsSL -o allowed_signers "https://raw.githubusercontent.com/snowy-ghost/ove
 ssh-keygen -Y verify -f allowed_signers -I team@snowyghost.com -n file \
   -s SHA256SUMS.sig < SHA256SUMS
 shasum -a 256 -c --ignore-missing SHA256SUMS
+tar tzf "$archive" | cut -d / -f 1 | sort -u
 ```
 
 On Windows, check it in an administrator PowerShell, with its version in place of `1.0.9`:
@@ -281,11 +283,13 @@ curl.exe -fsSL --remote-name-all "$base/$archive" "$base/SHA256SUMS" "$base/SHA2
 curl.exe -fsSL -o allowed_signers "https://raw.githubusercontent.com/snowy-ghost/ovenlight/connector-v$release/docs/allowed_signers"
 cmd /c 'ssh-keygen -Y verify -f allowed_signers -I team@snowyghost.com -n file -s SHA256SUMS.sig < SHA256SUMS'
 [bool](Select-String -SimpleMatch "$((Get-FileHash $archive).Hash.ToLower())  $archive" SHA256SUMS)
+tar -tf $archive | ForEach-Object { ($_ -split '/')[0] } | Sort-Object -Unique
 ```
 
-If the first check prints `Good "file" signature`, and the second the archive's name with
-`OK` (`True` on Windows), unpack and install it as the
-[verified steps](#check-a-download-first) do, in the same window.
+If the first check prints `Good "file" signature`, the second the archive's name with `OK`
+(`True` on Windows), and the third only the release's own folder, such as
+`ovenlight-connector-1.0.9` (an archive's name carries no version), unpack and install it
+as the [verified steps](#check-a-download-first) do, in the same window.
 
 ## Publish an app
 

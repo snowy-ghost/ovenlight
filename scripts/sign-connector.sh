@@ -10,7 +10,8 @@
 #   scripts/sign-connector.sh [--key <file>] --pull <version>
 #       the live release's pull: the index of the newest promoted release before it that
 #       wasn't pulled, with the key that signed the live index, or one every release a
-#       computer it reaches may run lists
+#       computer it reaches may run lists: the paper key, or a new Touch ID key once its
+#       four weeks and four days are over
 #   scripts/sign-connector.sh [--key <file>] --resign
 #       the live index again, with a key the live release lists, as does every pulled
 #       release above it
@@ -23,10 +24,10 @@
 # key signing it, so the keys a release trusts never come from the commit alone. The paper
 # key signs only a release that replaces it, so its .pub has left that folder. A promote,
 # pull or resign builds only on what this Air's own keys signed: those two, the ones they
-# replaced, whose .pub files move into the folder's retired/, and the key signing. The
-# records' release_keys are only as safe as ~/Sync. It also builds only on the index it
-# signed last, which it keeps in that folder as last.json, so the records can't be rolled
-# back.
+# replaced, which the folder's retired file lists, and the key signing. The records'
+# release_keys are only as safe as ~/Sync. It also builds only on the index it signed last,
+# which it keeps in that folder as last.json, and on the published indexes it built that one
+# on, kept there as published, so the records can't be rolled back.
 #
 # --key signs with a key other than this Air's Touch ID handle, such as the paper backup or
 # another Touch ID key's handle, with its public half beside it as <file>.pub.
@@ -77,29 +78,48 @@ if [ -n "$dry" ]; then mini="$now"; else mini="$(ssh mini date +%s)"; fi
 sign() {
   ssh-keygen -Y sign -q -f "$key" -n "$1" < "$2" > "$2.sig"
   verify "$2" "$2.sig" "$1" "$tmp/signer" || refuse "the signature of $2 doesn't verify with $key.pub"
-  if [ "$1" = ovenlight-latest ]; then cp "$2" "$keydir/last.json"; fi
+  if [ "$1" = ovenlight-latest ]; then
+    cp "$2" "$keydir/last.json"
+    echo "$published" > "$keydir/published"
+  fi
 }
 
 # This Air's own keys, none from ~/Sync.
-cat /dev/null "$keydir"/*.pub "$keydir"/retired/*.pub "$tmp/signer" > "$tmp/air"
+cat /dev/null "$keydir"/*.pub "$tmp/signer" > "$tmp/air"
+if [ -f "$keydir/retired" ]; then cat "$keydir/retired" >> "$tmp/air"; fi
 
 # airsigned <version>: refuses a release whose SHA256SUMS or canary index they didn't sign.
 airsigned() {
   { verify "$records/$1/SHA256SUMS" "$records/$1/SHA256SUMS.sig" file "$tmp/air" &&
     verify "$records/$1/canary.json" "$records/$1/canary.json.sig" ovenlight-canary "$tmp/air"; } ||
-    refuse "$1 isn't signed by a key in $keydir or its retired/"
+    refuse "$1 isn't signed by a key in $keydir or its retired list"
 }
 
-# vouched: refuses records with a published index these keys didn't sign, or whose newest
-# published index isn't the last one this Air signed.
+# vouched: refuses records with a published index these keys didn't sign, whose newest
+# published index isn't the last one this Air signed, or whose others aren't the ones it
+# built that one on.
 vouched() {
   local id
   for id in $published; do
     verify "$records/$id.json" "$records/$id.json.sig" ovenlight-latest "$tmp/air" ||
-      refuse "$id isn't signed by a key in $keydir or its retired/"
+      refuse "$id isn't signed by a key in $keydir or its retired list"
   done
-  [ -z "$newest" ] || cmp -s "$records/$newest.json" "$keydir/last.json" ||
-    refuse "$records/$newest.json, the newest index the records say was published, isn't $keydir/last.json, the last one this Air signed (none on a new Air, an older one on a restored Air, a newer one after an index signed and never published): check that the version https://downloads.ovenlight.app/connector/latest.json names is the newest connector-v* tag on GitHub that was promoted, then copy $records/$newest.json to $keydir/last.json"
+  # A new Air has no last.json, and a restored one deletes its own.
+  if [ -n "$newest" ] && ! cmp -s "$records/$newest.json" "$keydir/last.json"; then
+    copy="curl -fsS https://downloads.ovenlight.app/connector/latest.json | cmp - $records/$newest.json && cp $records/$newest.json $keydir/last.json"
+    names="the records' newest published index, $newest, names $(field latest "$records/$newest.json")"
+    [ -f "$keydir/last.json" ] || refuse "This Air has signed no index, and $names. Copy it in only once https://downloads.ovenlight.app/connector/latest.json names the release you last promoted, or the one your last pull went back to:
+  $copy"
+    refuse "This Air last signed an index naming $(field latest "$keydir/last.json"), at $(date -r "$(field serial "$keydir/last.json")"), and $names. Whoever holds ~/Sync and the bucket can roll back both the records and latest.json, so copy it in only if you know this Air's last index never went out:
+  $copy"
+  fi
+  # The published indexes are the ones they were when this Air signed last.json, and it.
+  if [ -f "$keydir/published" ]; then
+    { cat "$keydir/published"; echo "$newest"; } | awk 'NF && !seen[$0]++' > "$tmp/saw"
+    echo "$published" | awk NF | cmp -s - "$tmp/saw" ||
+      refuse "the records' published indexes changed since this Air signed $keydir/last.json:
+$(echo "$published" | awk NF | diff "$tmp/saw" - | sed -n 's/^</  no longer published:/p; s/^>/  newly published:/p')"
+  fi
 }
 
 # rulehas <version> [<own release_keys>]: refuses a key the one rule won't accept for it.
@@ -171,6 +191,8 @@ $(diff "$tmp/want" "$tmp/have" | sed -n 's/^</  missing/p; s/^>/  extra/p')"
 
   echo "connector $version, built from $commit"
   echo "  latest $version, secure $secure, reinstallBelow $reinstall"
+  echo "release_keys:"
+  ssh-keygen -lf "$b/release_keys" | sed 's/^/  /'
   prev=
   for v in $promoted; do
     if below "$v" "$version"; then prev="$v"; fi

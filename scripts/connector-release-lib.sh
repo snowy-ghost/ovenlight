@@ -9,8 +9,8 @@
 # holding the time its publish began, before it uploads it, and <kind>-<serial>.live, the time
 # latest.json began naming it, once it has. A pull or resign also notes, in
 # <kind>-<serial>.base, the published index it was built on. Those records, and the last index
-# sign-connector.sh signed, which it keeps beside the Air's keys, are the only history the
-# scripts read, never the bucket.
+# sign-connector.sh signed and the published indexes it built that one on, which it keeps
+# beside the Air's keys, are the only history the scripts read, never the bucket.
 #
 # OVENLIGHT_RELEASE_DRY=<folder> makes a dry run, which scripts/test-connector-release.sh does
 # in folders it marks with a .release-dry-run file, which this requires: that folder stands
@@ -83,6 +83,7 @@ releaseindex() {
   local f="$records/$1/canary.json"
   [ -f "$f" ] || refuse "no $f: $1 isn't signed"
   verifyrule "$1" "$f" "$f.sig" ovenlight-canary
+  [ "$(field latest "$f")" = "$1" ] || refuse "$f is $(field latest "$f")'s index, not $1's"
   sed -E "s/(\"serial\": )[0-9]+/\1$2/" "$f"
 }
 
@@ -238,7 +239,8 @@ pullsigned() {
   done
   # Computers asleep on an older release may not hold a new Touch ID key yet. The paper key,
   # which every release of its time lists, signs a pull at once after the Air is lost.
-  [ "$(awk '{ print $1 }' "$1")" = ssh-ed25519 ] || newkeywait "$(awk '{ print $2 }' "$1")" "$(date +%s)"
+  [ "$(awk '{ print $1 }' "$1")" = ssh-ed25519 ] ||
+    newkeywait "$(awk '{ print $2 }' "$1")" "$(date +%s)" ". Or sign the pull with the key that signed $2, or with the paper key"
 }
 
 # verifyrule <version> <file> <sig> <namespace>: refuses a signature the one rule doesn't accept.
@@ -254,10 +256,11 @@ verifyrule() {
 # cap and the night it then waits for.
 WAIT=$((32 * 86400))
 
-# newkeywait <blob> <now>: refuses a key that computers still on an older release can't check
-# yet. It waits until four weeks and four days after latest.json last began naming releases
-# that list it, so computers asleep on an older release have taken one. A pull back to one
-# that doesn't list it starts the wait again, and a promote signed by another key doesn't.
+# newkeywait <blob> <now> [<what else signs>]: refuses a key that computers still on an older
+# release can't check yet. It waits until four weeks and four days after latest.json last
+# began naming releases that list it, so computers asleep on an older release have taken
+# one. A pull back to one that doesn't list it starts the wait again, and a promote signed
+# by another key doesn't.
 newkeywait() {
   local id v old='' from=''
   for id in $published; do
@@ -268,6 +271,6 @@ newkeywait() {
   if [ -z "$old" ]; then return 0; fi
   from="${from:-$2}"
   if [ "$2" -lt $((from + WAIT)) ]; then
-    refuse "$old doesn't list this key, and computers asleep on it may not have updated yet: not before $(date -r $((from + WAIT))), four weeks and four days after latest.json began naming releases that list it"
+    refuse "$old doesn't list this key, and computers asleep on it may not have updated yet: not before $(date -r $((from + WAIT))), four weeks and four days after latest.json began naming releases that list it${3:-}"
   fi
 }

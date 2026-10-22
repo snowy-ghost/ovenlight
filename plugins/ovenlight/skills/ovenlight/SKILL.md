@@ -37,7 +37,10 @@ The `ovenlight` connector on that computer publishes each app and tells it who i
 5. **The connector updates itself.** When `status` shows a failed update, tell the
    person what failed, in plain words. With updates on, it tries again the next night, and
    a release waiting its turn needs nothing from either of you. When `doctor`'s `update`
-   check gives a fix, pass it on. Offer the verified install steps in
+   check gives a fix, pass it on. For a release to install by hand, offer the verified
+   steps, never a bare download: those at
    https://github.com/snowy-ghost/ovenlight/blob/master/docs/connector.md#check-a-download-first
-   for a release to install by hand, including one an older connector's `doctor` names
-   with a download link, never a bare download.
+   for the latest, including one an older connector's `doctor` names with a download
+   link, and those at
+   https://github.com/snowy-ghost/ovenlight/blob/master/docs/connector.md#install-a-release-by-hand
+   for an older one.
