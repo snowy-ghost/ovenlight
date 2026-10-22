@@ -114,6 +114,7 @@ if $indexed; then
   fi
   atleast "$secure" "$version" || refuse "secure ($secure) is newer than the release ($version)"
   atleast "$reinstall" "$version" || refuse "reinstallBelow ($reinstall) is newer than the release ($version)"
+  keepsraised "$version" "$secure" "$reinstall"
 fi
 
 # An Artifact Signing access token. az may return a cached one with minutes left, so it's

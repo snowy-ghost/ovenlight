@@ -6,9 +6,11 @@
 # Every promote, pull and resign index sign-connector.sh signs sits in its release's folder of
 # the records, ~/Sync/ovenlight/releases/<version>/, as <kind>-<serial>.json and its .sig, and
 # here it's named <version>/<kind>-<serial>. publish-connector.sh adds <kind>-<serial>.published,
-# holding the time it was published, before it uploads it. A pull or resign also notes, in
-# <kind>-<serial>.base, the published index it was built on. Those records are the only history
-# the scripts read, never the bucket.
+# holding the time its publish began, before it uploads it, and <kind>-<serial>.live, the time
+# latest.json began naming it, once it has. A pull or resign also notes, in
+# <kind>-<serial>.base, the published index it was built on. Those records, and the last index
+# sign-connector.sh signed, which it keeps beside the Air's keys, are the only history the
+# scripts read, never the bucket.
 #
 # OVENLIGHT_RELEASE_DRY=<folder> makes a dry run, which scripts/test-connector-release.sh does
 # in folders it marks with a .release-dry-run file, which this requires: that folder stands
@@ -75,16 +77,13 @@ index() {
   echo "$s"
 }
 
-# releaseindex <version> <serial>: the canary index signed for the release, with that serial:
-# its secure and reinstallBelow, not the unsigned index.json's, and the archives in the
-# records' SHA256SUMS, refused unless they're the ones it lists.
+# releaseindex <version> <serial>: the canary index signed for the release, with that serial,
+# so nothing unsigned in its folder goes into it.
 releaseindex() {
   local f="$records/$1/canary.json"
   [ -f "$f" ] || refuse "no $f: $1 isn't signed"
   verifyrule "$1" "$f" "$f.sig" ovenlight-canary
-  index "$1" "$(field secure "$f")" "$(field reinstallBelow "$f")" "$(field serial "$f")" "$records/$1/SHA256SUMS" |
-    cmp -s - "$f" || refuse "$records/$1/SHA256SUMS isn't the one $1's canary index lists"
-  index "$1" "$(field secure "$f")" "$(field reinstallBelow "$f")" "$2" "$records/$1/SHA256SUMS"
+  sed -E "s/(\"serial\": )[0-9]+/\1$2/" "$f"
 }
 
 # What the records say, read once.
@@ -120,6 +119,19 @@ abovereleased() {
   local v
   for v in $promoted; do
     if atleast "$1" "$v"; then refuse "$v was promoted already: a release goes out under a newer version"; fi
+  done
+}
+
+# keepsraised <version> <secure> <reinstallBelow>: refuses a secure or reinstallBelow below
+# that of a lower version already signed. That one may not be promoted yet, and this one's
+# promote may skip it, so this one keeps what it raised.
+keepsraised() {
+  local f v
+  for f in "$records"/*/canary.json; do
+    v="$(basename "$(dirname "$f")")"
+    if below "$v" "$1" && { below "$2" "$(field secure "$f")" || below "$3" "$(field reinstallBelow "$f")"; }; then
+      refuse "$v is signed with secure $(field secure "$f") and reinstallBelow $(field reinstallBelow "$f"): $1 can't go below either"
+    fi
   done
 }
 
@@ -224,6 +236,9 @@ pullsigned() {
   for f in $(rulekeys "$3") $(livekeys); do
     haskey "$(awk '{ print $2 }' "$1")" "$f" || refuse "the pull isn't signed with the key of $2, the index it replaces, and $f doesn't list its key"
   done
+  # Computers asleep on an older release may not hold a new Touch ID key yet. The paper key,
+  # which every release of its time lists, signs a pull at once after the Air is lost.
+  [ "$(awk '{ print $1 }' "$1")" = ssh-ed25519 ] || newkeywait "$(awk '{ print $2 }' "$1")" "$(date +%s)"
 }
 
 # verifyrule <version> <file> <sig> <namespace>: refuses a signature the one rule doesn't accept.
@@ -244,15 +259,13 @@ WAIT=$((32 * 86400))
 # that list it, so computers asleep on an older release have taken one. A pull back to one
 # that doesn't list it starts the wait again, and a promote signed by another key doesn't.
 newkeywait() {
-  local v old='' id from=''
-  for v in $promoted; do
-    if ! haskey "$1" "$records/$v/release_keys"; then old="$v"; fi
+  local id v old='' from=''
+  for id in $published; do
+    v="$(field latest "$records/$id.json")"
+    if ! haskey "$1" "$records/$v/release_keys"; then old="$v" from=
+    elif [ -z "$from" ] && [ -f "$records/$id.live" ]; then from="$(cat "$records/$id.live")"; fi
   done
   if [ -z "$old" ]; then return 0; fi
-  for id in $published; do
-    if ! haskey "$1" "$records/$(field latest "$records/$id.json")/release_keys"; then from=
-    elif [ -z "$from" ]; then from="$(cat "$records/$id.published")"; fi
-  done
   from="${from:-$2}"
   if [ "$2" -lt $((from + WAIT)) ]; then
     refuse "$old doesn't list this key, and computers asleep on it may not have updated yet: not before $(date -r $((from + WAIT))), four weeks and four days after latest.json began naming releases that list it"

@@ -483,18 +483,20 @@ Developer ID, and nothing fetched at update time.
 A release is built on one Mac from a commit on this repository's master branch, and signed
 on another. Touch ID approves a signature but doesn't show what is signed, so the signing
 script prints the commit, the index and the checksums first. It signs only a commit whose
-`connector/release_keys` lists exactly the keys that Mac keeps, so the keys a release
-trusts never come from the commit alone. Even so, a signature vouches for what is on master
-and for the Mac that built it, and no more. Whoever can sign a release, or get code onto
+`connector/release_keys` lists exactly the keys that Mac keeps plus the key signing it, so
+the keys a release trusts never come from the commit alone. It re-signs only what its own
+keys signed, on top of the index it signed last, so the files it shares with the Mac that
+builds can't change what it signs. Even so, a signature vouches for what is on master and
+for the Mac that built it, and no more. Whoever can sign a release, or get code onto
 master and through that Mac, can run code on your computer within a day (an index that
 raises `secure` skips the two-day wait), as you, beside your Tailscale API credential, and
 on Windows with administrator rights. `ovenlight update off` opts out.
 
 When one key is lost, the next release, signed with the other, replaces it. A computer
-that doesn't install that release within four weeks of it coming out, because it was off or
-had updates off, can't verify the releases signed with only the new key: its checks fail,
-`doctor` warns after seven days, and it needs one install by hand. If both keys were lost,
-every computer would be in that position once we publish a release signed with a new key.
+that stays off, or has updates off, for four weeks after that release comes out can't
+verify the releases signed with only the new key: its checks fail, `doctor` warns after
+seven days, and it needs one install by hand. If both keys were lost, every computer would
+be in that position once we publish a release signed with a new key.
 
 ### The files it keeps
 
