@@ -154,7 +154,6 @@ scripts/publish-connector.sh 1.2.0
 ovenlight update now --index ~/Sync/ovenlight/releases/1.2.0/canary.json
 ```
 
-The folder goes up only once the `connector-v1.2.0` tag is the commit it was built from.
 The mini's connector must run the live release first: after a pull, or a canary that
 failed once its trial passed, it may still run a release that isn't live, so install the
 live one by hand from its folder. The live index must also be signed with a key the new
