@@ -154,7 +154,7 @@ newestpublished() {
   for f in "$d"/*/*.published; do f="${f#"$d/"}"; echo "${f%.published}"; done | sort -t- -k2,2n | tail -1
 }
 # lastchecked: the owner's step when the Air's last.json isn't the newest index published,
-# once latest.json is checked against the tags: that index becomes the last one signed.
+# once they've done the check its refusal names: that index becomes the last one signed.
 lastchecked() { cp "$dry/sync/releases/$(newestpublished).json" "$dry/keys/last.json"; }
 
 # forge <version> <kind> <key> <release>: an index signed straight with ssh-keygen, for a
@@ -297,7 +297,7 @@ refused "nothing promoted before 1.1.0" sign air1 --pull 1.1.0
 mkdir "$dry/hidden"
 mv "$dry"/sync/releases/1.1.1/pull-* "$dry/hidden/"
 tick
-refused "the last one this Air signed" sign air1 --resign
+refused "this Air's last index never went out" sign air1 --resign
 mv "$dry"/hidden/* "$dry/sync/releases/1.1.1/"
 forge 1.1.2 promote air2 1.1.2
 for f in "$dry"/sync/releases/1.1.2/promote-*.json; do date +%s > "${f%.json}.published"; done
@@ -312,7 +312,7 @@ tick
 run sign air1 --pull 1.1.1
 # The pull is signed and never published, so the Air signs again only once the owner checks.
 tick
-refused "the last one this Air signed" sign air1 --resign
+refused "this Air's last index never went out" sign air1 --resign
 lastchecked
 resign air1 1.1.1
 refused "sign a fresh one" publish --pull 1.1.1
@@ -376,7 +376,7 @@ build 1.1.1 1.0.6
 refused "isn't the two keys in" sign air2 1.1.1
 signfolder 1.1.1 paper1
 tick
-refused "the last one this Air signed" sign paper1 --promote 1.1.1
+refused "This Air has signed no index" sign paper1 --promote 1.1.1
 lastchecked
 promote 1.1.1 paper1
 pull 1.1.1 paper1 1.1.0

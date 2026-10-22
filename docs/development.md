@@ -185,16 +185,15 @@ it, signed again. Computers that already took the pulled release keep it, since 
 connector never installs an older one, so the fix is the next release. `--resign`
 publishes the live index signed again, to supersede a signed promote that mustn't ship.
 Every promote, pull and resign is recorded in `~/Sync/ovenlight/releases/`, the only
-history the scripts read besides `last.json`, the last index the Air signed, which it
-keeps in `~/.ssh/ovenlight-release-keys/`. The Air signs no promote, pull or resign while
-the newest index recorded isn't that one, as after an index signed and never published,
-and its refusal says what to check before copying the newest in. Beside it, `published`
-lists the published indexes that one was built on, and the Air signs nothing while the
-records' others differ. Each script's header says what it checks, and
-`scripts/test-connector-release.sh` dry-runs them all. Each release restarts every owner's
-connector, and one promoted within two days of the last restarts every owner's wait, so
-batch what isn't urgent. A `--resign` within a release's two days restarts the wait too,
-for computers that haven't taken it.
+history the scripts read besides two files in `~/.ssh/ovenlight-release-keys/`:
+`last.json`, the last index the Air signed, and `published`, the published indexes it
+built that one on. The Air signs no promote, pull or resign while the newest published
+index isn't `last.json`, as after an index signed and never published, or while the others
+aren't the ones in `published`. Its refusal says what to check. Each script's header says
+what it checks, and `scripts/test-connector-release.sh` dry-runs them all. Each release
+restarts every owner's connector, and one promoted within two days of the last restarts
+every owner's wait, so batch what isn't urgent. A `--resign` within a release's two days
+restarts the wait too, for computers that haven't taken it.
 
 Uploads go to the R2 bucket behind `https://downloads.ovenlight.app`, through `wrangler`
 (signed in with `npx wrangler@4.147.0 login`, or `CLOUDFLARE_API_TOKEN` and
@@ -302,15 +301,13 @@ After a lost Air, the paper key signs R:
    signature. Copy key setup's `index.json.release-1.sig` and `index.json.release-2.sig`
    in under the next two free numbers.
 3. The old paper key signs what R needs: its folder, the `--resign` before its canary and
-   its promote. That `--resign` is refused until `last.json` is the newest index recorded:
-   an Air that wasn't restored has none, and a restored one's may be older, so do the
-   check the refusal names. The old paper key also signs any pull before R+1 is promoted.
-   A release needed before R+1 can go out is signed with it too and lists the same three
-   keys. For each, make a folder with `mktemp -d`, type the key from paper into a file
-   there and `chmod 600` it. Write its public half beside it with
-   `ssh-keygen -y -f <file> > <file>.pub`, which also checks the passphrase, and on an Air
-   that wasn't restored copy it into `retired/` as `backup.pub` the first time. Sign with
-   `--key <file>`, then delete the folder.
+   its promote. That `--resign` is refused until you do the check its refusal names. The
+   old paper key also signs any pull before R+1 is promoted. A release needed before R+1
+   can go out is signed with it too and lists the same three keys. For each, make a folder
+   with `mktemp -d`, type the key from paper into a file there and `chmod 600` it. Write
+   its public half beside it with `ssh-keygen -y -f <file> > <file>.pub`, which also
+   checks the passphrase, and on an Air that wasn't restored copy it into `retired/` as
+   `backup.pub` the first time. Sign with `--key <file>`, then delete the folder.
 4. R+1 drops the old paper key and is signed with the new Touch ID key. Its `--resign`
    and promote wait the same four weeks and four days.
 

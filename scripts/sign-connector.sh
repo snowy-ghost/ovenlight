@@ -102,8 +102,15 @@ vouched() {
     verify "$records/$id.json" "$records/$id.json.sig" ovenlight-latest "$tmp/air" ||
       refuse "$id isn't signed by a key in $keydir or its retired/"
   done
-  [ -z "$newest" ] || cmp -s "$records/$newest.json" "$keydir/last.json" ||
-    refuse "$records/$newest.json, the newest index the records say was published, isn't $keydir/last.json, the last one this Air signed (none on a new Air, an older one on a restored Air, a newer one after an index signed and never published): check that the version https://downloads.ovenlight.app/connector/latest.json names is the newest connector-v* tag on GitHub that was promoted, then copy $records/$newest.json to $keydir/last.json"
+  # A new Air has no last.json, and a restored one deletes its own.
+  if [ -n "$newest" ] && ! cmp -s "$records/$newest.json" "$keydir/last.json"; then
+    copy="curl -fsS https://downloads.ovenlight.app/connector/latest.json | cmp - $records/$newest.json && cp $records/$newest.json $keydir/last.json"
+    names="the records' newest published index, $newest, names $(field latest "$records/$newest.json")"
+    [ -f "$keydir/last.json" ] || refuse "This Air has signed no index, and $names. Copy it in only once https://downloads.ovenlight.app/connector/latest.json names the release you last promoted, or the one your last pull went back to:
+  $copy"
+    refuse "This Air last signed an index naming $(field latest "$keydir/last.json"), at $(date -r "$(field serial "$keydir/last.json")"), and $names. Whoever holds ~/Sync and the bucket can roll back both the records and latest.json, so copy it in only if you know this Air's last index never went out:
+  $copy"
+  fi
   # The published indexes are the ones they were when this Air signed last.json, and it.
   if [ -f "$keydir/published" ]; then
     { cat "$keydir/published"; echo "$newest"; } | awk 'NF && !seen[$0]++' > "$tmp/saw"
