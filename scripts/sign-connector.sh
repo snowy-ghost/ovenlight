@@ -31,11 +31,12 @@
 # release trusts never come from the commit alone. The paper key signs only a release that
 # replaces it, so its .pub has left that folder.
 #
-# Each run first fetches latest.json, which must be an index in the history, never one below
-# an index it has been (1.0.9's unsigned one until then), and marks it seen: it's the live
-# index. A pull signed above it and never seen blocks promotes and resigns until it's
-# published or a fresh pull is signed, and a promote or resign never seen is superseded by the
-# next index. After signing an index for latest.json, it waits for latest.json to be it.
+# Each run first fetches latest.json, which must be the head of the history, as
+# connector-release-lib.sh names it, or the newest index signed (1.0.9's unsigned one while
+# nothing is published), and marks it seen. One below the head is a rollback, and one
+# between them was superseded by the newest before this Air saw it go up. A pull signed
+# after the head and never seen blocks promotes and resigns until it's published or a fresh
+# pull is signed. After signing an index for latest.json, it waits for latest.json to be it.
 #
 # --key signs with a key other than this Air's Touch ID handle, such as the paper backup or
 # another Touch ID key's handle, with its public half beside it as <file>.pub.
@@ -71,12 +72,12 @@ fetchlive() {
   else curl -fsS --max-filesize 4096 -o "$tmp/live.json" "https://downloads.ovenlight.app/connector/latest.json?$(date +%s)"; fi
 }
 
-# observe: the header's check of latest.json. pending is a pull signed above it and never seen.
+# observe: the header's check of latest.json. pending is a pull signed after it and never seen.
 observe() {
   local id found=
   fetchlive || refuse "couldn't fetch latest.json"
   if [ -z "$(field serial "$tmp/live.json")" ]; then
-    [ -z "$newest" ] || refuse "latest.json is unsigned, and it was $newest: publish $newest again on the mini"
+    [ -z "$newest" ] || refuse "latest.json is unsigned, and it was $newest: publish $top on the mini"
     pending=
     return
   fi
@@ -85,23 +86,24 @@ observe() {
   done
   [ -n "$found" ] || refuse "latest.json isn't an index in $records. After a planned move, copy the other Air's history in first. After a lost Air, delete it and run --import."
   if [ -n "$newest" ] && [ "$(serialof "$found")" -lt "$(serialof "$newest")" ]; then
-    refuse "latest.json is $found, older than $newest, which the history marks seen: publish $newest on the mini"
+    refuse "latest.json is $found, older than $newest, which the history marks seen: publish $top on the mini"
   fi
+  [ "$found" = "$newest" ] || [ "$found" = "$top" ] ||
+    refuse "latest.json is $found, which $top superseded before this Air saw it go up: publish $top on the mini. Computers that took $found in between keep its release, as after a pull."
   [ -f "$records/$found.seen" ] || date +%s > "$records/$found.seen"
   readrecords
   pending=
-  for id in $signed; do
-    case "$id" in */pull-*) if [ "$(serialof "$id")" -gt "$(serialof "$newest")" ]; then pending="$id"; fi ;; esac
-  done
+  case "$top" in */pull-*) [ "$top" = "$newest" ] || pending="$top" ;; esac
   echo "latest.json is $newest, so $live is live"
 }
 
 # import: rebuilds the history from the mini's records: each release whose SHA256SUMS and
 # canary index the keys signed, with connector/release_keys at its commit on master, and each
-# index they signed that fits its name. Every pull, and every index the records mark
-# published, counts as seen. Then latest.json must be in it.
+# index they signed that fits its name and was built on one signed before it. Those the
+# newest was built on, back through their bases, count as seen. Then latest.json must be in
+# it.
 import() {
-  local h="$tmp/history" d v c id f s t
+  local h="$tmp/history" d v c id f s t b
   [ ! -e "$records" ] || refuse "$records exists: --import rebuilds it once it's deleted, on an Air whose --check doesn't find latest.json in it"
   [ -n "$dry" ] || git -C "$root" fetch -q origin master
   # This Air's keys made since the loss, which no release before it lists.
@@ -135,26 +137,32 @@ import() {
         echo "skipped $v/${id##*/}: not signed by those keys for $v"
         continue
       fi
+      # The index it was built on, which readrecords checks is one imported.
+      b="$(cat "$id.base" 2> /dev/null)" || b=-
+      if [ -n "$b" ] && ! { [[ "$b" =~ /(promote|pull|resign)-([0-9]+)$ ]] && [ "${BASH_REMATCH[2]}" -lt "$s" ]; }; then
+        echo "skipped $v/${id##*/}: its .base doesn't name an index signed before it"
+        continue
+      fi
       cp "$f" "$f.sig" "$h/$v/"
-      case "$id" in */pull-*) ;; *) [ -f "$id.published" ] || continue ;; esac
-      # When latest.json began naming it, which newkeywait never takes as before it was signed.
-      t="$(cat "$id.live" 2> /dev/null || true)"
-      [[ "$t" =~ ^[1-9][0-9]{9}$ ]] || t="$s"
-      echo "$t" > "$h/$v/${id##*/}.seen"
+      echo "$b" > "$h/$v/${id##*/}.base"
     done
   done
   records="$h"
   readrecords
+  for id in $published; do
+    # When latest.json began naming it, which newkeywait never takes as before it was signed.
+    t="$(cat "$sync/$id.live" 2> /dev/null || true)"
+    [[ "$t" =~ ^[1-9][0-9]{9}$ ]] || t="$(serialof "$id")"
+    echo "$t" > "$h/$id.seen"
+  done
+  observe
   echo "the history, from $sync:"
   for id in $signed; do
-    if [ -f "$h/$id.seen" ]; then s=published; else s="never published"; fi
+    if grep -qxF "$id" <<< "$published"; then s=published; elif [ "$id" = "$top" ]; then s="not published yet"; else s=superseded; fi
     echo "  $id, signed $(date -r "$(serialof "$id")" '+%Y-%m-%d %H:%M'), naming $(field latest "$h/$id.json"), $s"
   done
   echo "  promoted: ${promoted//$'\n'/ }"
   echo "  pulled: ${pulled//$'\n'/ }"
-  [ -z "$newest" ] || [ "$(field latest "$h/$newest.json")" = "$live" ] ||
-    refuse "the newest index published, $newest, names $(field latest "$h/$newest.json"), not $live, which the others make live: find out who changed the records"
-  observe
   mkdir -p "$keydir"
   mv "$h" "$keydir/history"
   echo "imported: check that list against the releases you published before signing anything"
@@ -341,12 +349,6 @@ pull)
 
 resign)
   [ -n "$newest" ] || refuse "no index is published yet"
-  # One signed after the live index on an older one superseded it before it went up.
-  for id in $signed; do
-    if [ "$(serialof "$id")" -gt "$(serialof "$newest")" ] && [ -f "$records/$id.base" ] && [ "$(cat "$records/$id.base")" != "$newest" ]; then
-      refuse "latest.json became $newest after $id superseded it: pull $live or promote the next release, rather than re-sign it"
-    fi
-  done
   for k in $(livekeys); do
     haskey "$kblob" "$k" || refuse "$k doesn't list this key, so computers on that release can't check the index"
   done

@@ -182,10 +182,10 @@ ship() {
   promote "$1" "$3"
 }
 
-# newestpublished: the newest index the records say was published.
-newestpublished() {
+# newestlive: the newest index the mini's records mark live.
+newestlive() {
   local d="$dry/sync/releases" f
-  for f in "$d"/*/*.published; do f="${f#"$d/"}"; echo "${f%.published}"; done | sort -t- -k2,2n | tail -1
+  for f in "$d"/*/*.live; do f="${f#"$d/"}"; echo "${f%.live}"; done | sort -t- -k2,2n | tail -1
 }
 # lastsigned <version>: the index this Air signed last names that release.
 lastsigned() {
@@ -199,15 +199,38 @@ lastsigned() {
 
 # forge <version> <kind> <key> <release>: an index signed straight with ssh-keygen, for a
 # publish to refuse on its own, as sign-connector.sh would have first: <release>'s index,
-# with the time now as its serial, built on the newest index published.
+# with the time now as its serial, built on the newest index published. It's in $forged.
 forge() {
-  local d="$dry/sync/releases" s f
+  local d="$dry/sync/releases" s
   tick
   s="$(date +%s)"
-  f="$d/$1/$2-$s"
-  sed "s/\"serial\": 0,/\"serial\": $s,/" "$d/$4/index.json" > "$f.json"
-  ssh-keygen -Y sign -q -f "$dry/private/$3" -n ovenlight-latest < "$f.json" > "$f.json.sig"
-  newestpublished > "$f.base"
+  forged="$d/$1/$2-$s"
+  sed "s/\"serial\": 0,/\"serial\": $s,/" "$d/$4/index.json" > "$forged.json"
+  ssh-keygen -Y sign -q -f "$dry/private/$3" -n ovenlight-latest < "$forged.json" > "$forged.json.sig"
+  newestlive > "$forged.base"
+}
+# cutshort <key> <option>...: signed on the Air, and its publish fails at latest.json.
+cutshort() {
+  local k="$1"
+  shift
+  tick
+  run sign "$k" "$@"
+  chmod 444 "$dry/bucket/connector/latest.json"
+  if publish "$@" > "$dry/log" 2>&1; then fail "the upload of latest.json didn't fail"; fi
+  chmod 644 "$dry/bucket/connector/latest.json"
+}
+# show <version>/<kind>: latest.json is that index, as a publish of it landing late makes it,
+# or whoever holds the bucket.
+show() {
+  local p=("$dry/sync/releases/$1"-*.json)
+  cp "${p[0]}" "$dry/bucket/connector/latest.json"
+  cp "${p[0]}.sig" "$dry/bucket/connector/latest.json.sig"
+}
+# checked <text>: --check says it.
+checked() {
+  run nokey --check
+  grep -qF -- "$1" "$dry/log" || { cat "$dry/log" >&2; fail "--check didn't say \"$1\""; }
+  pass "--check: $(tail -1 "$dry/log")"
 }
 
 # header <key> <cache-control>: the object's cache, as uploaded.
@@ -308,9 +331,9 @@ git -C "$repo" push -q -f origin connector-v1.1.0
 refused "is a dry-run fixture key" realpublish 1.1.0
 run publish 1.1.0
 folder_is 1.1.0
-refused "no index matching 1.1.0/promote-*" publish --promote 1.1.0
+refused "no promote, pull or resign is signed" publish --promote 1.1.0
 refused "isn't the live release (nothing is promoted)" sign air1 --pull 1.1.0
-refused "no index matching 1.1.0/pull-*" publish --pull 1.1.0
+refused "no promote, pull or resign is signed" publish --pull 1.1.0
 refused "no index is published yet" sign air1 --resign
 untouched
 
@@ -329,7 +352,7 @@ d="$dry/sync/releases"
 mkdir "$dry/hidden"
 cp "$d"/1.1.1/canary.json* "$dry/hidden/"
 cp "$d"/1.1.2/canary.json* "$d/1.1.1/"
-n="$(newestpublished)"
+n="$(newestlive)"
 for f in "$d/$n".*; do mv "$f" "$d/1.1.2/${f#"$d/1.1.1/"}"; done
 tick
 run sign air1 --resign
@@ -382,74 +405,160 @@ signfolder 1.1.2 air1
 tick
 run sign air1 --promote 1.1.2
 pull 1.1.1 air1 1.1.0
-refused "sign a fresh one" publish --promote 1.1.2
+refused "and only it goes up: scripts/publish-connector.sh --pull 1.1.1" publish --promote 1.1.2
 promote 1.1.2 air1
 
-fresh rerun "a publish that fails after writing its record, finished by running it again or dropped"
+fresh rerun "a publish cut short or uploaded already, finished or uploaded again by running it again"
 keyfolder air1 paper1
 keys air1 paper1
 build 1.1.0 1.0.6 1.1.0
 signfolder 1.1.0 air1
-tick
-run sign air1 --promote 1.1.0
-chmod 444 "$dry/bucket/connector/latest.json"
-if publish --promote 1.1.0 > "$dry/log" 2>&1; then fail "the upload of latest.json didn't fail"; fi
-chmod 644 "$dry/bucket/connector/latest.json"
-records=("$dry"/sync/releases/1.1.0/promote-*.published)
-[ ${#records[@]} -eq 1 ] || fail "no record of the failed publish"
+cutshort air1 --promote 1.1.0
 cmp -s "$dry/bucket/connector/latest.json" "$dry/1.0.9.json" || fail "latest.json changed"
-pass "the failed publish left its record, and latest.json as it was"
-# Another promote signed meanwhile, on an Air the record hadn't reached yet.
-forge 1.1.0 promote air1 1.1.0
+pass "the publish cut short left latest.json as it was"
 run publish --promote 1.1.0
-grep -q "^finishing the publish of 1.1.0/promote-" "$dry/log" || fail "the rerun didn't finish the publish"
-pass "the rerun finished it: $(head -1 "$dry/log")"
+run nokey --check
 latest_is 1.1.0 air1
-# A promote cut short and never finished, which the Air never saw: no other index goes up
-# until it's finished, or dropped by deleting its .published.
-build 1.1.1 1.0.6
-signfolder 1.1.1 air1
-tick
-run sign air1 --promote 1.1.1
-chmod 444 "$dry/bucket/connector/latest.json"
-if publish --promote 1.1.1 > "$dry/log" 2>&1; then fail "the upload of latest.json didn't fail"; fi
-chmod 644 "$dry/bucket/connector/latest.json"
-tick
-run sign air1 --resign
-refused "isn't 1.1.1/promote-" publish --resign
-rm "$dry"/sync/releases/1.1.1/promote-*.published
+run publish --promote 1.1.0
+latest_is 1.1.0 air1
+ship 1.1.1 1.0.6 air1
+cutshort air1 --pull 1.1.1
+run publish --pull 1.1.1
+run publish --pull 1.1.1
+run nokey --check
+latest_is 1.1.0 air1
+cutshort air1 --resign
 run publish --resign
 run nokey --check
 latest_is 1.1.0 air1
-# One cut short once latest.json is it is marked live by the next.
-promote 1.1.1 air1
-rm "$dry"/sync/releases/1.1.1/promote-*.live
-resign air1 1.1.1
-records=("$dry"/sync/releases/1.1.1/promote-*.live)
-[ ${#records[@]} -eq 1 ] || fail "the promote cut short once latest.json was it isn't marked live"
-pass "the resign marks live the promote cut short once latest.json was it"
-# One dropped though latest.json is it stops the next, until its record is back.
-r=("$dry"/sync/releases/1.1.1/resign-*.published)
-mv "${r[0]}" "$dry/kept"
+
+fresh dropped "a promote, pull and resign each cut short and dropped by the next signature, which supersedes them"
+keyfolder air1 paper1
+keys air1 paper1
+ship 1.1.0 1.0.6 air1 1.1.0
+build 1.1.1 1.0.6
+signfolder 1.1.1 air1
+# The promote cut short didn't go out, so a resign drops it.
+cutshort air1 --promote 1.1.1
+checked "latest.json is 1.1.0/promote-"
 tick
 run sign air1 --resign
-refused "which has no .published here: if you deleted it, put it back" publish --resign
-mv "$dry/kept" "${r[0]}"
+refused "and only it goes up: scripts/publish-connector.sh --resign" publish --promote 1.1.1
+# Its publish lands late, before the resign goes up, or whoever holds the bucket shows it
+# after. Either way the Air never counts it.
+show 1.1.1/promote
+refused "which 1.1.0/resign-" nokey --check
 run publish --resign
-# A promote cut short, then finished after the Air signed the next on the one before it.
+show 1.1.1/promote
+refused "superseded before this Air saw it go up: publish 1.1.0/resign-" nokey --check
+show 1.1.0/resign
+checked "so 1.1.0 is live"
+latest_is 1.1.0 air1
+# So the next release's pull goes back to 1.1.0.
 build 1.1.2 1.0.6
 signfolder 1.1.2 air1
+promote 1.1.2 air1
+# A pull cut short is dropped by a fresh pull, and a resign by a fresh resign.
+cutshort air1 --pull 1.1.2
+checked "latest.json is 1.1.2/promote-"
+pull 1.1.2 air1 1.1.0
+cutshort air1 --resign
+checked "latest.json is 1.1.2/pull-"
+resign air1 1.1.0
+
+fresh droppull "a promote cut short and dropped by a pull of the release before it, then shown to the Air"
+keyfolder air1 paper1
+keys air1 paper1
+ship 1.1.0 1.0.6 air1 1.1.0
+ship 1.1.1 1.0.6 air1
+build 1.1.2 1.0.6
+signfolder 1.1.2 air1
+cutshort air1 --promote 1.1.2
+checked "latest.json is 1.1.1/promote-"
 tick
-run sign air1 --promote 1.1.2
-chmod 444 "$dry/bucket/connector/latest.json"
-if publish --promote 1.1.2 > "$dry/log" 2>&1; then fail "the upload of latest.json didn't fail"; fi
-chmod 644 "$dry/bucket/connector/latest.json"
-build 1.1.3 1.0.6
-signfolder 1.1.3 air1
+run sign air1 --pull 1.1.1
+run publish --pull 1.1.1
+show 1.1.2/promote
+refused "which 1.1.1/pull-" nokey --check
+show 1.1.1/pull
+checked "so 1.1.0 is live"
 tick
-run sign air1 --promote 1.1.3
-run publish --promote 1.1.2
-refused "and 1.1.2/promote-" publish --promote 1.1.3
+refused "1.1.2 isn't the live release (1.1.0)" sign air1 --pull 1.1.2
+run sign air1 --resign
+lastsigned 1.1.0
+
+fresh dropfirst "the first promote cut short and dropped by promoting the next release, then shown to the Air"
+keyfolder air1 paper1
+keys air1 paper1
+build 1.1.0 1.0.6 1.1.0
+signfolder 1.1.0 air1
+build 1.1.1 1.0.6
+signfolder 1.1.1 air1
+cutshort air1 --promote 1.1.0
+run nokey --check
+tick
+run sign air1 --promote 1.1.1
+run publish --promote 1.1.1
+show 1.1.0/promote
+refused "which 1.1.1/promote-" nokey --check
+show 1.1.1/promote
+checked "so 1.1.1 is live"
+tick
+refused "nothing promoted before 1.1.1" sign air1 --pull 1.1.1
+
+fresh droplost "a promote dropped by a resign signed on an Air lost before it's published"
+keyfolder air1 paper1
+keys air1 paper1
+ship 1.1.0 1.0.6 air1 1.1.0
+build 1.1.1 1.0.6
+signfolder 1.1.1 air1
+cutshort air1 --promote 1.1.1
+checked "latest.json is 1.1.0/promote-"
+tick
+run sign air1 --resign
+newair
+cp "$fixtures/air2.pub" "$dry/keys/touchid.pub"
+cat "$fixtures/air1.pub" "$fixtures/paper1.pub" > "$dry/import"
+run nokey --import "$dry/import"
+grep -q "^  1.1.1/promote-.*, naming 1.1.1, superseded$" "$dry/log" || { cat "$dry/log" >&2; fail "the import didn't show the promote superseded"; }
+grep -q "^  1.1.0/resign-.*, naming 1.1.0, not published yet$" "$dry/log" || { cat "$dry/log" >&2; fail "the import didn't show the resign unpublished"; }
+grep -qx "  promoted: 1.1.0" "$dry/log" || { cat "$dry/log" >&2; fail "the import counts the promote"; }
+pass "the import shows the chain to 1.1.0, the promote superseded and the resign not published yet"
+run publish --resign
+latest_is 1.1.0 air1
+show 1.1.1/promote
+refused "which 1.1.0/resign-" nokey --check
+show 1.1.0/resign
+tick
+run sign paper1 --resign
+lastsigned 1.1.0
+
+fresh dropmove "a promote dropped during a planned move, then shown to each Air"
+keyfolder air1 paper1
+keys air1 paper1
+ship 1.1.0 1.0.6 air1 1.1.0
+mkdir "$dry/otherair"
+cp "$dry"/keys/{touchid.pub,backup.pub} "$dry/otherair/"
+build 1.1.1 1.0.6
+signfolder 1.1.1 air1
+cutshort air1 --promote 1.1.1
+checked "latest.json is 1.1.0/promote-"
+tick
+run sign air1 --resign
+run publish --resign
+show 1.1.1/promote
+refused "which 1.1.0/resign-" nokey --check
+# The other Air, even with a .seen for it that one with an older history could have written.
+swapair
+p=("$dry"/otherair/history/1.1.1/promote-*.json)
+date +%s > "${p[0]%.json}.seen"
+carry
+refused "which 1.1.0/resign-" nokey --check
+show 1.1.0/resign
+checked "so 1.1.0 is live"
+tick
+run sign air1 --resign
+lastsigned 1.1.0
 
 fresh lost "a lost Air: its history imported, then the backup key brings in two new keys, and signs a pull"
 keyfolder air1 paper1
@@ -474,29 +583,26 @@ d="$dry/sync/releases/1.1.1"
 for f in "$d"/pull-*; do mv "$f" "$d/pull-0-${f##*/pull-}"; done
 refused "skipped 1.1.1/pull-0-" nokey --import "$dry/import"
 for f in "$d"/pull-0-*; do mv "$f" "$d/pull-${f##*/pull-0-}"; done
-# An agent holding ~/Sync deletes the pull's record of being published, makes up a promote of
-# 1.1.1 signed with another key, and points 1.1.0's commit at one whose release_keys lists the
-# new key.
+# An agent holding ~/Sync makes up a promote of 1.1.1 signed with another key, points 1.1.0's
+# commit at one whose release_keys lists the new key, and builds the pull on the promote.
 keys air2 paper2 paper1
 d="$dry/sync/releases"
-mkdir "$dry/hidden"
-mv "$d"/1.1.1/pull-*.published "$dry/hidden/"
 forge 1.1.1 promote paper2 1.1.1
-for f in "$d"/1.1.1/promote-*.json; do
-  f="${f%.json}"
-  if [ ! -f "$f.published" ]; then date +%s > "$f.published"; break; fi
-done
 cp "$d/1.1.0/commit" "$dry/commit"
 git -C "$repo" rev-parse HEAD > "$d/1.1.0/commit"
 refused "1.1.0's commit, lists one of this Air's new keys" nokey --import "$dry/import"
 cp "$dry/commit" "$d/1.1.0/commit"
+q=("$d"/1.1.1/pull-*.base)
+cp "${q[0]}" "$dry/base"
+echo "1.1.1/${forged##*/}" > "${q[0]}"
+refused "its .base doesn't name an index signed before it" nokey --import "$dry/import"
+cp "$dry/base" "${q[0]}"
 run nokey --import "$dry/import"
 grep -q "^skipped 1.1.1/promote-" "$dry/log" || { cat "$dry/log" >&2; fail "the import took the made-up promote"; }
 grep -qx "  pulled: 1.1.1" "$dry/log" || { cat "$dry/log" >&2; fail "the import lost the pull"; }
 grep -q "^latest.json is 1.1.1/pull-" "$dry/log" || { cat "$dry/log" >&2; fail "the import didn't find latest.json"; }
 pass "the import skips the made-up promote, keeps the pull, and finds latest.json in what it imported"
-rm "$f".*
-mv "$dry"/hidden/* "$d/1.1.1/"
+rm "$forged".*
 refused "exists" nokey --import "$dry/import"
 # Key setup makes the two new keys, and the release lists them and the paper key.
 keyfolder air2 paper2
@@ -713,18 +819,17 @@ signfolder 1.1.2 air1
 tick
 run sign air1 --promote 1.1.2
 # A resign supersedes it with no other step, even once an agent holding ~/Sync marks the
-# promote published there, so the resign would make 1.1.2 the live release.
-for f in "$dry"/sync/releases/1.1.2/promote-*.json; do date +%s > "${f%.json}.published"; done
+# promote live there, so the resign would make 1.1.2 the live release.
+for f in "$dry"/sync/releases/1.1.2/promote-*.json; do date +%s > "${f%.json}.live"; done
 tick
 run sign air1 --resign
 lastsigned 1.1.1
-rm "$dry"/sync/releases/1.1.2/promote-*.published
 run publish --resign
 run nokey --check
 latest_is 1.1.1 air1
 [ "$(field secure "$dry/bucket/connector/latest.json")" = 1.0.6 ] || fail "secure went up"
 pass "secure is still 1.0.6"
-refused "sign a fresh one" publish --promote 1.1.2
+refused "and only it goes up: scripts/publish-connector.sh --resign" publish --promote 1.1.2
 refused "1.1.3 can't go below either" release 1.1.3 1.0.5
 forge 1.1.0 promote air1 1.1.0
 refused "1.1.0 was promoted already" publish --promote 1.1.0
@@ -788,29 +893,6 @@ pull 1.1.1 air1 1.1.0
 ship 1.1.2 1.0.6 air1
 tick
 refused "four weeks and four days" sign air2 --resign
-
-fresh dropped "a promote dropped with a resign, then shown to the Air: it isn't signed again"
-keyfolder air1 paper1
-keys air1 paper1
-ship 1.1.0 1.0.6 air1 1.1.0
-build 1.1.1 1.0.6
-signfolder 1.1.1 air1
-tick
-run sign air1 --promote 1.1.1
-chmod 444 "$dry/bucket/connector/latest.json"
-if publish --promote 1.1.1 > "$dry/log" 2>&1; then fail "the upload of latest.json didn't fail"; fi
-chmod 644 "$dry/bucket/connector/latest.json"
-tick
-run sign air1 --resign
-refused "isn't 1.1.1/promote-" publish --resign
-rm "$dry"/sync/releases/1.1.1/promote-*.published
-run publish --resign
-p=("$dry"/sync/releases/1.1.1/promote-*.json)
-cp "${p[0]}" "$dry/bucket/connector/latest.json"
-cp "${p[0]}.sig" "$dry/bucket/connector/latest.json.sig"
-tick
-refused "superseded it" sign air1 --resign
-run sign air1 --pull 1.1.1
 
 fresh gates "what no release gets past"
 keyfolder air1 paper1

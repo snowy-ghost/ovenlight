@@ -5,15 +5,17 @@
 #
 # Every promote, pull and resign index sign-connector.sh signs sits in its release's folder
 # as <kind>-<serial>.json and its .sig, and here it's named <version>/<kind>-<serial>. Each
-# also notes, in <kind>-<serial>.base, the published index it was built on. Each
-# side reads only its own records. The Air's are its history,
-# ~/.ssh/ovenlight-release-keys/history/, which only sign-connector.sh writes, adding
-# <kind>-<serial>.seen, the time it first saw latest.json be that index. It sends what it
-# signs with scp to the mini's records, ~/Sync/ovenlight/releases/ there, and never writes
-# to the Air's own ~/Sync, where a link an agent syncs would write into its files. There
-# publish-connector.sh adds <kind>-<serial>.published, holding the time its publish began,
-# before it uploads it, and <kind>-<serial>.live, the time latest.json began naming it, once
-# it has. A script that sets air=1 before sourcing this reads the Air's.
+# also notes, in <kind>-<serial>.base, the index it was built on, and those notes are the
+# books: what's published is the head, the newest index signed once it's marked published,
+# else the one that index was built on, and every index back from it through its bases. One
+# left off was superseded by the index signed after it. Each side reads only its own
+# records. The Air's are its history, ~/.ssh/ovenlight-release-keys/history/, which only
+# sign-connector.sh writes, marking an index with <kind>-<serial>.seen, the time it first
+# saw latest.json be that index. It sends what it signs with scp to the mini's records,
+# ~/Sync/ovenlight/releases/ there, and never writes to the Air's own ~/Sync, where a link
+# an agent syncs would write into its files. There publish-connector.sh marks an index with
+# <kind>-<serial>.live, the time latest.json began naming it. A script that sets air=1
+# before sourcing this reads the Air's.
 #
 # OVENLIGHT_RELEASE_DRY=<folder> makes a dry run, which scripts/test-connector-release.sh does
 # in folders it marks with a .release-dry-run file, which this requires: that folder stands
@@ -48,12 +50,12 @@ else
   keydir="$HOME/.ssh/ovenlight-release-keys"
   master=origin/master
 fi
-# The records, what marks an index published in them, and what holds when latest.json began
+# The records, and what marks an index published in them with the time latest.json began
 # naming it.
 if [ -n "${air:-}" ]; then
-  records="$keydir/history" mark=seen since=seen
+  records="$keydir/history" since=seen
 else
-  records="$sync" mark=published since=live
+  records="$sync" since=live
 fi
 
 tmp="$(mktemp -d)"
@@ -102,18 +104,36 @@ releaseindex() {
 }
 
 serialof() { echo "${1##*-}"; }
-# readrecords: what the records say.
+# baseof <id>: sets base to the index it was built on, refusing a .base that's missing or
+# doesn't name an index signed before it.
+baseof() {
+  base="$(cat "$records/$1.base" 2> /dev/null)" || refuse "$1 has no .base in $records"
+  [ -z "$base" ] || { grep -qxF "$base" <<< "$signed" && [ "$(serialof "$base")" -lt "$(serialof "$1")" ]; } ||
+    refuse "$records/$1.base names $base, not an index signed before it"
+}
+# readrecords: what the records say, from the head the header names.
 readrecords() {
-  local v
   signed="$(for f in "$records"/*/promote-*.json "$records"/*/pull-*.json "$records"/*/resign-*.json; do
     f="${f#"$records/"}"
     echo "${f%.json}"
   done | sort -t- -k2,2n)"
-  published="$(for f in "$records"/*/*."$mark"; do
-    f="${f#"$records/"}"
-    echo "${f%."$mark"}"
-  done | sort -t- -k2,2n)"
-  newest="$(echo "$published" | tail -1)" # the live index
+  top="${signed##*$'\n'}" # the newest signed
+  if [ -n "$top" ] && [ ! -f "$records/$top.$since" ]; then
+    baseof "$top"
+    readchain "$base"
+  else
+    readchain "$top"
+  fi
+}
+# readchain <head>: what the records say, from that head.
+readchain() {
+  local v id="$1"
+  newest="$1" published='' # the live index, and those published up to it, oldest first
+  while [ -n "$id" ]; do
+    published="$id"$'\n'"$published"
+    baseof "$id"
+    id="$base"
+  done
   promoted="$(for id in $published; do case "$id" in (*/promote-*) echo "${id%%/*}" ;; esac; done | sort -uV)"
   pulled="$(for id in $published; do case "$id" in (*/pull-*) echo "${id%%/*}" ;; esac; done | sort -uV)"
   kept=  # the promoted releases that weren't pulled, oldest first
@@ -121,6 +141,8 @@ readrecords() {
     if ! grep -qxF "$v" <<< "$pulled"; then kept="$kept $v"; fi
   done
   live="${kept##* }" # the newest of them
+  [ -z "$newest" ] || [ "$(field latest "$records/$newest.json")" = "$live" ] ||
+    refuse "the newest index published, $newest, names $(field latest "$records/$newest.json"), not $live, which the others make live: find out who changed the records"
 }
 readrecords
 
@@ -136,7 +158,7 @@ keptbelow() {
 # abovereleased <version>: refuses a version at or below one promoted or pulled.
 abovereleased() {
   local v
-  for v in $promoted; do
+  for v in $promoted $pulled; do
     if atleast "$1" "$v"; then refuse "$v was promoted already: a release goes out under a newer version"; fi
   done
 }
