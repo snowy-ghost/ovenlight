@@ -288,11 +288,10 @@ For a planned move to a new Air, the old Air signs R:
 4. R+1 drops the old key and is signed on the new Air. Its canary needs the live index
    signed with the new key (`--resign`). That and R+1's promote are refused until four
    weeks and four days after R's promote, and a pull back below R starts the wait again at
-   the next promote. Keep the old Air until R+1 is promoted, since a pull before R+1's
-   `--resign` is signed with the old key. Right before the new Air first runs
-   `sign-connector.sh`, copy `last.json` and `published` from the old Air's
-   `~/.ssh/ovenlight-release-keys/` into the new Air's the same way, and again after
-   anything the old Air signs later, such as a pull.
+   the next promote. Keep the old Air until R+1 is promoted, since it signs any pull
+   before then. Before either Air signs after the other did, as before the new Air first
+   runs `sign-connector.sh`, copy `last.json` and `published` into its
+   `~/.ssh/ovenlight-release-keys/` from the other's, the same way.
 
 After a lost Air, the paper key signs R:
 

@@ -449,7 +449,7 @@ keys air1 paper1
 ship 1.1.0 1.0.6 air1 1.1.0
 ship 1.1.1 1.0.6 air1
 tick
-refused "1.1.0/release_keys doesn't list its key" sign paper2 --pull 1.1.1
+refused "1.1.0/release_keys doesn't list the pull's key" sign paper2 --pull 1.1.1
 forge 1.1.1 pull paper2 1.1.0
 refused "isn't signed by a key any release lists" publish --pull 1.1.1
 # A key that only a release not yet promoted lists can't sign it either.
@@ -458,7 +458,7 @@ keys air2 paper1 air1
 build 1.1.2 1.0.6
 signfolder 1.1.2 air1
 forge 1.1.1 pull air2 1.1.0
-refused "the index it replaces, and" publish --pull 1.1.1
+refused "1.1.0/release_keys doesn't list the pull's key" publish --pull 1.1.1
 pull 1.1.1 paper1 1.1.0
 
 fresh move "a planned move to a new Air, with releases inside and after its four weeks"
@@ -532,6 +532,10 @@ refused "which owners check latest.json with" publish --resign
 signers air1 paper1 air2
 run publish --resign
 latest_is 1.1.1 air2
+# Computers on 1.1.0 can't check the new key, so until 1.1.3 is promoted the old Air signs a
+# pull of 1.1.1 too.
+tick
+refused "1.1.0/release_keys doesn't list the pull's key" sign air2 --pull 1.1.1
 promote 1.1.3 air2
 signers air2 paper1
 tick

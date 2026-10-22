@@ -9,9 +9,9 @@
 #       its index for latest.json (namespace ovenlight-latest), with the same key
 #   scripts/sign-connector.sh [--key <file>] --pull <version>
 #       the live release's pull: the index of the newest promoted release before it that
-#       wasn't pulled, with the key that signed the live index, or one every release a
-#       computer it reaches may run lists: the paper key, or a new Touch ID key once its
-#       four weeks and four days are over
+#       wasn't pulled, with the key that signed the live index if that release lists it, or
+#       one every release a computer it reaches may run lists: the paper key, or a new Touch
+#       ID key once its four weeks and four days are over
 #   scripts/sign-connector.sh [--key <file>] --resign
 #       the live index again, with a key the live release lists, as does every pulled
 #       release above it
