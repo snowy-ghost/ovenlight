@@ -71,8 +71,7 @@ fetchlive() {
   else curl -fsS -o "$tmp/live.json" "https://downloads.ovenlight.app/connector/latest.json?$(date +%s)"; fi
 }
 
-# observe: refuses a latest.json that isn't an index in the history, or is one below an index
-# it has been, and marks it seen. pending is a pull signed above it and never seen.
+# observe: the header's check of latest.json. pending is a pull signed above it and never seen.
 observe() {
   local id found=
   fetchlive || refuse "couldn't fetch latest.json"
@@ -104,7 +103,6 @@ observe() {
 import() {
   local h="$tmp/history" d v c id f s t
   [ ! -e "$records" ] || refuse "$records exists: --import rebuilds it only on a replacement Air"
-  trusted "$importkeys"
   [ -n "$dry" ] || git -C "$root" fetch -q origin master
   # This Air's keys made since the loss, which no release before it lists.
   { cat /dev/null "$keydir"/*.pub; [ -n "$dry" ] || cat "$HANDLE.pub"; } |
@@ -126,7 +124,7 @@ import() {
       if haskey "$f" "$h/$v/release_keys"; then refuse "connector/release_keys at $c, $v's commit, lists one of this Air's new keys"; fi
     done < "$tmp/new"
     echo "$c" > "$h/$v/commit"
-    cp "$d"/{SHA256SUMS,SHA256SUMS.sig,index.json,canary.json,canary.json.sig} "$h/$v/"
+    cp "$d"/{SHA256SUMS,SHA256SUMS.sig,canary.json,canary.json.sig} "$h/$v/"
     for f in "$d"/promote-*.json "$d"/pull-*.json "$d"/resign-*.json; do
       id="${f%.json}"
       s="$(serialof "$id")"
@@ -136,11 +134,10 @@ import() {
         continue
       fi
       cp "$f" "$f.sig" "$h/$v/"
-      if [ -f "$id.base" ]; then cp "$id.base" "$h/$v/"; fi
       case "$id" in */pull-*) ;; *) [ -f "$id.published" ] || continue ;; esac
-      # When latest.json began naming it, never before it was signed.
+      # When latest.json began naming it, which newkeywait never takes as before it was signed.
       t="$(cat "$id.live" 2> /dev/null || true)"
-      [[ "$t" =~ ^[0-9]+$ ]] && [ "$t" -ge "$s" ] || t="$s"
+      [[ "$t" =~ ^[1-9][0-9]{9}$ ]] || t="$s"
       echo "$t" > "$h/$v/${id##*/}.seen"
     done
   done
