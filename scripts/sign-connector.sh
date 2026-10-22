@@ -24,7 +24,9 @@
 # Each index gets the time now as its serial. What it signs goes in this Air's history,
 # ~/.ssh/ovenlight-release-keys/history/, the only record it reads, and is sent with scp to
 # the release's folder in the mini's ~/Sync/ovenlight/releases/, which
-# scripts/publish-connector.sh publishes from. Touch ID shows a prompt and not what it signs,
+# scripts/publish-connector.sh publishes from. Each run sends the newest index signed again
+# until it's the head, so a send that didn't arrive never leaves the mini an older one to
+# publish. Touch ID shows a prompt and not what it signs,
 # so this prints that first, and refuses before it whatever publish-connector.sh would
 # refuse. A release is signed and promoted only when its connector/release_keys is exactly
 # the two keys in ~/.ssh/ovenlight-release-keys/ plus the key signing it, so the keys a
@@ -74,10 +76,24 @@ fetchlive() {
   else curl -fsS --max-filesize 4096 -o "$tmp/live.json" "https://downloads.ovenlight.app/connector/latest.json?$(date +%s)"; fi
 }
 
+# send <version> <file>...: sends the files to the release's folder in the mini's records.
+send() {
+  local v="$1" s
+  shift
+  s="$(mktemp -d "$tmp/send.XXXXXX")"
+  mkdir -p "$s/releases/$v"
+  cp "$@" "$s/releases/$v/"
+  scp -rq "$s/releases" "$minisync/"
+}
+
 # observe: the header's check of latest.json. pending is a pull signed after it and never seen.
 observe() {
   local id found=
   fetchlive || refuse "couldn't fetch latest.json"
+  if [ "$top" != "$newest" ] && [ "$mode" != import ]; then
+    send "${top%%/*}" "$records/$top".{json,json.sig,base} ||
+      echo "couldn't send $top to the mini again: run this again once it can reach the mini" >&2
+  fi
   if [ -z "$(field serial "$tmp/live.json")" ]; then
     [ -z "$newest" ] || refuse "latest.json is unsigned, and it was $newest: publish $top on the mini"
     echo "latest.json is unsigned, so nothing is promoted yet"
@@ -237,10 +253,9 @@ $(diff "$tmp/want" "$tmp/have" | sed -n 's/^</  missing/p; s/^>/  extra/p')"
 keep() {
   local v="$1"
   shift
-  mkdir -p "$records/$v" "$tmp/send/releases/$v"
+  mkdir -p "$records/$v"
   cp "$@" "$records/$v/"
-  cp "$@" "$tmp/send/releases/$v/"
-  scp -rq "$tmp/send/releases" "$minisync/"
+  send "$v" "$@" || refuse "couldn't send what it signed to the mini: run this again"
 }
 
 # await <id>: waits for latest.json to be the index, and marks it seen. A dry run leaves that

@@ -26,7 +26,13 @@ cat > "$tmp/bin/date" <<'EOF'
 #!/bin/sh
 if [ "$1" = +%s ]; then echo $(($(/bin/date +%s) + ${ahead:-0})); else exec /bin/date "$@"; fi
 EOF
-chmod +x "$tmp/bin/date"
+# scp fails while the scenario's folder holds a noscp file, as when the Air can't reach the mini.
+cat > "$tmp/bin/scp" <<'EOF'
+#!/bin/sh
+if [ -e "$OVENLIGHT_RELEASE_DRY/noscp" ]; then exit 1; fi
+exec /usr/bin/scp "$@"
+EOF
+chmod +x "$tmp/bin/date" "$tmp/bin/scp"
 export PATH="$tmp/bin:$PATH"
 checks=0
 
@@ -119,14 +125,13 @@ refused() {
 }
 
 release() { "$repo/scripts/release-connector.sh" --unsigned "$@"; }
-# sign <key> <option>...: signs on the Air, which never writes to its ~/Sync, so no link an
-# agent syncs there can redirect a write. What it sends the mini, in mini/, is then filed in
-# the records, which stand in for the mini's own folder.
-sign() {
-  local k="$1" s=0 d f t
-  shift
+# nokey <option>...: sign-connector.sh on the Air, which never writes to its ~/Sync, so no
+# link an agent syncs there can redirect a write. What it sends the mini, in mini/, is then
+# filed in the records, which stand in for the mini's own folder.
+nokey() {
+  local s=0 d f t
   chmod -R a-w "$dry/sync"
-  "$repo/scripts/sign-connector.sh" --key "$dry/private/$k" "$@" || s=$?
+  "$repo/scripts/sign-connector.sh" "$@" || s=$?
   chmod -R u+w "$dry/sync"
   for d in "$dry"/mini/releases/*; do
     t="$dry/sync/releases/${d##*/}"
@@ -135,7 +140,12 @@ sign() {
   done
   return $s
 }
-nokey() { "$repo/scripts/sign-connector.sh" "$@"; }
+# sign <key> <option>...: signed with that fixture key.
+sign() {
+  local k="$1"
+  shift
+  nokey --key "$dry/private/$k" "$@"
+}
 publish() { "$repo/scripts/publish-connector.sh" "$@"; }
 # land <option>...: published on the mini, then seen by --check on the Air, which stands in
 # for the wait a dry run skips.
@@ -407,7 +417,7 @@ signfolder 1.1.2 air1
 tick
 run sign air1 --promote 1.1.2
 pull 1.1.1 air1 1.1.0
-refused "and only it goes up: scripts/publish-connector.sh --pull 1.1.1" publish --promote 1.1.2
+refused "If not, scripts/publish-connector.sh --pull 1.1.1" publish --promote 1.1.2
 promote 1.1.2 air1
 
 fresh rerun "a publish cut short or uploaded already, finished or uploaded again by running it again"
@@ -430,15 +440,17 @@ latest_is 1.1.0 air1
 cutshort air1 --resign
 land --resign
 latest_is 1.1.0 air1
-# A send from the Air cut short can leave the mini a promote without its .base, and the
-# Air signs it again.
+# A send from the Air cut short can leave the mini a promote without its .base, and --check
+# on the Air sends it again.
 build 1.1.2 1.0.6
 signfolder 1.1.2 air1
 tick
 run sign air1 --promote 1.1.2
 rm "$dry"/sync/releases/1.1.2/promote-*.base
-refused "if its send from the Air was cut short, sign it again there" publish --promote 1.1.2
-promote 1.1.2 air1
+refused "if its send from the Air was cut short, scripts/sign-connector.sh --check there sends it again" publish --promote 1.1.2
+run nokey --check
+land --promote 1.1.2
+latest_is 1.1.2 air1
 
 fresh dropped "a promote, pull and resign each cut short and dropped by the next signature, which supersedes them"
 keyfolder air1 paper1
@@ -451,7 +463,7 @@ cutshort air1 --promote 1.1.1
 checked "latest.json is 1.1.0/promote-"
 tick
 run sign air1 --resign
-refused "and only it goes up: scripts/publish-connector.sh --resign" publish --promote 1.1.1
+refused "If not, scripts/publish-connector.sh --resign" publish --promote 1.1.1
 # Its publish lands late, before the resign goes up, or whoever holds the bucket shows it
 # after. Either way the Air never counts it.
 show 1.1.1/promote
@@ -473,6 +485,26 @@ pull 1.1.2 air1 1.1.0
 cutshort air1 --resign
 checked "latest.json is 1.1.2/pull-"
 resign air1 1.1.0
+
+fresh unsent "a resign dropping a promote cut short, whose send to the mini fails, sent again by the Air"
+keyfolder air1 paper1
+keys air1 paper1
+ship 1.1.0 1.0.6 air1 1.1.0
+build 1.1.1 1.0.6
+signfolder 1.1.1 air1
+cutshort air1 --promote 1.1.1
+checked "latest.json is 1.1.0/promote-"
+tick
+touch "$dry/noscp"
+refused "couldn't send what it signed to the mini: run this again" sign air1 --resign
+rm "$dry/noscp"
+# The mini still holds the promote as the newest, and points back to the Air before it.
+refused "If the Air signed one since, scripts/sign-connector.sh --check there sends it here. If not, scripts/publish-connector.sh --promote 1.1.1" publish --resign
+# The promote's publish lands late: --check refuses it, and sends the resign.
+show 1.1.1/promote
+refused "superseded before this Air saw it go up: publish 1.1.0/resign-" nokey --check
+land --resign
+latest_is 1.1.0 air1
 
 fresh droppull "a promote cut short and dropped by a pull of the release before it, then shown to the Air"
 keyfolder air1 paper1
@@ -868,7 +900,7 @@ land --resign
 latest_is 1.1.1 air1
 [ "$(field secure "$dry/bucket/connector/latest.json")" = 1.0.6 ] || fail "secure went up"
 pass "secure is still 1.0.6"
-refused "and only it goes up: scripts/publish-connector.sh --resign" publish --promote 1.1.2
+refused "If not, scripts/publish-connector.sh --resign" publish --promote 1.1.2
 refused "1.1.3 can't go below either" release 1.1.3 1.0.5
 forge 1.1.0 promote air1 1.1.0
 refused "1.1.0 was promoted already" publish --promote 1.1.0
