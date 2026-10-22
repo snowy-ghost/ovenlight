@@ -493,10 +493,10 @@ raises `secure` skips the two-day wait), as you, beside your Tailscale API crede
 on Windows with administrator rights. `ovenlight update off` opts out.
 
 When one key is lost, the next release, signed with the other, replaces it. A computer
-that doesn't install that release within four weeks of it coming out, because it was off or
-had updates off, can't verify the releases signed with only the new key: its checks fail,
-`doctor` warns after seven days, and it needs one install by hand. If both keys were lost,
-every computer would be in that position once we publish a release signed with a new key.
+that stays off, or has updates off, for four weeks after that release comes out can't
+verify the releases signed with only the new key: its checks fail, `doctor` warns after
+seven days, and it needs one install by hand. If both keys were lost, every computer would
+be in that position once we publish a release signed with a new key.
 
 ### The files it keeps
 
