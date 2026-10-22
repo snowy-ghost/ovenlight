@@ -11,10 +11,11 @@
 # the scripts read, never the bucket.
 #
 # OVENLIGHT_RELEASE_DRY=<folder> makes a dry run, which scripts/test-connector-release.sh does
-# in folders it marks with a .release-dry-run file, which this requires: that folder stands in for everything outside the repo (build/release on the mini, the records,
-# the release key folder and the bucket), no real one is reachable, and only fixture keys are
-# trusted: those in scripts/testdata/release-keys and connector/testdata/releasekey, whose
-# private halves are public. Outside a dry run they never are.
+# in folders it marks with a .release-dry-run file, which this requires: that folder stands
+# in for everything outside the repo (build/release on the mini, the records, the release
+# key folder and the bucket), no real one is reachable, and only fixture keys are trusted:
+# those in scripts/testdata/release-keys and connector/testdata/releasekey, whose private
+# halves are public. Outside a dry run they never are.
 shopt -s nullglob
 
 refuse() { echo "$*" >&2; exit 1; }
@@ -143,9 +144,7 @@ nodrop() {
 }
 
 # The fixture keys: a dry run's, the connector's test key and the mock release keys.
-# fixture <blob>: whether a key is one of them.
 cat /dev/null "$root"/scripts/testdata/release-keys/*.pub "$root"/connector/testdata/releasekey/*.pub > "$tmp/fixtures"
-fixture() { haskey "$1" "$tmp/fixtures"; }
 
 # trusted <keys>: refuses a key a run of this kind mustn't trust: in a dry run any but the
 # fixtures, otherwise any fixture.
@@ -153,7 +152,7 @@ trusted() {
   local t b
   while read -r t b _; do
     if [ -z "$b" ]; then continue; fi
-    if fixture "$b"; then
+    if haskey "$b" "$tmp/fixtures"; then
       [ -n "$dry" ] || refuse "$t $b is a dry-run fixture key"
     elif [ -n "$dry" ]; then
       refuse "a dry run trusts only the fixture keys, not $t $b"
