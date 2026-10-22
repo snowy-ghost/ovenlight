@@ -107,7 +107,8 @@ serialof() { echo "${1##*-}"; }
 # baseof <id>: sets base to the index it was built on, refusing a .base that's missing or
 # doesn't name an index signed before it.
 baseof() {
-  base="$(cat "$records/$1.base" 2> /dev/null)" || refuse "$1 has no .base in $records"
+  base="$(cat "$records/$1.base" 2> /dev/null)" ||
+    refuse "$1 has no .base in $records: if its send from the Air was cut short, sign it again there"
   [ -z "$base" ] || { grep -qxF "$base" <<< "$signed" && [ "$(serialof "$base")" -lt "$(serialof "$1")" ]; } ||
     refuse "$records/$1.base names $base, not an index signed before it"
 }
@@ -176,15 +177,11 @@ keepsraised() {
   done
 }
 
-# ordered <serial> [<index>]: refuses a serial that isn't above every index signed so far but
-# that one, so a signature left unpublished always sits below a published one.
+# ordered <serial>: refuses a serial that isn't above the newest index signed, so a
+# signature left unpublished always sits below a published one.
 ordered() {
-  local id
-  for id in $signed; do
-    if [ "$id" != "${2:-}" ] && [ "$(serialof "$id")" -ge "$1" ]; then
-      refuse "$id is signed with a serial at or above $1: sign a fresh one after $(date -r "$(serialof "$id")")"
-    fi
-  done
+  [ -z "$top" ] || [ "$(serialof "$top")" -lt "$1" ] ||
+    refuse "$top is signed with a serial at or above $1: sign a fresh one after $(date -r "$(serialof "$top")")"
 }
 
 # nodrop <index>: refuses an index that would lower the published secure or reinstallBelow.

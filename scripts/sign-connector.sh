@@ -32,11 +32,13 @@
 # replaces it, so its .pub has left that folder.
 #
 # Each run first fetches latest.json, which must be the head of the history, as
-# connector-release-lib.sh names it, or the newest index signed (1.0.9's unsigned one while
-# nothing is published), and marks it seen. One below the head is a rollback, and one
-# between them was superseded by the newest before this Air saw it go up. A pull signed
-# after the head and never seen blocks promotes and resigns until it's published or a fresh
-# pull is signed. After signing an index for latest.json, it waits for latest.json to be it.
+# connector-release-lib.sh names it (1.0.9's unsigned index while nothing is published).
+# --check and --import also take the newest index signed, and mark it seen, but a run that
+# signs refuses it, since a signature is built only on the head the owner was last shown.
+# One below the head is a rollback, and one between them was superseded by the newest before
+# this Air saw it go up. A pull signed after the head and never seen blocks promotes and
+# resigns until it's published or a fresh pull is signed. After signing an index for
+# latest.json, it waits for latest.json to be it, and marks it seen.
 #
 # --key signs with a key other than this Air's Touch ID handle, such as the paper backup or
 # another Touch ID key's handle, with its public half beside it as <file>.pub.
@@ -78,6 +80,7 @@ observe() {
   fetchlive || refuse "couldn't fetch latest.json"
   if [ -z "$(field serial "$tmp/live.json")" ]; then
     [ -z "$newest" ] || refuse "latest.json is unsigned, and it was $newest: publish $top on the mini"
+    echo "latest.json is unsigned, so nothing is promoted yet"
     pending=
     return
   fi
@@ -90,6 +93,11 @@ observe() {
   fi
   [ "$found" = "$newest" ] || [ "$found" = "$top" ] ||
     refuse "latest.json is $found, which $top superseded before this Air saw it go up: publish $top on the mini. Computers that took $found in between keep its release, as after a pull."
+  # A signature is built only on the head the owner was last shown: here only --check and
+  # --import move it.
+  if [ "$found" != "$newest" ] && [ "$mode" != check ] && [ "$mode" != import ]; then
+    refuse "latest.json went up to $found since this Air last looked: run --check, which marks it seen, before signing anything"
+  fi
   [ -f "$records/$found.seen" ] || date +%s > "$records/$found.seen"
   readrecords
   pending=
@@ -236,7 +244,7 @@ keep() {
 }
 
 # await <id>: waits for latest.json to be the index, and marks it seen. A dry run leaves that
-# to the next run, as Ctrl-C does.
+# to --check, as Ctrl-C does.
 await() {
   [ -z "$dry" ] || return 0
   echo "waiting for latest.json to be it (Ctrl-C stops waiting)"
@@ -332,7 +340,7 @@ pull)
   [ "$version" = "$live" ] ||
     refuse "$version isn't the live release (${live:-nothing is promoted}): only the live one is pulled, and one that's no longer the latest is fixed forward"
   target="$(keptbelow "$version")"
-  [ -n "$target" ] || refuse "nothing promoted before $version to go back to"
+  [ -n "$target" ] || refuse "nothing promoted before $version to go back to: fix it forward with the next release"
   pullsigned "$tmp/signer" "$newest" "$version"
   verifyrule "$target" "$records/$target/SHA256SUMS" "$records/$target/SHA256SUMS.sig" file
   ordered "$now"

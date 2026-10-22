@@ -197,9 +197,10 @@ publishing the index of the release before it, signed again. Computers that alre
 the pulled release keep it, since the connector never installs an older one, so the fix is
 the next release. `--resign` publishes the live index signed again, to supersede a signed
 promote that mustn't ship. Before signing anything the Air fetches `latest.json`, which
-must be the last index it saw go up or the newest it signed, and after signing an index
-for `latest.json` it waits until `latest.json` is that index, which Ctrl-C leaves to the
-next run or `--check`. Its refusals say what to do, as when a pull signed and not yet
+must be the last index it saw go up, so a signature is built only on what you were last
+shown. `--check` also takes the newest index it signed, and marks it seen. After signing
+an index for `latest.json` the Air waits until `latest.json` is that index, which Ctrl-C
+leaves to `--check`. Its refusals say what to do, as when a pull signed and not yet
 published blocks a promote or resign. Each script's header says what it checks, and
 `scripts/test-connector-release.sh` dry-runs them all. Each release restarts every owner's
 connector, and one promoted within two days of the last restarts every owner's wait, so
