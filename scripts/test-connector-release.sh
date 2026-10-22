@@ -416,7 +416,7 @@ if publish --promote 1.1.1 > "$dry/log" 2>&1; then fail "the upload of latest.js
 chmod 644 "$dry/bucket/connector/latest.json"
 tick
 run sign air1 --resign
-refused "not 1.1.1/promote-" publish --resign
+refused "isn't 1.1.1/promote-" publish --resign
 rm "$dry"/sync/releases/1.1.1/promote-*.published
 run publish --resign
 run nokey --check
@@ -433,7 +433,7 @@ r=("$dry"/sync/releases/1.1.1/resign-*.published)
 mv "${r[0]}" "$dry/kept"
 tick
 run sign air1 --resign
-refused "latest.json names 1.1.1, not 1.1.1/promote-" publish --resign
+refused "which has no .published here: if you deleted it, put it back" publish --resign
 mv "$dry/kept" "${r[0]}"
 run publish --resign
 # A promote cut short, then finished after the Air signed the next on the one before it.
@@ -788,6 +788,29 @@ pull 1.1.1 air1 1.1.0
 ship 1.1.2 1.0.6 air1
 tick
 refused "four weeks and four days" sign air2 --resign
+
+fresh dropped "a promote dropped with a resign, then shown to the Air: it isn't signed again"
+keyfolder air1 paper1
+keys air1 paper1
+ship 1.1.0 1.0.6 air1 1.1.0
+build 1.1.1 1.0.6
+signfolder 1.1.1 air1
+tick
+run sign air1 --promote 1.1.1
+chmod 444 "$dry/bucket/connector/latest.json"
+if publish --promote 1.1.1 > "$dry/log" 2>&1; then fail "the upload of latest.json didn't fail"; fi
+chmod 644 "$dry/bucket/connector/latest.json"
+tick
+run sign air1 --resign
+refused "isn't 1.1.1/promote-" publish --resign
+rm "$dry"/sync/releases/1.1.1/promote-*.published
+run publish --resign
+p=("$dry"/sync/releases/1.1.1/promote-*.json)
+cp "${p[0]}" "$dry/bucket/connector/latest.json"
+cp "${p[0]}.sig" "$dry/bucket/connector/latest.json.sig"
+tick
+refused "superseded it" sign air1 --resign
+run sign air1 --pull 1.1.1
 
 fresh gates "what no release gets past"
 keyfolder air1 paper1
