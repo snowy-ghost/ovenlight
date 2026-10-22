@@ -241,15 +241,13 @@ WAIT=$((32 * 86400))
 # that list it, so computers asleep on an older release have taken one. A pull back to one
 # that doesn't list it starts the wait again, and a promote signed by another key doesn't.
 newkeywait() {
-  local v old='' id from=''
-  for v in $promoted; do
-    if ! haskey "$1" "$records/$v/release_keys"; then old="$v"; fi
-  done
-  if [ -z "$old" ]; then return 0; fi
+  local id v old='' from=''
   for id in $published; do
-    if ! haskey "$1" "$records/$(field latest "$records/$id.json")/release_keys"; then from=
+    v="$(field latest "$records/$id.json")"
+    if ! haskey "$1" "$records/$v/release_keys"; then old="$v" from=
     elif [ -z "$from" ]; then from="$(cat "$records/$id.published")"; fi
   done
+  if [ -z "$old" ]; then return 0; fi
   from="${from:-$2}"
   if [ "$2" -lt $((from + WAIT)) ]; then
     refuse "$old doesn't list this key, and computers asleep on it may not have updated yet: not before $(date -r $((from + WAIT))), four weeks and four days after latest.json began naming releases that list it"
