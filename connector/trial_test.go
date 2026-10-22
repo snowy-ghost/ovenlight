@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -193,9 +193,10 @@ func TestTrialEnds(t *testing.T) {
 	}
 }
 
-// While another connector answers for the state folder, a start changes nothing: it's
-// run --service by hand, which then fails on the lock. With none answering, a start whose
-// lock fails is counted, so a release that breaks the lock still rolls back.
+// While another connector listens on the state folder's socket, answering or not, a start
+// changes nothing: it's run --service by hand, which then fails on the lock. With none
+// listening, even beside the socket file a crash leaves, a start whose lock fails is
+// counted, so a release that breaks the lock still rolls back.
 func TestTrialLocked(t *testing.T) {
 	for _, starts := range []int{0, 1} {
 		rec := trialTo(t, "1.2.0", nsLatest)
@@ -207,8 +208,7 @@ func TestTrialLocked(t *testing.T) {
 		}
 		go func() {
 			for conn, err := ln.Accept(); err == nil; conn, err = ln.Accept() {
-				json.NewEncoder(conn).Encode(controlReply{OK: true})
-				conn.Close()
+				conn.Close() // unanswered, as an elevated connector leaves one run by hand
 			}
 		}()
 		if tr, exit := beginTrial(dir, "1.2.0", time.Now); tr != nil || exit {
@@ -230,8 +230,14 @@ func TestTrialLocked(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer lock.Close()
+	ln, err := listenControl(socketPath(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ln.(*net.UnixListener).SetUnlinkOnClose(false)
+	ln.Close()
 	if _, exit := beginTrial(dir, "1.2.0", time.Now); !exit {
-		t.Error("a second start with the lock held and no connector answering went on")
+		t.Error("a second start with the lock held and no connector listening went on")
 	}
 	rolledBack(t, dir, installed)
 }
@@ -274,11 +280,13 @@ func TestTrialIndex(t *testing.T) {
 	}
 }
 
-// trialing is a release on trial, with apps recorded, whose exits are noted.
+// trialing is a release on trial, with apps recorded, whose exits are noted. Its
+// updater's loop polls at each tick, unless noPoll.
 type trialing struct {
 	*trial
-	clock *fakeClock
-	exits []string
+	clock  *fakeClock
+	exits  []string
+	noPoll bool
 }
 
 func startTrialing(t *testing.T, apps ...string) (*trialing, string, string) {
@@ -298,6 +306,9 @@ func startTrialing(t *testing.T, apps ...string) (*trialing, string, string) {
 func (tr *trialing) pass(d time.Duration) bool {
 	for end := tr.clock.t.Add(d); tr.clock.t.Before(end); {
 		tr.clock.t = tr.clock.t.Add(awakeTick)
+		if dm := tr.daemon(); dm != nil && dm.upd != nil && !tr.noPoll {
+			dm.upd.lastRan = tr.clock.t
+		}
 		if tr.tick() {
 			return true
 		}
@@ -341,14 +352,17 @@ func TestTrialPasses(t *testing.T) {
 	}
 }
 
-// At the deadline, an app recorded that hasn't served again, logged in, or a daemon that
-// never came up, rolls back and exits. An app unpublished since needn't serve.
+// At the deadline, an app recorded that hasn't served again, logged in, a daemon that
+// never came up, or an updater that never started, rolls back and exits. An app
+// unpublished since needn't serve.
 func TestTrialDeadline(t *testing.T) {
 	if updateHour != time.Hour {
 		t.Skip("a compressed schedule")
 	}
 	tr, dir, installed := startTrialing(t, "coach")
 	d, _ := testDaemon(t) // coach logged in, not serving
+	d.stateDir = dir
+	d.upd = &updater{d: d, now: tr.clock.now}
 	tr.attach(d)
 	if !tr.pass(10 * time.Minute) {
 		t.Fatal("not over")
@@ -366,9 +380,19 @@ func TestTrialDeadline(t *testing.T) {
 		t.Errorf("never up: %+v", f)
 	}
 
+	tr, dir, installed = startTrialing(t, "coach")
+	d, _ = testDaemon(t)
+	d.nodes["coach"].serving = true
+	tr.attach(d)
+	tr.pass(10 * time.Minute)
+	if f := rolledBack(t, dir, installed); !strings.Contains(f.Error, "1.2.0's updater didn't start") || len(tr.exits) != 1 {
+		t.Errorf("no updater: %+v", f)
+	}
+
 	tr, dir, installed = startTrialing(t, "coach", "gone")
 	d, _ = testDaemon(t)
 	d.nodes["coach"].serving = true
+	d.upd = &updater{d: d, now: tr.clock.now}
 	if err := jsonfile.Save(d.configPath, &Config{Apps: []App{{Name: "Interview Coach", Slug: "coach", Port: 4317}}}); err != nil {
 		t.Fatal(err)
 	}
@@ -443,27 +467,33 @@ func TestTrialBackstopOrTick(t *testing.T) {
 	}
 }
 
-// A release whose updater hangs holding its lock would never update again: it doesn't
-// pass, and the backstop rolls it back.
+// A release whose updater hangs holding its lock, or whose loop never polls, would never
+// update again: it doesn't pass, and the backstop rolls it back.
 func TestTrialWedgedUpdater(t *testing.T) {
 	if updateHour != time.Hour {
 		t.Skip("a compressed schedule")
 	}
-	tr, dir, installed := startTrialing(t, "coach")
-	d, _ := testDaemon(t)
-	d.upd = &updater{d: d, now: tr.clock.now}
-	d.nodes["coach"].serving = true
-	tr.attach(d)
-	d.upd.mu.Lock()
-	defer d.upd.mu.Unlock()
-	if tr.pass(11*time.Minute) || !tr.running() {
-		t.Fatal("passed with the updater wedged")
-	}
-	if !tr.giveUp() {
-		t.Fatal("the backstop didn't roll back")
-	}
-	if f := rolledBack(t, dir, installed); !strings.Contains(f.Error, "didn't end its trial within 15 minutes") {
-		t.Errorf("%+v", f)
+	for _, wedged := range []bool{true, false} {
+		tr, dir, installed := startTrialing(t, "coach")
+		d, _ := testDaemon(t)
+		d.stateDir = dir
+		d.upd = &updater{d: d, now: tr.clock.now}
+		d.nodes["coach"].serving = true
+		tr.attach(d)
+		if wedged {
+			d.upd.mu.Lock()
+		} else {
+			tr.noPoll = true
+		}
+		if tr.pass(11*time.Minute) || !tr.running() {
+			t.Fatalf("wedged %v: passed", wedged)
+		}
+		if !tr.giveUp() {
+			t.Fatalf("wedged %v: the backstop didn't roll back", wedged)
+		}
+		if f := rolledBack(t, dir, installed); !strings.Contains(f.Error, "didn't end its trial within 15 minutes") {
+			t.Errorf("wedged %v: %+v", wedged, f)
+		}
 	}
 }
 

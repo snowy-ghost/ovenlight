@@ -9,11 +9,11 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-// The signatures in testdata/update are ssh-keygen -Y sign's, of index.json, made by its
-// sign.sh: the test key's in three namespaces and with sha256, each release key's, and one
-// from a key in a Mac's Secure Enclave (sk-ecdsa-sha2-nistp256@openssh.com, through
-// /usr/lib/ssh-keychain.dylib), the kind the release key is. That key was made for this
-// and then deleted.
+// The signatures in testdata/update are ssh-keygen -Y sign's, of index.json. Its sign.sh
+// makes the test key's, in three namespaces and with sha256. Each release key's comes from
+// key setup, or from sign.sh while the release keys are mock. One is from a key in a Mac's
+// Secure Enclave (sk-ecdsa-sha2-nistp256@openssh.com, through /usr/lib/ssh-keychain.dylib),
+// the kind the release key is, made for this and then deleted.
 func TestVerifySig(t *testing.T) {
 	read := func(name string) []byte { return readUpdateTestdata(t, name) }
 	testKey := mustParseKeys(string(read("../releasekey/test-key.pub")))

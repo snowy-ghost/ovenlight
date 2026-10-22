@@ -845,6 +845,7 @@ func TestUpdateFinding(t *testing.T) {
 		{"up to date", view(nil), "1.2.0", true, statusOK, "1.2.0 is up to date"},
 		{"waiting its turn", view(pending), "1.1.5", true, statusOK, "1.2.0 is out, and installs on its own at a quiet moment from"},
 		{"past its install-by", view(func(u *updateView) { pending(u); u.InstallBy = now.Add(-time.Hour) }), "1.1.5", true, statusOK, "installs on its own as soon as it can"},
+		{"after a failure", view(func(u *updateView) { pending(u); u.InstallAfter = u.InstallBy }), "1.1.5", true, statusOK, "installs on its own at " + when(now.Add(day)) + ", busy or not"},
 		{"no check yet", view(func(u *updateView) { u.Latest, u.LastCheck = "", time.Time{} }), "1.1.5", true, statusOK, "no update check has worked yet"},
 		{"below secure, waiting", view(func(u *updateView) { pending(u); u.BelowSecure = true }), "1.0.9", true, statusFail, "Nothing to do: 1.2.0 installs on its own"},
 		{"below secure, off", view(func(u *updateView) { pending(u); u.BelowSecure, u.Off = true, true }), "1.0.9", false, statusFail, "ovenlight update on"},

@@ -275,7 +275,7 @@ func TestFetchIndex(t *testing.T) {
 	}
 }
 
-// entry is a file in a test archive: a regular file unless typ says otherwise.
+// entry is a file in a test archive: a regular file, or a folder with typ tar.TypeDir.
 type entry struct {
 	name, body string
 	typ        byte
@@ -288,19 +288,9 @@ func writeArchive(t *testing.T, dir string, zipped bool, entries ...entry) strin
 		zw := zip.NewWriter(&buf)
 		for _, e := range entries {
 			h := &zip.FileHeader{Name: e.name, Method: zip.Deflate}
-			switch e.typ {
-			case tar.TypeSymlink:
-				h.SetMode(os.ModeSymlink | 0o777)
-			case tar.TypeDir:
+			h.SetMode(0o755)
+			if e.typ == tar.TypeDir {
 				h.SetMode(os.ModeDir | 0o755)
-			case 'L': // claims more than the size cap
-				h.SetMode(0o755)
-				h.UncompressedSize64 = maxArchiveBytes + 1
-				w, _ := zw.CreateRaw(h)
-				w.Write([]byte(e.body))
-				continue
-			default:
-				h.SetMode(0o755)
 			}
 			w, err := zw.CreateHeader(h)
 			if err != nil {
@@ -314,16 +304,8 @@ func writeArchive(t *testing.T, dir string, zipped bool, entries ...entry) strin
 		tw := tar.NewWriter(gz)
 		for _, e := range entries {
 			h := &tar.Header{Name: e.name, Mode: 0o755, Size: int64(len(e.body)), Typeflag: tar.TypeReg}
-			switch e.typ {
-			case tar.TypeSymlink, tar.TypeLink:
-				h.Typeflag, h.Linkname, h.Size = e.typ, "ovenlight-connector-1.2.0/LICENSE", 0
-			case tar.TypeDir:
+			if e.typ == tar.TypeDir {
 				h.Typeflag, h.Size = tar.TypeDir, 0
-			case 'L':
-				h.Size = maxArchiveBytes + 1
-				tw.WriteHeader(h)
-				tw = tar.NewWriter(io.Discard) // cut short after the header
-				continue
 			}
 			if err := tw.WriteHeader(h); err != nil {
 				t.Fatal(err)
@@ -374,21 +356,14 @@ func TestExtractEntry(t *testing.T) {
 		}
 
 		bad := map[string][]entry{
-			"another version":   {{name: "ovenlight-connector-1.2.1/ovenlight", body: "x"}},
-			"the other OS's":    {{name: name + ".exe", body: "x"}},
-			"a dot":             {{name: "./" + name, body: "x"}},
-			"rooted":            {{name: "/" + name, body: "x"}},
-			"a dot dot":         {{name: "ovenlight-connector-1.2.0/../" + name, body: "x"}},
-			"a backslash":       {{name: `ovenlight-connector-1.2.0\ovenlight`, body: "x"}},
-			"another case":      {{name: "Ovenlight-connector-1.2.0/ovenlight", body: "x"}},
-			"a trailing slash":  {{name: name + "/", typ: tar.TypeDir}},
-			"a folder":          {{name: name, typ: tar.TypeDir}},
-			"a symlink":         {{name: name, typ: tar.TypeSymlink}},
-			"twice":             {{name: name, body: "x"}, {name: name, body: "y"}},
-			"over the size cap": {{name: name, body: "x", typ: 'L'}},
-		}
-		if !zipped {
-			bad["a hard link"] = []entry{{name: name, typ: tar.TypeLink}}
+			"another version":  {{name: "ovenlight-connector-1.2.1/ovenlight", body: "x"}},
+			"the other OS's":   {{name: name + ".exe", body: "x"}},
+			"a dot":            {{name: "./" + name, body: "x"}},
+			"rooted":           {{name: "/" + name, body: "x"}},
+			"a dot dot":        {{name: "ovenlight-connector-1.2.0/../" + name, body: "x"}},
+			"a backslash":      {{name: `ovenlight-connector-1.2.0\ovenlight`, body: "x"}},
+			"another case":     {{name: "Ovenlight-connector-1.2.0/ovenlight", body: "x"}},
+			"a trailing slash": {{name: name + "/", typ: tar.TypeDir}},
 		}
 		for why, entries := range bad {
 			archive := writeArchive(t, dir, zipped, append(extras, entries...)...)

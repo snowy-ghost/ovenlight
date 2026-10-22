@@ -5,9 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -55,9 +55,10 @@ var serviceTrial *trial
 // trial is an update's trial in the binary on trial, the release it installed, started
 // as the service. It runs quietFor of time awake from the start, before flag parsing, so
 // a release that hangs while starting is caught too. It passes when the daemon is up,
-// every app recorded at the swap has served again with its node logged in, and the
-// binary has verified the index that brought it. Otherwise .prev comes back, and a
-// release that deadlocks its daemon, so the trial can't end, is caught by backstop.
+// every app recorded at the swap has served again with its node logged in, the binary
+// has verified the index that brought it, and its updater polls. Otherwise .prev comes
+// back: at the deadline, or by backstop when the trial can't end there, as when the
+// daemon deadlocks or the updater doesn't poll.
 type trial struct {
 	rec  updateTrial
 	dir  string // the state folder, the binary's bin/..
@@ -80,16 +81,15 @@ func startTrial() {
 	if err != nil {
 		return
 	}
-	dir := filepath.Dir(filepath.Dir(exe))
-	if runtime.GOOS == "windows" {
-		// A scheduled task's standard error goes nowhere, and cmdRun opens the task's --log
-		// later: what the trial logs as it starts goes to that log, which install.ps1 puts here.
-		if f, err := os.OpenFile(filepath.Join(dir, "ovenlight.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600); err == nil {
+	// What the trial logs as it starts goes to the service's --log, which cmdRun opens later:
+	// the log owners are pointed at, and a scheduled task's standard error goes nowhere.
+	if i := slices.Index(os.Args, "--log"); i > 0 && i+1 < len(os.Args) {
+		if f, err := os.OpenFile(os.Args[i+1], os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600); err == nil {
 			log.SetOutput(f)
 			defer func() { log.SetOutput(os.Stderr); f.Close() }()
 		}
 	}
-	t, exit := beginTrial(dir, version(), func() time.Time { return time.Now().Round(0) })
+	t, exit := beginTrial(filepath.Dir(filepath.Dir(exe)), version(), func() time.Time { return time.Now().Round(0) })
 	if exit {
 		os.Exit(1)
 	}
@@ -119,8 +119,8 @@ func startTrial() {
 // the swap didn't finish, a rollback did, or an install script put another release in
 // place. So does one with nothing to roll back to, or that isn't a trial record. One that
 // can't be read now stays for the next start, and so does every trial while another
-// connector answers for the state folder: run --service started by hand while the
-// service runs then fails on its lock. A second start with no clean stop or Windows
+// connector listens on the state folder's socket: run --service started by hand while
+// the service runs then fails on its lock. A second start with no clean stop or Windows
 // restart since the last counted start rolls back at once, and exit says the connector
 // should then exit.
 func beginTrial(dir, v string, now func() time.Time) (t *trial, exit bool) {
@@ -134,8 +134,11 @@ func beginTrial(dir, v string, now func() time.Time) (t *trial, exit bool) {
 		return nil, false
 	}
 	// The state lock can't tell: it's the code on trial, and a release whose lock fails
-	// would never count a start. A connector that answers is the service, though.
-	if reply, _ := callDaemon(dir, "status", 3*time.Second); reply != nil {
+	// would never count a start. A connector listening on the folder's socket is the
+	// service, though, even one that won't answer this process, as an elevated one on
+	// Windows won't answer one run by hand.
+	if c, err := net.DialTimeout("unix", socketPath(dir), time.Second); err == nil {
+		c.Close()
 		return nil, false
 	}
 	t = &trial{dir: dir, now: now, served: map[string]bool{}}
@@ -270,15 +273,18 @@ func (t *trial) tick() bool {
 		return false
 	}
 	err := t.failure(d)
-	// A pass holds the updater's lock, taken before the trial's as poll takes them: a
-	// release whose updater hangs holding it would never update again, so it's left to
-	// the backstop.
+	// A pass holds the updater's lock, taken before the trial's as poll takes them, and
+	// needs its loop to have polled lately: a release whose updater hangs holding the lock,
+	// or never polls, would never update again, so it's left to the backstop.
 	var u *updater
-	if err == nil && d.upd != nil {
+	if err == nil {
 		if u = d.upd; !u.mu.TryLock() {
 			return false
 		}
 		defer u.mu.Unlock()
+		if now.Sub(u.lastRan) > 3*updateMinute {
+			return false
+		}
 	}
 	t.mu.Lock()
 	givingUp := t.givingUp
@@ -298,13 +304,8 @@ func (t *trial) tick() bool {
 	// which passed.
 	t.end()
 	log.Printf("updates: %s passed its trial", t.rec.To)
-	passed := func(st *updateState) { st.Updated = &updateEvent{From: t.rec.From, To: t.rec.To, At: t.rec.At} }
-	if u != nil {
-		passed(&u.st)
-		u.save()
-	} else if err := recordFile(t.dir, passed); err != nil {
-		log.Printf("updates: recording the update to %s: %v", t.rec.To, err)
-	}
+	u.st.Updated = &updateEvent{From: t.rec.From, To: t.rec.To, At: t.rec.At}
+	u.save()
 	return true
 }
 
@@ -367,6 +368,9 @@ func (t *trial) failure(d *daemon) error {
 	if d == nil {
 		return fmt.Errorf("%s didn't finish starting within its trial", t.rec.To)
 	}
+	if d.upd == nil {
+		return fmt.Errorf("%s's updater didn't start", t.rec.To)
+	}
 	cfg, found, err := loadConfigFile(d.configPath)
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -416,6 +420,12 @@ func (t *trial) restore() {
 	if err := restorePrev(installed); err != nil {
 		// The trial stays, so the next start tries again.
 		log.Printf("updates: can't put %s back: %v", prevBinary(installed), err)
+		return
+	}
+	// The binary put back is on disk before the trial goes, so a power cut can't leave the
+	// release on trial in place with no trial to roll it back.
+	if err := syncDir(filepath.Dir(installed)); err != nil {
+		log.Printf("updates: syncing %s: %v", filepath.Dir(installed), err)
 		return
 	}
 	t.end()

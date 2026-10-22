@@ -184,13 +184,6 @@ func (u *updater) start() {
 	if u.st.CheckedBy != u.v {
 		u.st.NextCheck = time.Time{}
 	}
-	// A rollback happens before the connector's log is open, so the release put back says so.
-	if f := u.st.Failed; f != nil {
-		cur, okC := semver(u.v)
-		if fv, okF := semver(f.Version); okC && okF && less(cur, fv) {
-			log.Printf("updates: updating to %s failed on %s: %s", f.Version, when(f.At), f.Error)
-		}
-	}
 	u.save()
 }
 
@@ -541,6 +534,9 @@ func when(t time.Time) string { return t.Local().Format("2 Jan 15:04") }
 func (u *updateView) installs(now time.Time) string {
 	if !now.Before(u.InstallBy) {
 		return "installs on its own as soon as it can"
+	}
+	if !u.InstallAfter.Before(u.InstallBy) {
+		return "installs on its own at " + when(u.InstallBy) + ", busy or not"
 	}
 	return fmt.Sprintf("installs on its own at a quiet moment from %s, and by %s even if busy", when(u.InstallAfter), when(u.InstallBy))
 }
