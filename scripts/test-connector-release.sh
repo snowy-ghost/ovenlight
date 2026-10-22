@@ -819,6 +819,16 @@ refused "is a dry-run fixture key" env -u OVENLIGHT_RELEASE_DRY HOME="$dry/home"
   "$repo/scripts/sign-connector.sh" --key "$dry/private/air1" 1.1.0
 refused "isn't the two keys in" sign paper2 1.1.0
 refused "the paper key signs only the release that brings in its successor" sign paper1 1.1.0
+# A SHA256SUMS line that names no archive, here one that adds a secure of its own to the
+# index, which Go would take over the first.
+b="$dry/build"
+cp "$b/SHA256SUMS" "$b/index.json" "$dry/"
+echo "$(printf 'f%.0s' {1..64})  x\",\"secure\":\"1.0.0\",\"z" >> "$b/SHA256SUMS"
+{ printf '{"latest": "1.1.0", "secure": "1.0.6", "reinstallBelow": "1.1.0", "serial": 0, "archives": {'
+  awk 'NR > 1 { printf ", " } { printf "\"%s\": \"%s\"", $2, $1 }' "$b/SHA256SUMS"
+  printf '}}\n'; } > "$b/index.json"
+refused "holds a line that isn't an archive's SHA-256 and name" sign air1 1.1.0
+cp "$dry/SHA256SUMS" "$dry/index.json" "$b/"
 # An archive with another version's folder in it.
 a=ovenlight-connector-linux-amd64.tar.gz
 old="$(awk -v a="$a" '$2 == a { print $1 }' "$dry/build/SHA256SUMS")"
