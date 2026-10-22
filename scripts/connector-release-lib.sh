@@ -108,10 +108,10 @@ serialof() { echo "${1##*-}"; }
 # empty, as a write cut short leaves it (built on nothing is a blank line), or doesn't name
 # an index signed before it.
 baseof() {
-  { [ -s "$records/$1.base" ] && base="$(cat "$records/$1.base")"; } ||
-    refuse "$1 has no .base in $records: if it's the newest signed, scripts/sign-connector.sh --check on the Air sends it again, else copy it from the Air's history"
+  local fix="scripts/sign-connector.sh --check on the Air sends the books again, or after a lost Air, sign the next index there"
+  { [ -s "$records/$1.base" ] && base="$(cat "$records/$1.base")"; } || refuse "$1 has no .base in $records: $fix"
   [ -z "$base" ] || { grep -qxF "$base" <<< "$signed" && [ "$(serialof "$base")" -lt "$(serialof "$1")" ]; } ||
-    refuse "$records/$1.base names $base, not an index signed before it"
+    refuse "$records/$1.base names $base, not an index signed before it: $fix"
 }
 # readrecords: what the records say, from the head the header names.
 readrecords() {

@@ -24,13 +24,14 @@
 # Each index gets the time now as its serial. What it signs goes in this Air's history,
 # ~/.ssh/ovenlight-release-keys/history/, the only record it reads, and is sent with scp to
 # the release's folder in the mini's ~/Sync/ovenlight/releases/, which
-# scripts/publish-connector.sh publishes from. Each run sends the newest index signed again
-# until it's the head, so a send that didn't arrive reaches the mini on the next run. Touch
-# ID shows a prompt and not what it signs, so this prints that first, and refuses before it
-# whatever publish-connector.sh would refuse. A release is signed and promoted only when
-# its connector/release_keys is exactly the two keys in ~/.ssh/ovenlight-release-keys/ plus
-# the key signing it, so the keys a release trusts never come from the commit alone. The
-# paper key signs only a release that replaces it, so its .pub has left that folder.
+# scripts/publish-connector.sh publishes from. Each run sends the books again, every index
+# published and the newest signed, so one the mini lacks or holds changed is put right on
+# the next run. Touch ID shows a prompt and not what it signs, so this prints that first,
+# and refuses before it whatever publish-connector.sh would refuse. A release is signed and
+# promoted only when its connector/release_keys is exactly the two keys in
+# ~/.ssh/ovenlight-release-keys/ plus the key signing it, so the keys a release trusts
+# never come from the commit alone. The paper key signs only a release that replaces it, so
+# its .pub has left that folder.
 #
 # Each run first fetches latest.json, which must be the head of the history, as
 # connector-release-lib.sh names it (1.0.9's unsigned index while nothing is published).
@@ -75,23 +76,27 @@ fetchlive() {
   else curl -fsS --max-filesize 4096 -o "$tmp/live.json" "https://downloads.ovenlight.app/connector/latest.json?$(date +%s)"; fi
 }
 
-# send <version> <file>...: sends the files to the release's folder in the mini's records.
+# send <file>...: sends files of the history to their release's folder in the mini's records.
 send() {
-  local v="$1" s
-  shift
+  local s f v
   s="$(mktemp -d "$tmp/send.XXXXXX")"
-  mkdir -p "$s/releases/$v"
-  cp "$@" "$s/releases/$v/"
+  for f in "$@"; do
+    v="${f#"$records/"}"
+    v="${v%%/*}"
+    mkdir -p "$s/releases/$v"
+    cp "$f" "$s/releases/$v/"
+  done
   scp -rq "$s/releases" "$minisync/"
 }
 
 # observe: the header's check of latest.json. pending is a pull signed after it and never seen.
 observe() {
-  local id found=
+  local id files=() found=
   fetchlive || refuse "couldn't fetch latest.json"
-  if [ "$top" != "$newest" ] && [ "$mode" != import ]; then
-    send "${top%%/*}" "$records/$top".{base,json.sig,json} ||
-      echo "couldn't send $top to the mini again: run this again once it can reach the mini" >&2
+  if [ -n "$top" ] && [ "$mode" != import ]; then
+    for id in $published; do files+=("$records/$id".{base,json.sig,json}); done
+    [ "$top" = "$newest" ] || files+=("$records/$top".{base,json.sig,json})
+    send "${files[@]}" || echo "couldn't send the books to the mini again: run this again once it can reach the mini" >&2
   fi
   if [ -z "$(field serial "$tmp/live.json")" ]; then
     [ -z "$newest" ] || refuse "latest.json is unsigned, and it was $newest: publish $top on the mini"
@@ -249,11 +254,14 @@ $(diff "$tmp/want" "$tmp/have" | sed -n 's/^</  missing/p; s/^>/  extra/p')"
 # and sends them to the mini's records. An index's .json goes last, so a keep cut short
 # leaves none listed without its .base.
 keep() {
-  local v="$1"
+  local v="$1" f files=()
   shift
   mkdir -p "$records/$v"
-  cp "$@" "$records/$v/"
-  send "$v" "$@" || refuse "couldn't send what it signed to the mini: run this again"
+  for f in "$@"; do
+    cp "$f" "$records/$v/"
+    files+=("$records/$v/${f##*/}")
+  done
+  send "${files[@]}" || refuse "couldn't send what it signed to the mini: run this again"
 }
 
 # await <id>: waits for latest.json to be the index, and marks it seen. A dry run leaves that

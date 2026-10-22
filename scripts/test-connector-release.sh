@@ -447,10 +447,10 @@ signfolder 1.1.2 air1
 tick
 run sign air1 --promote 1.1.2
 rm "$dry"/sync/releases/1.1.2/promote-*.base
-refused "if it's the newest signed, scripts/sign-connector.sh --check on the Air sends it again" publish --promote 1.1.2
+refused "--check on the Air sends the books again" publish --promote 1.1.2
 p=("$dry"/sync/releases/1.1.2/promote-*.json)
 : > "${p[0]%.json}.base"
-refused "if it's the newest signed, scripts/sign-connector.sh --check on the Air sends it again" publish --promote 1.1.2
+refused "--check on the Air sends the books again" publish --promote 1.1.2
 run nokey --check
 land --promote 1.1.2
 latest_is 1.1.2 air1
@@ -499,12 +499,26 @@ touch "$dry/noscp"
 refused "couldn't send what it signed to the mini: run this again" sign air1 --resign
 rm "$dry/noscp"
 # The mini still holds the promote as the newest, and points back to the Air before it.
-refused "If the Air signed one since, scripts/sign-connector.sh --check there sends it here. If not, scripts/publish-connector.sh --promote 1.1.1" publish --resign
+refused "If the Air holds a newer one, signed since or lost here, scripts/sign-connector.sh --check there sends it here. If not, scripts/publish-connector.sh --promote 1.1.1" publish --resign
 # The promote's publish lands late: --check refuses it, and sends the resign.
 show 1.1.1/promote
 refused "superseded before this Air saw it go up: publish 1.1.0/resign-" nokey --check
 land --resign
 latest_is 1.1.0 air1
+
+fresh mended "published indexes the mini lost or holds changed, sent again by the Air"
+keyfolder air1 paper1
+keys air1 paper1
+ship 1.1.0 1.0.6 air1 1.1.0
+ship 1.1.1 1.0.6 air1
+p=("$dry"/sync/releases/1.1.1/promote-*.json)
+rm "${p[0]}" "${p[0]}.sig" "${p[0]%.json}.base" "${p[0]%.json}.live"
+p=("$dry"/sync/releases/1.1.0/promote-*.json)
+: > "${p[0]%.json}.base"
+refused "--check on the Air sends the books again" publish --resign
+run nokey --check
+resign air1 1.1.1
+pull 1.1.1 air1 1.1.0
 
 fresh droppull "a promote cut short and dropped by a pull of the release before it, then shown to the Air"
 keyfolder air1 paper1
