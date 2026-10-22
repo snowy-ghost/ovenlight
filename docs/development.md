@@ -569,11 +569,12 @@ To build and sign your own copy, change to your own:
   bucket and site in `scripts/publish-connector.sh`, and `releaseBase` and `installDocs`
   in `connector/update.go`. A fork signs with release keys of its own: list them in
   `connector/release_keys`, which every build trusts, and in `docs/allowed_signers` (a
-  test checks the two agree), put their public halves in `~/.ssh/ovenlight-release-keys/`
-  on the computer that signs, and change `HANDLE` and the `mini` host in
-  `scripts/sign-connector.sh`, `minirelease` in `scripts/connector-release-lib.sh`, and
-  the `team@snowyghost.com` principal that `publish-connector.sh` and connector.md verify
-  `SHA256SUMS.sig` and `latest.json.sig` with.
+  test checks it lists each one), put their public halves in
+  `~/.ssh/ovenlight-release-keys/` on the computer that signs, and change `HANDLE` and the
+  `mini` host in `scripts/sign-connector.sh`, `minirelease` in
+  `scripts/connector-release-lib.sh`, and the `team@snowyghost.com` principal that
+  `publish-connector.sh` and connector.md verify `SHA256SUMS.sig` and `latest.json.sig`
+  with.
 
 ### Invite links
 
