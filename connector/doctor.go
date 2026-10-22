@@ -571,7 +571,7 @@ func updateFinding(u *updateView, v string, running bool, now time.Time) *Check 
 			"It most likely needs a newer version of the operating system. Once that's installed, the connector installs "+u.Failure.Version+" on its own the next night")
 	case failed:
 		warn(fmt.Sprintf("updating to %s has failed %d times in a row, last on %s: %s", u.Failure.Version, u.Failure.Count, when(u.Failure.At), u.Failure.Error),
-			"It tries again each night. "+byHand(u.Failure.Version))
+			"It tries again each night. "+byHand(u.Failure.Version)+". If it then keeps stopping, install "+v+" again with the steps for an older release in "+olderDocs)
 	case running && !u.SelfUpdating:
 		warn("the running connector isn't the installed service, so it doesn't update itself",
 			serviceFix("Stop the connector started by hand, and start the installed one", serviceCommands[runtime.GOOS].start))

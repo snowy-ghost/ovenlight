@@ -30,6 +30,9 @@ const releaseBase = "https://downloads.ovenlight.app/connector"
 // and for an owner who installs one by hand.
 const installDocs = "https://github.com/snowy-ghost/ovenlight/blob/master/docs/connector.md#check-a-download-first"
 
+// olderDocs has the verified steps to install an older release.
+const olderDocs = "https://github.com/snowy-ghost/ovenlight/blob/master/docs/connector.md#install-a-release-by-hand"
+
 // archiveName is this system's release archive.
 func archiveName() string {
 	name := "macos.tar.gz"

@@ -900,7 +900,7 @@ func TestUpdateFinding(t *testing.T) {
 		{"failed three times", view(func(u *updateView) {
 			pending(u)
 			u.Failure = &updateFailure{Version: "1.2.0", Count: 3, Error: "swap not implemented"}
-		}), "1.1.5", true, statusWarn, "has failed 3 times in a row"},
+		}), "1.1.5", true, statusWarn, "If it then keeps stopping, install 1.1.5 again with the steps for an older release in " + olderDocs},
 		{"doesn't run here", view(func(u *updateView) {
 			pending(u)
 			u.Failure = &updateFailure{Version: "1.2.0", Count: 3, Error: "the downloaded 1.2.0 " + notRunnable + ": exec format error"}
