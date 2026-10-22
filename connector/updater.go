@@ -518,10 +518,11 @@ type updateView struct {
 	// Latest and Secure are as the index held names them.
 	Latest string `json:"latest,omitempty"`
 	Secure string `json:"secure,omitempty"`
-	// Pending is the release it installs next. With SelfUpdating set and Off not, it does
-	// so on its own from InstallAfter at a quiet moment, and by InstallBy busy or not, set
-	// only then. Once its moment has come InstallAfter is now, or for a regular release
-	// outside the night the start of the next.
+	// Pending is the release it would install next. InstallAfter and InstallBy are set
+	// only while SelfUpdating is set and Off isn't: it installs Pending on its own from
+	// InstallAfter at a quiet moment, and by InstallBy busy or not. Once its moment has
+	// come InstallAfter is now, or for a regular release outside the night the start of
+	// the next.
 	Pending      string    `json:"pending,omitempty"`
 	InstallAfter time.Time `json:"installAfter,omitzero"`
 	InstallBy    time.Time `json:"installBy,omitzero"`
