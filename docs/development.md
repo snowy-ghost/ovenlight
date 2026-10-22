@@ -337,8 +337,9 @@ A lost Air inside a new Touch ID key's wait is answered by an R signed with the 
 every release so far lists, which waits for nothing. After a planned move whose old Air is
 lost, the new Air keeps its key: add `backup.pub` to the retired list, then delete it with
 `last.json` and `published`, which the old Air may have signed past
-(`cat backup.pub >> retired`, then `rm -f backup.pub last.json published`). Run key setup,
-and R lists the new Air's key, the new paper key and the old paper key that signs it.
+(`cat backup.pub >> retired`, then `rm -f backup.pub last.json published`). Run key setup
+and copy only its `index.json.release-2.sig` in, as after a lost paper key. R lists the
+new Air's key, the new paper key and the old paper key that signs it.
 
 ## The iPhone app
 
