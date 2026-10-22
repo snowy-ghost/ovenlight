@@ -1,13 +1,13 @@
 #!/bin/zsh
 # Key setup, on the Air, in Terminal (not over ssh): makes the paper backup key, prints it
-# twice, checks a typed-back copy, files both public keys, and signs a test index with each
-# key. Only public keys and signatures leave this script; the backup's private key exists
-# only in a temporary folder that's deleted at the end, and on paper.
+# twice, checks a typed-back copy, and files both public keys and a test index's signature by
+# each key in the key folder, never in ~/Sync, where a link an agent syncs would write into
+# this Air's files. Only public keys and signatures leave this script; the backup's private
+# key exists only in a temporary folder that's deleted at the end, and on paper.
 set -euo pipefail
 
 touchid=~/.ssh/id_ecdsa_sk_rk_ovenlight-release
 keys=~/.ssh/ovenlight-release-keys
-out=~/Sync/ovenlight/release-key-test
 [[ -f $touchid && -f $touchid.pub ]] || { echo "No Touch ID key handle at $touchid"; exit 1; }
 [[ -e $keys/backup.pub ]] && { echo "$keys/backup.pub already exists; stopping so nothing is replaced"; exit 1; }
 
@@ -15,7 +15,7 @@ work=$(mktemp -d)
 job=
 trap 'rm -r "$work"; [[ -n $job ]] && cancel -x "$job" 2>/dev/null' EXIT
 trap 'exit 130' INT TERM HUP # zsh skips the EXIT trap on a signal otherwise
-mkdir -p "$keys" "$out"
+mkdir -p "$keys"
 chmod 700 "$keys"
 
 print -P "\n%B1. The backup key.%b Choose a strong passphrase you'll remember. It isn't printed."
@@ -110,8 +110,8 @@ done
 # Filed only now, so a run that stops early leaves nothing to block a rerun.
 cp "$work/backup.pub" "$keys/backup.pub"
 cp "$touchid.pub" "$keys/touchid.pub"
-cp "$work/index.json" "$work/index.json.release-1.sig" "$work/index.json.release-2.sig" "$keys/touchid.pub" "$keys/backup.pub" "$out/"
+cp "$work/index.json.release-1.sig" "$work/index.json.release-2.sig" "$keys/"
 
-print -P "\n%BDone.%b Public keys in $keys, test signatures in $out (the key swap copies them into the repo)."
+print -P "\n%BDone.%b Public keys and test signatures in $keys (the key swap copies the signatures into the repo)."
 echo "The temporary folder with the backup's private key is deleted now."
 echo "Put the two printed copies in two different places."

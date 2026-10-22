@@ -8,18 +8,21 @@
 # or resign also notes, in <kind>-<serial>.base, the published index it was built on. Each
 # side reads only its own records. The Air's are its history,
 # ~/.ssh/ovenlight-release-keys/history/, which only sign-connector.sh writes, adding
-# <kind>-<serial>.seen, the time it first saw latest.json be that index. It copies what it
-# signs to the mini's, ~/Sync/ovenlight/releases/, where publish-connector.sh adds
-# <kind>-<serial>.published, holding the time its publish began, before it uploads it, and
-# <kind>-<serial>.live, the time latest.json began naming it, once it has. A script that
-# sets air=1 before sourcing this reads the Air's.
+# <kind>-<serial>.seen, the time it first saw latest.json be that index. It sends what it
+# signs with scp to the mini's records, ~/Sync/ovenlight/releases/ there, and never writes
+# to the Air's own ~/Sync, where a link an agent syncs would write into its files. There
+# publish-connector.sh adds <kind>-<serial>.published, holding the time its publish began,
+# before it uploads it, and <kind>-<serial>.live, the time latest.json began naming it, once
+# it has. A script that sets air=1 before sourcing this reads the Air's.
 #
 # OVENLIGHT_RELEASE_DRY=<folder> makes a dry run, which scripts/test-connector-release.sh does
 # in folders it marks with a .release-dry-run file, which this requires: that folder stands
 # in for everything outside the repo (build/release on the mini, the records, the release
 # key folder and the bucket), no real one is reachable, and only fixture keys are trusted:
 # those in scripts/testdata/release-keys and connector/testdata/releasekey, whose private
-# halves are public. Outside a dry run they never are.
+# halves are public. Outside a dry run they never are. What the Air sends the mini lands in
+# its mini/ folder, apart from the Air's files as the real mini is, and the harness files it
+# in sync/releases.
 shopt -s nullglob
 
 refuse() { echo "$*" >&2; exit 1; }
@@ -35,6 +38,7 @@ if [ -n "${OVENLIGHT_RELEASE_DRY+set}" ]; then
   release="$dry/build"         # build/release, on the mini
   minirelease="$dry/build"     # the same, from the Air
   sync="$dry/sync/releases"    # ~/Sync/ovenlight/releases
+  minisync="$dry/mini"         # ~/Sync/ovenlight on the mini, from the Air
   keydir="$dry/keys"           # ~/.ssh/ovenlight-release-keys
   master=master
 else
@@ -42,6 +46,7 @@ else
   release="$root/build/release"
   minirelease="mini:src/ovenlight/build/release"
   sync="$HOME/Sync/ovenlight/releases"
+  minisync="mini:Sync/ovenlight"
   keydir="$HOME/.ssh/ovenlight-release-keys"
   master=origin/master
 fi

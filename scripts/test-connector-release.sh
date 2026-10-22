@@ -40,7 +40,7 @@ fresh() {
   echo "$2"
   dry="$tmp/$1"
   repo="$dry/repo"
-  mkdir -p "$dry"/{build,sync/releases,keys,private,bucket/connector/latest,headers/connector/latest} "$repo"
+  mkdir -p "$dry"/{build,sync/releases,mini,keys,private,bucket/connector/latest,headers/connector/latest} "$repo"
   touch "$dry/.release-dry-run"
   export OVENLIGHT_RELEASE_DRY="$dry" ahead=0
   echo '{"latest": "1.0.9", "secure": "1.0.6"}' > "$dry/bucket/connector/latest.json"
@@ -119,7 +119,20 @@ refused() {
 }
 
 release() { "$repo/scripts/release-connector.sh" --unsigned "$@"; }
-sign() { local k="$1"; shift; "$repo/scripts/sign-connector.sh" --key "$dry/private/$k" "$@"; }
+# sign <key> <option>...: signs on the Air. What it sends the mini, in mini/, is then filed
+# in the records as Syncthing brings it, replacing a link there rather than writing through.
+sign() {
+  local k="$1" s=0 d f t
+  shift
+  "$repo/scripts/sign-connector.sh" --key "$dry/private/$k" "$@" || s=$?
+  for d in "$dry"/mini/releases/*; do
+    t="$dry/sync/releases/${d##*/}"
+    if [ -L "$t" ]; then rm "$t"; fi
+    mkdir -p "$t"
+    for f in "$d"/*; do rm -f "$t/${f##*/}"; mv "$f" "$t/"; done
+  done
+  return $s
+}
 nokey() { "$repo/scripts/sign-connector.sh" "$@"; }
 publish() { "$repo/scripts/publish-connector.sh" "$@"; }
 
@@ -504,6 +517,27 @@ build 1.1.5 1.0.6
 signfolder 1.1.5 paper2
 resign paper2 1.1.4
 promote 1.1.5 paper2
+
+fresh links "links an agent syncs into ~/Sync, which the Air never writes through"
+keyfolder air1 paper1
+keys air1 paper1
+ship 1.1.0 1.0.6 air1 1.1.0
+# One links a release's folder to a folder of the Air's history, and one a file the Air
+# signs to another file of the Air's.
+d="$dry/sync/releases"
+cp -R "$dry/keys/history/1.1.0" "$dry/before"
+echo "the Air's own" > "$dry/airfile"
+ln -s "$dry/keys/history/1.1.0" "$d/1.1.1"
+build 1.1.1 1.0.6
+signfolder 1.1.1 air1
+mkdir "$d/1.1.2"
+ln -s "$dry/airfile" "$d/1.1.2/release_keys"
+build 1.1.2 1.0.6
+signfolder 1.1.2 air1
+diff -r "$dry/before" "$dry/keys/history/1.1.0" > /dev/null || fail "a link in ~/Sync wrote into the Air's history"
+[ "$(cat "$dry/airfile")" = "the Air's own" ] || fail "a link in ~/Sync wrote into a file of the Air's"
+pass "links in ~/Sync leave the Air's history and files as they were"
+promote 1.1.2 air1
 
 fresh paperpull "the Air that signed the live index lost before its pull, which the paper key signs"
 keyfolder air1 paper1

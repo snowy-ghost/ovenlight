@@ -22,14 +22,14 @@
 #       records
 #
 # Each index gets the time now as its serial. What it signs goes in this Air's history,
-# ~/.ssh/ovenlight-release-keys/history/, the only record it reads, and is copied to the
-# release's folder in ~/Sync/ovenlight/releases/, which scripts/publish-connector.sh
-# publishes from on the mini. Touch ID shows a prompt and not what it signs, so this prints
-# that first, and refuses before it whatever publish-connector.sh would refuse. A release is
-# signed and promoted only when its connector/release_keys is exactly the two keys in
-# ~/.ssh/ovenlight-release-keys/ plus the key signing it, so the keys a release trusts never
-# come from the commit alone. The paper key signs only a release that replaces it, so its
-# .pub has left that folder.
+# ~/.ssh/ovenlight-release-keys/history/, the only record it reads, and is sent with scp to
+# the release's folder in the mini's ~/Sync/ovenlight/releases/, which
+# scripts/publish-connector.sh publishes from. It never writes to this Air's ~/Sync. Touch
+# ID shows a prompt and not what it signs, so this prints that first, and refuses before it
+# whatever publish-connector.sh would refuse. A release is signed and promoted only when its
+# connector/release_keys is exactly the two keys in ~/.ssh/ovenlight-release-keys/ plus the
+# key signing it, so the keys a release trusts never come from the commit alone. The paper
+# key signs only a release that replaces it, so its .pub has left that folder.
 #
 # Each run first fetches latest.json, which must be an index in the history, never one below
 # an index it has been (1.0.9's unsigned one until then), and marks it seen: it's the live
@@ -217,13 +217,14 @@ $(diff "$tmp/want" "$tmp/have" | sed -n 's/^</  missing/p; s/^>/  extra/p')"
 }
 
 # keep <version> <file>...: puts the signed files in the release's folder of the history,
-# and copies them to the mini's records.
+# and sends them to the mini's records.
 keep() {
   local v="$1"
   shift
-  mkdir -p "$records/$v" "$sync/$v"
+  mkdir -p "$records/$v" "$tmp/send/releases/$v"
   cp "$@" "$records/$v/"
-  cp "$@" "$sync/$v/"
+  cp "$@" "$tmp/send/releases/$v/"
+  scp -rq "$tmp/send/releases" "$minisync/"
 }
 
 # await <id>: waits for latest.json to be the index, and marks it seen. A dry run leaves that
