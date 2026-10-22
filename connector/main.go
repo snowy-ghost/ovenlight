@@ -226,18 +226,6 @@ func cmdRun(args []string) error {
 			return err
 		}
 		log.SetOutput(f)
-		if runtime.GOOS == "windows" {
-			// A scheduled task's standard error goes nowhere, so a crash is kept beside the log.
-			crash, err := os.OpenFile(filepath.Join(filepath.Dir(*logFile), "ovenlight.stderr.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
-			if err != nil {
-				return err
-			}
-			err = debug.SetCrashOutput(crash, debug.CrashOptions{}) // keeps its own copy of the file
-			crash.Close()
-			if err != nil {
-				return err
-			}
-		}
 	}
 	log.Printf("ovenlight %s", version())
 	if os.Getenv("OVENLIGHT_DEV") != "1" {
