@@ -304,7 +304,9 @@ For a planned move to a new Air, the old Air signs R:
    in with `cp -Rn <copy>/ ~/.ssh/ovenlight-release-keys/history`. Without it, the Air
    refuses to sign once `latest.json` is an index it lacks.
 
-After a lost Air, the paper key signs R:
+After a lost Air, the paper key signs R. If the lost Air turns up, delete its
+`~/.ssh/ovenlight-release-keys/history` before running a release script there, since each
+run sends the newest index in it to the mini.
 
 1. On the replacement Air, make its Touch ID key with the two commands above. In
    `~/.ssh/ovenlight-release-keys/`, if the Air has one, delete what a backup may have

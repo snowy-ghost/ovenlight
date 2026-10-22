@@ -25,13 +25,12 @@
 # ~/.ssh/ovenlight-release-keys/history/, the only record it reads, and is sent with scp to
 # the release's folder in the mini's ~/Sync/ovenlight/releases/, which
 # scripts/publish-connector.sh publishes from. Each run sends the newest index signed again
-# until it's the head, so a send that didn't arrive never leaves the mini an older one to
-# publish. Touch ID shows a prompt and not what it signs, so this prints that first, and
-# refuses before it whatever publish-connector.sh would refuse. A release is signed and
-# promoted only when its connector/release_keys is exactly the two keys in
-# ~/.ssh/ovenlight-release-keys/ plus the key signing it, so the keys a release trusts
-# never come from the commit alone. The paper key signs only a release that replaces it, so
-# its .pub has left that folder.
+# until it's the head, so a send that didn't arrive reaches the mini on the next run. Touch
+# ID shows a prompt and not what it signs, so this prints that first, and refuses before it
+# whatever publish-connector.sh would refuse. A release is signed and promoted only when
+# its connector/release_keys is exactly the two keys in ~/.ssh/ovenlight-release-keys/ plus
+# the key signing it, so the keys a release trusts never come from the commit alone. The
+# paper key signs only a release that replaces it, so its .pub has left that folder.
 #
 # Each run first fetches latest.json, which must be the head of the history, as
 # connector-release-lib.sh names it (1.0.9's unsigned index while nothing is published).
@@ -91,7 +90,7 @@ observe() {
   local id found=
   fetchlive || refuse "couldn't fetch latest.json"
   if [ "$top" != "$newest" ] && [ "$mode" != import ]; then
-    send "${top%%/*}" "$records/$top".{json,json.sig,base} ||
+    send "${top%%/*}" "$records/$top".{base,json.sig,json} ||
       echo "couldn't send $top to the mini again: run this again once it can reach the mini" >&2
   fi
   if [ -z "$(field serial "$tmp/live.json")" ]; then
@@ -160,7 +159,7 @@ import() {
         continue
       fi
       # The index it was built on, which readrecords checks is one imported.
-      b="$(cat "$id.base" 2> /dev/null)" || b=-
+      { [ -s "$id.base" ] && b="$(cat "$id.base")"; } || b=-
       if [ -n "$b" ] && ! { [[ "$b" =~ /(promote|pull|resign)-([0-9]+)$ ]] && [ "${BASH_REMATCH[2]}" -lt "$s" ]; }; then
         echo "skipped $v/${id##*/}: its .base doesn't name an index signed before it"
         continue
@@ -247,7 +246,8 @@ $(diff "$tmp/want" "$tmp/have" | sed -n 's/^</  missing/p; s/^>/  extra/p')"
 }
 
 # keep <version> <file>...: puts the signed files in the release's folder of the history,
-# and sends them to the mini's records.
+# and sends them to the mini's records. An index's .json goes last, so a keep cut short
+# leaves none listed without its .base.
 keep() {
   local v="$1"
   shift
@@ -344,7 +344,7 @@ promote)
   echo "  $(cat "$tmp/promote-$now.json")"
   sign ovenlight-latest "$tmp/promote-$now.json"
   echo "$newest" > "$tmp/promote-$now.base"
-  keep "$version" "$tmp/promote-$now.json" "$tmp/promote-$now.json.sig" "$tmp/promote-$now.base"
+  keep "$version" "$tmp/promote-$now".{base,json.sig,json}
   echo "signed: on the mini, scripts/publish-connector.sh --promote $version"
   await "$version/promote-$now"
   ;;
@@ -363,7 +363,7 @@ pull)
   echo "  $(cat "$tmp/pull-$now.json")"
   sign ovenlight-latest "$tmp/pull-$now.json"
   echo "$newest" > "$tmp/pull-$now.base"
-  keep "$version" "$tmp/pull-$now.json" "$tmp/pull-$now.json.sig" "$tmp/pull-$now.base"
+  keep "$version" "$tmp/pull-$now".{base,json.sig,json}
   echo "signed: on the mini, scripts/publish-connector.sh --pull $version"
   await "$version/pull-$now"
   ;;
@@ -380,7 +380,7 @@ resign)
   echo "  $(cat "$tmp/resign-$now.json")"
   sign ovenlight-latest "$tmp/resign-$now.json"
   echo "$newest" > "$tmp/resign-$now.base"
-  keep "$live" "$tmp/resign-$now.json" "$tmp/resign-$now.json.sig" "$tmp/resign-$now.base"
+  keep "$live" "$tmp/resign-$now".{base,json.sig,json}
   echo "signed: on the mini, scripts/publish-connector.sh --resign"
   await "$live/resign-$now"
   ;;

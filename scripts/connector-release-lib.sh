@@ -104,11 +104,12 @@ releaseindex() {
 }
 
 serialof() { echo "${1##*-}"; }
-# baseof <id>: sets base to the index it was built on, refusing a .base that's missing or
-# doesn't name an index signed before it.
+# baseof <id>: sets base to the index it was built on, refusing a .base that's missing,
+# empty, as a write cut short leaves it (built on nothing is a blank line), or doesn't name
+# an index signed before it.
 baseof() {
-  base="$(cat "$records/$1.base" 2> /dev/null)" ||
-    refuse "$1 has no .base in $records: if its send from the Air was cut short, scripts/sign-connector.sh --check there sends it again"
+  { [ -s "$records/$1.base" ] && base="$(cat "$records/$1.base")"; } ||
+    refuse "$1 has no .base in $records: if it's the newest signed, scripts/sign-connector.sh --check on the Air sends it again, else copy it from the Air's history"
   [ -z "$base" ] || { grep -qxF "$base" <<< "$signed" && [ "$(serialof "$base")" -lt "$(serialof "$1")" ]; } ||
     refuse "$records/$1.base names $base, not an index signed before it"
 }
