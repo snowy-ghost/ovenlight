@@ -181,11 +181,7 @@ case "$mode" in
 release)
   b="$tmp/build"
   mkdir "$b"
-  if [ -n "$dry" ]; then
-    cp "$minirelease/SHA256SUMS" "$minirelease/index.json" "$minirelease/commit" "$b/"
-  else
-    scp -q "$minirelease/SHA256SUMS" "$minirelease/index.json" "$minirelease/commit" "$b/"
-  fi
+  scp -q "$minirelease/SHA256SUMS" "$minirelease/index.json" "$minirelease/commit" "$b/"
   read -r commit tag < "$b/commit"
   if [ -n "$dry" ]; then
     [ "$tag" = dry-run ] || refuse "a dry run signs only a dry run's build"
@@ -204,7 +200,6 @@ release)
     refuse "another build of $version is signed already: a new build takes a new version"
   fi
 
-  # The keys at the commit are the ones in the key folder, plus this one, all trusted.
   [ -n "$dry" ] || git -C "$root" fetch -q origin master
   git -C "$root" merge-base --is-ancestor "$commit" "$master" || refuse "$commit isn't on $master"
   git -C "$root" show "$commit:connector/release_keys" > "$b/release_keys"
@@ -219,10 +214,8 @@ release)
   echo "  latest $version, secure $secure, reinstallBelow $reinstall"
   echo "release_keys:"
   ssh-keygen -lf "$b/release_keys" | sed 's/^/  /'
-  prev=
-  for v in $promoted; do
-    if below "$v" "$version"; then prev="$v"; fi
-  done
+  # abovereleased put every promoted release below this one.
+  prev="$(echo "$promoted" | tail -1)"
   if [ -n "$prev" ]; then
     echo "connector changes since $prev:"
     git -C "$root" log --oneline "$(cat "$records/$prev/commit")..$commit" -- connector | sed 's/^/  /'
