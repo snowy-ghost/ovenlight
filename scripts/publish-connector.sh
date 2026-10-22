@@ -3,8 +3,8 @@
 # ovenlight-downloads, from what scripts/sign-connector.sh signed on the Air:
 #   connector/<version>/<file>   each file of the release, kept for good
 #   connector/latest/<file>      the same files of the latest release
-#   connector/latest.json        its signed index, which the updater and ovenlight doctor
-#   connector/latest.json.sig    read, and its signature
+#   connector/latest.json        its signed index, which the updater reads, as an older
+#   connector/latest.json.sig    release's doctor does, and its signature
 #
 #   scripts/publish-connector.sh <version>             the version's folder, from build/release
 #   scripts/publish-connector.sh --promote <version>   makes it the latest

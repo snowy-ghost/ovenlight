@@ -57,7 +57,8 @@ canonical() { [[ "$1" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]];
 
 # index <latest> <secure> <reinstallBelow> <serial> <SHA256SUMS>: a release's index, with the
 # SHA-256 of each archive, refused when the updater would refuse it. Its serial is above 0
-# once signed. It stays under 4 KB, which is all the updater and ovenlight doctor read.
+# once signed. It stays under 4 KB, which is all the updater and an older release's doctor
+# read.
 index() {
   local s v
   for v in "$1" "$2" "$3"; do
