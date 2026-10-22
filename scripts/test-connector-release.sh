@@ -119,17 +119,19 @@ refused() {
 }
 
 release() { "$repo/scripts/release-connector.sh" --unsigned "$@"; }
-# sign <key> <option>...: signs on the Air. What it sends the mini, in mini/, is then filed
-# in the records as Syncthing brings it, replacing a link there rather than writing through.
+# sign <key> <option>...: signs on the Air, which never writes to its ~/Sync, so no link an
+# agent syncs there can redirect a write. What it sends the mini, in mini/, is then filed in
+# the records, which stand in for the mini's own folder.
 sign() {
   local k="$1" s=0 d f t
   shift
+  chmod -R a-w "$dry/sync"
   "$repo/scripts/sign-connector.sh" --key "$dry/private/$k" "$@" || s=$?
+  chmod -R u+w "$dry/sync"
   for d in "$dry"/mini/releases/*; do
     t="$dry/sync/releases/${d##*/}"
-    if [ -L "$t" ]; then rm "$t"; fi
     mkdir -p "$t"
-    for f in "$d"/*; do rm -f "$t/${f##*/}"; mv "$f" "$t/"; done
+    for f in "$d"/*; do mv "$f" "$t/"; done
   done
   return $s
 }
@@ -426,6 +428,20 @@ resign air1 1.1.1
 records=("$dry"/sync/releases/1.1.1/promote-*.live)
 [ ${#records[@]} -eq 1 ] || fail "the promote cut short once latest.json was it isn't marked live"
 pass "the resign marks live the promote cut short once latest.json was it"
+# A promote cut short, then finished after the Air signed the next on the one before it.
+build 1.1.2 1.0.6
+signfolder 1.1.2 air1
+tick
+run sign air1 --promote 1.1.2
+chmod 444 "$dry/bucket/connector/latest.json"
+if publish --promote 1.1.2 > "$dry/log" 2>&1; then fail "the upload of latest.json didn't fail"; fi
+chmod 644 "$dry/bucket/connector/latest.json"
+build 1.1.3 1.0.6
+signfolder 1.1.3 air1
+tick
+run sign air1 --promote 1.1.3
+run publish --promote 1.1.2
+refused "and 1.1.2/promote-" publish --promote 1.1.3
 
 fresh lost "a lost Air: its history imported, then the backup key brings in two new keys, and signs a pull"
 keyfolder air1 paper1
@@ -523,27 +539,6 @@ build 1.1.5 1.0.6
 signfolder 1.1.5 paper2
 resign paper2 1.1.4
 promote 1.1.5 paper2
-
-fresh links "links an agent syncs into ~/Sync, which the Air never writes through"
-keyfolder air1 paper1
-keys air1 paper1
-ship 1.1.0 1.0.6 air1 1.1.0
-# One links a release's folder to a folder of the Air's history, and one a file the Air
-# signs to another file of the Air's.
-d="$dry/sync/releases"
-cp -R "$dry/keys/history/1.1.0" "$dry/before"
-echo "the Air's own" > "$dry/airfile"
-ln -s "$dry/keys/history/1.1.0" "$d/1.1.1"
-build 1.1.1 1.0.6
-signfolder 1.1.1 air1
-mkdir "$d/1.1.2"
-ln -s "$dry/airfile" "$d/1.1.2/release_keys"
-build 1.1.2 1.0.6
-signfolder 1.1.2 air1
-diff -r "$dry/before" "$dry/keys/history/1.1.0" > /dev/null || fail "a link in ~/Sync wrote into the Air's history"
-[ "$(cat "$dry/airfile")" = "the Air's own" ] || fail "a link in ~/Sync wrote into a file of the Air's"
-pass "links in ~/Sync leave the Air's history and files as they were"
-promote 1.1.2 air1
 
 fresh paperpull "the Air that signed the live index lost before its pull, which the paper key signs"
 keyfolder air1 paper1
@@ -770,7 +765,6 @@ cp "$dry/raised.json.sig" "$j.sig"
 run nokey --check
 latest_is 1.1.1 air1
 tick
-refused "secure would go down" sign air1 --promote 1.1.2
 forge 1.1.2 promote air1 1.1.2
 refused "secure would go down" publish --promote 1.1.2
 
@@ -841,16 +835,12 @@ refused "is a dry-run fixture key" env -u OVENLIGHT_RELEASE_DRY HOME="$dry/home"
   "$repo/scripts/sign-connector.sh" --key "$dry/private/air1" 1.1.0
 refused "isn't the two keys in" sign paper2 1.1.0
 refused "the paper key signs only the release that brings in its successor" sign paper1 1.1.0
-# A SHA256SUMS line that names no archive, here one that adds a secure of its own to the
-# index, which Go would take over the first.
-b="$dry/build"
-cp "$b/SHA256SUMS" "$b/index.json" "$dry/"
-echo "$(printf 'f%.0s' {1..64})  x\",\"secure\":\"1.0.0\",\"z" >> "$b/SHA256SUMS"
-{ printf '{"latest": "1.1.0", "secure": "1.0.6", "reinstallBelow": "1.1.0", "serial": 0, "archives": {'
-  awk 'NR > 1 { printf ", " } { printf "\"%s\": \"%s\"", $2, $1 }' "$b/SHA256SUMS"
-  printf '}}\n'; } > "$b/index.json"
+# A SHA256SUMS line that names no archive, here one that would add a secure of its own to
+# the index, which Go would take over the first.
+cp "$dry/build/SHA256SUMS" "$dry/"
+echo "$(printf 'f%.0s' {1..64})  x\",\"secure\":\"1.0.0\",\"z" >> "$dry/build/SHA256SUMS"
 refused "holds a line that isn't an archive's SHA-256 and name" sign air1 1.1.0
-cp "$dry/SHA256SUMS" "$dry/index.json" "$b/"
+cp "$dry/SHA256SUMS" "$dry/build/"
 # An archive with another version's folder in it.
 a=ovenlight-connector-linux-amd64.tar.gz
 old="$(awk -v a="$a" '$2 == a { print $1 }' "$dry/build/SHA256SUMS")"

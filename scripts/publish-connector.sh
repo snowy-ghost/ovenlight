@@ -165,7 +165,7 @@ settled() {
     date +%s > "$records/$newest.live"
     return
   fi
-  refuse "the publish of $newest was cut short: run it again, or delete $records/$newest.published if it mustn't go out"
+  refuse "the publish of $newest was cut short: run it again, or if it mustn't go out, delete $records/$newest.published and sign and publish a --resign, which puts the live release back in latest/"
 }
 
 # based <id>: refuses an index built on one that's no longer the newest published.
@@ -238,6 +238,7 @@ promote)
   fetchrelease "$version"
   documented "$version" "$idx"
   if ! begin "$id"; then
+    based "$id"
     abovereleased "$version"
     ordered "$(serialof "$id")" "$id"
     nodrop "$idx"

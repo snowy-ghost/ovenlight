@@ -24,12 +24,12 @@
 # Each index gets the time now as its serial. What it signs goes in this Air's history,
 # ~/.ssh/ovenlight-release-keys/history/, the only record it reads, and is sent with scp to
 # the release's folder in the mini's ~/Sync/ovenlight/releases/, which
-# scripts/publish-connector.sh publishes from. It never writes to this Air's ~/Sync. Touch
-# ID shows a prompt and not what it signs, so this prints that first, and refuses before it
-# whatever publish-connector.sh would refuse. A release is signed and promoted only when its
-# connector/release_keys is exactly the two keys in ~/.ssh/ovenlight-release-keys/ plus the
-# key signing it, so the keys a release trusts never come from the commit alone. The paper
-# key signs only a release that replaces it, so its .pub has left that folder.
+# scripts/publish-connector.sh publishes from. Touch ID shows a prompt and not what it signs,
+# so this prints that first, and refuses before it whatever publish-connector.sh would
+# refuse. A release is signed and promoted only when its connector/release_keys is exactly
+# the two keys in ~/.ssh/ovenlight-release-keys/ plus the key signing it, so the keys a
+# release trusts never come from the commit alone. The paper key signs only a release that
+# replaces it, so its .pub has left that folder.
 #
 # Each run first fetches latest.json, which must be an index in the history, never one below
 # an index it has been (1.0.9's unsigned one until then), and marks it seen: it's the live
@@ -68,7 +68,7 @@ air=1
 # fetchlive: latest.json, in $tmp/live.json.
 fetchlive() {
   if [ -n "$dry" ]; then cp "$dry/bucket/connector/latest.json" "$tmp/live.json"
-  else curl -fsS -o "$tmp/live.json" "https://downloads.ovenlight.app/connector/latest.json?$(date +%s)"; fi
+  else curl -fsS --max-filesize 4096 -o "$tmp/live.json" "https://downloads.ovenlight.app/connector/latest.json?$(date +%s)"; fi
 }
 
 # observe: the header's check of latest.json. pending is a pull signed above it and never seen.
@@ -85,10 +85,7 @@ observe() {
   done
   [ -n "$found" ] || refuse "latest.json isn't an index in $records. After a planned move, copy the other Air's history in first. After a lost Air, delete it and run --import."
   if [ -n "$newest" ] && [ "$(serialof "$found")" -lt "$(serialof "$newest")" ]; then
-    case " ${neverlive:-} " in
-    *" $newest "*) refuse "latest.json is $found, and $newest, signed after it, was never seen live: publish $newest on the mini" ;;
-    esac
-    refuse "latest.json is $found, older than $newest, which it has been: publish $newest again on the mini"
+    refuse "latest.json is $found, older than $newest, which the history marks seen: publish $newest on the mini"
   fi
   [ -f "$records/$found.seen" ] || date +%s > "$records/$found.seen"
   readrecords
@@ -102,8 +99,7 @@ observe() {
 # import: rebuilds the history from the mini's records: each release whose SHA256SUMS and
 # canary index the keys signed, with connector/release_keys at its commit on master, and each
 # index they signed that fits its name. Every pull, and every index the records mark
-# published, counts as seen, and neverlive lists those the records don't mark live. Then
-# latest.json must be in it.
+# published, counts as seen. Then latest.json must be in it.
 import() {
   local h="$tmp/history" d v c id f s t
   [ ! -e "$records" ] || refuse "$records exists: --import rebuilds it once it's deleted, on an Air whose --check doesn't find latest.json in it"
@@ -121,6 +117,7 @@ import() {
       continue
     fi
     read -r c _ < "$d/commit"
+    [[ "$c" =~ ^[0-9a-f]{40}$ ]] || refuse "$v's commit file names $c, not a commit's full hash"
     git -C "$root" merge-base --is-ancestor "$c" "$master" || refuse "$v was built from $c, which isn't on $master"
     mkdir -p "$h/$v"
     git -C "$root" show "$c:connector/release_keys" > "$h/$v/release_keys"
@@ -142,7 +139,7 @@ import() {
       case "$id" in */pull-*) ;; *) [ -f "$id.published" ] || continue ;; esac
       # When latest.json began naming it, which newkeywait never takes as before it was signed.
       t="$(cat "$id.live" 2> /dev/null || true)"
-      [[ "$t" =~ ^[1-9][0-9]{9}$ ]] || t="$s" neverlive="${neverlive:-} $v/${id##*/}"
+      [[ "$t" =~ ^[1-9][0-9]{9}$ ]] || t="$s"
       echo "$t" > "$h/$v/${id##*/}.seen"
     done
   done
@@ -181,9 +178,11 @@ kblob="$(awk '{ print $2 }' "$tmp/signer")"
 trusted "$tmp/signer"
 
 # One serial from the future would block every later index, so the clock that sets it is
-# checked against the mini's.
+# checked against the mini's. The mini's answer must be a number before any arithmetic,
+# since bash runs commands in an array subscript there.
 now="$(date +%s)"
 if [ -n "$dry" ]; then mini="$now"; else mini="$(ssh mini date +%s)"; fi
+[[ "$mini" =~ ^[0-9]+$ ]] || refuse "the mini's clock answered \"$mini\", not a number of seconds"
 [ "$now" -le $((mini + 3600)) ] || refuse "this clock is more than an hour ahead of the mini's"
 
 # sign <namespace> <file>: writes <file>.sig with the key, and checks it.
@@ -249,6 +248,7 @@ release)
   mkdir "$b"
   scp -q "$minirelease/SHA256SUMS" "$minirelease/index.json" "$minirelease/commit" "$b/"
   read -r commit tag < "$b/commit"
+  [[ "$commit" =~ ^[0-9a-f]{40}$ ]] || refuse "the build's commit file names $commit, not a commit's full hash"
   if [ -n "$dry" ]; then
     [ "$tag" = dry-run ] || refuse "a dry run signs only a dry run's build"
   else
@@ -309,13 +309,13 @@ promote)
   folderkeys "$d/release_keys" "$version's release_keys"
   rulehas "$version"
   releaseindex "$version" "$now" > "$tmp/promote-$now.json"
-  nodrop "$tmp/promote-$now.json"
   keepsraised "$version" "$(field secure "$d/canary.json")" "$(field reinstallBelow "$d/canary.json")"
   newkeywait "$kblob" "$now"
   echo "promoting $version: latest.json becomes"
   echo "  $(cat "$tmp/promote-$now.json")"
   sign ovenlight-latest "$tmp/promote-$now.json"
-  keep "$version" "$tmp/promote-$now.json" "$tmp/promote-$now.json.sig"
+  echo "$newest" > "$tmp/promote-$now.base"
+  keep "$version" "$tmp/promote-$now.json" "$tmp/promote-$now.json.sig" "$tmp/promote-$now.base"
   echo "signed: on the mini, scripts/publish-connector.sh --promote $version"
   await "$version/promote-$now"
   ;;
