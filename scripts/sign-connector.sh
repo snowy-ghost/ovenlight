@@ -150,15 +150,14 @@ $(diff "$tmp/want" "$tmp/have" | sed -n 's/^</  missing/p; s/^>/  extra/p')"
   echo "connector $version, built from $commit"
   echo "  latest $version, secure $secure, reinstallBelow $reinstall"
   prev=
-  for d in "$records"/*/commit; do
-    v="$(basename "$(dirname "$d")")"
-    if below "$v" "$version" && { [ -z "$prev" ] || below "$prev" "$v"; }; then prev="$v"; fi
+  for v in $promoted; do
+    if below "$v" "$version"; then prev="$v"; fi
   done
   if [ -n "$prev" ]; then
     echo "connector changes since $prev:"
     git -C "$root" log --oneline "$(cat "$records/$prev/commit")..$commit" -- connector | sed 's/^/  /'
   else
-    echo "no earlier release in $records"
+    echo "no release promoted before $version"
   fi
   echo "SHA256SUMS:"
   sed 's/^/  /' "$b/SHA256SUMS"

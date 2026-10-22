@@ -139,12 +139,12 @@ scripts/sign-connector.sh 1.2.0
 
 It copies the build's `SHA256SUMS` and index from `~/src/ovenlight/build/release` on the
 mini and prints what it signs: the index's fields, the commit, the connector changes since
-the last release and `SHA256SUMS`. It refuses a commit whose `connector/release_keys`
-isn't the two keys in `~/.ssh/ovenlight-release-keys/` plus the key signing it, when that
-folder doesn't hold it. It signs `SHA256SUMS` and a canary index, `canary.json`, which
-only `ovenlight update now --index` takes, and keeps both in the release's folder in
-`~/Sync/ovenlight/releases/`. `--key <file>` signs with another key, such as the paper
-backup.
+the last promoted release and `SHA256SUMS`. It refuses a commit whose
+`connector/release_keys` isn't the two keys in `~/.ssh/ovenlight-release-keys/` plus the
+key signing it, when that folder doesn't hold it. It signs `SHA256SUMS` and a canary
+index, `canary.json`, which only `ovenlight update now --index` takes, and keeps both in
+the release's folder in `~/Sync/ovenlight/releases/`. `--key <file>` signs with another
+key, such as the paper backup.
 
 Back on the mini, upload the version's folder, then try the release on the mini's own
 connector, the canary:
