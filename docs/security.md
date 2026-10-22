@@ -436,10 +436,11 @@ holds or one with a higher serial that lowers neither `secure` nor `reinstallBel
 [allowed_signers](allowed_signers) has the command to check it yourself.
 
 It installs only the release the index names, never an older one. That release is due two
-days after this computer first saw it named, or at once when the running release is
-below `secure`. Below `reinstallBelow` it installs nothing, and `ovenlight status` and
-`ovenlight doctor` say to install that release with its install script, since an update
-replaces only the binary: never the install scripts, the service, the config or the state.
+days after this computer first saw it named (or after the index was signed, if later), or
+at once when the running release is below `secure`. Below `reinstallBelow` it installs
+nothing, and `ovenlight status` and `ovenlight doctor` say to install that release with
+its install script, since an update replaces only the binary: never the install scripts,
+the service, the config or the state.
 
 ### How it installs
 
