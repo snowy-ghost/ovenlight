@@ -370,7 +370,7 @@ pull 1.1.1 air1 1.1.0
 refused "sign a fresh one" publish --promote 1.1.2
 promote 1.1.2 air1
 
-fresh rerun "a publish that fails after writing its record, finished by running it again"
+fresh rerun "a publish that fails after writing its record, finished by running it again or dropped"
 keyfolder air1 paper1
 keys air1 paper1
 build 1.1.0 1.0.6 1.1.0
@@ -390,6 +390,29 @@ run publish --promote 1.1.0
 grep -q "^finishing the publish of 1.1.0/promote-" "$dry/log" || fail "the rerun didn't finish the publish"
 pass "the rerun finished it: $(head -1 "$dry/log")"
 latest_is 1.1.0 air1
+# A promote cut short and never finished, which the Air never saw: no other index goes up
+# until it's finished, or dropped by deleting its .published.
+build 1.1.1 1.0.6
+signfolder 1.1.1 air1
+tick
+run sign air1 --promote 1.1.1
+chmod 444 "$dry/bucket/connector/latest.json"
+if publish --promote 1.1.1 > "$dry/log" 2>&1; then fail "the upload of latest.json didn't fail"; fi
+chmod 644 "$dry/bucket/connector/latest.json"
+tick
+run sign air1 --resign
+refused "the publish of 1.1.1/promote-" publish --resign
+rm "$dry"/sync/releases/1.1.1/promote-*.published
+run publish --resign
+run nokey --check
+latest_is 1.1.0 air1
+# One cut short once latest.json is it is marked live by the next.
+promote 1.1.1 air1
+rm "$dry"/sync/releases/1.1.1/promote-*.live
+resign air1 1.1.1
+records=("$dry"/sync/releases/1.1.1/promote-*.live)
+[ ${#records[@]} -eq 1 ] || fail "the promote cut short once latest.json was it isn't marked live"
+pass "the resign marks live the promote cut short once latest.json was it"
 
 fresh lost "a lost Air: its history imported, then the backup key brings in two new keys, and signs a pull"
 keyfolder air1 paper1

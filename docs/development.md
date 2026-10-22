@@ -182,11 +182,14 @@ scripts/publish-connector.sh --promote 1.2.0
 
 That puts its files in `connector/latest/` and its index in `latest.json`, and every
 owner's two-day wait starts. A publish that fails partway is finished by running the same
-command again (a folder's before the next build replaces `build/release`). `--pull`, the
-same way, takes the live release back out by publishing the index of the release before
-it, signed again. Computers that already took the pulled release keep it, since the
-connector never installs an older one, so the fix is the next release. `--resign`
-publishes the live index signed again, to supersede a signed promote that mustn't ship.
+command again (a folder's before the next build replaces `build/release`). Until then the
+mini publishes no other promote, pull or resign. To drop one cut short that mustn't go
+out, delete its `.published` from its folder in `~/Sync/ovenlight/releases/` instead.
+`--pull`, the same way, takes the live release back out by publishing the index of the
+release before it, signed again. Computers that already took the pulled release keep it,
+since the connector never installs an older one, so the fix is the next release.
+`--resign` publishes the live index signed again, to supersede a signed promote that
+mustn't ship.
 Before signing anything the Air fetches `latest.json`, which must be an index in the
 history and never one older than an index it has been, and after signing an index for
 `latest.json` it waits until `latest.json` is that index, which Ctrl-C leaves to the next
