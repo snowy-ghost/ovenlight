@@ -132,7 +132,8 @@ import() {
     for f in "$d"/promote-*.json "$d"/pull-*.json "$d"/resign-*.json; do
       id="${f%.json}"
       s="$(serialof "$id")"
-      if ! { verify "$f" "$f.sig" ovenlight-latest "$importkeys" && [ "$(field serial "$f")" = "$s" ] &&
+      if ! { [[ "${id##*/}" =~ ^(promote|pull|resign)-[0-9]+$ ]] && verify "$f" "$f.sig" ovenlight-latest "$importkeys" &&
+        [ "$(field serial "$f")" = "$s" ] &&
         case "$id" in */pull-*) below "$(field latest "$f")" "$v" ;; *) [ "$(field latest "$f")" = "$v" ] ;; esac; }; then
         echo "skipped $v/${id##*/}: not signed by those keys for $v"
         continue

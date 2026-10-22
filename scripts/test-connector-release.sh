@@ -444,6 +444,12 @@ cp -R "$dry/stale" "$dry/keys/history"
 refused "After a lost Air, delete it and run --import" nokey --check
 refused "once it's deleted" nokey --import "$dry/import"
 rm -r "$dry/keys/history"
+# A pull renamed by an agent holding ~/Sync, so it sorts before the promote it pulls, is
+# skipped, and latest.json, which is that pull, isn't in what's imported.
+d="$dry/sync/releases/1.1.1"
+for f in "$d"/pull-*; do mv "$f" "$d/pull-0-${f##*/pull-}"; done
+refused "skipped 1.1.1/pull-0-" nokey --import "$dry/import"
+for f in "$d"/pull-0-*; do mv "$f" "$d/pull-${f##*/pull-0-}"; done
 # An agent holding ~/Sync deletes the pull's record of being published, makes up a promote of
 # 1.1.1 signed with another key, and points 1.1.0's commit at one whose release_keys lists the
 # new key.
