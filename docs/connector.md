@@ -226,7 +226,7 @@ running and awake for 10 minutes. Installing restarts the connector, so the apps
 stop and open connections drop for a few seconds (about 10 on Linux, up to a minute on
 Windows). If the new release doesn't serve your apps again within 10 minutes, the
 connector goes back to the one before. Unpublishing an app before the new release serves
-it again makes it go back too. A restart of your computer in those 10 minutes starts them
+it again has the same effect. A restart of your computer in those 10 minutes starts them
 again. On Windows, the Stop or Restart command above in that time makes it go back too, as
 does shutting down or signing out of a work, school or domain account. An update that
 fails, whether it went back or its download broke off, is tried again at the start of the
@@ -241,8 +241,8 @@ again.
 - `ovenlight update off` stops installing updates. The connector still checks daily.
   `ovenlight doctor` warns while updates are off, says so when no check has worked for
   seven days, and still fails when your release has a known security problem. Turn updates
-  back on now and then: a connector that misses a change of release keys can't check any
-  more.
+  back on at least once every four weeks: a connector that misses a change of release keys
+  can't verify updates after that.
 - `ovenlight update on` turns them back on.
 
 ### Install a release by hand
