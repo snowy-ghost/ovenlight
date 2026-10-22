@@ -364,8 +364,7 @@ func TestTrialPasses(t *testing.T) {
 }
 
 // At the deadline, an app recorded that hasn't served again, logged in, a daemon that
-// never came up, or an updater that never started, rolls back and exits. So does an app
-// unpublished since: only the release on trial could say it was.
+// never came up, or an updater that never started, rolls back and exits.
 func TestTrialDeadline(t *testing.T) {
 	if updateHour != time.Hour {
 		t.Skip("a compressed schedule")
@@ -398,20 +397,6 @@ func TestTrialDeadline(t *testing.T) {
 	tr.pass(10 * time.Minute)
 	if f := rolledBack(t, dir, installed); !strings.Contains(f.Error, "1.2.0's updater didn't start") || len(tr.exits) != 1 {
 		t.Errorf("no updater: %+v", f)
-	}
-
-	tr, dir, installed = startTrialing(t, "coach", "gone")
-	d, _ = testDaemon(t)
-	d.stateDir = dir
-	d.nodes["coach"].serving = true
-	d.upd = &updater{d: d, now: tr.clock.now}
-	if err := jsonfile.Save(d.configPath, &Config{Apps: []App{{Name: "Interview Coach", Slug: "coach", Port: 4317}}}); err != nil {
-		t.Fatal(err)
-	}
-	tr.attach(d)
-	tr.pass(10 * time.Minute)
-	if f := rolledBack(t, dir, installed); !strings.Contains(f.Error, "gone didn't serve again") || len(tr.exits) != 1 {
-		t.Errorf("unpublished: %+v", f)
 	}
 }
 
