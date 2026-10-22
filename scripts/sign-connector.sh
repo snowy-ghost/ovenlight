@@ -25,12 +25,14 @@
 # The paper key signs only a release that replaces it, so its .pub has left that folder. A
 # promote, pull or resign builds only on what this Air's own keys signed: those two, the
 # ones they replaced, which the folder's retired file lists, and the key signing. The
-# records' release_keys are only as safe as ~/Sync. It also builds only on the index it
-# signed last, which it keeps in that folder as last.json, and on the published indexes it
-# built that one on, kept there as published, so the records can't be rolled back. And it
-# signs only while latest.json is the newest index the records call published (unsigned
-# while they call none published), and that index names the release the records' names make
-# live, so marking or renaming an index in ~/Sync can't change the live one.
+# records' release_keys are only as safe as ~/Sync, as are their index.json and canary.json
+# files, which carry a release's raise of secure or reinstallBelow forward to later ones. It
+# also builds only on the index it signed last, which it keeps in that folder as last.json,
+# and on the published indexes it built that one on, kept there as published, so the records
+# can't be rolled back. And it signs only while latest.json is the newest index the records
+# call published (unsigned while they call none published), and that index names the release
+# the records' names make live, so marking or renaming an index in ~/Sync can't change the
+# live one.
 #
 # --key signs with a key other than this Air's Touch ID handle, such as the paper backup or
 # another Touch ID key's handle, with its public half beside it as <file>.pub.
