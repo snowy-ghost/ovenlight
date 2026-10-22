@@ -397,6 +397,11 @@ refused "isn't the two keys in" sign air2 1.1.1
 signfolder 1.1.1 paper1
 tick
 refused "This Air has signed no index" sign paper1 --promote 1.1.1
+# An agent holding ~/Sync hides every record of a publish, so there'd be no index to check.
+mkdir "$dry/hidden"
+mv "$dry"/sync/releases/1.1.0/promote-*.published "$dry/hidden/"
+refused "latest.json is a signed index, and the records call none published" sign paper1 --promote 1.1.1
+mv "$dry"/hidden/* "$dry/sync/releases/1.1.0/"
 lastchecked
 promote 1.1.1 paper1
 pull 1.1.1 paper1 1.1.0
