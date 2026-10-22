@@ -178,10 +178,14 @@ func dayTime(t time.Time) time.Duration {
 }
 
 // updateClient fetches updates. It follows no redirect, which could lead off the release
-// host, and takes the proxy Tailscale does: on Windows, the system's when the environment
-// names none.
+// host, and takes the proxy Tailscale does, signing in to it as Tailscale does: on
+// Windows, the system's when the environment names none.
 var updateClient = &http.Client{
-	Transport:     &http.Transport{Proxy: tshttpproxy.ProxyFromEnvironment},
+	Transport: func() *http.Transport {
+		tr := &http.Transport{Proxy: tshttpproxy.ProxyFromEnvironment}
+		tshttpproxy.SetTransportGetProxyConnectHeader(tr)
+		return tr
+	}(),
 	CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 }
 
