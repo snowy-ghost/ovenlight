@@ -278,10 +278,10 @@ func extractBinary(archive, bin, version string) (string, error) {
 	return out, nil
 }
 
-// extractEntry copies the entry named name out of a .zip or .tar.gz archive into out, a
-// new file with any old one deleted first, synced to disk. Nothing else in the archive is
-// written anywhere, and an archive with that entry missing, twice, over maxArchiveBytes,
-// or as anything but a regular file is refused.
+// extractEntry copies the first entry named name out of a .zip or .tar.gz archive into
+// out, a new file with any old one deleted first, synced to disk, within maxArchiveBytes.
+// Nothing else in the archive is written anywhere. The archive is the one the signed
+// index lists, and checkNext runs what comes out.
 func extractEntry(archive string, zipped bool, name, out string) (err error) {
 	f, err := createNew(out, 0o755)
 	if err != nil {
@@ -295,18 +295,7 @@ func extractEntry(archive string, zipped bool, name, out string) (err error) {
 			os.Remove(out)
 		}
 	}()
-	found := false
-	take := func(r io.Reader, size int64, regular bool) error {
-		if found || !regular || size > maxArchiveBytes {
-			return errors.New("the archive's " + name + " isn't one file within the size cap")
-		}
-		found = true
-		n, err := io.Copy(f, io.LimitReader(r, maxArchiveBytes+1))
-		if err == nil && n > maxArchiveBytes {
-			err = errors.New("the archive's " + name + " is over the size cap")
-		}
-		return err
-	}
+	var r io.Reader
 	if zipped {
 		z, err := zip.OpenReader(archive)
 		if err != nil {
@@ -314,17 +303,14 @@ func extractEntry(archive string, zipped bool, name, out string) (err error) {
 		}
 		defer z.Close()
 		for _, e := range z.File {
-			if e.Name != name {
-				continue
-			}
-			r, err := e.Open()
-			if err != nil {
-				return err
-			}
-			err = take(r, int64(min(e.UncompressedSize64, maxArchiveBytes+1)), e.Mode().IsRegular())
-			r.Close()
-			if err != nil {
-				return err
+			if e.Name == name {
+				rc, err := e.Open()
+				if err != nil {
+					return err
+				}
+				defer rc.Close()
+				r = rc
+				break
 			}
 		}
 	} else {
@@ -337,9 +323,7 @@ func extractEntry(archive string, zipped bool, name, out string) (err error) {
 		if err != nil {
 			return err
 		}
-		// The binary and a few small files: a stream far longer is no release.
-		tr := tar.NewReader(io.LimitReader(gz, 2*maxArchiveBytes))
-		for {
+		for tr := tar.NewReader(gz); r == nil; {
 			h, err := tr.Next()
 			if err == io.EOF {
 				break
@@ -347,14 +331,19 @@ func extractEntry(archive string, zipped bool, name, out string) (err error) {
 				return err
 			}
 			if h.Name == name {
-				if err := take(tr, h.Size, h.Typeflag == tar.TypeReg); err != nil {
-					return err
-				}
+				r = tr
 			}
 		}
 	}
-	if !found {
+	if r == nil {
 		return errors.New("the archive has no " + name)
+	}
+	n, err := io.Copy(f, io.LimitReader(r, maxArchiveBytes+1))
+	if err == nil && n > maxArchiveBytes {
+		err = errors.New("the archive's " + name + " is over the size cap")
+	}
+	if err != nil {
+		return err
 	}
 	return f.Sync()
 }
