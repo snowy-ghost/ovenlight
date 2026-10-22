@@ -370,7 +370,7 @@ ship 1.1.0 1.0.6 air1 1.1.0
 # The replacement Air makes two new keys, and the release lists them and the paper key. It
 # has no last.json until the owner checks.
 keyfolder air2 paper2
-rm "$dry/keys/last.json"
+rm "$dry/keys/last.json" "$dry/keys/published"
 keys air2 paper2 paper1
 build 1.1.1 1.0.6
 refused "isn't the two keys in" sign air2 1.1.1
@@ -384,6 +384,11 @@ pull 1.1.1 paper1 1.1.0
 build 1.1.2 1.0.6
 signfolder 1.1.2 paper1
 promote 1.1.2 paper1
+# An agent holding ~/Sync deletes the pull's record of being published, so the next pull
+# would go back to the release it pulled.
+rm "$dry"/sync/releases/1.1.1/pull-*.published
+tick
+refused "no longer published: 1.1.1/pull-" sign paper1 --pull 1.1.2
 
 fresh lostpaper "a lost paper key, then a lost Air: the Air's promotes don't restart the new paper key's wait"
 keyfolder air1 paper1
@@ -526,6 +531,11 @@ resign air1 1.1.1
 [ "$(field secure "$dry/bucket/connector/latest.json")" = 1.0.6 ] || fail "secure went up"
 pass "secure is still 1.0.6"
 refused "sign a fresh one" publish --promote 1.1.2
+# An agent holding ~/Sync marks that promote published, so a resign would sign it again.
+for f in "$dry"/sync/releases/1.1.2/promote-*.json; do date +%s > "${f%.json}.published"; done
+tick
+refused "newly published: 1.1.2/promote-" sign air1 --resign
+rm "$dry"/sync/releases/1.1.2/promote-*.published
 refused "1.1.3 can't go below either" release 1.1.3 1.0.5
 forge 1.1.0 promote air1 1.1.0
 refused "1.1.0 was promoted already" publish --promote 1.1.0

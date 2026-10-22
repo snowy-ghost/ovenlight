@@ -188,11 +188,13 @@ Every promote, pull and resign is recorded in `~/Sync/ovenlight/releases/`, the 
 history the scripts read besides `last.json`, the last index the Air signed, which it
 keeps in `~/.ssh/ovenlight-release-keys/`. The Air signs no promote, pull or resign while
 the newest index recorded isn't that one, as after an index signed and never published,
-and its refusal says what to check before copying the newest in. Each script's header
-says what it checks, and `scripts/test-connector-release.sh` dry-runs them all. Each
-release restarts every owner's connector, and one promoted within two days of the last
-restarts every owner's wait, so batch what isn't urgent. A `--resign` within a release's
-two days restarts the wait too, for computers that haven't taken it.
+and its refusal says what to check before copying the newest in. Beside it, `published`
+lists the published indexes that one was built on, and the Air signs nothing while the
+records' others differ. Each script's header says what it checks, and
+`scripts/test-connector-release.sh` dry-runs them all. Each release restarts every owner's
+connector, and one promoted within two days of the last restarts every owner's wait, so
+batch what isn't urgent. A `--resign` within a release's two days restarts the wait too,
+for computers that haven't taken it.
 
 Uploads go to the R2 bucket behind `https://downloads.ovenlight.app`, through `wrangler`
 (signed in with `npx wrangler@4.147.0 login`, or `CLOUDFLARE_API_TOKEN` and
@@ -282,19 +284,20 @@ For a planned move to a new Air, the old Air signs R:
    signed with the new key (`--resign`). That and R+1's promote are refused until four
    weeks and four days after R's promote, and a pull back below R starts the wait again at
    the next promote. Keep the old Air until R+1 is promoted, since a pull before R+1's
-   `--resign` is signed with the old key. Before that `--resign`, copy `last.json` from
-   the old Air's `~/.ssh/ovenlight-release-keys/` into the new Air's.
+   `--resign` is signed with the old key. Before that `--resign`, copy `last.json` and
+   `published` from the old Air's `~/.ssh/ovenlight-release-keys/` into the new Air's.
 
 After a lost Air, the paper key signs R:
 
 1. On the replacement Air, make its Touch ID key with the two commands above. An Air
    restored from a backup first moves `backup.pub` and `touchid.pub` from
-   `~/.ssh/ovenlight-release-keys/` into its `retired/`. Any other puts the lost key
-   there as `touchid.pub`, its line from a `release_keys` in `~/Sync/ovenlight/releases/`,
-   once `ssh-keygen -lf` on it shows the Touch ID fingerprint printed on the paper page.
-   Then run key setup (`~/Sync/ovenlight/release-key-setup.sh`). It makes a new paper key,
-   files both new public keys in `~/.ssh/ovenlight-release-keys/`, and signs a test
-   signature with each in `~/Sync/ovenlight/release-key-test/`.
+   `~/.ssh/ovenlight-release-keys/` into its `retired/`, and deletes `last.json` and
+   `published` there. Any other puts the lost key there as `touchid.pub`, its line from a
+   `release_keys` in `~/Sync/ovenlight/releases/`, once `ssh-keygen -lf` on it shows the
+   Touch ID fingerprint printed on the paper page. Then run key setup
+   (`~/Sync/ovenlight/release-key-setup.sh`). It makes a new paper key, files both new
+   public keys in `~/.ssh/ovenlight-release-keys/`, and signs a test signature with each
+   in `~/Sync/ovenlight/release-key-test/`.
 2. R lists the two new keys and the old paper key, and drops the lost key and its
    signature. Copy key setup's `index.json.release-1.sig` and `index.json.release-2.sig`
    in under the next two free numbers.

@@ -9,8 +9,8 @@
 # holding the time its publish began, before it uploads it, and <kind>-<serial>.live, the time
 # latest.json began naming it, once it has. A pull or resign also notes, in
 # <kind>-<serial>.base, the published index it was built on. Those records, and the last index
-# sign-connector.sh signed, which it keeps beside the Air's keys, are the only history the
-# scripts read, never the bucket.
+# sign-connector.sh signed and the published indexes it built that one on, which it keeps
+# beside the Air's keys, are the only history the scripts read, never the bucket.
 #
 # OVENLIGHT_RELEASE_DRY=<folder> makes a dry run, which scripts/test-connector-release.sh does
 # in folders it marks with a .release-dry-run file, which this requires: that folder stands
