@@ -80,10 +80,12 @@ signers() {
   commit "allowed signers: $*"
 }
 
-# keyfolder <name>...: the Air's ~/.ssh/ovenlight-release-keys holds those keys' .pub files.
+# keyfolder <name>...: the Air's ~/.ssh/ovenlight-release-keys holds those keys' .pub files,
+# and the ones they replace move into its retired/.
 keyfolder() {
   local k
-  for k in "$dry"/keys/*.pub; do rm "$k"; done
+  mkdir -p "$dry/keys/retired"
+  for k in "$dry"/keys/*.pub; do mv "$k" "$dry/keys/retired/"; done
   for k in "$@"; do cp "$fixtures/$k.pub" "$dry/keys/"; done
 }
 
@@ -284,13 +286,16 @@ run sign air1 --pull 1.1.1
 resign air1 1.1.1
 refused "sign a fresh one" publish --pull 1.1.1
 pull 1.1.1 air1 1.1.0
-# A resign signs the archives' hashes the canary index has, never the records' SHA256SUMS.
-sed -i '' -E '1s/^[0-9a-f]{8}/deadbeef/' "$dry/sync/releases/1.1.0/SHA256SUMS"
+# An agent holding ~/Sync swaps an archive's hash, signs SHA256SUMS and the canary index to
+# match with a key of its own, and lists that key in every release's release_keys.
+d="$dry/sync/releases/1.1.0"
+h="$(head -c 8 "$d/SHA256SUMS")"
+sed -i '' "s/$h/deadbeef/" "$d/SHA256SUMS" "$d/canary.json"
+ssh-keygen -Y sign -q -f "$dry/private/air2" -n file < "$d/SHA256SUMS" > "$d/SHA256SUMS.sig"
+ssh-keygen -Y sign -q -f "$dry/private/air2" -n ovenlight-canary < "$d/canary.json" > "$d/canary.json.sig"
+for f in "$dry"/sync/releases/*/release_keys; do cat "$fixtures/air2.pub" >> "$f"; done
 tick
-run sign air1 --resign
-if grep -q deadbeef "$dry"/sync/releases/1.1.0/resign-*.json; then fail "the resign signed the records' SHA256SUMS"; fi
-pass "the resign signed the canary index's hashes"
-refused "isn't the one signed for 1.1.0" publish --resign
+refused "1.1.0 isn't signed by a key in" sign air1 --resign
 
 fresh early "a promote signed before a pull"
 keyfolder air1 paper1

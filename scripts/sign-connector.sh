@@ -21,7 +21,10 @@
 # before it whatever publish-connector.sh would refuse. A release is signed only when its
 # connector/release_keys is exactly the two keys in ~/.ssh/ovenlight-release-keys/ plus the
 # key signing it, so the keys a release trusts never come from the commit alone. The paper
-# key signs only a release that replaces it, so its .pub has left that folder.
+# key signs only a release that replaces it, so its .pub has left that folder. A promote,
+# pull or resign builds only on what this Air's own keys signed: those two, the ones they
+# replaced, whose .pub files move into the folder's retired/, and the key signing. The
+# records' release_keys are only as safe as ~/Sync.
 #
 # --key signs with a key other than this Air's Touch ID handle, such as the paper backup or
 # another Touch ID key's handle, with its public half beside it as <file>.pub.
@@ -72,6 +75,16 @@ if [ -n "$dry" ]; then mini="$now"; else mini="$(ssh mini date +%s)"; fi
 sign() {
   ssh-keygen -Y sign -q -f "$key" -n "$1" < "$2" > "$2.sig"
   verify "$2" "$2.sig" "$1" "$tmp/signer" || refuse "the signature of $2 doesn't verify with $key.pub"
+}
+
+# This Air's own keys, none from ~/Sync.
+cat /dev/null "$keydir"/*.pub "$keydir"/retired/*.pub "$tmp/signer" > "$tmp/air"
+
+# airsigned <version>: refuses a release whose SHA256SUMS or canary index they didn't sign.
+airsigned() {
+  { verify "$records/$1/SHA256SUMS" "$records/$1/SHA256SUMS.sig" file "$tmp/air" &&
+    verify "$records/$1/canary.json" "$records/$1/canary.json.sig" ovenlight-canary "$tmp/air"; } ||
+    refuse "$1 isn't signed by a key in $keydir or its retired/"
 }
 
 # rulehas <version> [<own release_keys>]: refuses a key the one rule won't accept for it.
@@ -178,6 +191,7 @@ promote)
   abovereleased "$version"
   ordered "$now"
   rulehas "$version"
+  airsigned "$version"
   releaseindex "$version" "$now" > "$tmp/promote-$now.json"
   nodrop "$tmp/promote-$now.json"
   newkeywait "$kblob" "$now"
@@ -196,6 +210,7 @@ pull)
   pullsigned "$tmp/signer" "$newest" "$version"
   verifyrule "$target" "$records/$target/SHA256SUMS" "$records/$target/SHA256SUMS.sig" file
   ordered "$now"
+  airsigned "$target"
   releaseindex "$target" "$now" > "$tmp/pull-$now.json"
   nodrop "$tmp/pull-$now.json"
   echo "pulling $version: latest.json goes back to $target, built on $newest"
@@ -213,6 +228,7 @@ resign)
   done
   newkeywait "$kblob" "$now"
   ordered "$now"
+  airsigned "$live"
   releaseindex "$live" "$now" > "$tmp/resign-$now.json"
   echo "re-signing the live index, $newest, for $live:"
   echo "  $(cat "$tmp/resign-$now.json")"

@@ -484,11 +484,13 @@ A release is built on one Mac from a commit on this repository's master branch, 
 on another. Touch ID approves a signature but doesn't show what is signed, so the signing
 script prints the commit, the index and the checksums first. It signs only a commit whose
 `connector/release_keys` lists exactly the keys that Mac keeps, so the keys a release
-trusts never come from the commit alone. Even so, a signature vouches for what is on master
-and for the Mac that built it, and no more. Whoever can sign a release, or get code onto
-master and through that Mac, can run code on your computer within a day (an index that
-raises `secure` skips the two-day wait), as you, beside your Tailscale API credential, and
-on Windows with administrator rights. `ovenlight update off` opts out.
+trusts never come from the commit alone. It re-signs only what its own keys signed, so the
+files it shares with the Mac that builds can't change what it signs. Even so, a signature
+vouches for what is on master and for the Mac that built it, and no more. Whoever can sign
+a release, or get code onto master and through that Mac, can run code on your computer
+within a day (an index that raises `secure` skips the two-day wait), as you, beside your
+Tailscale API credential, and on Windows with administrator rights. `ovenlight update off`
+opts out.
 
 When one key is lost, the next release, signed with the other, replaces it. A computer
 that doesn't install that release within four weeks of it coming out, because it was off or
