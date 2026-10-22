@@ -287,10 +287,11 @@ After a lost Air, the paper key signs R:
    signature. Copy key setup's `index.json.release-1.sig` and `index.json.release-2.sig`
    in under the next two free numbers.
 3. The old paper key signs what R needs: its folder, the `--resign` before its canary and
-   its promote. It also signs any pull before R+1 is promoted. For each, type it from
-   paper into a file and `chmod 600` it. Write its public half beside it with
-   `ssh-keygen -y -f <file> > <file>.pub`, which also checks the passphrase. Sign with
-   `--key <file>`, then delete both files.
+   its promote. It also signs any pull before R+1 is promoted. A release needed before R+1
+   can go out is signed with it too and lists the same three keys. For each, make a folder
+   with `mktemp -d`, type the key from paper into a file there and `chmod 600` it. Write
+   its public half beside it with `ssh-keygen -y -f <file> > <file>.pub`, which also checks
+   the passphrase. Sign with `--key <file>`, then delete the folder.
 4. R+1 drops the old paper key and is signed with the new Touch ID key. Its `--resign`
    and promote wait the same four weeks and four days.
 
