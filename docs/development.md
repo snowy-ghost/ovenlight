@@ -186,12 +186,12 @@ That puts its files in `connector/latest/` and its index in `latest.json`, and e
 owner's two-day wait starts. A publish that fails partway is finished by running the same
 command again (a folder's before the next build replaces `build/release`). Until then the
 mini publishes no other promote, pull or resign. To drop a promote cut short that mustn't
-go out, sign a `--resign` on the Air instead. If it names the promote's release, the
-promote went out, so pull it. Otherwise publish the resign, and once the mini refuses
-because `latest.json` isn't the promote, delete the promote's `.published` from its folder
-in `~/Sync/ovenlight/releases/` and publish the resign again, which puts the live release
-back in `connector/latest/`. With nothing promoted before it, promote the next release
-instead. A pull cut short only goes out.
+go out, run `scripts/sign-connector.sh --check` on the Air instead. If it says the
+promote's release is live, the promote went out, so pull it. Otherwise sign and publish a
+`--resign`, and once the mini refuses because `latest.json` isn't the promote, delete the
+promote's `.published` from its folder in `~/Sync/ovenlight/releases/` and publish the
+resign again, which puts the live release back in `connector/latest/`. With nothing
+promoted before it, promote the next release instead. A pull cut short only goes out.
 `--pull`, the same way, takes the live release back out by publishing the index of the
 release before it, signed again. Computers that already took the pulled release keep it,
 since the connector never installs an older one, so the fix is the next release.

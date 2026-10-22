@@ -341,6 +341,12 @@ pull)
 
 resign)
   [ -n "$newest" ] || refuse "no index is published yet"
+  # One signed after the live index on an older one superseded it before it went up.
+  for id in $signed; do
+    if [ "$(serialof "$id")" -gt "$(serialof "$newest")" ] && [ -f "$records/$id.base" ] && [ "$(cat "$records/$id.base")" != "$newest" ]; then
+      refuse "latest.json became $newest after $id superseded it: pull $live or promote the next release, rather than re-sign it"
+    fi
+  done
   for k in $(livekeys); do
     haskey "$kblob" "$k" || refuse "$k doesn't list this key, so computers on that release can't check the index"
   done
