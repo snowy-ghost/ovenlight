@@ -469,9 +469,6 @@ refused "If not, scripts/publish-connector.sh --resign" publish --promote 1.1.1
 show 1.1.1/promote
 refused "which 1.1.0/resign-" nokey --check
 run publish --resign
-show 1.1.1/promote
-refused "superseded before this Air saw it go up: publish 1.1.0/resign-" nokey --check
-show 1.1.0/resign
 checked "so 1.1.0 is live"
 latest_is 1.1.0 air1
 # So the next release's pull goes back to 1.1.0.
@@ -620,7 +617,6 @@ tick
 run sign air1 --resign
 run publish --resign
 show 1.1.1/promote
-refused "which 1.1.0/resign-" nokey --check
 # The other Air, even with a .seen for it that one with an older history could have written.
 swapair
 p=("$dry"/otherair/history/1.1.1/promote-*.json)

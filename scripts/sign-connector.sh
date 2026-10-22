@@ -26,12 +26,12 @@
 # the release's folder in the mini's ~/Sync/ovenlight/releases/, which
 # scripts/publish-connector.sh publishes from. Each run sends the newest index signed again
 # until it's the head, so a send that didn't arrive never leaves the mini an older one to
-# publish. Touch ID shows a prompt and not what it signs,
-# so this prints that first, and refuses before it whatever publish-connector.sh would
-# refuse. A release is signed and promoted only when its connector/release_keys is exactly
-# the two keys in ~/.ssh/ovenlight-release-keys/ plus the key signing it, so the keys a
-# release trusts never come from the commit alone. The paper key signs only a release that
-# replaces it, so its .pub has left that folder.
+# publish. Touch ID shows a prompt and not what it signs, so this prints that first, and
+# refuses before it whatever publish-connector.sh would refuse. A release is signed and
+# promoted only when its connector/release_keys is exactly the two keys in
+# ~/.ssh/ovenlight-release-keys/ plus the key signing it, so the keys a release trusts
+# never come from the commit alone. The paper key signs only a release that replaces it, so
+# its .pub has left that folder.
 #
 # Each run first fetches latest.json, which must be the head of the history, as
 # connector-release-lib.sh names it (1.0.9's unsigned index while nothing is published).
@@ -109,8 +109,6 @@ observe() {
   fi
   [ "$found" = "$newest" ] || [ "$found" = "$top" ] ||
     refuse "latest.json is $found, which $top superseded before this Air saw it go up: publish $top on the mini. Computers that took $found in between keep its release, as after a pull."
-  # A signature is built only on the head the owner was last shown: here only --check and
-  # --import move it.
   if [ "$found" != "$newest" ] && [ "$mode" != check ] && [ "$mode" != import ]; then
     refuse "latest.json went up to $found since this Air last looked: run --check, which marks it seen, before signing anything"
   fi

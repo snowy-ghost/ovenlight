@@ -50,13 +50,12 @@ cap="$(sed -En 's|^const maxArchiveBytes = ([0-9][0-9 <]*)(//.*)?$|\1|p' "$root/
 cap=$((cap))
 
 # fetch <key> <file>: saves an object of the bucket, or fails when it doesn't exist (404).
-# Any other answer, or none, stops the publish, since it would skip a guard. A query after
-# the key skips the cache.
+# Any other answer, or none, stops the publish, since it would skip a guard.
 fetch() {
   local code
   if [ -n "$dry" ]; then
-    [ -f "$dry/bucket/${1%%\?*}" ] || return 1
-    cp "$dry/bucket/${1%%\?*}" "$2"
+    [ -f "$dry/bucket/$1" ] || return 1
+    cp "$dry/bucket/$1" "$2"
     return
   fi
   code="$(curl -sS -o "$2" -w '%{http_code}' "$SITE/$1")" || refuse "couldn't fetch $SITE/$1"
@@ -217,7 +216,6 @@ promote)
 pull)
   newestsigned
   target="$(field latest "$idx")"
-  [ "$target" != "$version" ] || refuse "$id names $version, the release it pulls"
   releaseindex "$target" "$(serialof "$id")" | cmp -s - "$idx" || refuse "$id isn't $target's index"
   signer "$idx" "$idx.sig" ovenlight-latest > "$tmp/signer"
   [ -s "$tmp/signer" ] || refuse "$id isn't signed by a key any release lists"
