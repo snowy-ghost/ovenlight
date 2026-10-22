@@ -61,5 +61,5 @@ Write-Output "removed $task"
 if ($args -contains '--purge') {
   # The log names guests, devices and your login.
   Remove-Item -Recurse -Force $support
-  Write-Output 'deleted node state, config, the stored API credential, guest records, the feedback inbox, policy backups and logs'
+  Write-Output 'deleted node state, config, the stored API credential, guest records, the feedback inbox, policy backups, the updater''s record and settings, and logs'
 }

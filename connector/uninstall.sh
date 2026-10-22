@@ -46,5 +46,5 @@ echo "removed $label"
 if [ "${1:-}" = "--purge" ]; then
   # The logs name guests, devices and your login.
   rm -rf "${data[@]}"
-  echo "deleted node state, config, the stored API credential, guest records, the feedback inbox, policy backups and logs"
+  echo "deleted node state, config, the stored API credential, guest records, the feedback inbox, policy backups, the updater's record and settings, and logs"
 fi
