@@ -654,6 +654,31 @@ func TestUpdaterClockRanAhead(t *testing.T) {
 	}
 }
 
+// A clock that was behind doesn't shorten the wait, which never starts before the index
+// was signed: one set back since the release was first seen (the poll then pulls Seen back
+// to it), or one behind when it was.
+func TestUpdaterClockBehind(t *testing.T) {
+	for name, clock := range map[string][]time.Time{
+		"set back":         {at(0, 9, 0), time.Date(2001, 1, 1, 0, 0, 0, 0, time.Local)},
+		"behind when seen": {at(-4, 9, 0)},
+	} {
+		srv := newReleaseServer(t)
+		srv.publish("1.2.0", "1.1.0", "1.1.0", at(0, 8, 0).Unix())
+		tu := newTestUpdater(t, srv, t.TempDir(), "1.1.5", clock[0], false)
+		tu.st.Minute = 10 * 60 // its night starts at 02:00
+		tu.pollAt(clock[0])
+		for _, c := range clock[1:] {
+			tu.sleepUntil(c)
+		}
+		tu.sleepUntil(at(0, 9, 30)) // put right
+		tu.busyAt(at(0, 9, 45))
+		tu.busyAt(at(0, 9, 46))
+		if u := readUpdateView(tu.d.stateDir, "1.1.5", true); len(tu.swaps) != 0 || !u.InstallAfter.Equal(at(3, 2, 0)) || !u.InstallBy.Equal(at(4, 2, 0)) {
+			t.Errorf("%s: %d swaps, %+v", name, len(tu.swaps), u)
+		}
+	}
+}
+
 // An update.json that can't be read is kept aside, and the updater starts afresh.
 func TestUpdaterUnreadableRecord(t *testing.T) {
 	dir := t.TempDir()

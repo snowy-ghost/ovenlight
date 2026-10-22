@@ -453,8 +453,14 @@ func planUpdate(st *updateState, v string) updatePlan {
 	}
 	cur, ok := semver(v)
 	p := updatePlan{idx: idx, night: nightOf(st.Minute), security: ok && less(cur, idx.secure)}
+	// The wait never starts before the index was signed, so a clock that was behind when
+	// this computer first saw it, or set back since, can't shorten it once it's put right.
+	seen := st.Seen
+	if signed := time.Unix(idx.Serial, 0); seen.Before(signed) {
+		seen = signed
+	}
 	var due time.Time
-	if p.target, due, p.script = updateTarget(v, idx, st.Seen); p.target == "" {
+	if p.target, due, p.script = updateTarget(v, idx, seen); p.target == "" {
 		return p
 	}
 	p.after, p.by = due, nextAt(due.Add(updateDay), p.night)
