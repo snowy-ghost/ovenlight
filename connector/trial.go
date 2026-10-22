@@ -384,8 +384,7 @@ func (t *trial) giveUp() bool {
 	return true
 }
 
-// failure is why the trial fails at its deadline, or nil when it passes. An app
-// unpublished since the swap needn't serve.
+// failure is why the trial fails at its deadline, or nil when it passes.
 func (t *trial) failure(d *daemon) error {
 	if d == nil {
 		return fmt.Errorf("%s didn't finish starting within its trial", t.rec.To)
@@ -393,15 +392,13 @@ func (t *trial) failure(d *daemon) error {
 	if d.upd == nil {
 		return fmt.Errorf("%s's updater didn't start", t.rec.To)
 	}
-	cfg, found, err := loadConfigFile(d.configPath)
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	var missing []string
 	for _, slug := range t.rec.Apps {
-		if _, ok := cfg.Find(slug); t.served[slug] || (err == nil && found && !ok) {
-			continue
+		if !t.served[slug] {
+			missing = append(missing, slug)
 		}
-		missing = append(missing, slug)
 	}
 	if len(missing) > 0 {
 		return fmt.Errorf("%s didn't serve again with its node logged in within %s's trial", strings.Join(missing, ", "), t.rec.To)
