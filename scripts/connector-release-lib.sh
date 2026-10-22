@@ -158,7 +158,7 @@ keptbelow() {
 # abovereleased <version>: refuses a version at or below one promoted or pulled.
 abovereleased() {
   local v
-  for v in $promoted; do
+  for v in $promoted $pulled; do
     if atleast "$1" "$v"; then refuse "$v was promoted already: a release goes out under a newer version"; fi
   done
 }

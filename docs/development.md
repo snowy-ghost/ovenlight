@@ -199,12 +199,12 @@ the next release. `--resign` publishes the live index signed again, to supersede
 promote that mustn't ship. Before signing anything the Air fetches `latest.json`, which
 must be the last index it saw go up or the newest it signed, and after signing an index
 for `latest.json` it waits until `latest.json` is that index, which Ctrl-C leaves to the
-next run or `--check`. Its refusals say what to do, as when a pull
-signed and not yet published blocks a promote or resign. Each script's header says what it
-checks, and `scripts/test-connector-release.sh` dry-runs them all. Each release restarts
-every owner's connector, and one promoted within two days of the last restarts every
-owner's wait, so batch what isn't urgent. A `--resign` restarts the wait too, for
-computers that haven't taken the live release.
+next run or `--check`. Its refusals say what to do, as when a pull signed and not yet
+published blocks a promote or resign. Each script's header says what it checks, and
+`scripts/test-connector-release.sh` dry-runs them all. Each release restarts every owner's
+connector, and one promoted within two days of the last restarts every owner's wait, so
+batch what isn't urgent. A `--resign` restarts the wait too, for computers that haven't
+taken the live release.
 
 Uploads go to the R2 bucket behind `https://downloads.ovenlight.app`, through `wrangler`
 (signed in with `npx wrangler@4.147.0 login`, or `CLOUDFLARE_API_TOKEN` and
