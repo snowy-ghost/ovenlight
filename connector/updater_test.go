@@ -981,3 +981,20 @@ func TestUpdateLines(t *testing.T) {
 		t.Error("a development build")
 	}
 }
+
+// Once a release's first night has passed busy, status names the next night.
+func TestInstallsAfterTheFirstNight(t *testing.T) {
+	if updateHour != time.Hour {
+		t.Skip("a compressed schedule")
+	}
+	u := &updateView{Pending: "1.2.0", InstallAfter: at(0, 3, 0), InstallBy: at(2, 2, 0), night: nightStart} // due at 03:00, in its night
+	for now, want := range map[time.Time]string{
+		at(0, 4, 0): "at a quiet moment from " + when(at(0, 3, 0)) + ",",
+		at(0, 9, 0): "at a quiet moment from " + when(at(1, 2, 0)) + ",",
+		at(1, 9, 0): "at " + when(at(2, 2, 0)) + ", busy or not",
+	} {
+		if got := u.installs(now); !strings.Contains(got, want) {
+			t.Errorf("at %v: %s", now, got)
+		}
+	}
+}

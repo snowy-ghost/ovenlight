@@ -530,7 +530,8 @@ type updateView struct {
 	// BelowSecure is set when the running release has a security problem: it's below Secure.
 	BelowSecure bool `json:"belowSecure,omitempty"`
 
-	since time.Time // when the updater first ran here
+	since time.Time     // when the updater first ran here
+	night time.Duration // when this computer's night starts (nightOf)
 }
 
 // when is a time as status and doctor show it.
@@ -541,10 +542,14 @@ func (u *updateView) installs(now time.Time) string {
 	if !now.Before(u.InstallBy) {
 		return "installs on its own as soon as it can"
 	}
-	if !u.InstallAfter.Before(u.InstallBy) {
+	after := u.InstallAfter
+	if p := (updatePlan{night: u.night}); !u.BelowSecure && now.After(after) && !p.inNight(now) {
+		after = nextAt(now, u.night) // its first night has passed
+	}
+	if !after.Before(u.InstallBy) {
 		return "installs on its own at " + when(u.InstallBy) + ", busy or not"
 	}
-	return fmt.Sprintf("installs on its own at a quiet moment from %s, and by %s even if busy", when(u.InstallAfter), when(u.InstallBy))
+	return fmt.Sprintf("installs on its own at a quiet moment from %s, and by %s even if busy", when(after), when(u.InstallBy))
 }
 
 // daemonUpdate is readUpdateView for the connector that sent reply, and its version: with
@@ -566,7 +571,7 @@ func readUpdateView(stateDir, v string, self bool) *updateView {
 		u.CheckError = err.Error()
 		return u
 	}
-	u.LastCheck, u.CheckError, u.LastUpdate, u.since = st.Checked, st.CheckError, st.Updated, st.Since
+	u.LastCheck, u.CheckError, u.LastUpdate, u.since, u.night = st.Checked, st.CheckError, st.Updated, st.Since, nightOf(st.Minute)
 	p := planUpdate(st, v)
 	if p.idx == nil {
 		return u
