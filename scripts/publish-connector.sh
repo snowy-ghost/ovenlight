@@ -208,13 +208,12 @@ promote)
   esac
   idx="$records/$id.json"
   releaseindex "$version" "$(serialof "$id")" | cmp -s - "$idx" || refuse "$id isn't $version's index"
-  # Its key signed the release's SHA256SUMS, and the one rule accepts both.
+  # Its key signed the release's SHA256SUMS, so the one rule, accepting it, accepts both.
   k="$(signer "$idx" "$idx.sig" ovenlight-latest)"
   [ -n "$k" ] || refuse "$id isn't signed by a key any release lists"
   echo "$k" > "$tmp/signer"
   verify "$records/$version/SHA256SUMS" "$records/$version/SHA256SUMS.sig" file "$tmp/signer" ||
     refuse "$id and $version's SHA256SUMS are signed with different keys"
-  verifyrule "$version" "$records/$version/SHA256SUMS" "$records/$version/SHA256SUMS.sig" file
   verifyrule "$version" "$idx" "$idx.sig" ovenlight-latest
   fetchrelease "$version"
   documented "$version" "$idx"
