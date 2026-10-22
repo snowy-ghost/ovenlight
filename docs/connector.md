@@ -216,19 +216,19 @@ that's only stopped starts again within a minute.
 The connector updates itself. Releases up to 1.0.9 don't: install a newer release [by
 hand](#install-a-release-by-hand) once, and from then on it does. It checks once a day,
 and installs a new release two days after it first sees it, at a quiet moment in the
-night: once nothing has used your apps or the connector for 10 minutes. Each computer's night
-starts at a time of its own between 02:00 and 04:00, and ends at 05:00, its own time. A
-release that fixes a security problem in yours goes in at the first quiet 10 minutes, day
-or night. On a computer that's never quiet, or asleep every night, it goes in at the start
-of the next night anyway, and any other update at the start of the first night a day after
-it was due. Either waits until the connector has been running and awake for 10 minutes.
-Installing restarts the connector, so the apps it runs stop and open connections drop for
-a few seconds (about 10 on Linux, up to a minute on Windows). If the new release doesn't
-serve your apps again within 10 minutes, the connector goes back to the one before, and
-tries again at the start of the next night, busy or not. A restart of your computer in
-those 10 minutes starts them again. On Windows, the Stop or Restart command above in that
-time makes it go back too, as does shutting down or signing out of a work, school or
-domain account.
+night: once nothing has used your apps or the connector for 10 minutes. Each computer's
+night starts at a time of its own between 02:00 and 04:00, and ends at 05:00, its own
+time. A release that fixes a security problem in yours goes in at the first quiet 10
+minutes, day or night. On a computer that's never quiet, or asleep every night, it goes in
+at the start of the next night anyway, and any other update at the start of the first
+night a day after it was due. Either waits until the connector has been running and awake
+for 10 minutes. Installing restarts the connector, so the apps it runs stop and open
+connections drop for a few seconds (about 10 on Linux, up to a minute on Windows). If the
+new release doesn't serve your apps again within 10 minutes, the connector goes back to
+the one before, and tries again at the start of the next night, busy or not. A restart of
+your computer in those 10 minutes starts them again. On Windows, the Stop or Restart
+command above in that time makes it go back too, as does shutting down or signing out of a
+work, school or domain account.
 
 `ovenlight status` shows the last check, a release waiting its turn and when it installs,
 the last update, one that failed, and whether yours has a known security problem.
