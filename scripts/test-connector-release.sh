@@ -249,7 +249,7 @@ build 1.1.1 1.0.6
 refused "1.1.1 was promoted already" sign air1 1.1.1
 tick
 refused "nothing promoted before 1.1.0" sign air1 --pull 1.1.0
-refused "with no leading zeros or suffix, not 1.01.0" release 1.01.0 1.0.6
+refused "with no leading zeros or suffix, not 1.01.0" release 1.01.0 1.0.6 1.1.0
 refused "with no leading zeros or suffix, not 01.1.0" publish --promote 01.1.0
 
 fresh canary "a failed canary before U's promote"
