@@ -97,14 +97,16 @@ airsigned() {
     refuse "$1 isn't signed by a key in $keydir or its retired list"
 }
 
-# vouched: refuses records with a published index these keys didn't sign, whose newest
-# published index isn't the last one this Air signed or isn't latest.json, or whose others
-# aren't the ones it built that one on.
+# vouched: refuses records with a published index these keys didn't sign or kept under
+# another serial than its own, whose newest published index isn't the last one this Air
+# signed or isn't latest.json, or whose others aren't the ones it built that one on.
 vouched() {
   local id
   for id in $published; do
     verify "$records/$id.json" "$records/$id.json.sig" ovenlight-latest "$tmp/air" ||
       refuse "$id isn't signed by a key in $keydir or its retired list"
+    [ "$(field serial "$records/$id.json")" = "$(serialof "$id")" ] ||
+      refuse "$id.json is signed with serial $(field serial "$records/$id.json"), not $(serialof "$id")"
   done
   # A new Air has no last.json, and a restored one deletes its own.
   if [ -n "$newest" ] && ! cmp -s "$records/$newest.json" "$keydir/last.json"; then

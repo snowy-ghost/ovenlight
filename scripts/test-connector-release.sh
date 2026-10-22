@@ -6,7 +6,7 @@
 # a scratch repo holding this tree's release scripts, committed whenever a release's keys
 # change. Every release is built (with stand-in binaries), signed with the fixture keys in
 # scripts/testdata/release-keys, and published before the next is built. The four weeks a
-# new key waits pass by backdating the scratch records.
+# new key waits pass on a clock of the scenario's own.
 #
 #   scripts/test-connector-release.sh
 #
@@ -20,6 +20,14 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 fixtures="$root/scripts/testdata/release-keys"
 tmp="$(mktemp -d)"
 trap 'rm -r "$tmp"' EXIT
+# Every date +%s reads the scenario's clock, which later sets ahead of the real one.
+mkdir "$tmp/bin"
+cat > "$tmp/bin/date" <<'EOF'
+#!/bin/sh
+if [ "$1" = +%s ]; then echo $(($(/bin/date +%s) + ${ahead:-0})); else exec /bin/date "$@"; fi
+EOF
+chmod +x "$tmp/bin/date"
+export PATH="$tmp/bin:$PATH"
 checks=0
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
@@ -34,7 +42,7 @@ fresh() {
   repo="$dry/repo"
   mkdir -p "$dry"/{build,sync/releases,keys,private,bucket/connector/latest,headers/connector/latest} "$repo"
   touch "$dry/.release-dry-run"
-  export OVENLIGHT_RELEASE_DRY="$dry"
+  export OVENLIGHT_RELEASE_DRY="$dry" ahead=0
   echo '{"latest": "1.0.9", "secure": "1.0.6"}' > "$dry/bucket/connector/latest.json"
   echo "1.0.9's" > "$dry/bucket/connector/latest/SHA256SUMS"
   printf 'Content-Type: application/json\nCache-Control: public, max-age=300\n' > "$dry/headers/connector/latest.json"
@@ -211,13 +219,8 @@ untouched() {
   [ "$(cat "$dry/bucket/connector/latest/SHA256SUMS")" = "1.0.9's" ] || fail "latest/ changed"
   pass "latest.json and latest/ are still 1.0.9's"
 }
-# backdate <days>: every promote published that many days earlier.
-backdate() {
-  local f
-  for f in "$dry"/sync/releases/*/promote-*.live; do
-    echo $(($(cat "$f") - $1 * 86400)) > "$f"
-  done
-}
+# later <days>: the scenario's clock moves that many days on.
+later() { ahead=$((ahead + $1 * 86400)); }
 
 fresh phase7 "the updater release U and U+1, over 1.0.9's latest.json, then U+1 pulled back to U"
 keyfolder air1 paper1
@@ -414,7 +417,7 @@ refused "four weeks and four days" sign paper2 --resign
 # lost Air, without waiting.
 ship 1.1.2 1.0.6 air1
 pull 1.1.2 paper2 1.1.1
-backdate 33
+later 33
 ship 1.1.4 1.0.6 air1
 # The Air is lost, and the new paper key signs what the next R needs at once, with paper1
 # standing in for the paper key after it.
@@ -467,13 +470,30 @@ build 1.1.3 1.0.6
 signfolder 1.1.3 air2
 tick
 refused "four weeks and four days" sign air2 --promote 1.1.3
+# An agent holding ~/Sync sets back when latest.json began naming 1.1.1, so the wait would
+# seem over, or copies 1.1.1's promote over 1.1.0's, so no published index would name a
+# release without the new key.
+for f in "$dry"/sync/releases/1.1.1/promote-*.live; do
+  cp "$f" "$dry/live"
+  echo $(($(cat "$f") - 33 * 86400)) > "$f"
+done
+refused "four weeks and four days" sign air2 --promote 1.1.3
+for f in "$dry"/sync/releases/1.1.1/promote-*.live; do cp "$dry/live" "$f"; done
+mkdir "$dry/hidden"
+for f in "$dry"/sync/releases/1.1.0/promote-*.json; do
+  mv "$f" "$f.sig" "$dry/hidden/"
+  cp "$dry"/sync/releases/1.1.1/promote-*.json "$f"
+  cp "$dry"/sync/releases/1.1.1/promote-*.json.sig "$f.sig"
+done
+refused "is signed with serial" sign air2 --promote 1.1.3
+mv "$dry"/hidden/* "$dry/sync/releases/1.1.0/"
 tick
 refused "four weeks and four days" sign air2 --resign
 forge 1.1.3 promote air2 1.1.3
 refused "four weeks and four days" publish --promote 1.1.3
 forge 1.1.1 resign air2 1.1.1
 refused "four weeks and four days" publish --resign
-backdate 33
+later 33
 # The live index re-signed with the new key before the canary, once master's
 # docs/allowed_signers, which owners check latest.json with, lists that key. Then the promote
 # and a pull.
@@ -515,7 +535,7 @@ ship 1.1.0 1.0.6 air1 1.1.0
 keyfolder air2 paper1
 keys air2 paper1 air1
 ship 1.1.1 1.0.6 air1
-backdate 33
+later 33
 keys air2 paper1
 build 1.1.2 1.0.6
 signfolder 1.1.2 air2
@@ -617,7 +637,7 @@ ship 1.1.0 1.0.6 air1 1.1.0
 keyfolder air2 paper1
 keys air2 paper1 air1
 ship 1.1.1 1.0.6 air1
-backdate 33
+later 33
 pull 1.1.1 air1 1.1.0
 ship 1.1.2 1.0.6 air1
 tick

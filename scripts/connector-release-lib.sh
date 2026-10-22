@@ -262,11 +262,15 @@ WAIT=$((32 * 86400))
 # one. A pull back to one that doesn't list it starts the wait again, and a promote signed
 # by another key doesn't.
 newkeywait() {
-  local id v old='' from=''
+  local id v s old='' from=''
   for id in $published; do
     v="$(field latest "$records/$id.json")"
     if ! haskey "$1" "$records/$v/release_keys"; then old="$v" from=
-    elif [ -z "$from" ] && [ -f "$records/$id.live" ]; then from="$(cat "$records/$id.live")"; fi
+    elif [ -z "$from" ] && [ -f "$records/$id.live" ]; then
+      # Never before the index was signed, which its signature says.
+      from="$(cat "$records/$id.live")" s="$(field serial "$records/$id.json")"
+      [ "$from" -ge "$s" ] || from="$s"
+    fi
   done
   if [ -z "$old" ]; then return 0; fi
   from="${from:-$2}"
