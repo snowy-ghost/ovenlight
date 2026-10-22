@@ -1,9 +1,8 @@
 #!/bin/zsh
-# Phase 0 of the connector auto-update plan, on the Air, in Terminal (not over ssh):
-# makes the paper backup key, prints it twice, checks a typed-back copy, files both
-# public keys, and signs a test index with each key. Only public keys and signatures
-# leave this script; the backup's private key exists only in a temporary folder that's
-# deleted at the end, and on paper.
+# Key setup, on the Air, in Terminal (not over ssh): makes the paper backup key, prints it
+# twice, checks a typed-back copy, files both public keys, and signs a test index with each
+# key. Only public keys and signatures leave this script; the backup's private key exists
+# only in a temporary folder that's deleted at the end, and on paper.
 set -euo pipefail
 
 touchid=~/.ssh/id_ecdsa_sk_rk_ovenlight-release
@@ -11,9 +10,6 @@ keys=~/.ssh/ovenlight-release-keys
 out=~/Sync/ovenlight/release-key-test
 [[ -f $touchid && -f $touchid.pub ]] || { echo "No Touch ID key handle at $touchid"; exit 1; }
 [[ -e $keys/backup.pub ]] && { echo "$keys/backup.pub already exists; stopping so nothing is replaced"; exit 1; }
-if [[ -e $keys/touchid.pub ]] && ! cmp -s "$keys/touchid.pub" "$touchid.pub"; then
-  echo "$keys/touchid.pub isn't this Air's key: append it to $keys/retired first"; exit 1
-fi
 
 work=$(mktemp -d)
 job=
@@ -36,9 +32,11 @@ pub=$(<"$work/backup.pub")
   echo "Fingerprint: $(ssh-keygen -lf "$work/backup.pub")"
   echo "This Air's Touch ID key, to check a lost Air's key against the records:"
   echo "  $(ssh-keygen -lf "$touchid.pub")"
-  if [[ -s $keys/retired ]]; then
-    echo "Keys that signed earlier releases:"
-    ssh-keygen -lf "$keys/retired" | sed 's/^/  /'
+  # The keys earlier releases list, from this Air's history, but this Air's own.
+  cat /dev/null $keys/history/*/release_keys(N) | awk -v t="$(cut -d' ' -f2 "$touchid.pub")" 'NF >= 2 && $2 != t && !seen[$2]++' > "$work/earlier"
+  if [[ -s $work/earlier ]]; then
+    echo "Keys earlier releases list:"
+    ssh-keygen -lf "$work/earlier" | sed 's/^/  /'
   fi
   echo "Public key:"
   print -r -- "$pub" | fold -w 72
