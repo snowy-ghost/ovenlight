@@ -17,6 +17,9 @@
 #       release above it
 #   scripts/sign-connector.sh --check
 #       checks latest.json, as each of the others does first
+#   scripts/sign-connector.sh --import <keys>
+#       after a lost Air, rebuilds its history from what those keys signed in the mini's
+#       records
 #
 # Each index gets the time now as its serial. What it signs goes in this Air's history,
 # ~/.ssh/ovenlight-release-keys/history/, the only record it reads, and is copied to the
@@ -40,12 +43,13 @@ set -euo pipefail
 
 HANDLE="$HOME/.ssh/id_ecdsa_sk_rk_ovenlight-release"
 
-usage="usage: sign-connector.sh [--key <file>] [--promote | --pull] <version>, [--key <file>] --resign or --check"
+usage="usage: sign-connector.sh [--key <file>] [--promote | --pull] <version>, [--key <file>] --resign, --check or --import <keys>"
 mode=release
 key=
 while [[ "${1:-}" == --* ]]; do
   case "$1" in
   --key) key="${2:?$usage}"; shift ;;
+  --import) mode=import importkeys="${2:?$usage}"; shift ;;
   --promote | --pull | --resign | --check) mode="${1#--}" ;;
   *) echo "unknown option $1" >&2; exit 1 ;;
   esac
@@ -80,7 +84,7 @@ observe() {
   for id in $signed; do
     if cmp -s "$tmp/live.json" "$records/$id.json"; then found="$id"; fi
   done
-  [ -n "$found" ] || refuse "latest.json isn't an index in $records. After a planned move, copy the other Air's history in first."
+  [ -n "$found" ] || refuse "latest.json isn't an index in $records. After a planned move, copy the other Air's history in first. After a lost Air, run --import."
   if [ -n "$newest" ] && [ "$(serialof "$found")" -lt "$(serialof "$newest")" ]; then
     refuse "latest.json is $found, older than $newest, which it has been: publish $newest again on the mini"
   fi
@@ -93,8 +97,73 @@ observe() {
   echo "latest.json is $newest, so $live is live"
 }
 
+# import: rebuilds the history from the mini's records: each release whose SHA256SUMS and
+# canary index the keys signed, with connector/release_keys at its commit on master, and each
+# index they signed that fits its name. Every pull, and every index the records mark
+# published, counts as seen. Then latest.json must be in it.
+import() {
+  local h="$tmp/history" d v c id f s t
+  [ ! -e "$records" ] || refuse "$records exists: --import rebuilds it only on a replacement Air"
+  trusted "$importkeys"
+  [ -n "$dry" ] || git -C "$root" fetch -q origin master
+  # This Air's keys made since the loss, which no release before it lists.
+  { cat /dev/null "$keydir"/*.pub; [ -n "$dry" ] || cat "$HANDLE.pub"; } |
+    awk 'NR == FNR { old[$2] = 1; next } NF >= 2 && !old[$2]' "$importkeys" - > "$tmp/new"
+  for d in "$sync"/*; do
+    v="${d##*/}"
+    canonical "$v" || continue
+    if ! { verify "$d/SHA256SUMS" "$d/SHA256SUMS.sig" file "$importkeys" &&
+      verify "$d/canary.json" "$d/canary.json.sig" ovenlight-canary "$importkeys" &&
+      [ "$(field latest "$d/canary.json")" = "$v" ]; }; then
+      echo "skipped $v: not signed by those keys"
+      continue
+    fi
+    read -r c _ < "$d/commit"
+    git -C "$root" merge-base --is-ancestor "$c" "$master" || refuse "$v was built from $c, which isn't on $master"
+    mkdir -p "$h/$v"
+    git -C "$root" show "$c:connector/release_keys" > "$h/$v/release_keys"
+    while read -r _ f _; do
+      if haskey "$f" "$h/$v/release_keys"; then refuse "connector/release_keys at $c, $v's commit, lists one of this Air's new keys"; fi
+    done < "$tmp/new"
+    echo "$c" > "$h/$v/commit"
+    cp "$d"/{SHA256SUMS,SHA256SUMS.sig,index.json,canary.json,canary.json.sig} "$h/$v/"
+    for f in "$d"/promote-*.json "$d"/pull-*.json "$d"/resign-*.json; do
+      id="${f%.json}"
+      s="$(serialof "$id")"
+      if ! { verify "$f" "$f.sig" ovenlight-latest "$importkeys" && [ "$(field serial "$f")" = "$s" ] &&
+        case "$id" in */pull-*) below "$(field latest "$f")" "$v" ;; *) [ "$(field latest "$f")" = "$v" ] ;; esac; }; then
+        echo "skipped $v/${id##*/}: not signed by those keys for $v"
+        continue
+      fi
+      cp "$f" "$f.sig" "$h/$v/"
+      if [ -f "$id.base" ]; then cp "$id.base" "$h/$v/"; fi
+      case "$id" in */pull-*) ;; *) [ -f "$id.published" ] || continue ;; esac
+      # When latest.json began naming it, never before it was signed.
+      t="$(cat "$id.live" 2> /dev/null || true)"
+      [[ "$t" =~ ^[0-9]+$ ]] && [ "$t" -ge "$s" ] || t="$s"
+      echo "$t" > "$h/$v/${id##*/}.seen"
+    done
+  done
+  records="$h"
+  readrecords
+  echo "the history, from $sync:"
+  for id in $signed; do
+    if [ -f "$h/$id.seen" ]; then s=published; else s="never published"; fi
+    echo "  $id, naming $(field latest "$h/$id.json"), $s"
+  done
+  echo "  promoted: ${promoted//$'\n'/ }"
+  echo "  pulled: ${pulled//$'\n'/ }"
+  [ -z "$newest" ] || [ "$(field latest "$h/$newest.json")" = "$live" ] ||
+    refuse "the newest index published, $newest, names $(field latest "$h/$newest.json"), not $live, which the others make live: find out who changed the records"
+  observe
+  mkdir -p "$keydir"
+  mv "$h" "$keydir/history"
+  echo "imported: check that list against the releases you published before signing anything"
+}
+
 case "$mode" in
 check) observe; exit ;;
+import) import; exit ;;
 esac
 
 if [ -z "$key" ]; then
