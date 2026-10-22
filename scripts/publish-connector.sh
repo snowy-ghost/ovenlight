@@ -12,9 +12,9 @@
 #   scripts/publish-connector.sh --resign              the live index, signed again
 #
 # Signatures are checked by the one rule (connector-release-lib.sh). The folder goes up
-# alone, once its connector-v<version> tag is the commit it was built from: nothing points
-# at it until its promote. A promote, pull or resign records itself in
-# ~/Sync/ovenlight/releases/ before it uploads anything, so one that fails partway is
+# alone, once its connector-v<version> tag is the commit it was built from, here and on
+# origin: nothing points at it until its promote. A promote, pull or resign records itself
+# in ~/Sync/ovenlight/releases/ before it uploads anything, so one that fails partway is
 # finished by running it again, and it goes up only when its serial is the highest signed
 # so far. latest/ and latest.json are uploaded fresh, never copied with a version's year-long
 # cache. Uploads go through wrangler, signed in with `npx wrangler@4.147.0 login` or
@@ -177,8 +177,10 @@ folder)
   [ -f SHA256SUMS ] || refuse "no SHA256SUMS in build/release: build $version"
   sig="$records/$version/SHA256SUMS.sig"
   [ -f "$sig" ] || refuse "no $sig: sign $version on the Air"
-  # Owners check a release with the allowed_signers at its tag.
+  # Owners check a release with the allowed_signers at its tag, on origin.
   built="$(cat "$records/$version/commit")"
+  [ -n "$dry" ] || git -C "$root" fetch -q origin tag "connector-v$version" ||
+    refuse "connector-v$version isn't pushed to origin as it is here: push it"
   [ "$(git -C "$root" rev-parse -q --verify "connector-v$version^{commit}")" = "$built" ] ||
     refuse "connector-v$version isn't tagged on $built, the commit $version was built from: tag it"
   # The release is what the signed SHA256SUMS lists, with or without Windows.

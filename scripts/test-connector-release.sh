@@ -238,6 +238,20 @@ commit "after 1.1.0"
 git -C "$repo" tag -m "Connector 1.1.0" connector-v1.1.0
 refused "the commit 1.1.0 was built from" publish 1.1.0
 git -C "$repo" tag -f -m "Connector 1.1.0" connector-v1.1.0 HEAD~1 > /dev/null
+# Outside a dry run, the tag must be on origin as it is here, with defaults that point into
+# the scratch folder all the same. Past that check, a fixture key stops it before anything
+# is fetched or uploaded.
+mkdir -p "$dry/home/Sync/ovenlight" "$repo/build"
+ln -s "$dry/sync/releases" "$dry/home/Sync/ovenlight/releases"
+ln -s "$dry/build" "$repo/build/release"
+realpublish() { env -u OVENLIGHT_RELEASE_DRY HOME="$dry/home" "$repo/scripts/publish-connector.sh" "$@"; }
+refused "connector-v1.1.0 isn't pushed to origin as it is here" realpublish 1.1.0
+git init -q --bare "$dry/origin.git"
+git -C "$repo" remote add origin "$dry/origin.git"
+git -C "$repo" push -q origin HEAD:refs/tags/connector-v1.1.0
+refused "connector-v1.1.0 isn't pushed to origin as it is here" realpublish 1.1.0
+git -C "$repo" push -q -f origin connector-v1.1.0
+refused "is a dry-run fixture key" realpublish 1.1.0
 run publish 1.1.0
 folder_is 1.1.0
 refused "no index matching 1.1.0/promote-*" publish --promote 1.1.0
