@@ -12,8 +12,7 @@ import (
 // the release key in the Air's Secure Enclave, behind Touch ID, and the backup key kept
 // on paper. They're the only thing an update trusts, never TLS or the download host.
 // docs/allowed_signers lists the same keys, which a test checks, since go:embed can't
-// reach docs/. Until the real keys are made, two mock keys from testdata/releasekey
-// stand in for them, and docs/development.md's first updater release swaps them.
+// reach docs/.
 //
 //go:embed release_keys
 var releaseKeysFile string
