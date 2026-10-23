@@ -593,21 +593,29 @@ func updateFinding(u *updateView, v string, running bool, now time.Time) *Check 
 		warn(msg, "Check that this computer reaches downloads.ovenlight.app: its network connection, and any firewall or proxy. "+
 			"If it does, install the latest release with the verified steps in "+installDocs)
 	}
+	// Failed checks warn only after 7 days, but say so before.
+	failedCheck := ""
+	if u.CheckError != "" {
+		failedCheck = "; the last check failed: " + u.CheckError
+	}
 	switch {
 	case u.BelowSecure:
 		c := &Check{ID: "update", Status: statusFail, Message: fmt.Sprintf("the connector, %s, has a security problem fixed in %s", v, u.Secure)}
 		if stuck != nil {
 			c.Message += "; " + stuck.Message
 			c.Fix, c.Actor = stuck.Fix, actorPerson
-		} else if u.Pending != "" && running {
-			c.Fix = "Nothing to do: " + u.Pending + " " + u.installs(now)
+		} else {
+			c.Message += failedCheck
+			if u.Pending != "" && running {
+				c.Fix = "Nothing to do: " + u.Pending + " " + u.installs(now)
+			}
 		}
 		return c
 	case stuck != nil:
 		return stuck
 	}
 	cur, _ := semver(v)
-	latest, ok := semver(u.Latest)
+	latest, _ := semver(u.Latest)
 	var msg string
 	switch {
 	case u.Pending != "":
@@ -617,17 +625,13 @@ func updateFinding(u *updateView, v string, running bool, now time.Time) *Check 
 		}
 	case u.Latest == "":
 		msg = "no update check has worked yet"
-	case ok && less(latest, cur):
+	case less(latest, cur):
 		// A pulled release: the index went back to the one before it.
 		msg = fmt.Sprintf("%s is newer than the latest release, %s, and stays until the next one (checked %s)", v, u.Latest, when(u.LastCheck))
 	default:
 		msg = fmt.Sprintf("%s is up to date (checked %s)", v, when(u.LastCheck))
 	}
-	// Failed checks warn only after 7 days, but say so before.
-	if u.CheckError != "" {
-		msg += "; the last check failed: " + u.CheckError
-	}
-	return &Check{ID: "update", Status: statusOK, Message: msg}
+	return &Check{ID: "update", Status: statusOK, Message: msg + failedCheck}
 }
 
 // heldByOther is portHeldCheck for check and doctor, for an app the connector runs: with

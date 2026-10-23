@@ -563,23 +563,29 @@ func TestUpdaterFetchBeforeTheSwap(t *testing.T) {
 	}
 }
 
-// A computer that wakes before its network does, as its release comes due, doesn't spend
-// the night's try on a download: that waits for the check's retry too.
-func TestUpdaterDownloadWaitsForAFailedCheck(t *testing.T) {
-	srv := newReleaseServer(t)
-	srv.publish("1.2.0", "1.1.0", "1.1.0", 100)
-	tu := newTestUpdater(t, srv, t.TempDir(), "1.1.5", at(0, 9, 0), false)
-	tu.st.Minute = 10 * 60 // its night starts at 02:00
-	tu.pollAt(at(0, 9, 0))
-	srv.setDown(true)
-	tu.pollAt(at(2, 9, 0))
-	if tu.st.CheckError == "" || tu.st.Failed != nil || tu.ready != "" {
-		t.Fatalf("a download after a failed check: %+v", tu.st)
-	}
-	srv.setDown(false)
-	tu.pollAt(tu.st.NextCheck)
-	if tu.ready != "1.2.0" || tu.st.Failed != nil {
-		t.Errorf("no download at the check's retry: %+v", tu.st)
+// A computer that starts or wakes before its network does, after its release came due,
+// doesn't spend the night's try on a download: that follows a check that worked, whether
+// a check was due then (as the release came due) or not (a start the next morning).
+func TestUpdaterDownloadFollowsACheck(t *testing.T) {
+	for name, checkDue := range map[string]bool{"a check due": true, "no check due": false} {
+		srv := newReleaseServer(t)
+		srv.publish("1.2.0", "1.1.0", "1.1.0", 100)
+		tu := newTestUpdater(t, srv, t.TempDir(), "1.1.5", at(0, 9, 0), false)
+		tu.st.Minute = 10 * 60 // its night starts at 02:00
+		tu.pollAt(at(0, 9, 0))
+		if !checkDue {
+			tu.st.NextCheck = at(3, 10, 0)
+		}
+		srv.setDown(true)
+		tu.pollAt(at(2, 9, 0))
+		if tu.st.CheckError == "" || tu.st.Failed != nil || tu.ready != "" {
+			t.Fatalf("%s: a download without a check that worked: %+v", name, tu.st)
+		}
+		srv.setDown(false)
+		tu.pollAt(tu.st.NextCheck)
+		if tu.ready != "1.2.0" || tu.st.Failed != nil {
+			t.Errorf("%s: no download at the check's retry: %+v", name, tu.st)
+		}
 	}
 }
 
@@ -913,6 +919,8 @@ func TestUpdateFinding(t *testing.T) {
 		{"after a failure", view(func(u *updateView) { pending(u); u.InstallAfter = u.InstallBy }), "1.1.5", true, statusOK, "installs on its own at " + when(now.Add(day)) + ", busy or not"},
 		{"no check yet", view(func(u *updateView) { u.Latest, u.LastCheck = "", time.Time{} }), "1.1.5", true, statusOK, "no update check has worked yet"},
 		{"below secure, waiting", view(func(u *updateView) { pending(u); u.BelowSecure = true }), "1.0.9", true, statusFail, "Nothing to do: 1.2.0 installs on its own"},
+		{"below secure, checks failing", view(func(u *updateView) { pending(u); u.BelowSecure, u.InstallAfter, u.CheckError = true, now, "offline" }), "1.0.9", true, statusFail, "fixed in 1.1.0; the last check failed: offline Nothing to do: 1.2.0 installs on its own once a check works"},
+		{"due, checks failing", view(func(u *updateView) { pending(u); u.InstallAfter, u.CheckError = now, "offline" }), "1.1.5", true, statusOK, "installs on its own once a check works"},
 		{"below secure, off", view(func(u *updateView) { pending(u); u.BelowSecure, u.Off = true, true }), "1.0.9", false, statusFail, "ovenlight update on"},
 		{"off", view(func(u *updateView) { pending(u); u.Off = true }), "1.1.5", true, statusWarn, "updates are off"},
 		{"off, 8 days without a check", view(func(u *updateView) { u.Off, u.LastCheck = true, now.Add(-8*day) }), "1.2.0", true, statusWarn, "can't learn of a new security problem"},

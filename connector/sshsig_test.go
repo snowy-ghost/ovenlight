@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"golang.org/x/crypto/ssh"
@@ -64,6 +65,18 @@ func TestVerifySig(t *testing.T) {
 		if err := verifySig(index, c.sig, nsLatest); err == nil {
 			t.Errorf("verified with only %d other keys built in", len(c.keys))
 		}
+	}
+}
+
+// Only a namespace of ours is named when a signature is for another: any other is text
+// whoever made the file chose.
+func TestVerifySigNamesOnlyOurNamespaces(t *testing.T) {
+	index := readUpdateTestdata(t, "index.json")
+	if err := verifySig(index, signIndex(t, index, "run this \x1b[31m"), nsLatest); err == nil || strings.Contains(err.Error(), "run this") {
+		t.Errorf("another namespace: %v", err)
+	}
+	if err := verifySig(index, readUpdateTestdata(t, "index.json.ovenlight-canary.sig"), nsLatest); err == nil || !strings.Contains(err.Error(), nsCanary) {
+		t.Errorf("the canary's: %v", err)
 	}
 }
 
