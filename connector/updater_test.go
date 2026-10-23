@@ -690,7 +690,7 @@ func TestUpdaterClockRanAhead(t *testing.T) {
 
 	// A start with the clock a day behind, as on a computer before its time sync, then put
 	// right, keeps the retry of a failure noted in the night in the next night, busy or not.
-	srv, tu, _ := readyAt(t, false)
+	_, tu, _ = readyAt(t, false)
 	tu.st.Failed = &updateFailure{Version: "1.2.0", At: at(3, 2, 20), Error: "earlier", Count: 1}
 	tu.busyAt(at(2, 9, 1))
 	tu.sleepUntil(at(3, 9, 5))
@@ -701,7 +701,7 @@ func TestUpdaterClockRanAhead(t *testing.T) {
 		t.Errorf("a clock behind brought the retry forward: %d swaps, from %v", len(tu.swaps), p.after)
 	}
 
-	srv = newReleaseServer(t)
+	srv := newReleaseServer(t)
 	srv.publish("1.2.0", "1.1.0", "1.1.0", 100)
 	tu = newTestUpdater(t, srv, t.TempDir(), "1.1.5", at(0, 9, 0), false)
 	tu.st.Minute = 10 * 60 // its night starts at 02:00
@@ -983,6 +983,15 @@ func TestUpdateFinding(t *testing.T) {
 		{"8 days without a check, after a key change", view(func(u *updateView) {
 			u.LastCheck, u.CheckError = now.Add(-8*day), "the signature isn't from a release key"
 		}), "1.2.0", true, statusWarn, "Otherwise, or once it does, install the latest release with the verified steps in " + installDocs},
+		{"8 days of an older index", view(func(u *updateView) {
+			u.LastCheck, u.CheckError = now.Add(-8*day), "the index is "+olderThanHeld
+		}), "1.2.0", true, statusWarn, "Don't install a release by hand"},
+		{"off, 8 days of an older index", view(func(u *updateView) {
+			u.Off, u.LastCheck, u.CheckError = true, now.Add(-8*day), "the index lowers secure or reinstallBelow, so it's "+olderThanHeld
+		}), "1.2.0", true, statusWarn, "`ovenlight update on`. Don't install a release by hand"},
+		{"below secure, 8 days of an older index", view(func(u *updateView) {
+			u.BelowSecure, u.LastCheck, u.CheckError = true, now.Add(-8*day), "the index is "+olderThanHeld
+		}), "1.0.9", true, statusFail, "Report it to team@snowyghost.com"},
 		{"never checked in 8 days", view(func(u *updateView) { u.Latest, u.LastCheck, u.since = "", time.Time{}, now.Add(-8*day) }), "1.2.0", true, statusWarn, "for 7 days"},
 		{"run by hand", view(func(u *updateView) { u.SelfUpdating = false }), "1.2.0", true, statusWarn, "isn't the installed service"},
 		{"not running", view(func(u *updateView) { u.SelfUpdating = false }), "1.2.0", false, statusOK, "up to date"},
@@ -1003,6 +1012,9 @@ func TestUpdateFinding(t *testing.T) {
 		}
 		if c.name == "doesn't run here" && strings.Contains(got.Fix, installDocs) {
 			t.Errorf("%s: offers an install by hand, which fails the same way", c.name)
+		}
+		if strings.Contains(c.u.CheckError, olderThanHeld) && strings.Contains(got.Fix, installDocs) {
+			t.Errorf("%s: offers the verified steps, which take the older index too", c.name)
 		}
 	}
 	if updateFinding(view(nil), "devel-9cd108a0f732", true, now) != nil {
