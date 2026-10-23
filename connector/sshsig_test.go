@@ -12,9 +12,9 @@ import (
 
 // The signatures in testdata/update are ssh-keygen -Y sign's, of index.json. Its sign.sh
 // makes the test key's, in three namespaces and with sha256. Each release key's is made as
-// docs/development.md says, or by sign.sh while the release keys are mock. One is from a
-// key in a Mac's Secure Enclave (sk-ecdsa-sha2-nistp256@openssh.com, through
-// /usr/lib/ssh-keychain.dylib), the kind the release key is, made for this and then deleted.
+// docs/development.md says. One is from a key in a Mac's Secure Enclave
+// (sk-ecdsa-sha2-nistp256@openssh.com, through /usr/lib/ssh-keychain.dylib), the kind the
+// release key is, made for this and then deleted.
 func TestVerifySig(t *testing.T) {
 	read := func(name string) []byte { return readUpdateTestdata(t, name) }
 	testKey := mustParseKeys(string(read("../releasekey/test-key.pub")))

@@ -1110,9 +1110,9 @@ scenario_gates() {
   { cat "$fixtures/air1.pub" "$fixtures/paper1.pub" "$root/connector/testdata/releasekey/test-key.pub"; } > "$repo/connector/release_keys"
   commit "the test key"
   refused "holds a release key whose private half is public" release 1.1.0 1.0.6 1.1.0
-  # A dry run builds with the mock release keys, which stand in for the real ones until they're
-  # made, and a real build refuses them before it builds anything. Its defaults point into the
-  # scratch folder all the same. The mock keys stay after the key swap.
+  # A dry run builds with the mock release keys, which stay in the repo after the key swap, and
+  # a real build refuses them before it builds anything. Its defaults point into the scratch
+  # folder all the same.
   mocks=("$root"/connector/testdata/releasekey/mock-{touchid,backup}.pub)
   cat "$fixtures/air1.pub" "$fixtures/paper1.pub" "${mocks[@]}" > "$repo/connector/release_keys"
   signers air1 paper1
