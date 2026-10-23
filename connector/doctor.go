@@ -465,8 +465,11 @@ func runDoctor(cfg *Config, stateDir, configPath string) []Check {
 	reply, err := callDaemon(stateDir, "certs", 2*time.Minute)
 	down := errors.Is(err, errDaemonDown)
 	if err != nil {
-		checks = append(checks, Check{ID: "daemon", Status: statusFail, Message: err.Error(),
-			Fix: startFix(p), Actor: actorPerson})
+		fix := startFix(p)
+		if !down {
+			fix = restartFix(p)
+		}
+		checks = append(checks, Check{ID: "daemon", Status: statusFail, Message: err.Error(), Fix: fix, Actor: actorPerson})
 	} else {
 		checks = append(checks, Check{ID: "daemon", Status: statusOK, Message: fmt.Sprintf("running (pid %d)", reply.PID)})
 	}

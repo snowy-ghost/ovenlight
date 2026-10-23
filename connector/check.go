@@ -115,7 +115,7 @@ func tailnetHost(p *paths, app App) (string, *controlReply, *Check) {
 	if err != nil {
 		return placeholder, nil, &Check{ID: "tailnet-name", App: app.Slug, Status: statusWarn,
 			Message: err.Error() + ", so this checked the app with a placeholder for its tailnet name, " + placeholder + ", which a dev server that refuses other host names refuses too",
-			Fix:     startFix(p), Actor: actorPerson}
+			Fix:     restartFix(p), Actor: actorPerson}
 	}
 	if host := nodeHost(app, reply); host != "" {
 		return host, reply, nil
