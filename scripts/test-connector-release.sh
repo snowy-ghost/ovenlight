@@ -1164,15 +1164,15 @@ scenario_gates() {
   new="$(awk -v a="$a" '$2 == a { print $1 }' "$dry/build/SHA256SUMS")"
   sed -i '' "s/$old/$new/" "$dry/build/index.json"
   run sign air1 1.1.0
-  tagbuilt 1.1.0
+  # Publish refuses a build it would never publish before it asks for a tag that can't move.
   refused "holds more than an ovenlight-connector-1.1.0/ folder" publish 1.1.0
   # A build over the updater's cap, which publish reads from connector/keys.go.
   sed -i '' 's|^const maxArchiveBytes = .*|const maxArchiveBytes = 1 << 10 // 1 KiB|' "$repo/connector/keys.go"
   commit "a 1 KiB cap"
   build 1.1.1 1.0.6
   run sign air1 1.1.1
-  tagbuilt 1.1.1
   refused "over the updater's cap of 1024 bytes" publish 1.1.1
+  refused "build/release isn't the build of 1.1.0 that was signed" publish 1.1.0
   build 1.1.0 1.0.6 1.1.0
   refused "another build of 1.1.0 is signed already" sign air1 1.1.0
 }
