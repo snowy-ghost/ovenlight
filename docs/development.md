@@ -210,10 +210,10 @@ an index for `latest.json` the Air waits until `latest.json` is that index, whic
 leaves to `--check`. Its refusals say what to do, as when a pull signed and not yet
 published blocks a promote or resign. Each script's header says what it checks, and
 `scripts/test-connector-release.sh` dry-runs them all. Each release restarts every owner's
-connector, and one promoted within eight days of the last restarts the wait of every
-computer that hasn't taken the last yet (a computer off at weekends can take seven), so
-batch what isn't urgent. A `--resign` restarts the wait too, for a computer whose daily
-check fetches it before its moment to swap.
+connector, and one promoted within twelve days of the last restarts the wait of every
+computer that hasn't taken the last yet (a computer off from Friday to Monday can take
+eleven), so batch what isn't urgent. A `--resign` restarts the wait too, for a computer
+whose daily check fetches it before its moment to swap.
 
 Uploads go to the R2 bucket behind `https://downloads.ovenlight.app`, through `wrangler`
 (signed in with `npx wrangler@4.147.0 login`, or `CLOUDFLARE_API_TOKEN` and
@@ -311,8 +311,8 @@ For a planned move to a new Air, the old Air signs R:
    before R+1 can go out is signed there too and lists the same three keys.
 4. R+1 drops the old key and is signed on the new Air. Its canary needs the live index
    signed with the new key (`--resign`). That and R+1's promote are refused until four
-   weeks and eight days after R's promote, and a pull back below R starts the wait again at
-   the next promote. The `--resign` also waits until eight days after `latest.json` last
+   weeks and twelve days after R's promote, and a pull back below R starts the wait again at
+   the next promote. The `--resign` also waits until twelve days after `latest.json` last
    changed, since each change starts the wait of computers still below R again. Keep the
    old Air until R+1 is promoted, since it signs any pull before then. Before the new Air
    first signs, and each time the signing Air switches, carry the other Air's
