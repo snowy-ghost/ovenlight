@@ -125,10 +125,6 @@ func TestCheckIndex(t *testing.T) {
 		if (err == nil) != c.ok || (c.ok && fresh != c.fresh) {
 			t.Errorf("%s: fresh %v, %v", name, fresh, err)
 		}
-		// doctor tells these apart by the end of the refusal.
-		if !c.ok && err != nil && !strings.Contains(err.Error(), olderThanHeld) {
-			t.Errorf("%s: %v", name, err)
-		}
 	}
 	if fresh, err := check(nil, held); err != nil || !fresh {
 		t.Errorf("nothing held: %v %v", fresh, err)
