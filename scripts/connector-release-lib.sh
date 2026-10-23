@@ -14,8 +14,9 @@
 # saw latest.json be that index. It sends what it signs with rsync to the mini's records,
 # ~/Sync/ovenlight/releases/ there, and never writes to the Air's own ~/Sync, where a link
 # an agent syncs would write into its files. There publish-connector.sh marks an index with
-# <kind>-<serial>.live, the time latest.json began naming it. A script that sets air=1
-# before sourcing this reads the Air's.
+# <kind>-<serial>.live, the time latest.json began naming it, and where an index has none,
+# as when records the mini lost come back in the books, the Air's .seen they carry counts.
+# A script that sets air=1 before sourcing this reads the Air's.
 #
 # OVENLIGHT_RELEASE_DRY=<folder> makes a dry run, which scripts/test-connector-release.sh does
 # in folders it marks with a .release-dry-run file, which this requires: that folder stands
@@ -106,6 +107,14 @@ releaseindex() {
 }
 
 serialof() { echo "${1##*-}"; }
+# marked <id>: when latest.json began naming the index, by its .$since, else the .seen the
+# Air's books carry, and never before it was signed. Fails when it has neither.
+marked() {
+  local t
+  t="$(cat "$records/$1.$since" 2> /dev/null || cat "$records/$1.seen" 2> /dev/null)" || return 1
+  [ "$t" -ge "$(serialof "$1")" ] 2> /dev/null || t="$(serialof "$1")"
+  echo "$t"
+}
 # baseof <id>: sets base to the index it was built on, refusing a .base that's missing,
 # empty, as a write cut short leaves it (built on nothing is a blank line), or doesn't name
 # an index signed before it.
@@ -122,7 +131,7 @@ readrecords() {
     echo "${f%.json}"
   done | sort -t- -k2,2n)"
   top="${signed##*$'\n'}" # the newest signed
-  if [ -n "$top" ] && [ ! -f "$records/$top.$since" ]; then
+  if [ -n "$top" ] && ! marked "$top" > /dev/null; then
     baseof "$top"
     readchain "$base"
   else
@@ -294,22 +303,22 @@ verifyrule() {
   done
 }
 
-# WAIT is four weeks for computers that sleep, and four days for the two-day wait, its one-day
-# cap and the night it then waits for. QUIET is six days: a laptop asleep at night takes up
-# to five and a half from an index going up to its swap, when its daily check falls in its
-# sleep and it sleeps through its night too.
-WAIT=$((32 * 86400)) QUIET=$((6 * 86400))
+# TAKE is the longest a computer on most days takes from an index going up to its swap, with a
+# day to spare: one off at weekends sees an index from Friday on Monday, waits two days and
+# its one-day cap, sleeps through that night and swaps on Friday morning. WAIT is four weeks
+# for computers that sleep, then TAKE.
+TAKE=$((8 * 86400)) WAIT=$((36 * 86400))
 
 # newkeywait <blob> <now> [<what else signs>]: refuses a key that computers still on an older
-# release can't check yet. It waits until four weeks and four days after latest.json last
+# release can't check yet. It waits until four weeks and eight days after latest.json last
 # began naming releases that list it, so computers asleep on an older release have taken
 # one. A pull back to one that doesn't list it starts the wait again, and a promote signed
 # by another key doesn't. Each change to latest.json starts the two-day wait of computers
 # that haven't taken one again, so until the key has signed an index published since, it
-# also waits six days after the last. With nothing published in the records, it counts
+# also waits TAKE after the last. With nothing published in the records, it counts
 # what's signed.
 newkeywait() {
-  local id v s t old='' from='' after=''
+  local id v t old='' from='' after=''
   for id in ${published:-$signed}; do
     v="$(field latest "$records/$id.json")"
     if ! haskey "$1" "$records/$v/release_keys"; then
@@ -317,26 +326,20 @@ newkeywait() {
       continue
     fi
     after="$after $id"
-    if [ -z "$from" ] && [ -f "$records/$id.$since" ]; then
-      # Never before the index was signed, which its signature says.
-      from="$(cat "$records/$id.$since")" s="$(field serial "$records/$id.json")"
-      [ "$from" -ge "$s" ] || from="$s"
-    fi
+    if [ -z "$from" ]; then from="$(marked "$id")" || from=''; fi
   done
   if [ -z "$old" ]; then return 0; fi
   from="${from:-$2}"
   if [ "$2" -lt $((from + WAIT)) ]; then
-    refuse "$old doesn't list this key, and computers asleep on it may not have updated yet: not before $(date -r $((from + WAIT))), four weeks and four days after latest.json began naming releases that list it${3:-}"
+    refuse "$old doesn't list this key, and computers asleep on it may not have updated yet: not before $(date -r $((from + WAIT))), four weeks and eight days after latest.json began naming releases that list it${3:-}"
   fi
   if [ -z "$newest" ]; then return 0; fi
   cat /dev/null "$records"/*/release_keys | awk -v b="$1" '$2 == b { print $1, $2; exit }' > "$tmp/newkey"
   for id in $after; do
     if verify "$records/$id.json" "$records/$id.json.sig" ovenlight-latest "$tmp/newkey"; then return 0; fi
   done
-  # When latest.json began naming the newest, never before it was signed.
-  t="$(cat "$records/$newest.$since" 2> /dev/null || echo 0)" s="$(serialof "$newest")"
-  [ "$t" -ge "$s" ] || t="$s"
-  if [ "$2" -lt $((t + QUIET)) ]; then
-    refuse "$old doesn't list this key, and each change to latest.json starts the two-day wait of computers still on it again: not before $(date -r $((t + QUIET))), six days after $newest went up${3:-}"
+  t="$(marked "$newest")" || t="$(serialof "$newest")"
+  if [ "$2" -lt $((t + TAKE)) ]; then
+    refuse "$old doesn't list this key, and each change to latest.json starts the two-day wait of computers still on it again: not before $(date -r $((t + TAKE))), eight days after $newest went up${3:-}"
   fi
 }
