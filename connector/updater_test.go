@@ -1036,6 +1036,28 @@ func TestUpdateOffAndOn(t *testing.T) {
 	}
 }
 
+// With the connector down, status still shows the serial of the index held.
+func TestStatusDownShowsSerial(t *testing.T) {
+	state, err := os.MkdirTemp("", "ol") // short, for the control socket's path
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(state) })
+	srv := newReleaseServer(t)
+	srv.publish("1.2.0", "1.1.0", "1.1.0", 100)
+	newTestUpdater(t, srv, state, "1.1.5", at(0, 9, 0), false).pollAt(at(0, 9, 0))
+	stdout := os.Stdout
+	f, _ := os.Create(filepath.Join(t.TempDir(), "out"))
+	os.Stdout = f
+	err = cmdStatus([]string{"--config", filepath.Join(t.TempDir(), "config.json"), "--state", state})
+	os.Stdout = stdout
+	f.Close()
+	text, _ := os.ReadFile(f.Name())
+	if err != nil || !strings.Contains(string(text), "Connector: not running") || !strings.Contains(string(text), "Update index held: serial 100.") {
+		t.Errorf("%v:\n%s", err, text)
+	}
+}
+
 func TestUpdateLines(t *testing.T) {
 	now := at(0, 9, 0)
 	u := &updateView{SelfUpdating: true, LastCheck: now, Pending: "1.2.0", InstallAfter: now, InstallBy: now.Add(day), Secure: "1.2.0", BelowSecure: true, Serial: 100,
