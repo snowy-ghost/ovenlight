@@ -944,7 +944,9 @@ func TestUpdateFinding(t *testing.T) {
 		{"6 days without a check", view(func(u *updateView) { u.LastCheck = now.Add(-6 * day) }), "1.2.0", true, statusOK, "up to date"},
 		{"8 days without a check", view(func(u *updateView) { u.LastCheck, u.CheckError = now.Add(-8*day), "offline" }), "1.2.0", true, statusWarn, "for 7 days: offline"},
 		{"8 days without a check, its reason", view(func(u *updateView) { u.LastCheck, u.CheckError = now.Add(-8*day), "offline" }), "1.2.0", true, statusWarn, "`updates: fetching` lines in " + defaultLogPath()},
-		{"8 days without a check, after a key change", view(func(u *updateView) { u.LastCheck = now.Add(-8 * day) }), "1.2.0", true, statusWarn, "If it does, install the latest release with the verified steps in " + installDocs},
+		{"8 days without a check, after a key change", view(func(u *updateView) {
+			u.LastCheck, u.CheckError = now.Add(-8*day), "the signature isn't from a release key"
+		}), "1.2.0", true, statusWarn, "Otherwise, or once it does, install the latest release with the verified steps in " + installDocs},
 		{"never checked in 8 days", view(func(u *updateView) { u.Latest, u.LastCheck, u.since = "", time.Time{}, now.Add(-8*day) }), "1.2.0", true, statusWarn, "for 7 days"},
 		{"run by hand", view(func(u *updateView) { u.SelfUpdating = false }), "1.2.0", true, statusWarn, "isn't the installed service"},
 		{"not running", view(func(u *updateView) { u.SelfUpdating = false }), "1.2.0", false, statusOK, "up to date"},
