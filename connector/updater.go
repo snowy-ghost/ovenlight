@@ -310,6 +310,11 @@ func (u *updater) advance(ctx context.Context, checked bool) {
 		return
 	}
 	if u.ready != p.target {
+		// A download waits as long after a start or a wake as the swap does, so a computer's
+		// short wakes in its sleep (a Mac's Power Nap) don't spend each night's try.
+		if now.Sub(u.awake) < quietFor {
+			return
+		}
 		// A failed download waits for the night, so it follows a check that worked: a start or
 		// a wake before the network is up then costs only the check's retry within the hour.
 		if !checked {
