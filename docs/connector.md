@@ -119,9 +119,13 @@ cmd /c 'ssh-keygen -Y verify -f allowed_signers -I team@snowyghost.com -n ovenli
 (Get-Content latest.json -Raw | ConvertFrom-Json).archives.$archive -eq (Get-FileHash $archive).Hash
 ```
 
-On an Arm PC, use `windows-arm64` in place of `windows-amd64`. If the first check prints
-`Good "ovenlight-latest" signature` and the second `True`, unpack the archive and run its
-install script, in the same window:
+On an Arm PC, use `windows-arm64` in place of `windows-amd64`. The first check needs
+OpenSSH 8.9 or later (`ssh -V` shows yours): an older one can't read the release key that
+signs with Touch ID, and says `unknown or unsupported key type`. Then check the download on
+a Mac or Linux, or with a newer OpenSSH from
+[Win32-OpenSSH](https://github.com/PowerShell/Win32-OpenSSH/releases). If the first check
+prints `Good "ovenlight-latest" signature` and the second `True`, unpack the archive and
+run its install script, in the same window:
 
 ```powershell
 tar -xf $archive --strip-components 1
@@ -275,7 +279,8 @@ shasum -a 256 -c --ignore-missing SHA256SUMS
 tar tzf "$archive" | cut -d / -f 1 | sort -u
 ```
 
-On Windows, check it in an administrator PowerShell, with its version in place of `1.0.9`:
+On Windows, check it in an administrator PowerShell, with its version in place of `1.0.9`
+(a release after 1.0.9 needs OpenSSH 8.9 or later, as [above](#check-a-download-first)):
 
 ```powershell
 mkdir $HOME\ovenlight-connector -Force | Out-Null; cd $HOME\ovenlight-connector
