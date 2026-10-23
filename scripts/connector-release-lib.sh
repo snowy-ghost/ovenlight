@@ -295,20 +295,29 @@ verifyrule() {
 }
 
 # WAIT is four weeks for computers that sleep, and four days for the two-day wait, its one-day
-# cap and the night it then waits for.
-WAIT=$((32 * 86400))
+# cap and the night it then waits for. QUIET is six days: a laptop asleep at night takes up
+# to five and a half from an index going up to its swap, when its daily check falls in its
+# sleep and it sleeps through its night too.
+WAIT=$((32 * 86400)) QUIET=$((6 * 86400))
 
 # newkeywait <blob> <now> [<what else signs>]: refuses a key that computers still on an older
 # release can't check yet. It waits until four weeks and four days after latest.json last
 # began naming releases that list it, so computers asleep on an older release have taken
 # one. A pull back to one that doesn't list it starts the wait again, and a promote signed
-# by another key doesn't. With nothing published in the records, it counts what's signed.
+# by another key doesn't. Each change to latest.json starts the two-day wait of computers
+# that haven't taken one again, so until the key has signed an index published since, it
+# also waits six days after the last. With nothing published in the records, it counts
+# what's signed.
 newkeywait() {
-  local id v s old='' from=''
+  local id v s t old='' from='' after=''
   for id in ${published:-$signed}; do
     v="$(field latest "$records/$id.json")"
-    if ! haskey "$1" "$records/$v/release_keys"; then old="$v" from=
-    elif [ -z "$from" ] && [ -f "$records/$id.$since" ]; then
+    if ! haskey "$1" "$records/$v/release_keys"; then
+      old="$v" from='' after=''
+      continue
+    fi
+    after="$after $id"
+    if [ -z "$from" ] && [ -f "$records/$id.$since" ]; then
       # Never before the index was signed, which its signature says.
       from="$(cat "$records/$id.$since")" s="$(field serial "$records/$id.json")"
       [ "$from" -ge "$s" ] || from="$s"
@@ -318,5 +327,16 @@ newkeywait() {
   from="${from:-$2}"
   if [ "$2" -lt $((from + WAIT)) ]; then
     refuse "$old doesn't list this key, and computers asleep on it may not have updated yet: not before $(date -r $((from + WAIT))), four weeks and four days after latest.json began naming releases that list it${3:-}"
+  fi
+  if [ -z "$newest" ]; then return 0; fi
+  cat /dev/null "$records"/*/release_keys | awk -v b="$1" '$2 == b { print $1, $2; exit }' > "$tmp/newkey"
+  for id in $after; do
+    if verify "$records/$id.json" "$records/$id.json.sig" ovenlight-latest "$tmp/newkey"; then return 0; fi
+  done
+  # When latest.json began naming the newest, never before it was signed.
+  t="$(cat "$records/$newest.$since" 2> /dev/null || echo 0)" s="$(serialof "$newest")"
+  [ "$t" -ge "$s" ] || t="$s"
+  if [ "$2" -lt $((t + QUIET)) ]; then
+    refuse "$old doesn't list this key, and each change to latest.json starts the two-day wait of computers still on it again: not before $(date -r $((t + QUIET))), six days after $newest went up${3:-}"
   fi
 }

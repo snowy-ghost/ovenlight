@@ -210,9 +210,10 @@ an index for `latest.json` the Air waits until `latest.json` is that index, whic
 leaves to `--check`. Its refusals say what to do, as when a pull signed and not yet
 published blocks a promote or resign. Each script's header says what it checks, and
 `scripts/test-connector-release.sh` dry-runs them all. Each release restarts every owner's
-connector, and one promoted within two days of the last restarts every owner's wait, so
-batch what isn't urgent. A `--resign` restarts the wait too, for a computer whose daily
-check fetches it before its moment to swap.
+connector, and one promoted within six days of the last restarts the wait of every
+computer that hasn't taken the last yet (a laptop asleep at night can take five and a
+half), so batch what isn't urgent. A `--resign` restarts the wait too, for a computer
+whose daily check fetches it before its moment to swap.
 
 Uploads go to the R2 bucket behind `https://downloads.ovenlight.app`, through `wrangler`
 (signed in with `npx wrangler@4.147.0 login`, or `CLOUDFLARE_API_TOKEN` and
@@ -311,10 +312,12 @@ For a planned move to a new Air, the old Air signs R:
 4. R+1 drops the old key and is signed on the new Air. Its canary needs the live index
    signed with the new key (`--resign`). That and R+1's promote are refused until four
    weeks and four days after R's promote, and a pull back below R starts the wait again at
-   the next promote. Keep the old Air until R+1 is promoted, since it signs any pull
-   before then. Before the new Air first signs, and each time the signing Air switches,
-   carry the other Air's `~/.ssh/ovenlight-release-keys/history` the same way and merge it
-   in with `cp -Rn <copy>/ ~/.ssh/ovenlight-release-keys/history`. Without it, the Air
+   the next promote. The `--resign` also waits until six days after `latest.json` last
+   changed, since each change starts the wait of computers still below R again. Keep the
+   old Air until R+1 is promoted, since it signs any pull before then. Before the new Air
+   first signs, and each time the signing Air switches, carry the other Air's
+   `~/.ssh/ovenlight-release-keys/history` the same way and merge it in with
+   `cp -Rn <copy>/ ~/.ssh/ovenlight-release-keys/history`. Without it, the Air
    refuses to sign once `latest.json` is an index it lacks.
 
 After a lost Air, the paper key signs R. If the lost Air turns up, delete its
@@ -350,7 +353,7 @@ run sends the newest index in it to the mini.
    `ssh-keygen -y -f <file> > <file>.pub`, which also checks the passphrase. Sign with
    `--key <file>`, then delete the folder.
 4. R+1 drops the old paper key and is signed with the new Touch ID key. Its `--resign`
-   and promote wait the same four weeks and four days.
+   and promote wait as a planned move's do.
 
 After a lost paper key, the Air signs R, which lists its own key and a new paper key and
 takes a version above every release signed so far, since those list the lost key and none
@@ -367,7 +370,7 @@ move's R+1 still follows. Drop the lost key's signature and its line in
 still inside its wait, the old paper key, which every release so far lists, signs this R
 instead, and R+1 drops that key. Otherwise the Air's key signs this R, which waits for
 nothing, and no other R+1 follows. If the Air is lost too, the new paper key's `--resign`
-and promote wait until four weeks and four days after R's promote.
+and promote wait as a planned move's do.
 
 A lost Air inside a new Touch ID key's wait is answered by an R signed with the paper key
 every release so far lists, which waits for nothing. After a planned move whose old Air is
