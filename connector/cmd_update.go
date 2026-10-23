@@ -92,6 +92,10 @@ func updateLines(u *updateView, v string, now time.Time) []string {
 	default:
 		lines = append(lines, "Updates: on; "+checked+".")
 	}
+	if u.Serial != 0 {
+		// An index the verified steps fetch for an install by hand has at least this one.
+		lines = append(lines, fmt.Sprintf("Update index held: serial %d.", u.Serial))
+	}
 	if u.CheckError != "" {
 		lines = append(lines, "The last check failed: "+u.CheckError)
 	}

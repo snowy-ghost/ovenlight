@@ -1038,11 +1038,11 @@ func TestUpdateOffAndOn(t *testing.T) {
 
 func TestUpdateLines(t *testing.T) {
 	now := at(0, 9, 0)
-	u := &updateView{SelfUpdating: true, LastCheck: now, Pending: "1.2.0", InstallAfter: now, InstallBy: now.Add(day), Secure: "1.2.0", BelowSecure: true,
+	u := &updateView{SelfUpdating: true, LastCheck: now, Pending: "1.2.0", InstallAfter: now, InstallBy: now.Add(day), Secure: "1.2.0", BelowSecure: true, Serial: 100,
 		LastUpdate: &updateEvent{From: "1.1.4", To: "1.1.5", At: now}, Failure: &updateFailure{Version: "1.2.0", At: now, Error: "swap not implemented", Count: 1}}
 	lines := func(u *updateView, v string) string { return strings.Join(updateLines(u, v, now), "\n") }
 	got := lines(u, "1.1.5")
-	for _, want := range []string{"Updates: on; last checked", "SECURITY PROBLEM: 1.1.5 has one, fixed in 1.2.0.", "1.2.0 installs on its own at a quiet moment from",
+	for _, want := range []string{"Updates: on; last checked", "Update index held: serial 100.", "SECURITY PROBLEM: 1.1.5 has one, fixed in 1.2.0.", "1.2.0 installs on its own at a quiet moment from",
 		"even if busy.", "Last update: 1.1.4 to 1.1.5", "UPDATE FAILED: 1.2.0"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("no %q in\n%s", want, got)
@@ -1053,10 +1053,14 @@ func TestUpdateLines(t *testing.T) {
 		t.Errorf("past its install-by:\n%s", got)
 	}
 	u.Off = true
-	if got := lines(u, "1.1.5"); !strings.Contains(got, "Updates: off") || strings.Contains(got, "installs on its own") {
+	if got := lines(u, "1.1.5"); !strings.Contains(got, "Updates: off") || strings.Contains(got, "installs on its own") || !strings.Contains(got, "serial 100.") {
 		t.Errorf("off:\n%s", got)
 	}
-	u.NeedsScript, u.Serial = true, 100
+	u.SelfUpdating = false
+	if got := lines(u, "1.1.5"); !strings.Contains(got, "Updates: none") || !strings.Contains(got, "serial 100.") {
+		t.Errorf("not the installed service:\n%s", got)
+	}
+	u.SelfUpdating, u.NeedsScript = true, true
 	if got := lines(u, "1.1.5"); !strings.Contains(got, installDocs+", checking that the index's serial is at least 100") {
 		t.Errorf("a release that needs its script:\n%s", got)
 	}

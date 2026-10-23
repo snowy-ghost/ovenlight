@@ -43,4 +43,5 @@ The `ovenlight` connector on that computer publishes each app and tells it who i
    for the latest, including one an older connector's `doctor` names with a download
    link, and those at
    https://github.com/snowy-ghost/ovenlight/blob/master/docs/connector.md#install-a-release-by-hand
-   for an older one.
+   for an older one. With the steps for the latest, pass on the serial `status` shows
+   (`update.serial`): the index they fetch must have one at least as high.
