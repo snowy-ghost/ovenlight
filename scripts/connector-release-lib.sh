@@ -237,7 +237,7 @@ verify() {
 # signer <file> <sig> <namespace>: the key, of those any release lists, that made the signature.
 signer() {
   local t b
-  cat /dev/null "$records"/*/release_keys | awk 'NF >= 2 && !seen[$2]++ { print $1, $2 }' > "$tmp/candidates"
+  awk 'NF >= 2 && !seen[$2]++ { print $1, $2 }' /dev/null "$records"/*/release_keys > "$tmp/candidates"
   while read -r t b; do
     echo "$t $b" > "$tmp/candidate"
     if verify "$1" "$2" "$3" "$tmp/candidate"; then
@@ -334,7 +334,7 @@ newkeywait() {
     refuse "$old doesn't list this key, and computers asleep on it may not have updated yet: not before $(date -r $((from + WAIT))), four weeks and $((TAKE / 86400)) days after latest.json began naming releases that list it${3:-}"
   fi
   if [ -z "$newest" ]; then return 0; fi
-  cat /dev/null "$records"/*/release_keys | awk -v b="$1" '$2 == b { print $1, $2; exit }' > "$tmp/newkey"
+  awk -v b="$1" '$2 == b { print $1, $2; exit }' /dev/null "$records"/*/release_keys > "$tmp/newkey"
   for id in $after; do
     if verify "$records/$id.json" "$records/$id.json.sig" ovenlight-latest "$tmp/newkey"; then return 0; fi
   done

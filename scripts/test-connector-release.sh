@@ -1194,6 +1194,12 @@ if [ "${1:-}" = --scenario ]; then
   echo "$checks" > "$3/$2.checks"
   exit
 fi
+# Under pipefail, a reader that stops early (head, grep -q, an awk exit) can end the command
+# writing to it with SIGPIPE, and set -e then ends the script with no message.
+if grep -nE '\|[[:space:]]*(head|grep -[[:alpha:]]*q|awk .*exit)' "$root"/scripts/{connector-release-lib,sign-connector,publish-connector,release-connector}.sh; then
+  fail "a release script pipes into a reader that stops early"
+fi
+pass "no release script pipes into a reader that stops early"
 # Each scenario runs in a process of its own, $JOBS at a time.
 scenarios=("$@")
 [ $# -gt 0 ] || while read -r s; do scenarios+=("$s"); done < <(sed -n 's/^scenario_\([a-z0-9]*\)() {$/\1/p' "$0")
