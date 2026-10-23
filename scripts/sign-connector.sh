@@ -362,7 +362,12 @@ release)
   sign ovenlight-canary "$b/canary.json"
   echo "$commit" > "$b/commit"
   keep "$version" "$b"/{SHA256SUMS,SHA256SUMS.sig,commit,release_keys,canary.json,canary.json.sig}
-  echo "signed: on the mini, tag $commit as connector-v$version and push the tag, then scripts/publish-connector.sh $version, then the canary with $sync/$version/canary.json"
+  next="the canary with $sync/$version/canary.json"
+  # After a key change, the canary's release may not check the live index until it's re-signed.
+  if [ -n "$newest" ] && ! verify "$records/$newest.json" "$records/$newest.json.sig" ovenlight-latest "$b/release_keys"; then
+    next="scripts/sign-connector.sh --resign here with a key $version lists and scripts/publish-connector.sh --resign on the mini, since $version can't check the live index's signature, then $next"
+  fi
+  echo "signed: on the mini, tag $commit as connector-v$version and push the tag, then scripts/publish-connector.sh $version, then $next"
   ;;
 
 promote)
