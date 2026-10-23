@@ -108,7 +108,7 @@ if $indexed; then
       r="$(field reinstallBelow "$f")"
       if [ -z "$reinstall" ] || below "$reinstall" "$r"; then reinstall="$r"; fi
     done
-    [ -n "$reinstall" ] || refuse "$records has no release below $version, so name its reinstallBelow"
+    [ -n "$reinstall" ] || refuse "$records has no release below $version, so name its reinstallBelow. If the mini lost its records, scripts/sign-connector.sh --check on the Air sends them back"
     echo "reinstallBelow $reinstall, the highest of the releases below $version in $records"
   fi
   # The index's own checks, before minutes of building.
