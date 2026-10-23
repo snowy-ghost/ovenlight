@@ -163,18 +163,15 @@ land() {
 # steps a second on.
 tick() { ahead=$((ahead + 1)); }
 
-# build <version> <secure> [<reinstallBelow>]: built; tagbuilt <version>: tagged on the
-# build's commit, as development.md says once it's signed, and never moved, as a pushed
-# tag can't be; signfolder <version> <key>: the folder signed, tagged and published.
+# build <version> <secure> [<reinstallBelow>]: built; signfolder <version> <key>: the folder
+# signed, then tagged on the build's commit as development.md says, never moved, as a
+# pushed tag can't be, then published.
 build() { run release "$@"; }
-tagbuilt() {
+signfolder() {
   local c
+  run sign "$2" "$1"
   read -r c _ < "$dry/build/commit"
   git -C "$repo" tag -m "Connector $1" "connector-v$1" "$c" > /dev/null || fail "connector-v$1 is tagged already"
-}
-signfolder() {
-  run sign "$2" "$1"
-  tagbuilt "$1"
   run publish "$1"
   folder_is "$1"
 }
