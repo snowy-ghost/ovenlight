@@ -496,7 +496,7 @@ wait), as you, beside your Tailscale API credential, and on Windows with adminis
 rights. `ovenlight update off` opts out.
 
 When one key is lost, the next release, signed with the other, replaces it. The signing
-script then waits four weeks and eight days, and eight days after the last change to the
+script then waits four weeks and twelve days, and twelve days after the last change to the
 index, before signing with only the new key. A computer that stays off, or has updates
 off, for four weeks after that release comes out can't verify the releases signed with
 only the new key: its checks fail, `doctor` warns after seven days, and it needs one
