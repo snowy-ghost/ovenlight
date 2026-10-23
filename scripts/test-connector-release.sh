@@ -575,6 +575,7 @@ scenario_movedout() {
   refused "latest.json is unsigned, and it was 1.1.1/pull-" nokey --check
   [ -z "$(ls "$dry/sync/releases")" ] || fail "the Air sent its books into the reset records"
   pass "the reset records are still empty"
+  refused "If the mini lost its records, scripts/sign-connector.sh --check on the Air sends them back" release 1.1.2 1.0.6
 }
 
 scenario_behind() {

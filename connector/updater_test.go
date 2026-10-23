@@ -1086,7 +1086,6 @@ func TestUpdateOffAndOn(t *testing.T) {
 	}
 }
 
-// With the connector down, status still shows the serial of the index held.
 // silent has a connector for state take control connections and close them unanswered.
 func silent(t *testing.T, state string) {
 	ln, err := net.Listen("unix", socketPath(state))
@@ -1105,6 +1104,7 @@ func silent(t *testing.T, state string) {
 	}()
 }
 
+// With the connector down, status still shows the serial of the index held.
 func TestStatusDownShowsSerial(t *testing.T) {
 	state, err := os.MkdirTemp("", "ol") // short, for the control socket's path
 	if err != nil {
@@ -1125,13 +1125,14 @@ func TestStatusDownShowsSerial(t *testing.T) {
 		t.Errorf("%v:\n%s", err, text)
 	}
 
-	// A connector that doesn't answer, or a config.json that can't be read, ends status on
-	// an error that names it too.
+	// A connector that doesn't answer, which it says to restart, or a config.json that
+	// can't be read, ends status on an error that names it too.
 	silent(t, state)
-	bad := filepath.Join(t.TempDir(), "config.json")
+	good, bad := filepath.Join(t.TempDir(), "config.json"), filepath.Join(t.TempDir(), "config.json")
 	os.WriteFile(bad, []byte(`{"apps": [`), 0o600)
-	for _, config := range []string{filepath.Join(t.TempDir(), "config.json"), bad} {
-		if err := cmdStatus([]string{"--config", config, "--state", state}); err == nil || !strings.HasSuffix(err.Error(), ". Update index held: serial 100.") {
+	for config, fix := range map[string]string{good: restartFix(&paths{config: good, state: state}), bad: ""} {
+		err := cmdStatus([]string{"--config", config, "--state", state})
+		if err == nil || !strings.Contains(err.Error(), fix) || !strings.HasSuffix(err.Error(), ". Update index held: serial 100.") {
 			t.Errorf("%s: %v", filepath.Base(filepath.Dir(config)), err)
 		}
 	}
