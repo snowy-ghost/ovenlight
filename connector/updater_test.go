@@ -808,7 +808,7 @@ func TestUpdateNow(t *testing.T) {
 		want      string
 	}{
 		"signed for latest.json":   {canary, signIndex(t, canary, nsLatest), "ovenlight-latest"},
-		"below reinstallBelow":     {script, signIndex(t, script, nsCanary), "needs its install script"},
+		"below reinstallBelow":     {script, signIndex(t, script, nsCanary), "Install 1.2.0 by hand from " + tu.base + "/1.2.0/ with the steps in " + olderDocs},
 		"the same release":         {older, signIndex(t, older, nsCanary), "never installs the same or an older"},
 		"lowering the secure held": {lowers, signIndex(t, lowers, nsCanary), "lowers secure"},
 	} {
