@@ -1,0 +1,62 @@
+<!doctype html>
+<!-- The link preview images, rendered by generate.py in the App Store screenshots' look: their
+     cream ground and caption, set in the oven light falling from the top edge, beside the launcher
+     on a phone that runs off the bottom edge. og.html is the site's (site/og.jpg), for people
+     who build apps; og.html?invite is the invite link's (site/og-invite.jpg), for the guest it
+     was texted to. It shows no one app, since an invite can be to any. -->
+<meta charset="utf-8">
+<style>
+  /* New York Bold at optical size 32, as the screenshots' captions set it. */
+  @font-face { font-family: "New York"; src: url("file:///System/Library/Fonts/NewYork.ttf"); font-weight: 1 1000; }
+  html, body { margin: 0; width: 1200px; height: 630px; overflow: hidden; }
+  body {
+    position: relative; color: #261810; font-family: "New York", serif;
+    background: linear-gradient(#fcf6ef, #f6e5d4);
+  }
+  .site .for-invite, .invite .for-site { display: none; }
+  /* The screenshots' light, over the caption: a cone from the top edge that deepens from
+     white-hot to ember as it falls and fades out, with a brighter spill where it comes in. */
+  .beam { position: absolute; left: -240px; top: 0; width: 1200px; height: 600px; filter: blur(30px); }
+  .beam::before {
+    content: ""; position: absolute; inset: 0;
+    clip-path: polygon(calc(50% - 136px) 0, calc(50% + 136px) 0, 98% 100%, 2% 100%);
+    background: radial-gradient(840px 600px at 50% 0, #fff0d4, #fbc887 30%, #f69646 60%, #cc6420);
+    -webkit-mask-image: linear-gradient(rgba(0, 0, 0, 0.75), rgba(0, 0, 0, 0.52) 25%, rgba(0, 0, 0, 0.31) 50%, rgba(0, 0, 0, 0.12) 75%, transparent);
+  }
+  .spill {
+    position: absolute; left: 87px; top: -136px; width: 546px; height: 272px; border-radius: 50%;
+    background: radial-gradient(#fff0d4, #fbc887 70%); opacity: 0.7; filter: blur(55px);
+  }
+  .lockup { position: absolute; left: 80px; top: 76px; display: flex; align-items: center; gap: 14px; }
+  .lockup img { width: 48px; height: 48px; }
+  .lockup span { font-size: 34px; font-weight: 600; font-variation-settings: "opsz" 34; letter-spacing: -0.3px; }
+  /* Each headline at the size that fits the column beside the phone, both centered at one height. */
+  h1 {
+    position: absolute; left: 80px; top: 222px; margin: 0;
+    font-size: 72px; line-height: 80px; font-weight: 700; font-variation-settings: "opsz" 32; letter-spacing: -0.4px;
+  }
+  h1.for-invite { top: 278px; font-size: 60px; line-height: 68px; letter-spacing: -0.3px; }
+  /* A generic phone, a silver edge round a black bezel, since Apple's bezel may not be cropped
+     or published in this repo, and its marketing guidelines rule out drawing details unique
+     to its devices, such as the Dynamic Island. */
+  .phone {
+    position: absolute; left: 696px; top: 76px; width: 420px; height: 900px; box-sizing: border-box;
+    padding: 5px; border-radius: 70px;
+    background: linear-gradient(120deg, #f4f2ef, #c8c4bf 30%, #ebe8e4 55%, #b3aea8 85%, #d9d5d0);
+    box-shadow: 0 0 0 1px rgba(70, 44, 28, 0.2), 0 40px 70px -30px rgba(74, 34, 10, 0.45);
+  }
+  .bezel { height: 100%; box-sizing: border-box; padding: 13px; border-radius: 65px; background: #0b0807; }
+  .screen { position: relative; height: 100%; border-radius: 52px; overflow: hidden; background: #faf5ee; }
+  .screen img { display: block; width: 100%; }
+</style>
+<body class="site">
+<script>if (location.search === "?invite") document.body.className = "invite";</script>
+<div class="beam"></div>
+<div class="spill"></div>
+<div class="lockup"><img src="../../site/icon.svg" alt=""><span>Ovenlight</span></div>
+<h1 class="for-site">Web apps from<br>your computer,<br>on your phone</h1>
+<h1 class="for-invite">Join a friend’s app,<br>no account needed</h1>
+<div class="phone"><div class="bezel"><div class="screen">
+  <img src="../../site/images/launcher-960.jpg" alt="">
+</div></div></div>
+</body>

@@ -16,7 +16,8 @@
 - `.claude-plugin/marketplace.json`, `plugins/ovenlight/`: the Claude Code plugin (the MCP
   server and a skill that points to `ovenlight guide`). Check it with
   `claude plugin validate .`.
-- `design/og/generate.py`: writes the link preview image, `site/og-invite.jpg`.
+- `design/og/generate.py`: writes the link preview images, `site/og.jpg` for the site and
+  `site/og-invite.jpg` for invite links.
 
 ## The connector
 

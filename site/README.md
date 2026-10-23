@@ -17,8 +17,9 @@ goes nowhere, and CI runs it on every push. `docs.js` adds the Copy buttons on c
 The home, support, privacy and docs pages share `style.css`; the join page keeps its styles
 inline, since its Content-Security-Policy loads nothing but `join.js` and same-origin
 images. Screenshots in `images/` come in WebP with a JPEG fallback, at 480 and 960 px wide. The link
-preview image, `og-invite.jpg`, is written by `design/og/generate.py`, and the icons,
-`icon.svg` and `icon-180.png`, by `design/icon/generate.py`.
+preview images, `og.jpg` for the site and `og-invite.jpg` for the join page's invite links,
+are written by `design/og/generate.py`, and the icons, `icon.svg` and `icon-180.png`, by
+`design/icon/generate.py`.
 
 `.well-known/apple-app-site-association` makes invite links open the app. iOS
 accepts it only when it is served directly, with no redirect, as
