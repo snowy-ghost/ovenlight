@@ -261,9 +261,8 @@ Each release from 1.0.1 on also stays in its own folder, such as
 `https://downloads.ovenlight.app/connector/1.0.9/`, with its checksums signed by the keys
 in `allowed_signers` as it was at that release's tag. The release you updated from is in
 `ovenlight status`'s Last update line. To install an older release and stay on it, first
-run `ovenlight update off`, or the connector moves to the newest again (one up to 1.0.9,
-or one from before a change of release keys, never does). Check it on a Mac or Linux with
-its version in place of `1.0.9`, and the Linux changes above:
+run `ovenlight update off`, or the connector may move to the newest again. Check it on a
+Mac or Linux with its version in place of `1.0.9`, and the Linux changes above:
 
 ```sh
 mkdir -p ~/ovenlight-connector && cd ~/ovenlight-connector
