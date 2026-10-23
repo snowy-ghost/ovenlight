@@ -176,7 +176,11 @@ goes() {
   done
   put connector/latest.json.sig "$records/$1.json.sig" "public, max-age=300"
   put connector/latest.json "$records/$1.json" "public, max-age=300"
-  date +%s > "$records/$1.live"
+  # The same index again, once up, keeps when it went up: a later mark would restart the
+  # waits counted from it.
+  if ! { cmp -s "$tmp/live.json" "$records/$1.json" && marked "$1" > /dev/null; }; then
+    date +%s > "$records/$1.live"
+  fi
   echo "published $1: $SITE/connector/latest.json names $2"
 }
 
