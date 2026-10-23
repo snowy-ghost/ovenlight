@@ -1111,12 +1111,11 @@ scenario_gates() {
   commit "the test key"
   refused "holds a release key whose private half is public" release 1.1.0 1.0.6 1.1.0
   # A dry run builds with the mock release keys, which stay in the repo after the key swap, and
-  # a real build refuses them before it builds anything. Its defaults point into the scratch
-  # folder all the same.
+  # a real build refuses them before it builds anything. They stand alone here, so the
+  # refusals below are theirs. Its defaults point into the scratch folder all the same.
   mocks=("$root"/connector/testdata/releasekey/mock-{touchid,backup}.pub)
-  cat "$fixtures/air1.pub" "$fixtures/paper1.pub" "${mocks[@]}" > "$repo/connector/release_keys"
-  signers air1 paper1
-  awk '{ print "team@snowyghost.com namespaces=\"file,ovenlight-latest\"", $1, $2 }' "${mocks[@]}" >> "$repo/docs/allowed_signers"
+  cat "${mocks[@]}" > "$repo/connector/release_keys"
+  awk '{ print "team@snowyghost.com namespaces=\"file,ovenlight-latest\"", $1, $2 }' "${mocks[@]}" > "$repo/docs/allowed_signers"
   commit "the mock keys"
   build 1.1.0 1.0.6 1.1.0
   pass "a dry run builds with the mock release keys"
