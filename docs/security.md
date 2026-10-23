@@ -388,7 +388,8 @@ use too.
 
 ## What goes to Tailscale
 
-- **The connector** keeps tsnet's defaults. Its nodes send backend logs to Tailscale's log
+- **The connector's nodes** name the app as `ovenlight` in the device information they
+  send, and otherwise keep tsnet's defaults. They send backend logs to Tailscale's log
   service, as the Tailscale app does. tsnet may open a NAT-PMP or UPnP port mapping on
   your router for direct connections, and its peer and UDP listeners bind to all
   interfaces.

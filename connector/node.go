@@ -24,6 +24,7 @@ import (
 
 	"tailscale.com/client/local"
 	"tailscale.com/client/tailscale/apitype"
+	"tailscale.com/hostinfo"
 	"tailscale.com/ipn/ipnstate"
 	"tailscale.com/tsnet"
 
@@ -225,6 +226,9 @@ func (n *appNode) start() error {
 	}
 	var logf func(string, ...any)
 	n.logs, logf = backendLogger(filepath.Join(n.dir, "backend.log"))
+	// Names the app in the device information the node sends Tailscale, as tsnet apps
+	// such as golinks do.
+	hostinfo.SetApp("ovenlight")
 	n.srv = &tsnet.Server{
 		Dir:           n.dir,
 		Hostname:      n.App().Slug,
