@@ -211,9 +211,11 @@ works in PowerShell windows opened after the install.
 
 #### Updating
 
-To update, run the same install commands again when `ovenlight doctor` says a new release
-is out. [docs/connector.md](docs/connector.md#install) also covers downloading in a browser
-and checking a download's signature.
+The connector updates itself, at a quiet moment in the night two days after it first sees
+a new release, and sooner for a security fix. `ovenlight update off` stops it. Releases up
+to 1.0.9 don't update themselves: install a newer one by hand once.
+[docs/connector.md](docs/connector.md#update) has the details, and how to install a
+release by hand with its signature checked.
 
 ### 3. Publish an app
 
@@ -383,9 +385,12 @@ If your team needs more, write to team@snowyghost.com.
 - **Apps can trust who is calling**, as long as they follow the
   [app contract](docs/app-contract.md): the connector removes any identity headers a
   caller sends and sets its own from Tailscale.
-- **Signed releases.** The connector's checksums are signed, and the public keys that
-  check them are in this repository ([how to verify](docs/connector.md#from-a-release)).
-  Its Windows program and scripts are signed by Snowy Ghost LLC.
+- **Signed releases.** The connector installs only an update signed with a release key
+  built into it, never on the download server's word
+  ([how updates work](docs/security.md#updates)). You can check a download against the
+  same signed index, with the keys listed in this repository
+  ([how to verify](docs/connector.md#check-a-download-first)). Its Windows program and
+  scripts are signed by Snowy Ghost LLC.
 
 Out of scope: anything running as you on the computer, such as a coding agent with a shell
 or one of your apps, can do what you can, including reading the Tailscale API credential

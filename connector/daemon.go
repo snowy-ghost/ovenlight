@@ -14,6 +14,7 @@ import (
 	"runtime"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -46,6 +47,38 @@ type daemon struct {
 	apiMu     sync.Mutex
 	apiClient controlAPI
 	apiFinger string
+
+	upd   *updater // nil unless the connector updates itself (see selfUpdating)
+	trial *trial   // the last update's trial, while this binary is on it
+	// exits takes why the connector exits through its normal shutdown for the service to
+	// start the binary in bin, after a swap or a rollback.
+	exits     chan string
+	exitBegun atomic.Bool  // set by exit: the updater does nothing more
+	calls     atomic.Int32 // control requests being answered
+	// lastRequest is when a request through an app node, the admin API or the control
+	// socket last started or ended, in Unix nanoseconds, and openRequests counts those not
+	// yet ended: the updater swaps at a quiet moment.
+	lastRequest  atomic.Int64
+	openRequests atomic.Int32
+}
+
+// noteRequest notes a request's start, and returns what notes its end.
+func (d *daemon) noteRequest() (end func()) {
+	d.openRequests.Add(1)
+	d.lastRequest.Store(time.Now().UnixNano())
+	return func() {
+		d.lastRequest.Store(time.Now().UnixNano())
+		d.openRequests.Add(-1)
+	}
+}
+
+// lastRequestTime is when the last request ended, or now while one is open: a stream or a
+// WebSocket through an app is in use until it closes.
+func (d *daemon) lastRequestTime(now time.Time) time.Time {
+	if d.openRequests.Load() > 0 {
+		return now
+	}
+	return time.Unix(0, d.lastRequest.Load())
 }
 
 func socketPath(stateDir string) string { return filepath.Join(stateDir, "ovenlight.sock") }
@@ -59,7 +92,7 @@ func maxSocketPath() int {
 	return 103
 }
 
-func runDaemon(configPath, stateDir string, dev devOptions) error {
+func runDaemon(configPath, stateDir string, dev devOptions, service bool) error {
 	if n := len(socketPath(stateDir)); n > maxSocketPath() {
 		return fmt.Errorf("the state directory's path is too long for its control socket (%d bytes, at most %d); use a shorter --state", n, maxSocketPath())
 	}
@@ -84,13 +117,21 @@ func runDaemon(configPath, stateDir string, dev devOptions) error {
 		return err
 	}
 	d := &daemon{configPath: configPath, stateDir: stateDir, dev: dev, sh: sh, nodes: map[string]*appNode{},
-		procs: newSupervisors(appLogDir(stateDir))}
+		procs: newSupervisors(appLogDir(stateDir)), trial: serviceTrial, exits: make(chan string, 1)}
 	log.Printf("Ovenlight connector starting (config %s, state %s)", configPath, stateDir)
 	if dev.ControlURL != "" {
 		log.Printf("DEV MODE: control server %s", dev.ControlURL)
 	}
+	if exe, err := os.Executable(); err == nil && selfUpdating(version(), service, exe, installedBinary(stateDir)) {
+		d.upd = newUpdater(d)
+		log.Printf("updates: checking daily (off: %v)", updatesOff(stateDir))
+		go d.upd.run(d.stopping())
+	}
 	go d.serveControl(ln)
 	go d.syncLoop()
+	if d.trial != nil {
+		d.trial.attach(d)
+	}
 	// Reloads run beside the signal loop, so SIGTERM never waits for one to finish
 	// starting every node; opMu keeps them in order.
 	reload := func(what string) {
@@ -99,17 +140,61 @@ func runDaemon(configPath, stateDir string, dev devOptions) error {
 		}
 	}
 	go reload("config")
-	for sig := range signals {
-		if sig == syscall.SIGHUP {
-			go reload("reload")
-			continue
+	for {
+		restart := false
+		select {
+		case sig := <-signals:
+			if sig == syscall.SIGHUP {
+				go reload("reload")
+				continue
+			}
+			log.Printf("%v: shutting down", sig)
+			// The computer restarting, or the service restarted, isn't the release failing.
+			if d.trial != nil {
+				d.trial.stopped()
+			}
+		case why := <-d.exits:
+			log.Printf("%s: shutting down, for the service to start the connector again", why)
+			// A shutdown that hangs mustn't keep the service from starting the binary in bin.
+			time.AfterFunc(time.Minute, func() {
+				log.Printf("the shutdown took over a minute: exiting")
+				os.Exit(1)
+			})
+			restart = true
 		}
-		log.Printf("%v: shutting down", sig)
 		ln.Close()
+		// Control requests being answered, such as the update now that swapped, get their
+		// answer first.
+		for wait := time.Now().Add(5 * time.Second); restart && d.calls.Load() > 0 && time.Now().Before(wait); {
+			time.Sleep(50 * time.Millisecond)
+		}
 		d.shutdown()
 		return nil
 	}
-	return nil
+}
+
+// exit has the connector shut down as on SIGTERM, and exit for the service to start it
+// again: the binary now in bin.
+func (d *daemon) exit(why string) {
+	d.exitBegun.Store(true)
+	select {
+	case d.exits <- why:
+	default: // already exiting
+	}
+}
+
+func (d *daemon) onTrial() bool { return d.trial != nil && d.trial.running() }
+
+// servingApps are the apps serving with their node logged in and its key unexpired, as
+// an update's trial records them.
+func (d *daemon) servingApps(now time.Time) []string {
+	var apps []string
+	for _, n := range d.snapshot() {
+		if s := n.status(); servesLoggedIn(s) && (s.KeyExpiry == nil || s.KeyExpiry.After(now)) {
+			apps = append(apps, s.Slug)
+		}
+	}
+	return apps
 }
 
 // errLocked is lockFile's answer when another process holds the lock.
@@ -342,6 +427,9 @@ type controlRequest struct {
 	App      string `json:"app,omitempty"`
 	// Review asks share for a review invite (terminal only).
 	Review bool `json:"review,omitempty"`
+	// Index and Sig are the canary index update-now applies, and its signature.
+	Index []byte `json:"index,omitempty"`
+	Sig   []byte `json:"sig,omitempty"`
 }
 
 type controlReply struct {
@@ -366,6 +454,8 @@ type controlReply struct {
 	// EnvError is why the login shell's environment can't be read for the apps' commands,
 	// while it never has been, so they run with the connector's own.
 	EnvError string `json:"envError,omitempty"`
+	// SelfUpdating is set when the connector updates itself (see selfUpdating).
+	SelfUpdating bool `json:"selfUpdating,omitempty"`
 }
 
 // listenControl clears a stale socket and listens. The caller holds lockStateDir, so no
@@ -399,14 +489,28 @@ func (d *daemon) serveControl(ln net.Listener) {
 }
 
 func (d *daemon) handleControl(conn net.Conn) {
+	d.calls.Add(1)
+	defer d.calls.Add(-1)
 	defer conn.Close()
+	defer d.noteRequest()()
 	conn.SetDeadline(time.Now().Add(3 * time.Minute)) // make-shareable waits for a login
 	var req controlRequest
 	if err := json.NewDecoder(bufio.NewReader(conn)).Decode(&req); err != nil {
 		return
 	}
-	reply := controlReply{OK: true, PID: os.Getpid(), Version: version(), Dev: d.dev.ControlURL != ""}
+	reply := controlReply{OK: true, PID: os.Getpid(), Version: version(), Dev: d.dev.ControlURL != "", SelfUpdating: d.upd != nil}
 	switch req.Cmd {
+	case "update-now":
+		if d.upd == nil {
+			reply = controlReply{Error: "this connector doesn't update itself: only a release build the service runs from the connector's bin folder does"}
+			break
+		}
+		conn.SetDeadline(time.Now().Add(updateNowWait))
+		msg, err := d.upd.updateNow(context.Background(), req.Index, req.Sig)
+		if err != nil {
+			reply = controlReply{Error: err.Error()}
+		}
+		reply.Message = msg
 	case "reload":
 		if err := d.reload(); err != nil {
 			reply = controlReply{Error: err.Error()}

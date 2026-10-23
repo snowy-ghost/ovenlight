@@ -3,8 +3,8 @@
 # S4U, so Windows stores no password. A work, school or domain account gets a task that
 # runs while it's signed in instead (see $local). From a release, it installs the
 # ovenlight.exe next to this script; in the source tree, it builds one.
-# Safe to run again: it rebuilds, reinstalls and restarts. Node state and the app list
-# are kept.
+# Safe to run again: it rebuilds, reinstalls and restarts. Node state, the app list and
+# the updater's state are kept.
 #
 # Run it from an administrator PowerShell, signed in as the account that will own the
 # apps: only an administrator can register a task that runs with nobody signed in or
@@ -65,7 +65,9 @@ if (Test-Path $prebuilt) {
   if ($LASTEXITCODE) { Fail 'go build failed' }
 }
 
-# If anything below fails, the old connector, still installed, starts again.
+# If anything below fails, the old connector, still installed, starts again: moved back
+# first if it was moved aside.
+$aside = $null
 try {
   # A running binary can't be replaced: stop the connector, disabled so a minute's try
   # doesn't start it again meanwhile (registering it again enables it).
@@ -77,10 +79,22 @@ try {
   # Windows won't replace or delete a running binary, such as an MCP server's, but renames
   # one: aside under a new name each time, and old ones go once nothing runs them.
   Get-ChildItem $binDir -Filter 'ovenlight.old*.exe' | Remove-Item -Force -ErrorAction SilentlyContinue
-  if (Test-Path $bin) { Move-Item $bin (Join-Path $binDir "ovenlight.old-$([DateTime]::Now.Ticks).exe") }
+  # An update's trial and the binary it would roll back to go first, so the connector this
+  # installs is never rolled back to it. update.json stays.
+  $trial = Join-Path $support 'update-trial.json'
+  if (Test-Path $trial) { Remove-Item -Force $trial }
+  $prev = Join-Path $binDir 'ovenlight.prev.exe'
+  Remove-Item -Force -ErrorAction SilentlyContinue $prev
+  # One tick apart, so the names differ.
+  $ticks = [DateTime]::Now.Ticks
+  if (Test-Path $prev) { Move-Item $prev (Join-Path $binDir "ovenlight.old-$ticks.exe") }
+  if (Test-Path $bin) {
+    $aside = Join-Path $binDir "ovenlight.old-$($ticks + 1).exe"
+    Move-Item $bin $aside
+  }
   Move-Item $new $bin -Force
 
-  $run = 'run --log "{0}" --config "{1}" --state "{2}"' -f $log, $config, $support
+  $run = 'run --service --log "{0}" --config "{1}" --state "{2}"' -f $log, $config, $support
   # At startup or sign-in, and every minute from now on: Task Scheduler restarts a task
   # only when it fails to start, not when it stops, so each minute it tries, and a try
   # while it runs does nothing (IgnoreNew).
@@ -109,6 +123,7 @@ try {
     -Action $action -Trigger $triggers -Principal $principal -Settings $settings -Force | Out-Null
   Start-ScheduledTask -TaskName $task
 } catch {
+  if ($aside -and -not (Test-Path $bin)) { Move-Item $aside $bin -ErrorAction Continue }
   if ($existing) {
     Enable-ScheduledTask -TaskName $task | Out-Null
     Start-ScheduledTask -TaskName $task

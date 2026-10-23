@@ -1,8 +1,9 @@
-# Stops and removes the ovenlight scheduled task, its binary and its PATH entry.
-# Node state, the app list and the log stay, so a reinstall needs no new logins; --purge
-# deletes them too, with the stored API credential, the guest records, the feedback
-# inbox and the policy backups (the nodes then stay in your tailnet, offline, until you
-# remove them in the admin console).
+# Stops and removes the ovenlight scheduled task, its binaries (the updater's too) and its
+# PATH entry.
+# Node state, the app list, the updater's state (update.json, updates-off) and the log
+# stay, so a reinstall needs no new logins; --purge deletes them too, with the stored API
+# credential, the guest records, the feedback inbox and the policy backups (the nodes then
+# stay in your tailnet, offline, until you remove them in the admin console).
 # Run it from an administrator PowerShell, as install.ps1:
 #   powershell -ExecutionPolicy Bypass -File .\uninstall.ps1 [--purge]
 $ErrorActionPreference = 'Stop'
@@ -51,11 +52,13 @@ if (($path -split ';') -contains $binDir) {
 }
 $envKey.Close()
 
-Remove-Item -Force -ErrorAction SilentlyContinue $bin, (Join-Path $binDir 'ovenlight.old*.exe'), (Join-Path $support 'ovenlight.sock'), (Join-Path $support 'ovenlight.lock')
+Remove-Item -Force -ErrorAction SilentlyContinue $bin, (Join-Path $binDir 'ovenlight.old*.exe'), (Join-Path $binDir 'ovenlight.prev.exe'),
+  (Join-Path $binDir 'ovenlight.next.exe'), (Join-Path $binDir 'ovenlight.download'), (Join-Path $support 'update-trial.json'),
+  (Join-Path $support 'ovenlight.sock'), (Join-Path $support 'ovenlight.lock')
 Write-Output "removed $task"
 
 if ($args -contains '--purge') {
   # The log names guests, devices and your login.
   Remove-Item -Recurse -Force $support
-  Write-Output 'deleted node state, config, the stored API credential, guest records, the feedback inbox, policy backups and logs'
+  Write-Output 'deleted node state, config, the stored API credential, guest records, the feedback inbox, policy backups, the updater''s record and settings, and logs'
 }

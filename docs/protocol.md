@@ -41,6 +41,16 @@ directions. So:
   Guests never get that header, so a guest-facing change needs another signal, such as
   a new field.
 
+Connector releases keep working with each other's files the same way. After an update, a
+coding agent's `ovenlight mcp` runs the old binary until the agent restarts it, and a
+rollback runs the old binary on files the new one wrote. So the control socket and every
+file in the config and state folders follow these rules too: add fields and commands, and
+never rename, move or reinterpret one. An older binary drops the fields it doesn't know
+when it rewrites a file, so data whose loss matters goes in a file of its own, as
+`commands.json` sits beside `config.json` and `updates-off` beside `update.json`.
+`ovenlight version` prints exactly the bare version, since every installed updater checks
+a new binary with it.
+
 ## Errors
 
 Every error the connector makes carries a code in the `Ovenlight-Error` header. JSON

@@ -339,13 +339,14 @@ func TestLoginShell(t *testing.T) {
 // exits 1.
 const serveCommand = "__serve"
 
-// TestMain lets loginEnv's login shell run the test binary as it runs the connector, and
-// apps run it as serveCommand.
+// TestMain lets loginEnv's login shell run the test binary as it runs the connector, apps
+// run it as serveCommand, and the swap's tests run it as a release.
 func TestMain(m *testing.M) {
 	if len(os.Args) > 1 && os.Args[1] == env0Command {
 		printEnv0()
 		return
 	}
+	runAsRelease()
 	if len(os.Args) > 1 && os.Args[1] == serveCommand {
 		if _, err := net.Listen("tcp", "127.0.0.1:"+os.Getenv("PORT")); err == nil {
 			time.Sleep(300 * time.Millisecond) // long enough for watchServing's lsof to see it
@@ -1148,18 +1149,36 @@ func TestProcessGroupOfPidZero(t *testing.T) {
 	}
 }
 
-// The installed connector is the person's background service; one for other paths isn't.
+// The installed connector is the person's background service, started by the service
+// manager; one for other paths isn't.
 func TestStartFix(t *testing.T) {
 	if note := runNote(&paths{config: defaultConfigPath(), state: defaultStateDir()}, "coach"); strings.Contains(note, "--config") || !strings.Contains(note, " publish --slug coach --dir") {
 		t.Errorf("runNote, default paths: %s", note)
 	}
 	fix := startFix(&paths{config: defaultConfigPath(), state: defaultStateDir()})
-	if !strings.Contains(fix, "install script again") || strings.Contains(fix, "ovenlight run") {
+	// The whole command, and only the command, in backticks, so it copies as it runs.
+	if !strings.Contains(fix, "`"+serviceCommands[runtime.GOOS].start+"`") || !strings.Contains(fix, defaultLogPath()) || !strings.Contains(fix, serviceCommands[runtime.GOOS].crash) ||
+		strings.Contains(fix, "install script") || strings.Contains(fix, "ovenlight run") {
 		t.Errorf("default paths: %s", fix)
 	}
 	fix = startFix(&paths{config: "/tmp/c.json", state: "/tmp/s"})
 	if strings.Contains(fix, "install script") || !strings.Contains(fix, "--config /tmp/c.json and --state /tmp/s") {
 		t.Errorf("other paths: %s", fix)
+	}
+}
+
+// The connector's messages and docs/connector.md give the same commands.
+func TestServiceCommandsMatchDocs(t *testing.T) {
+	doc, err := os.ReadFile("../docs/connector.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for goos, c := range serviceCommands {
+		for _, cmd := range []string{c.start, c.restart} {
+			if !strings.Contains(string(doc), "`"+cmd+"`") {
+				t.Errorf("%s: docs/connector.md doesn't give %s", goos, cmd)
+			}
+		}
 	}
 }
 
@@ -1468,6 +1487,26 @@ func TestDoctorWithoutApps(t *testing.T) {
 	}
 }
 
+// A connector that runs and doesn't answer is restarted: starting it leaves it as it is.
+func TestDaemonFixes(t *testing.T) {
+	state, err := os.MkdirTemp("", "ol") // short, for the control socket's path
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(state) })
+	p := &paths{config: filepath.Join(state, "config.json"), state: state}
+	if c := findCheck(t, runDoctor(&Config{}, p.state, p.config), "daemon"); c.Fix != startFix(p) {
+		t.Errorf("down: %s", c.Fix)
+	}
+	silent(t, state)
+	if c := findCheck(t, runDoctor(&Config{}, p.state, p.config), "daemon"); c.Status != statusFail || c.Fix != restartFix(p) {
+		t.Errorf("doctor, no answer: %+v", c)
+	}
+	if _, _, c := tailnetHost(p, App{Name: "Coach", Slug: "coach", Port: 4317}); c == nil || c.Fix != restartFix(p) {
+		t.Errorf("check, no answer: %+v", c)
+	}
+}
+
 // The bind fix names the flag in the app's own command that gives every address.
 func TestWildcardFlag(t *testing.T) {
 	for run, want := range map[string]string{
@@ -1634,7 +1673,7 @@ func TestLoginEnvFailureIsReported(t *testing.T) {
 // A unix socket's path has a limit, which a long --state would pass.
 func TestDaemonRefusesALongSocketPath(t *testing.T) {
 	state := filepath.Join(t.TempDir(), strings.Repeat("s", 100))
-	err := runDaemon(filepath.Join(state, "config.json"), state, devOptions{})
+	err := runDaemon(filepath.Join(state, "config.json"), state, devOptions{}, false)
 	want := fmt.Sprintf("the state directory's path is too long for its control socket (%d bytes, at most %d); use a shorter --state", len(socketPath(state)), maxSocketPath())
 	if err == nil || err.Error() != want {
 		t.Errorf("err = %v", err)

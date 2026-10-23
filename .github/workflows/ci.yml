@@ -65,14 +65,19 @@ jobs:
           GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 "$(go env GOPATH)/bin/govulncheck" ./...
 
   # The install scripts, as a user runs them: install, a crash and restart, reinstall,
-  # uninstall --purge. On Windows the script builds from source.
+  # uninstall, uninstall --purge. On Windows the script builds from source. A reinstall
+  # drops an update's trial and the binary it would roll back to, and an uninstall the
+  # updater's binaries, and both keep the updater's state. Then the updater end to end,
+  # on macOS too, which also dry-runs the release scripts.
   install:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, windows-2025]
+        os: [ubuntu-24.04, windows-2025, macos-15]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    # The updates take about 20 minutes, and up to 35 when each night comes late. A
+    # rollback on Windows waits up to a minute for each of three starts.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -91,12 +96,21 @@ jobs:
           # Not grep -q: it can exit before status finishes writing, and pipefail fails the
           # step on status's SIGPIPE (exit 141).
           running() { ~/.local/state/ovenlight/bin/ovenlight status | grep '^Connector: running' > /dev/null; }
+          s=~/.local/state/ovenlight
           connector/install.sh
           sleep 3 && running
+          systemctl --user show -p ExecStart ovenlight | grep ' run --service ' > /dev/null
           kill -9 "$(systemctl --user show -p MainPID --value ovenlight)"
           sleep 15 && running
+          echo '{}' > "$s/update.json"
+          touch "$s/update-trial.json" "$s/bin/ovenlight.prev"
           connector/install.sh
           sleep 3 && running
+          for f in "$s/update-trial.json" "$s/bin/ovenlight.prev"; do test ! -e "$f"; done
+          touch "$s/updates-off" "$s/update-trial.json" "$s/bin/ovenlight.prev" "$s/bin/ovenlight.next" "$s/bin/ovenlight.download"
+          connector/uninstall.sh
+          for f in update-trial.json bin/ovenlight bin/ovenlight.prev bin/ovenlight.next bin/ovenlight.download; do test ! -e "$s/$f"; done
+          for f in update.json updates-off; do test -e "$s/$f"; done
           connector/uninstall.sh --purge
           test ! -e ~/.local/state/ovenlight
           ! systemctl --user is-active ovenlight
@@ -108,18 +122,63 @@ jobs:
           $o = "$env:LOCALAPPDATA\ovenlight\bin\ovenlight.exe"
           function Check($ok, $what) { if (-not $ok) { throw $what } }
           function Running { [bool](& $o status | Select-String '^Connector: running') }
+          $s = "$env:LOCALAPPDATA\ovenlight"
+          $prev = "$s\bin\ovenlight.prev.exe"
           powershell -ExecutionPolicy Bypass -File connector\install.ps1
           Check ($LASTEXITCODE -eq 0) 'install failed'
           Check (Running) 'not running after install'
+          Check ((Get-ScheduledTask ovenlight).Actions[0].Arguments -like '*run --service *') 'task runs without --service'
           Stop-Process -Name ovenlight -Force
           for ($i = 0; $i -lt 45 -and -not (Running); $i++) { Start-Sleep 2 }
           Check (Running) 'not restarted within 90 s'
+          # A .prev still running, as an older MCP server may, which only a rename moves. With
+          # no apps, this connector contacts nothing.
+          Set-Content "$s\update.json" '{}'
+          Set-Content "$s\update-trial.json" '{}'
+          Copy-Item $o $prev
+          $p = Start-Process $prev -ArgumentList 'run', '--config', "$env:RUNNER_TEMP\c.json", '--state', "$env:RUNNER_TEMP\s" -WindowStyle Hidden -PassThru
           powershell -ExecutionPolicy Bypass -File connector\install.ps1
           Check ($LASTEXITCODE -eq 0) 'reinstall failed'
+          Check (Running) 'not running after reinstall'
+          Check (-not (Test-Path "$s\update-trial.json")) 'trial left behind'
+          Check (-not (Test-Path $prev)) '.prev left in place'
+          # .prev and the replaced binary, each aside under its own name.
+          Check ((Get-ChildItem "$s\bin" -Filter 'ovenlight.old-*.exe').Count -eq 2) '.prev not moved aside'
+          Stop-Process -Id $p.Id -Force
+          $p.WaitForExit()
+          Set-Content "$s\updates-off" ''
+          foreach ($f in 'update-trial.json', 'bin\ovenlight.prev.exe', 'bin\ovenlight.next.exe', 'bin\ovenlight.download') { Set-Content "$s\$f" '' }
+          powershell -ExecutionPolicy Bypass -File connector\uninstall.ps1
+          Check ($LASTEXITCODE -eq 0) 'uninstall failed'
+          foreach ($f in 'update-trial.json', 'bin\ovenlight.exe', 'bin\ovenlight.prev.exe', 'bin\ovenlight.next.exe', 'bin\ovenlight.download') { Check (-not (Test-Path "$s\$f")) "$f left behind" }
+          Check (-not (Get-ChildItem "$s\bin" -Filter 'ovenlight.old*.exe')) 'old binaries left behind'
+          foreach ($f in 'update.json', 'updates-off') { Check (Test-Path "$s\$f") "$f removed" }
           powershell -ExecutionPolicy Bypass -File connector\uninstall.ps1 --purge
           Check ($LASTEXITCODE -eq 0) 'uninstall failed'
           Check (-not (Get-ScheduledTask ovenlight -ErrorAction SilentlyContinue)) 'task left behind'
           Check (-not (Test-Path "$env:LOCALAPPDATA\ovenlight")) 'folder left behind'
+      # The release scripts' dry runs, with the BSD sed and date of the Macs that release.
+      - name: Release scripts
+        if: runner.os == 'macOS'
+        run: scripts/test-connector-release.sh
+      # The connector is a launchd agent of the login session, so this runner can run it
+      # only if it has one.
+      - name: launchd's user domain
+        if: runner.os == 'macOS'
+        run: launchctl print "gui/$(id -u)" > /dev/null
+      # Test releases installed with their own install script, updating from a local server
+      # on a 5-second hour: two updates in a row through the daily check, the wait and the
+      # night, an older release's install script, and a rollback from a release that
+      # crashes at start (connector/e2e/update_test.go).
+      - name: Updates
+        working-directory: connector
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then
+            XDG_RUNTIME_DIR="/run/user/$(id -u)"
+            export XDG_RUNTIME_DIR
+          fi
+          OVENLIGHT_E2E_UPDATE=1 go test -tags e2e ./e2e -run TestUpdate -v -count=1 -timeout 55m
 
   e2e:
     runs-on: ubuntu-24.04

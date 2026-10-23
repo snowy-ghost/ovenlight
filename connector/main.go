@@ -40,6 +40,8 @@ Usage:
   ovenlight version
   ovenlight guide                                 how to build apps for Ovenlight, for coding agents
   ovenlight run                                   run the connector (its background service does this)
+  ovenlight update off|on                         stop installing updates, or start again (it checks daily either way)
+  ovenlight update now --index <file>             install the release a canary index names, at once (testing a release)
 
 Sharing (one-time setup: auth set, then publish --slug <slug> --shareable, which records you as the owner):
   ovenlight auth set [--oauth-client-id <id>]     reads the secret from stdin
@@ -72,8 +74,26 @@ func startFix(p *paths) string {
 		return fmt.Sprintf("No connector is running for --config %s and --state %s. The connector the person installed uses the default paths, "+
 			"so nothing for these paths is served until the person runs a connector with them; an agent must not start one itself", p.config, p.state)
 	}
-	return "Start it by running its install script again (install.sh, or install.ps1 on Windows); if it starts but keeps stopping, " +
-		"the reason is at the end of " + defaultLogPath()
+	return serviceFix("Start it", serviceCommands[runtime.GOOS].start) + ". If it starts but keeps stopping, the reason is at the end of " + defaultLogPath() +
+		", or of " + serviceCommands[runtime.GOOS].crash + " after a crash"
+}
+
+// serviceCommands start and restart the installed connector on each OS, as
+// docs/connector.md gives them, and say where they run and where a crash, which bypasses
+// the log, leaves its reason. Starting also undoes the stops it describes, and on macOS
+// starts an agent that's already loaded. They name the service, never the install script:
+// an older release's script would bring back a connector that doesn't update itself.
+var serviceCommands = map[string]struct{ start, restart, where, crash string }{
+	"darwin": {"launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.snowyghost.ovenlight.connector.plist || launchctl kickstart gui/$(id -u)/com.snowyghost.ovenlight.connector",
+		"launchctl kickstart -k gui/$(id -u)/com.snowyghost.ovenlight.connector", "", "ovenlight.stderr.log beside it"},
+	"linux":   {"systemctl --user enable --now ovenlight", "systemctl --user restart ovenlight", "", "`journalctl --user -eu ovenlight`"},
+	"windows": {"Enable-ScheduledTask ovenlight; Start-ScheduledTask ovenlight", "Stop-ScheduledTask ovenlight; Start-ScheduledTask ovenlight", " in an administrator PowerShell", "ovenlight.stderr.log beside it"},
+}
+
+// serviceFix is a fix that runs command, one of serviceCommands: "Start it with `...`",
+// with where it runs outside the backticks, so the command copies whole.
+func serviceFix(verb, command string) string {
+	return verb + serviceCommands[runtime.GOOS].where + " with `" + command + "`"
 }
 
 type paths struct {
@@ -112,6 +132,13 @@ func commandUsage(name string) string {
 
 func main() {
 	log.SetFlags(log.LstdFlags)
+	// Before anything else, so a release that fails while starting is caught.
+	if serviceStart(os.Args[1:]) {
+		startTrial()
+		if testCrash != "" {
+			panic("a test release that crashes as the service starts it")
+		}
+	}
 	if len(os.Args) < 2 {
 		fmt.Fprint(os.Stderr, usage)
 		os.Exit(2)
@@ -120,7 +147,7 @@ func main() {
 		"run": cmdRun, "publish": cmdPublish, "unpublish": cmdUnpublish, "status": cmdStatus, "doctor": cmdDoctor, "check": cmdCheck,
 		"auth": cmdAuth, "setup-sharing": cmdSetupSharing, "share": cmdShare, "guests": cmdGuests,
 		"revoke": cmdRevoke, "feedback": cmdFeedback, "mcp": cmdMCP, "logs": cmdLogs,
-		"new": cmdNew, "guide": cmdGuide, "restart": cmdRestart,
+		"new": cmdNew, "guide": cmdGuide, "restart": cmdRestart, "update": cmdUpdate,
 		"version": func([]string) error { fmt.Println(version()); return nil },
 	}
 	cmd, args := os.Args[1], os.Args[2:]
@@ -182,6 +209,7 @@ const maxLog = 20 << 20
 func cmdRun(args []string) error {
 	fs, p := newFlags("run")
 	logFile := fs.String("log", "", "write the log to this file, moved to <file>.1 at 20 MB, instead of standard error")
+	service := fs.Bool("service", false, "started as the installed service: the launchd agent, systemd unit and scheduled task pass it")
 	controlURL := fs.String("control-url", "", "development only: control server URL (Headscale)")
 	authKey := fs.String("auth-key", "", "development only: preauth key for every node")
 	certFile := fs.String("dev-tls-cert", "", "development only: TLS certificate to serve instead of the ts.net one")
@@ -198,18 +226,6 @@ func cmdRun(args []string) error {
 			return err
 		}
 		log.SetOutput(f)
-		if runtime.GOOS == "windows" {
-			// A scheduled task's standard error goes nowhere, so a crash is kept beside the log.
-			crash, err := os.OpenFile(filepath.Join(filepath.Dir(*logFile), "ovenlight.stderr.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
-			if err != nil {
-				return err
-			}
-			err = debug.SetCrashOutput(crash, debug.CrashOptions{}) // keeps its own copy of the file
-			crash.Close()
-			if err != nil {
-				return err
-			}
-		}
 	}
 	log.Printf("ovenlight %s", version())
 	if os.Getenv("OVENLIGHT_DEV") != "1" {
@@ -235,7 +251,7 @@ func cmdRun(args []string) error {
 	}
 	endAppsWithConnector()
 	stopWithConsoleHost()
-	err := runDaemon(p.config, p.state, dev)
+	err := runDaemon(p.config, p.state, dev, *service)
 	if err != nil && *logFile != "" {
 		log.Printf("stopped: %v", err) // main prints it to standard error too
 	}
@@ -507,14 +523,20 @@ func waitCertificate(p *paths, res *publishResult, waiting func()) {
 	}
 }
 
-// restartLoginFix restarts the connector so a node that lost its login asks for a new
-// login link, which tsnet does only as it starts; a fix for the person.
-func restartLoginFix(p *paths) string {
+// restartFix says how to restart the connector, a fix for the person: one that runs and
+// doesn't answer, which starting leaves as it is.
+func restartFix(p *paths) string {
 	if !p.installed() {
 		return fmt.Sprintf("The connector running for --config %s and --state %s isn't the installed one: whoever started it stops it and starts it again; "+
-			"an agent must not start one itself. Then ovenlight status shows the link", p.config, p.state)
+			"an agent must not start one itself", p.config, p.state)
 	}
-	return "Restart the connector by running its install script again (install.sh, or install.ps1 on Windows); then ovenlight status shows the link"
+	return serviceFix("Restart the connector", serviceCommands[runtime.GOOS].restart)
+}
+
+// restartLoginFix restarts the connector so a node that lost its login asks for a new
+// login link, which tsnet does only as it starts.
+func restartLoginFix(p *paths) string {
+	return restartFix(p) + ". Then ovenlight status shows the link"
 }
 
 // checkRetired refuses to publish a slug the config doesn't list while sharing.json still
@@ -864,6 +886,7 @@ type statusOut struct {
 	PID           int            `json:"pid,omitempty"`
 	Dev           bool           `json:"dev,omitempty"`
 	LoginEnvError string         `json:"loginEnvError,omitempty"` // see controlReply.EnvError
+	Update        *updateView    `json:"update,omitempty"`        // the running connector's, or with none running this binary's
 	Apps          []appStatus    `json:"apps"`
 	Sharing       sharingSummary `json:"sharing"`
 }
@@ -871,13 +894,14 @@ type statusOut struct {
 func collectStatus(p *paths) (*statusOut, error) {
 	cfg, err := LoadConfig(p.config)
 	if err != nil {
-		return nil, err
+		return nil, withHeld(p.state, err)
 	}
 	reply, daemonErr := callDaemon(p.state, "status", 10*time.Second)
 	if daemonErr != nil && !errors.Is(daemonErr, errDaemonDown) {
-		return nil, daemonErr
+		return nil, withHeld(p.state, fmt.Errorf("%w. %s", daemonErr, restartFix(p)))
 	}
 	out := &statusOut{Version: version(), Daemon: reply != nil, Apps: []appStatus{}}
+	out.Update, _ = daemonUpdate(p.state, reply, time.Now())
 	live := map[string]NodeStatus{}
 	var processes map[string]ProcessStatus
 	if reply != nil {
@@ -962,12 +986,18 @@ func cmdStatus(args []string) error {
 	}
 	if !out.Daemon {
 		fmt.Printf("Connector: not running. %s.\n", startFix(p))
+		if l := heldLine(out.Update); l != "" {
+			fmt.Println("  " + l)
+		}
 	} else {
 		mode := ""
 		if out.Dev {
 			mode = " (DEV control server)"
 		}
 		fmt.Printf("Connector: running, pid %d, version %s%s\n", out.PID, orDash(out.DaemonVersion), mode)
+		for _, line := range updateLines(out.Update, out.DaemonVersion, time.Now()) {
+			fmt.Println("  " + line)
+		}
 		processes := map[string]ProcessStatus{}
 		for _, a := range out.Apps {
 			if a.Process != nil {

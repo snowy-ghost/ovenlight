@@ -465,12 +465,17 @@ func runDoctor(cfg *Config, stateDir, configPath string) []Check {
 	reply, err := callDaemon(stateDir, "certs", 2*time.Minute)
 	down := errors.Is(err, errDaemonDown)
 	if err != nil {
-		checks = append(checks, Check{ID: "daemon", Status: statusFail, Message: err.Error(),
-			Fix: startFix(p), Actor: actorPerson})
+		fix := startFix(p)
+		if !down {
+			fix = restartFix(p)
+		}
+		checks = append(checks, Check{ID: "daemon", Status: statusFail, Message: err.Error(), Fix: fix, Actor: actorPerson})
 	} else {
 		checks = append(checks, Check{ID: "daemon", Status: statusOK, Message: fmt.Sprintf("running (pid %d)", reply.PID)})
 	}
-	if c := updateCheck(); c != nil {
+	now := time.Now()
+	u, v := daemonUpdate(stateDir, reply, now)
+	if c := updateFinding(u, v, reply != nil, now); c != nil {
 		checks = append(checks, *c)
 	}
 	if len(cfg.Apps) == 0 {
@@ -525,6 +530,111 @@ func runDoctor(cfg *Config, stateDir, configPath string) []Check {
 	}
 	checks = append(checks, sharedPortChecks(cfg)...)
 	return append(checks, sharingChecks(cfg, configPath, reply)...)
+}
+
+// updateStale is how long without a verified update check doctor warns after, and
+// failuresToWarn how many failures in a row of one release.
+const (
+	updateStale    = 7 * 24 * time.Hour
+	failuresToWarn = 3
+)
+
+// updateFinding judges the connector, at version v, by what its updater recorded, and
+// fetches nothing. An update waiting its turn is ok. Below secure it fails, even with
+// updates off, and it warns only when this computer won't update on its own. running says
+// the connector answered, so u.SelfUpdating is known.
+func updateFinding(u *updateView, v string, running bool, now time.Time) *Check {
+	if _, ok := semver(v); !ok {
+		return nil // a development build
+	}
+	byHand := func(release string) string {
+		return fmt.Sprintf("Install %s with %s; your apps and node state are kept", release, u.steps())
+	}
+	last := u.LastCheck
+	if last.IsZero() {
+		last = u.since
+	}
+	// stuck is why this computer won't update on its own.
+	var stuck *Check
+	warn := func(msg, fix string) {
+		stuck = &Check{ID: "update", Status: statusWarn, Message: msg, Fix: fix, Actor: actorPerson}
+	}
+	stale := u.SelfUpdating && now.Sub(last) > updateStale
+	failed := u.Failure != nil && u.Failure.Count >= failuresToWarn
+	switch {
+	case u.NeedsScript:
+		warn(fmt.Sprintf("%s needs its install script: an update replaces only the binary, and %s is too old for that", u.Latest, v), byHand(u.Latest))
+	case u.Off:
+		msg, fix := "updates are off, so the connector installs no release on its own", "Turn them back on with `ovenlight update on`"
+		if stale {
+			msg += ", and no update check has worked for 7 days, so it can't learn of a new security problem"
+			if u.CheckError != "" {
+				msg += ": " + u.CheckError
+			}
+			fix += ". If its checks still fail, install the latest release with " + u.steps()
+		}
+		warn(msg, fix)
+	case failed && strings.Contains(u.Failure.Error, notRunnable):
+		fix := "It most likely needs a newer version of the operating system. Once that's installed"
+		if runtime.GOOS == "windows" {
+			// Any Windows the connector supports runs a new release, so a block is likelier.
+			fix = "Windows or its security software may be blocking it, or it may need a newer Windows. Once it's allowed or Windows is updated"
+		}
+		warn(fmt.Sprintf("%s doesn't run on this computer, so updating to it has failed %d times in a row: %s", u.Failure.Version, u.Failure.Count, u.Failure.Error),
+			fix+", the connector installs "+u.Failure.Version+" on its own the next night")
+	case failed:
+		warn(fmt.Sprintf("updating to %s has failed %d times in a row, last on %s: %s", u.Failure.Version, u.Failure.Count, when(u.Failure.At), u.Failure.Error),
+			"It tries again each night. "+byHand(u.Failure.Version)+". If it then keeps stopping, install "+v+" again with the steps for an older release in "+olderDocs)
+	case running && !u.SelfUpdating:
+		warn("the running connector isn't the installed service, so it doesn't update itself",
+			serviceFix("Stop the connector started by hand, and start the installed one", serviceCommands[runtime.GOOS].start))
+	case stale:
+		msg := "no update check has worked for 7 days"
+		if u.CheckError != "" {
+			msg += ": " + u.CheckError
+		}
+		warn(msg, "If the check couldn't connect, check that this computer reaches "+updateBase+": its network connection, and any firewall or proxy, "+
+			"with the reason on the `updates: fetching` lines in "+defaultLogPath()+". Otherwise, or once it does, install the latest release with "+u.steps())
+	}
+	// Failed checks warn only after 7 days, but say so before.
+	failedCheck := ""
+	if u.CheckError != "" {
+		failedCheck = "; the last check failed: " + u.CheckError
+	}
+	switch {
+	case u.BelowSecure:
+		c := &Check{ID: "update", Status: statusFail, Message: fmt.Sprintf("the connector, %s, has a security problem fixed in %s", v, u.Secure)}
+		if stuck != nil {
+			c.Message += "; " + stuck.Message
+			c.Fix, c.Actor = stuck.Fix, actorPerson
+		} else {
+			c.Message += failedCheck
+			if u.Pending != "" && running {
+				c.Fix = "Nothing to do: " + u.Pending + " " + u.installs(now)
+			}
+		}
+		return c
+	case stuck != nil:
+		return stuck
+	}
+	cur, _ := semver(v)
+	latest, _ := semver(u.Latest)
+	var msg string
+	switch {
+	case u.Pending != "":
+		msg = u.Pending + " is out"
+		if running {
+			msg += ", and " + u.installs(now)
+		}
+	case u.Latest == "":
+		msg = "no update check has worked yet"
+	case less(latest, cur):
+		// A pulled release: the index went back to the one before it.
+		msg = fmt.Sprintf("%s is newer than the latest release, %s, and stays until the next one (checked %s)", v, u.Latest, when(u.LastCheck))
+	default:
+		msg = fmt.Sprintf("%s is up to date (checked %s)", v, when(u.LastCheck))
+	}
+	return &Check{ID: "update", Status: statusOK, Message: msg + failedCheck}
 }
 
 // heldByOther is portHeldCheck for check and doctor, for an app the connector runs: with

@@ -3,8 +3,8 @@
 # (com.snowyghost.ovenlight.connector) on macOS, a systemd user service (ovenlight) on
 # Linux. From a release, it installs the `ovenlight` binary next to this script; in the
 # source tree, it builds one.
-# Safe to run again: it rebuilds, reinstalls and restarts. Node state and the app list
-# are kept.
+# Safe to run again: it rebuilds, reinstalls and restarts. Node state, the app list and
+# the updater's state are kept.
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -77,6 +77,9 @@ else
   echo "building $bin"
   (cd "$here" && go build -trimpath -o "$bin.new" .)
 fi
+# An update's trial and the binary it would roll back to go first, so the connector this
+# installs is never rolled back to it. update.json stays.
+rm -f "$support/update-trial.json" "$bin.prev"
 mv "$bin.new" "$bin"
 
 tmp="$(mktemp)"
@@ -88,7 +91,7 @@ if [ "$os" = Linux ]; then
   systemctl --user enable --quiet "$label"
   # Starts a stopped service, and puts a running one on the new binary.
   systemctl --user restart "$label"
-  echo "installed the $label user service (log: $log; what bypasses it, such as a panic: journalctl --user -u $label)"
+  echo "installed the $label user service (log: $log; what bypasses it, such as a panic: journalctl --user -eu $label)"
   # Linger starts your user's services at boot and keeps them running with nobody logged in.
   user="$(id -un)"
   if [ "$(loginctl show-user "$user" -p Linger --value 2>/dev/null)" != yes ] && ! loginctl enable-linger "$user" 2>/dev/null; then

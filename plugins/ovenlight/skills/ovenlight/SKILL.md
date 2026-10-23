@@ -19,8 +19,8 @@ The `ovenlight` connector on that computer publishes each app and tells it who i
    words: a computer that stays on and awake (a laptop with its lid open), a Tailscale
    account, the Ovenlight app on their phone, and the connector, a free download.
    https://ovenlight.app/support#own-computer has the steps. Then wait for them; don't
-   look for workarounds. If it is installed but not running, the person
-   starts it with the command the guide gives; don't run `ovenlight run` yourself.
+   look for workarounds. If it is installed but not running, the person starts it with
+   the command `ovenlight status` gives. Don't run `ovenlight run` yourself.
 3. **Use the tools for the loop**: publish, restart the app after changing the server,
    check it, read its logs, and read the feedback the person sends from their phone. The
    command that keeps the app running is set only in a terminal: with a shell, publish
@@ -34,3 +34,14 @@ The `ovenlight` connector on that computer publishes each app and tells it who i
    coding agent that can, Claude Code for example, and publish it from there.
 4. **You can't share an app.** When the person wants to share, tell them the steps from
    the guide and let them do it.
+5. **The connector updates itself.** When `status` shows a failed update, tell the
+   person what failed, in plain words. With updates on, it tries again the next night, and
+   a release waiting its turn needs nothing from either of you. When `doctor`'s `update`
+   check gives a fix, pass it on. For a release to install by hand, offer the verified
+   steps, never a bare download: those at
+   https://github.com/snowy-ghost/ovenlight/blob/master/docs/connector.md#check-a-download-first
+   for the latest, including one an older connector's `doctor` names with a download
+   link, and those at
+   https://github.com/snowy-ghost/ovenlight/blob/master/docs/connector.md#install-a-release-by-hand
+   for an older one. With the steps for the latest, pass on the serial `status` shows
+   (`update.serial`): the index they fetch must have one at least as high.
