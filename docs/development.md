@@ -393,8 +393,9 @@ npx wrangler@4.147.0 r2 object put ovenlight-downloads/connector/latest.json --f
 ```
 
 Then release as in the first updater release: a version above every release so far,
-naming its own `reinstallBelow`, whose `release_keys` and `allowed_signers` list only the
-new keys.
+naming its own `reinstallBelow`, with it and `secure` no lower than the live index's
+(every installed connector keeps that index, and refuses one that lowers either), whose
+`release_keys` and `allowed_signers` list only the new keys.
 
 ## The iPhone app
 

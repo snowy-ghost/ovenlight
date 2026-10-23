@@ -74,6 +74,15 @@ func cmdUpdate(args []string) error {
 	return nil
 }
 
+// heldLine is status's line for the index held, running or not: an index the verified
+// steps fetch for an install by hand has at least its serial.
+func heldLine(u *updateView) string {
+	if u == nil || u.Serial == 0 {
+		return ""
+	}
+	return fmt.Sprintf("Update index held: serial %d.", u.Serial)
+}
+
 // updateLines say what status shows, at now, of the updater of a connector at version v.
 func updateLines(u *updateView, v string, now time.Time) []string {
 	if _, ok := semver(v); !ok || u == nil {
@@ -92,9 +101,8 @@ func updateLines(u *updateView, v string, now time.Time) []string {
 	default:
 		lines = append(lines, "Updates: on; "+checked+".")
 	}
-	if u.Serial != 0 {
-		// An index the verified steps fetch for an install by hand has at least this one.
-		lines = append(lines, fmt.Sprintf("Update index held: serial %d.", u.Serial))
+	if l := heldLine(u); l != "" {
+		lines = append(lines, l)
 	}
 	if u.CheckError != "" {
 		lines = append(lines, "The last check failed: "+u.CheckError)

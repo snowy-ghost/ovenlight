@@ -980,6 +980,9 @@ func cmdStatus(args []string) error {
 	}
 	if !out.Daemon {
 		fmt.Printf("Connector: not running. %s.\n", startFix(p))
+		if l := heldLine(out.Update); l != "" {
+			fmt.Println("  " + l)
+		}
 	} else {
 		mode := ""
 		if out.Dev {
