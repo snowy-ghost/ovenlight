@@ -23,7 +23,9 @@ var releaseKeysFile string
 var releaseKeys = append(mustParseKeys(releaseKeysFile), testKeys...)
 
 // maxArchiveBytes caps a release archive the updater downloads, and the binary it takes
-// out of one. The macOS archive is about 35 MB, and its universal binary 66 MB.
+// out of one. The macOS archive is about 35 MB, and its universal binary 66 MB. Never raise
+// it: an updater already installed downloads every later release under its own cap, while
+// publish-connector.sh checks archives against this one.
 const maxArchiveBytes = 128 << 20
 
 func mustParseKeys(file string) []ssh.PublicKey {
