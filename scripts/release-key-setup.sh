@@ -73,7 +73,7 @@ done
 
 print -P "\n%B4. Test signatures%b in namespace ovenlight-test, which nothing that ships accepts."
 # Byte for byte connector/testdata/update/index.json, so these signatures go straight into
-# the repo at the key swap as index.json.release-1.sig and -2.sig.
+# the repo, as docs/development.md says for the first release and after a loss.
 cat > "$work/index.json" <<'EOF'
 {
  "latest": "1.1.1",
@@ -112,6 +112,6 @@ cp "$work/backup.pub" "$keys/backup.pub"
 cp "$touchid.pub" "$keys/touchid.pub"
 cp "$work/index.json.release-1.sig" "$work/index.json.release-2.sig" "$keys/"
 
-print -P "\n%BDone.%b Public keys and test signatures in $keys (the key swap copies the signatures into the repo)."
+print -P "\n%BDone.%b Public keys and test signatures in $keys. docs/development.md says which go into the repo."
 echo "The temporary folder with the backup's private key is deleted now."
 echo "Put the two printed copies in two different places."
