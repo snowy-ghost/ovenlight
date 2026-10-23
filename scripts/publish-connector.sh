@@ -184,17 +184,17 @@ folder)
   [ -f SHA256SUMS ] || refuse "no SHA256SUMS in build/release: build $version"
   sig="$records/$version/SHA256SUMS.sig"
   [ -f "$sig" ] || refuse "no $sig: sign $version on the Air"
+  cmp -s SHA256SUMS "$records/$version/SHA256SUMS" || refuse "build/release isn't the build of $version that was signed"
+  # The release is what the signed SHA256SUMS lists, with or without Windows.
+  files="$(awk '{ print $2 }' SHA256SUMS) SHA256SUMS"
+  while read -r _ f; do checkarchive "$f"; done < SHA256SUMS
+  shasum -a 256 -c --quiet SHA256SUMS
   # Owners check a release with the allowed_signers at its tag, on origin.
   built="$(cat "$records/$version/commit")"
   [ -n "$dry" ] || git -C "$root" fetch -q origin tag "connector-v$version" ||
     refuse "connector-v$version isn't pushed to origin as it is here: tag $built, now that $version is signed, and push the tag"
   [ "$(git -C "$root" rev-parse -q --verify "connector-v$version^{commit}")" = "$built" ] ||
     refuse "connector-v$version isn't tagged on $built, the commit $version was built from: tag it"
-  # The release is what the signed SHA256SUMS lists, with or without Windows.
-  files="$(awk '{ print $2 }' SHA256SUMS) SHA256SUMS"
-  while read -r _ f; do checkarchive "$f"; done < SHA256SUMS
-  shasum -a 256 -c --quiet SHA256SUMS
-  cmp -s SHA256SUMS "$records/$version/SHA256SUMS" || refuse "build/release isn't the build of $version that was signed"
   verifyrule "$version" SHA256SUMS "$sig" file
   # A version's files are cached as immutable, so they're never replaced by other ones. The
   # same files again finish a publish that failed partway.

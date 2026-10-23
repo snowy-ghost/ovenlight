@@ -136,8 +136,9 @@ mini and prints what it signs: the index's fields, the commit, the fingerprints 
 `release_keys`, the connector changes since the last promoted release and `SHA256SUMS`. It
 refuses a commit whose `connector/release_keys` isn't the two keys in
 `~/.ssh/ovenlight-release-keys/` plus the key signing it, when that folder doesn't hold
-it. It signs `SHA256SUMS` and a canary index, `canary.json`, which only
-`ovenlight update now --index` takes, and keeps both in its history,
+it. It signs `SHA256SUMS`, checks that signature with `docs/allowed_signers` at that
+commit, as owners will, and signs a canary index, `canary.json`, which only
+`ovenlight update now --index` takes. It keeps both in its history,
 `~/.ssh/ovenlight-release-keys/history/`, the only record it reads, and sends a copy with
 `rsync` to the release's folder in the mini's `~/Sync/ovenlight/releases/`. Nothing on the
 Air writes to its own `~/Sync`, where a link an agent syncs would write into the Air's
@@ -254,8 +255,8 @@ The first release that updates itself, 1.1.0 here, goes out once, with 1.1.1 aft
 3. Merge the updater to master. Check that `~/Sync/ovenlight/releases/` on the mini and
    `~/.ssh/ovenlight-release-keys/history/` on the Air hold no records yet, so 1.1.0
    names its own `reinstallBelow`:
-   `scripts/release-connector.sh 1.1.0 1.0.6 1.1.0`. Sign and publish its folder, then
-   build, sign and publish 1.1.1 from the same commit.
+   `scripts/release-connector.sh 1.1.0 1.0.6 1.1.0`. Sign, tag and publish its folder,
+   then build, sign, tag and publish 1.1.1 from the same commit.
 4. Nothing before 1.1.0 updates itself, so it has no canary. The mini installs it by hand
    from `connector/1.1.0/` ([connector.md](connector.md#install-a-release-by-hand)), then
    runs 1.1.1's canary. The trial passes on the canary index, but no daily check verifies

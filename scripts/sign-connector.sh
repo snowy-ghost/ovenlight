@@ -28,10 +28,12 @@
 # published and the newest signed with their releases' signed files, so one the mini lacks
 # or holds changed is put right on the next run. Touch ID shows a prompt and not what it
 # signs, so this prints that first, and refuses before it whatever publish-connector.sh
-# would refuse. A release is signed and promoted only when its connector/release_keys is
-# exactly the two keys in ~/.ssh/ovenlight-release-keys/ plus the key signing it, so the
-# keys a release trusts never come from the commit alone. The paper key signs only a
-# release that replaces it, so its .pub has left that folder.
+# would refuse of the files it signs. A release is signed and promoted only when its
+# connector/release_keys is exactly the two keys in ~/.ssh/ovenlight-release-keys/ plus the
+# key signing it, so the keys a release trusts never come from the commit alone, and its
+# SHA256SUMS.sig is kept only once docs/allowed_signers at that commit verifies it, as
+# owners do. The paper key signs only a release that replaces it, so its .pub has left
+# that folder.
 #
 # Each run first fetches latest.json, which must be the head of the history, as
 # connector-release-lib.sh names it (1.0.9's unsigned index while nothing is published).
@@ -357,7 +359,7 @@ release)
   sign ovenlight-canary "$b/canary.json"
   echo "$commit" > "$b/commit"
   keep "$version" "$b"/{SHA256SUMS,SHA256SUMS.sig,commit,release_keys,canary.json,canary.json.sig}
-  echo "signed: on the mini, scripts/publish-connector.sh $version, then the canary with $sync/$version/canary.json"
+  echo "signed: on the mini, tag $commit as connector-v$version and push the tag, then scripts/publish-connector.sh $version, then the canary with $sync/$version/canary.json"
   ;;
 
 promote)

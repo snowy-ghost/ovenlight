@@ -282,8 +282,6 @@ func netError(url string, err error) error {
 	switch {
 	case errors.As(err, &refused):
 		what = refused.Error()
-	case errors.Is(err, context.Canceled):
-		what = "it was cut short"
 	case errors.Is(err, context.DeadlineExceeded), errors.As(err, &timeout) && timeout.Timeout():
 		what = "it timed out"
 	case errors.As(err, &dns):
