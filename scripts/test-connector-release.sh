@@ -445,8 +445,14 @@ scenario_rerun() {
   pass "the publish cut short left latest.json as it was"
   land --promote 1.1.0
   latest_is 1.1.0 air1
+  # Run again once it's up, it keeps when it went up, which the rotation's waits count from.
+  p=("$dry"/sync/releases/1.1.0/promote-*.live)
+  cp "${p[0]}" "$dry/live"
+  later 1
   run publish --promote 1.1.0
   latest_is 1.1.0 air1
+  cmp -s "${p[0]}" "$dry/live" || fail "publishing 1.1.0 again moved its .live"
+  pass "publishing 1.1.0 again keeps its .live"
   ship 1.1.1 1.0.6 air1
   cutshort air1 --pull 1.1.1
   run publish --pull 1.1.1

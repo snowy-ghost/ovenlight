@@ -918,8 +918,8 @@ func TestUpdateNow(t *testing.T) {
 	}
 }
 
-// Every request through an app node, the admin API or the control socket is noted, and
-// the control socket takes update-now.
+// Every request through an app node, the admin API or the control socket is noted, its end
+// too, and the control socket takes update-now.
 func TestRequestsAreNoted(t *testing.T) {
 	d, _ := testDaemon(t)
 	n := d.nodes["coach"]
@@ -939,9 +939,17 @@ func TestRequestsAreNoted(t *testing.T) {
 		},
 	} {
 		d.lastRequest.Store(0)
+		d.openRequests.Store(0)
 		serve()
 		if d.lastRequest.Load() == 0 {
 			t.Errorf("%s: not noted", name)
+		}
+		// A control request ends after its reply, which control returns on.
+		for wait := time.Now().Add(time.Second); d.openRequests.Load() != 0 && time.Now().Before(wait); {
+			time.Sleep(time.Millisecond)
+		}
+		if d.openRequests.Load() != 0 {
+			t.Errorf("%s: its end isn't noted", name)
 		}
 	}
 
@@ -1079,6 +1087,24 @@ func TestUpdateOffAndOn(t *testing.T) {
 }
 
 // With the connector down, status still shows the serial of the index held.
+// silent has a connector for state take control connections and close them unanswered.
+func silent(t *testing.T, state string) {
+	ln, err := net.Listen("unix", socketPath(state))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { ln.Close() })
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			conn.Close()
+		}
+	}()
+}
+
 func TestStatusDownShowsSerial(t *testing.T) {
 	state, err := os.MkdirTemp("", "ol") // short, for the control socket's path
 	if err != nil {
@@ -1101,20 +1127,7 @@ func TestStatusDownShowsSerial(t *testing.T) {
 
 	// A connector that doesn't answer, or a config.json that can't be read, ends status on
 	// an error that names it too.
-	ln, err := net.Listen("unix", socketPath(state))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer ln.Close()
-	go func() {
-		for {
-			conn, err := ln.Accept()
-			if err != nil {
-				return
-			}
-			conn.Close()
-		}
-	}()
+	silent(t, state)
 	bad := filepath.Join(t.TempDir(), "config.json")
 	os.WriteFile(bad, []byte(`{"apps": [`), 0o600)
 	for _, config := range []string{filepath.Join(t.TempDir(), "config.json"), bad} {

@@ -523,14 +523,20 @@ func waitCertificate(p *paths, res *publishResult, waiting func()) {
 	}
 }
 
-// restartLoginFix restarts the connector so a node that lost its login asks for a new
-// login link, which tsnet does only as it starts; a fix for the person.
-func restartLoginFix(p *paths) string {
+// restartFix says how to restart the connector, a fix for the person: one that runs and
+// doesn't answer, which starting leaves as it is.
+func restartFix(p *paths) string {
 	if !p.installed() {
 		return fmt.Sprintf("The connector running for --config %s and --state %s isn't the installed one: whoever started it stops it and starts it again; "+
-			"an agent must not start one itself. Then ovenlight status shows the link", p.config, p.state)
+			"an agent must not start one itself", p.config, p.state)
 	}
-	return serviceFix("Restart the connector", serviceCommands[runtime.GOOS].restart) + ". Then ovenlight status shows the link"
+	return serviceFix("Restart the connector", serviceCommands[runtime.GOOS].restart)
+}
+
+// restartLoginFix restarts the connector so a node that lost its login asks for a new
+// login link, which tsnet does only as it starts.
+func restartLoginFix(p *paths) string {
+	return restartFix(p) + ". Then ovenlight status shows the link"
 }
 
 // checkRetired refuses to publish a slug the config doesn't list while sharing.json still

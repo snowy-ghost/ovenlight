@@ -1487,6 +1487,26 @@ func TestDoctorWithoutApps(t *testing.T) {
 	}
 }
 
+// A connector that runs and doesn't answer is restarted: starting it leaves it as it is.
+func TestDaemonFixes(t *testing.T) {
+	state, err := os.MkdirTemp("", "ol") // short, for the control socket's path
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(state) })
+	p := &paths{config: filepath.Join(state, "config.json"), state: state}
+	if c := findCheck(t, runDoctor(&Config{}, p.state, p.config), "daemon"); c.Fix != startFix(p) {
+		t.Errorf("down: %s", c.Fix)
+	}
+	silent(t, state)
+	if c := findCheck(t, runDoctor(&Config{}, p.state, p.config), "daemon"); c.Status != statusFail || c.Fix != restartFix(p) {
+		t.Errorf("doctor, no answer: %+v", c)
+	}
+	if _, _, c := tailnetHost(p, App{Name: "Coach", Slug: "coach", Port: 4317}); c == nil || c.Fix != restartFix(p) {
+		t.Errorf("check, no answer: %+v", c)
+	}
+}
+
 // The bind fix names the flag in the app's own command that gives every address.
 func TestWildcardFlag(t *testing.T) {
 	for run, want := range map[string]string{
