@@ -6,19 +6,14 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
-	"crypto/x509/pkix"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
 	"log"
-	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -320,20 +315,9 @@ func TestUpdateErrorsAreOurs(t *testing.T) {
 		t.Cleanup(srv.Close)
 		return srv
 	}
-	// A server whose certificate's names are theirs, from a CA the client trusts, so that
-	// Go's own verifier names them on every system.
-	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	tmpl := &x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: theirs}, DNSNames: []string{theirs},
-		NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(time.Hour), IsCA: true, BasicConstraintsValid: true,
-		KeyUsage: x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}}
-	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ca, _ := x509.ParseCertificate(der)
-	named := httptest.NewUnstartedServer(http.NotFoundHandler())
-	named.TLS = &tls.Config{Certificates: []tls.Certificate{{Certificate: [][]byte{der}, PrivateKey: key}}}
-	named.StartTLS()
+	// A server whose certificate names example.com, trusted by the client, so that Go's own
+	// verifier names it on every system when it's reached as localhost.
+	named := httptest.NewTLSServer(http.NotFoundHandler())
 	defer named.Close()
 
 	old := updateClient
@@ -351,7 +335,7 @@ func TestUpdateErrorsAreOurs(t *testing.T) {
 		{"a malformed reply", reply("HTTP/1.1 " + theirs + "\r\n\r\n").URL, "the connection failed", nil},
 		{"a certificate's names", strings.Replace(named.URL, "127.0.0.1", "localhost", 1), "certificate didn't verify", func(tr *http.Transport) {
 			pool := x509.NewCertPool()
-			pool.AddCert(ca)
+			pool.AddCert(named.Certificate())
 			tr.TLSClientConfig = &tls.Config{RootCAs: pool}
 		}},
 		{"a proxy's reason", "https://downloads.invalid/connector", "403 Forbidden", func(tr *http.Transport) {
@@ -367,7 +351,7 @@ func TestUpdateErrorsAreOurs(t *testing.T) {
 		if c.change != nil {
 			with(c.change)
 		}
-		if _, _, err := fetchIndex(context.Background(), c.base); err == nil || strings.Contains(err.Error(), theirs) || !strings.Contains(err.Error(), c.want) {
+		if _, _, err := fetchIndex(context.Background(), c.base); err == nil || strings.Contains(err.Error(), theirs) || strings.Contains(err.Error(), "example.com") || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%s: %v", c.name, err)
 		}
 	}

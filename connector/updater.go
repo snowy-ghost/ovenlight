@@ -374,7 +374,7 @@ func (u *updater) fail(version string, err error) {
 }
 
 // errorText is an update's error as status and doctor show it: on one line and short, since
-// some of it, such as a network error's, isn't ours.
+// some of it, such as a downloaded binary's output, isn't ours.
 func errorText(err error) string { return clip(err.Error(), 300) }
 
 // noteFailure records a failed update of version at at, counting it with the failures of
