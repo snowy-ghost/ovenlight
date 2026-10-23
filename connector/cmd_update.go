@@ -83,6 +83,16 @@ func heldLine(u *updateView) string {
 	return fmt.Sprintf("Update index held: serial %d.", u.Serial)
 }
 
+// withHeld adds heldLine to an error status ends on: a connector that doesn't answer, or a
+// config.json that can't be read, is when an owner may install by hand.
+func withHeld(stateDir string, err error) error {
+	u, _ := daemonUpdate(stateDir, nil, time.Now())
+	if l := heldLine(u); l != "" {
+		return fmt.Errorf("%w. %s", err, l)
+	}
+	return err
+}
+
 // updateLines say what status shows, at now, of the updater of a connector at version v.
 func updateLines(u *updateView, v string, now time.Time) []string {
 	if _, ok := semver(v); !ok || u == nil {

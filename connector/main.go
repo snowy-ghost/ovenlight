@@ -888,11 +888,11 @@ type statusOut struct {
 func collectStatus(p *paths) (*statusOut, error) {
 	cfg, err := LoadConfig(p.config)
 	if err != nil {
-		return nil, err
+		return nil, withHeld(p.state, err)
 	}
 	reply, daemonErr := callDaemon(p.state, "status", 10*time.Second)
 	if daemonErr != nil && !errors.Is(daemonErr, errDaemonDown) {
-		return nil, daemonErr
+		return nil, withHeld(p.state, daemonErr)
 	}
 	out := &statusOut{Version: version(), Daemon: reply != nil, Apps: []appStatus{}}
 	out.Update, _ = daemonUpdate(p.state, reply, time.Now())

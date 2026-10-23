@@ -1098,6 +1098,30 @@ func TestStatusDownShowsSerial(t *testing.T) {
 	if err != nil || !strings.Contains(string(text), "Connector: not running") || !strings.Contains(string(text), "Update index held: serial 100.") {
 		t.Errorf("%v:\n%s", err, text)
 	}
+
+	// A connector that doesn't answer, or a config.json that can't be read, ends status on
+	// an error that names it too.
+	ln, err := net.Listen("unix", socketPath(state))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			conn.Close()
+		}
+	}()
+	bad := filepath.Join(t.TempDir(), "config.json")
+	os.WriteFile(bad, []byte(`{"apps": [`), 0o600)
+	for _, config := range []string{filepath.Join(t.TempDir(), "config.json"), bad} {
+		if err := cmdStatus([]string{"--config", config, "--state", state}); err == nil || !strings.HasSuffix(err.Error(), ". Update index held: serial 100.") {
+			t.Errorf("%s: %v", filepath.Base(filepath.Dir(config)), err)
+		}
+	}
 }
 
 func TestUpdateLines(t *testing.T) {
