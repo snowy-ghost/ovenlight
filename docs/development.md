@@ -124,15 +124,8 @@ first. Windows signing needs `jsign` (`brew install jsign`) and the Azure CLI
 Certificate Profile Signer role on the certificate profile that `WIN_PROFILE` in the
 script names.
 
-Try the Windows build on a PC with Smart App Control on before publishing. Then, on the
-mini, tag the release on `HEAD`, the clean commit on `origin/master` it was built from:
-
-```sh
-git tag -s -m "Connector 1.2.0" connector-v1.2.0
-git push origin connector-v1.2.0
-```
-
-Sign it on the Air, with the release key behind Touch ID:
+Try the Windows build on a PC with Smart App Control on before publishing. Then sign it on
+the Air, with the release key behind Touch ID:
 
 ```sh
 scripts/sign-connector.sh 1.2.0
@@ -150,12 +143,20 @@ it. It signs `SHA256SUMS` and a canary index, `canary.json`, which only
 Air writes to its own `~/Sync`, where a link an agent syncs would write into the Air's
 files. `--key <file>` signs with another key, such as the paper backup.
 
-Back on the mini, upload the version's folder, then try the release on the mini's own
-connector, the canary. The mini's connector must run the live release first: after a pull,
-a dropped promote, or a canary that failed once its trial passed, it may still run a
-release that isn't live, so install the live one by hand from its folder. The live index
-must also be signed with a key the new release lists, so after a key change, `--resign` it
-first.
+Back on the mini, tag the release on the commit it was built from, which
+`build/release/commit` names. Tag only once it's signed: a pushed `connector-v*` tag can't
+move, and a refusal at signing may need a new build from a new commit.
+
+```sh
+git tag -s -m "Connector 1.2.0" connector-v1.2.0 "$(cat build/release/commit)"
+git push origin connector-v1.2.0
+```
+
+Then upload the version's folder, and try the release on the mini's own connector, the
+canary. The mini's connector must run the live release first: after a pull, a dropped
+promote, or a canary that failed once its trial passed, it may still run a release that
+isn't live, so install the live one by hand from its folder. The live index must also be
+signed with a key the new release lists, so after a key change, `--resign` it first.
 
 ```sh
 scripts/publish-connector.sh 1.2.0
@@ -164,13 +165,13 @@ ovenlight update now --index ~/Sync/ovenlight/releases/1.2.0/canary.json
 
 The canary passes once `ovenlight status` shows `Last update: <live> to 1.2.0`, written
 only when 1.2.0's 10-minute trial passes, and `last checked` no earlier than that, with no
-failed check.
-A release that raises `reinstallBelow` passes once `update now` says it needs its install
-script, the mini installs it by hand from `connector/1.2.0/`
-([connector.md](connector.md#install-a-release-by-hand)), and status shows a check made
-since. A canary that rolls back says why in the mini's `~/Library/Logs/ovenlight.log`, on
-its `updates: rolling back from 1.2.0` line. A release whose canary fails is never
-promoted: fix it under a new version, since a published folder never changes.
+failed check. A release that raises `reinstallBelow` passes once `update now` says it
+needs its install script, the mini installs it by hand from `connector/1.2.0/`
+([connector.md](connector.md#install-a-release-by-hand)), and status shows version 1.2.0
+running, with a check made since. A canary that rolls back says why in the mini's
+`~/Library/Logs/ovenlight.log`, on its `updates: rolling back from 1.2.0` line. A release
+whose canary fails is never promoted: fix it under a new version, since a published folder
+never changes.
 
 Then promote it. Sign the promote on the Air:
 

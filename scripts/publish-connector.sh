@@ -187,7 +187,7 @@ folder)
   # Owners check a release with the allowed_signers at its tag, on origin.
   built="$(cat "$records/$version/commit")"
   [ -n "$dry" ] || git -C "$root" fetch -q origin tag "connector-v$version" ||
-    refuse "connector-v$version isn't pushed to origin as it is here: push it"
+    refuse "connector-v$version isn't pushed to origin as it is here: tag $built, now that $version is signed, and push the tag"
   [ "$(git -C "$root" rev-parse -q --verify "connector-v$version^{commit}")" = "$built" ] ||
     refuse "connector-v$version isn't tagged on $built, the commit $version was built from: tag it"
   # The release is what the signed SHA256SUMS lists, with or without Windows.

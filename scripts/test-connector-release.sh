@@ -163,14 +163,18 @@ land() {
 # steps a second on.
 tick() { ahead=$((ahead + 1)); }
 
-# build <version> <secure> [<reinstallBelow>]: built and tagged; signfolder <version> <key>:
-# the folder signed and published.
-build() {
-  run release "$@"
-  git -C "$repo" tag -f -m "Connector $1" "connector-v$1" > /dev/null
+# build <version> <secure> [<reinstallBelow>]: built; tagbuilt <version>: tagged on the
+# build's commit, as development.md says once it's signed, and never moved, as a pushed
+# tag can't be; signfolder <version> <key>: the folder signed, tagged and published.
+build() { run release "$@"; }
+tagbuilt() {
+  local c
+  read -r c _ < "$dry/build/commit"
+  git -C "$repo" tag -m "Connector $1" "connector-v$1" "$c" > /dev/null || fail "connector-v$1 is tagged already"
 }
 signfolder() {
   run sign "$2" "$1"
+  tagbuilt "$1"
   run publish "$1"
   folder_is "$1"
 }
@@ -328,7 +332,6 @@ scenario_canary() {
   build 1.1.0 1.0.6 1.1.0
   run sign air1 1.1.0
   # The folder goes up only once its tag is the commit it was built from.
-  git -C "$repo" tag -d connector-v1.1.0 > /dev/null
   refused "the commit 1.1.0 was built from" publish 1.1.0
   commit "after 1.1.0"
   git -C "$repo" tag -m "Connector 1.1.0" connector-v1.1.0
@@ -1118,7 +1121,8 @@ scenario_gates() {
   refused "latest (1.1.0) can't be below its secure (1.2.0)" release 1.1.0 1.2.0 1.1.0
   # Owners check a release with docs/allowed_signers at its tag, so a signature their check
   # would fail there, with the key only in a comment or under another principal, is kept
-  # nowhere, and the version builds again from a fixed commit.
+  # nowhere, and the version builds again from a fixed commit, since it's tagged only once
+  # it's signed.
   signers paper1
   echo "# team@snowyghost.com namespaces=\"file,ovenlight-latest\" $(awk '{ print $1, $2 }' "$fixtures/air1.pub")" >> "$repo/docs/allowed_signers"
   echo "team@snowyghost.co namespaces=\"file,ovenlight-latest\" $(awk '{ print $1, $2 }' "$fixtures/air1.pub")" >> "$repo/docs/allowed_signers"
@@ -1160,12 +1164,14 @@ scenario_gates() {
   new="$(awk -v a="$a" '$2 == a { print $1 }' "$dry/build/SHA256SUMS")"
   sed -i '' "s/$old/$new/" "$dry/build/index.json"
   run sign air1 1.1.0
+  tagbuilt 1.1.0
   refused "holds more than an ovenlight-connector-1.1.0/ folder" publish 1.1.0
   # A build over the updater's cap, which publish reads from connector/keys.go.
   sed -i '' 's|^const maxArchiveBytes = .*|const maxArchiveBytes = 1 << 10 // 1 KiB|' "$repo/connector/keys.go"
   commit "a 1 KiB cap"
   build 1.1.1 1.0.6
   run sign air1 1.1.1
+  tagbuilt 1.1.1
   refused "over the updater's cap of 1024 bytes" publish 1.1.1
   build 1.1.0 1.0.6 1.1.0
   refused "another build of 1.1.0 is signed already" sign air1 1.1.0
