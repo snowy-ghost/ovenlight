@@ -590,8 +590,8 @@ func updateFinding(u *updateView, v string, running bool, now time.Time) *Check 
 		if u.CheckError != "" {
 			msg += ": " + u.CheckError
 		}
-		warn(msg, "Check that this computer reaches downloads.ovenlight.app: its network connection, and any firewall or proxy, with the reason on the "+
-			"`updates: fetching` lines in "+defaultLogPath()+". If it does, install the latest release with the verified steps in "+installDocs)
+		warn(msg, "If the check couldn't connect, check that this computer reaches "+updateBase+": its network connection, and any firewall or proxy, "+
+			"with the reason on the `updates: fetching` lines in "+defaultLogPath()+". Otherwise, or once it does, install the latest release with the verified steps in "+installDocs)
 	}
 	// Failed checks warn only after 7 days, but say so before.
 	failedCheck := ""

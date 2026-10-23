@@ -897,7 +897,16 @@ scenario_move() {
   refused "four weeks and four days" publish --promote 1.1.3
   forge 1.1.1 resign air2 1.1.1
   refused "four weeks and four days" publish --resign
-  later 33
+  # Each change to latest.json starts the two-day wait of computers still on 1.1.0 again, so
+  # the new key alone also waits six days after the last.
+  later 30
+  resign air1 1.1.1
+  later 5
+  tick
+  refused "six days after 1.1.1/resign-" sign air2 --resign
+  forge 1.1.1 resign air2 1.1.1
+  refused "six days after 1.1.1/resign-" publish --resign
+  later 1
   # The live index re-signed with the new key before the canary, once master's
   # docs/allowed_signers, which owners check latest.json with, lists that key. Then the promote
   # and a pull.
