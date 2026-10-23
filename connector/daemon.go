@@ -55,14 +55,31 @@ type daemon struct {
 	exits     chan string
 	exitBegun atomic.Bool  // set by exit: the updater does nothing more
 	calls     atomic.Int32 // control requests being answered
-	// lastRequest is when the last request through an app node, the admin API or the
-	// control socket started, in Unix nanoseconds: the updater swaps at a quiet moment.
-	lastRequest atomic.Int64
+	// lastRequest is when a request through an app node, the admin API or the control
+	// socket last started or ended, in Unix nanoseconds, and openRequests counts those not
+	// yet ended: the updater swaps at a quiet moment.
+	lastRequest  atomic.Int64
+	openRequests atomic.Int32
 }
 
-func (d *daemon) noteRequest() { d.lastRequest.Store(time.Now().UnixNano()) }
+// noteRequest notes a request's start, and returns what notes its end.
+func (d *daemon) noteRequest() (end func()) {
+	d.openRequests.Add(1)
+	d.lastRequest.Store(time.Now().UnixNano())
+	return func() {
+		d.lastRequest.Store(time.Now().UnixNano())
+		d.openRequests.Add(-1)
+	}
+}
 
-func (d *daemon) lastRequestTime() time.Time { return time.Unix(0, d.lastRequest.Load()) }
+// lastRequestTime is when the last request ended, or now while one is open: a stream or a
+// WebSocket through an app is in use until it closes.
+func (d *daemon) lastRequestTime(now time.Time) time.Time {
+	if d.openRequests.Load() > 0 {
+		return now
+	}
+	return time.Unix(0, d.lastRequest.Load())
+}
 
 func socketPath(stateDir string) string { return filepath.Join(stateDir, "ovenlight.sock") }
 
@@ -475,7 +492,7 @@ func (d *daemon) handleControl(conn net.Conn) {
 	d.calls.Add(1)
 	defer d.calls.Add(-1)
 	defer conn.Close()
-	d.noteRequest()
+	defer d.noteRequest()()
 	conn.SetDeadline(time.Now().Add(3 * time.Minute)) // make-shareable waits for a login
 	var req controlRequest
 	if err := json.NewDecoder(bufio.NewReader(conn)).Decode(&req); err != nil {
