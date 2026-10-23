@@ -422,8 +422,9 @@ func (u *updater) updateNow(ctx context.Context, data, sig []byte) (string, erro
 	target, _, script := updateTarget(u.v, idx, u.now())
 	switch {
 	case script:
-		return "", fmt.Errorf("%s needs its install script: the connector, %s, is below %s, the oldest an update can replace by binary alone. Install %s with the verified steps in %s",
-			idx.Latest, u.v, idx.ReinstallBelow, idx.Latest, installDocs)
+		// A canary's release isn't the latest yet, so it's installed from its own folder.
+		return "", fmt.Errorf("%s needs its install script: the connector, %s, is below %s, the oldest an update can replace by binary alone. Install %s by hand from %s/%s/ with the steps in %s",
+			idx.Latest, u.v, idx.ReinstallBelow, idx.Latest, u.base, idx.Latest, olderDocs)
 	case target == "":
 		return "", fmt.Errorf("the index names %s, and the connector runs %s: it never installs the same or an older release", idx.Latest, u.v)
 	}

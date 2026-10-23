@@ -121,9 +121,8 @@ cmd /c 'ssh-keygen -Y verify -f allowed_signers -I team@snowyghost.com -n ovenli
 
 On an Arm PC, use `windows-arm64` in place of `windows-amd64`. The first check needs
 OpenSSH 8.9 or later (`ssh -V` shows yours): an older one can't read the release key that
-signs with Touch ID, and says `unknown or unsupported key type`. Then check the download on
-a Mac or Linux, or with a newer OpenSSH from
-[Win32-OpenSSH](https://github.com/PowerShell/Win32-OpenSSH/releases). If the first check
+signs with Touch ID, and says `unknown or unsupported key type`. If yours is older, check
+the download where `ssh -V` shows 8.9 or later, such as a Mac or Linux. If the first check
 prints `Good "ovenlight-latest" signature` and the second `True`, unpack the archive and
 run its install script, in the same window:
 
