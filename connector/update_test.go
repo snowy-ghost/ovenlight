@@ -358,6 +358,15 @@ func TestUpdateErrorsAreOurs(t *testing.T) {
 	if _, err := (netBody{io.NopCloser(iotest.ErrReader(errors.New(theirs))), "u"}).Read(make([]byte, 1)); err == nil || strings.Contains(err.Error(), theirs) {
 		t.Errorf("a body's read: %v", err)
 	}
+	// The log keeps Go's reason on one line: a certificate's names can hold a newline, which
+	// would forge a line of the log that doctor points at.
+	var logged bytes.Buffer
+	log.SetOutput(&logged)
+	defer log.SetOutput(os.Stderr)
+	netError("u", errors.New("x\nupdates: fetching u: "+theirs))
+	if strings.Count(logged.String(), "\n") != 1 {
+		t.Errorf("a reason's newline reaches the log: %q", logged.String())
+	}
 }
 
 // entry is a file in a test archive: a regular file, or a folder with typ tar.TypeDir.

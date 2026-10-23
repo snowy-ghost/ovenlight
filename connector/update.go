@@ -269,9 +269,10 @@ func (b netBody) Read(p []byte) (int, error) {
 	return n, err
 }
 
-// netError is why a fetch of url failed, in our own words, and logs Go's.
+// netError is why a fetch of url failed, in our own words, and logs Go's, quoted so that
+// it stays on one line.
 func netError(url string, err error) error {
-	log.Printf("updates: fetching %s: %v", url, err)
+	log.Printf("updates: fetching %s: %q", url, err)
 	var (
 		refused proxyRefused
 		timeout interface{ Timeout() bool }
