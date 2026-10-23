@@ -307,7 +307,7 @@ verifyrule() {
 # day to spare: one off at weekends sees an index from Friday on Monday, waits two days and
 # its one-day cap, sleeps through that night and swaps on Friday morning. WAIT is four weeks
 # for computers that sleep, then TAKE.
-TAKE=$((8 * 86400)) WAIT=$((36 * 86400))
+TAKE=$((8 * 86400)) WAIT=$((28 * 86400 + TAKE))
 
 # newkeywait <blob> <now> [<what else signs>]: refuses a key that computers still on an older
 # release can't check yet. It waits until four weeks and eight days after latest.json last
