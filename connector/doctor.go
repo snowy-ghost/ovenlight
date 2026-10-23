@@ -545,7 +545,7 @@ func updateFinding(u *updateView, v string, running bool, now time.Time) *Check 
 		return nil // a development build
 	}
 	byHand := func(release string) string {
-		return fmt.Sprintf("Install %s with the verified steps in %s; your apps and node state are kept", release, installDocs)
+		return fmt.Sprintf("Install %s with %s; your apps and node state are kept", release, u.steps())
 	}
 	last := u.LastCheck
 	if last.IsZero() {
@@ -558,11 +558,6 @@ func updateFinding(u *updateView, v string, running bool, now time.Time) *Check 
 	}
 	stale := u.SelfUpdating && now.Sub(last) > updateStale
 	failed := u.Failure != nil && u.Failure.Count >= failuresToWarn
-	// An install by hand is the way past checks that keep failing, unless they fail on an
-	// older index, which the verified steps would take too.
-	older := strings.Contains(u.CheckError, olderThanHeld)
-	const olderFix = "Don't install a release by hand: the server is sending an index older than one this connector has checked, " +
-		"and the verified steps would take that one too. Report it to team@snowyghost.com. The connector updates on its own once the server sends a newer index"
 	switch {
 	case u.NeedsScript:
 		warn(fmt.Sprintf("%s needs its install script: an update replaces only the binary, and %s is too old for that", u.Latest, v), byHand(u.Latest))
@@ -573,11 +568,7 @@ func updateFinding(u *updateView, v string, running bool, now time.Time) *Check 
 			if u.CheckError != "" {
 				msg += ": " + u.CheckError
 			}
-			if older {
-				fix += ". " + olderFix
-			} else {
-				fix += ". If its checks still fail, install the latest release with the verified steps in " + installDocs
-			}
+			fix += ". If its checks still fail, install the latest release with " + u.steps()
 		}
 		warn(msg, fix)
 	case failed && strings.Contains(u.Failure.Error, notRunnable):
@@ -599,12 +590,8 @@ func updateFinding(u *updateView, v string, running bool, now time.Time) *Check 
 		if u.CheckError != "" {
 			msg += ": " + u.CheckError
 		}
-		fix := "If the check couldn't connect, check that this computer reaches " + updateBase + ": its network connection, and any firewall or proxy, " +
-			"with the reason on the `updates: fetching` lines in " + defaultLogPath() + ". Otherwise, or once it does, install the latest release with the verified steps in " + installDocs
-		if older {
-			fix = olderFix
-		}
-		warn(msg, fix)
+		warn(msg, "If the check couldn't connect, check that this computer reaches "+updateBase+": its network connection, and any firewall or proxy, "+
+			"with the reason on the `updates: fetching` lines in "+defaultLogPath()+". Otherwise, or once it does, install the latest release with "+u.steps())
 	}
 	// Failed checks warn only after 7 days, but say so before.
 	failedCheck := ""

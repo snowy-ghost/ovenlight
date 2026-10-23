@@ -100,7 +100,7 @@ func updateLines(u *updateView, v string, now time.Time) []string {
 	}
 	switch {
 	case u.NeedsScript:
-		lines = append(lines, fmt.Sprintf("%s needs its install script, since an update replaces only the binary: install it with the verified steps in %s", u.Latest, installDocs))
+		lines = append(lines, fmt.Sprintf("%s needs its install script, since an update replaces only the binary: install it with %s", u.Latest, u.steps()))
 	case u.Pending != "" && u.SelfUpdating && !u.Off:
 		lines = append(lines, u.Pending+" "+u.installs(now)+".")
 	case u.Pending != "":

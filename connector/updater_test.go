@@ -370,7 +370,7 @@ func TestUpdaterWaitsTwoDays(t *testing.T) {
 			t.Errorf("%s: downloaded %v", v, got)
 		}
 		if u := readUpdateView(dir, v, true, at(1, 9, 0)); u.NeedsScript != want.script || (u.Pending != "") != (v == "1.0.9" || v == "1.1.5") ||
-			u.BelowSecure != (v == "1.0.9" || v == "1.0.5") {
+			u.BelowSecure != (v == "1.0.9" || v == "1.0.5") || u.Serial != 100 {
 			t.Errorf("%s: %+v", v, u)
 		}
 	}
@@ -929,7 +929,7 @@ func control(t *testing.T, d *daemon, req controlRequest) controlReply {
 func TestUpdateFinding(t *testing.T) {
 	now := at(10, 12, 0)
 	view := func(change func(u *updateView)) *updateView {
-		u := &updateView{SelfUpdating: true, LastCheck: now.Add(-time.Hour), Latest: "1.2.0", Secure: "1.1.0", since: now.Add(-time.Hour)}
+		u := &updateView{SelfUpdating: true, LastCheck: now.Add(-time.Hour), Latest: "1.2.0", Secure: "1.1.0", Serial: 100, since: now.Add(-time.Hour)}
 		if change != nil {
 			change(u)
 		}
@@ -983,16 +983,7 @@ func TestUpdateFinding(t *testing.T) {
 		{"8 days without a check, after a key change", view(func(u *updateView) {
 			u.LastCheck, u.CheckError = now.Add(-8*day), "the signature isn't from a release key"
 		}), "1.2.0", true, statusWarn, "Otherwise, or once it does, install the latest release with the verified steps in " + installDocs},
-		{"8 days of an older index", view(func(u *updateView) {
-			u.LastCheck, u.CheckError = now.Add(-8*day), "the index is "+olderThanHeld
-		}), "1.2.0", true, statusWarn, "Don't install a release by hand"},
-		{"off, 8 days of an older index", view(func(u *updateView) {
-			u.Off, u.LastCheck, u.CheckError = true, now.Add(-8*day), "the index lowers secure or reinstallBelow, so it's "+olderThanHeld
-		}), "1.2.0", true, statusWarn, "`ovenlight update on`. Don't install a release by hand"},
-		{"below secure, 8 days of an older index", view(func(u *updateView) {
-			u.BelowSecure, u.LastCheck, u.CheckError = true, now.Add(-8*day), "the index is "+olderThanHeld
-		}), "1.0.9", true, statusFail, "Report it to team@snowyghost.com"},
-		{"never checked in 8 days", view(func(u *updateView) { u.Latest, u.LastCheck, u.since = "", time.Time{}, now.Add(-8*day) }), "1.2.0", true, statusWarn, "for 7 days"},
+		{"never checked in 8 days", view(func(u *updateView) { u.Latest, u.Serial, u.LastCheck, u.since = "", 0, time.Time{}, now.Add(-8*day) }), "1.2.0", true, statusWarn, "for 7 days"},
 		{"run by hand", view(func(u *updateView) { u.SelfUpdating = false }), "1.2.0", true, statusWarn, "isn't the installed service"},
 		{"not running", view(func(u *updateView) { u.SelfUpdating = false }), "1.2.0", false, statusOK, "up to date"},
 		{"waiting its turn, not running", view(func(u *updateView) { u.SelfUpdating, u.Pending = false, "1.2.0" }), "1.1.5", false, statusOK, "1.2.0 is out"},
@@ -1013,8 +1004,9 @@ func TestUpdateFinding(t *testing.T) {
 		if c.name == "doesn't run here" && strings.Contains(got.Fix, installDocs) {
 			t.Errorf("%s: offers an install by hand, which fails the same way", c.name)
 		}
-		if strings.Contains(c.u.CheckError, olderThanHeld) && strings.Contains(got.Fix, installDocs) {
-			t.Errorf("%s: offers the verified steps, which take the older index too", c.name)
+		// The verified steps take an older index too, whatever the checks failed on.
+		if c.u.Serial != 0 && strings.Contains(got.Fix, installDocs) && !strings.Contains(got.Fix, "checking that the index's serial is at least 100") {
+			t.Errorf("%s: offers the verified steps with no serial", c.name)
 		}
 	}
 	if updateFinding(view(nil), "devel-9cd108a0f732", true, now) != nil {
@@ -1064,8 +1056,8 @@ func TestUpdateLines(t *testing.T) {
 	if got := lines(u, "1.1.5"); !strings.Contains(got, "Updates: off") || strings.Contains(got, "installs on its own") {
 		t.Errorf("off:\n%s", got)
 	}
-	u.NeedsScript = true
-	if got := lines(u, "1.1.5"); !strings.Contains(got, installDocs) {
+	u.NeedsScript, u.Serial = true, 100
+	if got := lines(u, "1.1.5"); !strings.Contains(got, installDocs+", checking that the index's serial is at least 100") {
 		t.Errorf("a release that needs its script:\n%s", got)
 	}
 	if updateLines(u, "devel-9cd108a0f732", now) != nil {

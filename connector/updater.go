@@ -541,9 +541,10 @@ type updateView struct {
 	Off        bool      `json:"off"`
 	LastCheck  time.Time `json:"lastCheck,omitzero"` // the last verified check
 	CheckError string    `json:"checkError,omitempty"`
-	// Latest and Secure are as the index held names them.
+	// Latest and Secure are as the index held names them, and Serial is that index's.
 	Latest string `json:"latest,omitempty"`
 	Secure string `json:"secure,omitempty"`
+	Serial int64  `json:"serial,omitempty"`
 	// Pending is the release it would install next. InstallAfter and InstallBy are set
 	// only while SelfUpdating is set and Off isn't: it installs Pending on its own from
 	// InstallAfter at a quiet moment, and by InstallBy busy or not. Once its moment has
@@ -581,6 +582,16 @@ func (u *updateView) installs(now time.Time) string {
 	return fmt.Sprintf("installs on its own at a quiet moment from %s, and by %s even if busy", when(u.InstallAfter), when(u.InstallBy))
 }
 
+// steps is the way to install a release by hand, as status and doctor put it. The verified
+// steps take any index we signed, an older one too, so they come with the serial of the
+// index held, which an older one can't reach, whatever the server made the checks fail on.
+func (u *updateView) steps() string {
+	if u.Serial == 0 {
+		return "the verified steps in " + installDocs
+	}
+	return fmt.Sprintf("the verified steps in %s, checking that the index's serial is at least %d", installDocs, u.Serial)
+}
+
 // daemonUpdate is readUpdateView for the connector that sent reply, and its version: with
 // none running, for this binary.
 func daemonUpdate(stateDir string, reply *controlReply, now time.Time) (*updateView, string) {
@@ -605,7 +616,7 @@ func readUpdateView(stateDir, v string, self bool, now time.Time) *updateView {
 	if p.idx == nil {
 		return u
 	}
-	u.Latest, u.Secure, u.NeedsScript, u.BelowSecure = p.idx.Latest, p.idx.Secure, p.script, p.security
+	u.Latest, u.Secure, u.Serial, u.NeedsScript, u.BelowSecure = p.idx.Latest, p.idx.Secure, p.idx.Serial, p.script, p.security
 	if p.target != "" {
 		u.Pending = p.target
 		if self && !u.Off {

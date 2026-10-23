@@ -39,10 +39,6 @@ const installDocs = "https://github.com/snowy-ghost/ovenlight/blob/master/docs/c
 // olderDocs has the verified steps to install an older release.
 const olderDocs = "https://github.com/snowy-ghost/ovenlight/blob/master/docs/connector.md#install-a-release-by-hand"
 
-// olderThanHeld ends the refusal of an index older than the one held, which doctor tells
-// apart: the verified steps would take that index too.
-const olderThanHeld = "older than the one held"
-
 // archiveName is this system's release archive.
 func archiveName() string {
 	name := "macos.tar.gz"
@@ -138,7 +134,7 @@ func readAgainst(held, data, sig []byte, namespace string) (idx, h *updateIndex,
 		return nil, nil, err
 	}
 	if less(idx.secure, h.secure) || less(idx.below, h.below) {
-		return nil, nil, errors.New("the index lowers secure or reinstallBelow, so it's " + olderThanHeld)
+		return nil, nil, errors.New("the index lowers secure or reinstallBelow")
 	}
 	return idx, h, nil
 }
@@ -154,7 +150,7 @@ func checkIndex(held, data, sig []byte) (idx *updateIndex, fresh bool, err error
 	case bytes.Equal(data, held):
 		return idx, false, nil
 	case h != nil && idx.Serial <= h.Serial:
-		return nil, false, errors.New("the index is " + olderThanHeld)
+		return nil, false, errors.New("the index is older than the one held")
 	}
 	return idx, true, nil
 }

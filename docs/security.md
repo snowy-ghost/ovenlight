@@ -421,8 +421,9 @@ pulled release back to a computer that saw the pull. An index doesn't expire, so
 the server holds one back, `status` and `doctor` still show recent checks. The
 [verified steps](connector.md#check-a-download-first) for installing by hand check the
 same signed index, so they too take only a release once signed as the latest, though
-not that it still is: an older index, with its release, passes them too. So when the
-connector's checks keep refusing an older index, `doctor` says not to use them. They trust this
+not that it still is: an older index, with its release, passes them too. So when
+`status` or `doctor` sends you to them, it names the serial of the index your connector
+holds, and the steps take no index with a lower one. They trust this
 repository's `allowed_signers`, so a change pushed to master changes what they accept:
 the connector itself trusts only the keys built into it.
 
