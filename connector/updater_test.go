@@ -1086,7 +1086,6 @@ func TestUpdateOffAndOn(t *testing.T) {
 	}
 }
 
-// With the connector down, status still shows the serial of the index held.
 // silent has a connector for state take control connections and close them unanswered.
 func silent(t *testing.T, state string) {
 	ln, err := net.Listen("unix", socketPath(state))
@@ -1105,6 +1104,7 @@ func silent(t *testing.T, state string) {
 	}()
 }
 
+// With the connector down, status still shows the serial of the index held.
 func TestStatusDownShowsSerial(t *testing.T) {
 	state, err := os.MkdirTemp("", "ol") // short, for the control socket's path
 	if err != nil {
