@@ -918,8 +918,8 @@ func TestUpdateNow(t *testing.T) {
 	}
 }
 
-// Every request through an app node, the admin API or the control socket is noted, and
-// the control socket takes update-now.
+// Every request through an app node, the admin API or the control socket is noted, its end
+// too, and the control socket takes update-now.
 func TestRequestsAreNoted(t *testing.T) {
 	d, _ := testDaemon(t)
 	n := d.nodes["coach"]
@@ -939,9 +939,17 @@ func TestRequestsAreNoted(t *testing.T) {
 		},
 	} {
 		d.lastRequest.Store(0)
+		d.openRequests.Store(0)
 		serve()
 		if d.lastRequest.Load() == 0 {
 			t.Errorf("%s: not noted", name)
+		}
+		// A control request ends after its reply, which control returns on.
+		for wait := time.Now().Add(time.Second); d.openRequests.Load() != 0 && time.Now().Before(wait); {
+			time.Sleep(time.Millisecond)
+		}
+		if d.openRequests.Load() != 0 {
+			t.Errorf("%s: its end isn't noted", name)
 		}
 	}
 
