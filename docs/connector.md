@@ -100,8 +100,8 @@ On Linux, put `linux-amd64` or `linux-arm64` in place of `macos`, and if `shasum
 missing, `sha256sum` in place of `shasum -a 256`. The first check prints
 `Good "ovenlight-latest" signature`, and the second prints the index, which names the
 release after `"latest"` and its serial after `"serial"`. If both do, and the serial is no
-lower than one `status` or `doctor` named, unpack the archive and run its install script,
-in the same window:
+lower than the one `ovenlight status` shows for the index your connector holds, unpack the
+archive and run its install script, in the same window:
 
 ```sh
 tar xzf "$archive" --strip-components 1
@@ -126,7 +126,7 @@ OpenSSH 8.9 or later (`ssh -V` shows yours): an older one can't read the release
 signs with Touch ID, and says `unknown or unsupported key type`. If yours is older, check
 the download where `ssh -V` shows 8.9 or later, such as a Mac or Linux. If the first check
 prints `Good "ovenlight-latest" signature`, the second `True`, and the last the index's
-serial, no lower than one `status` or `doctor` named, unpack the archive and run its
+serial, no lower than the one `ovenlight status` shows, unpack the archive and run its
 install script, in the same window:
 
 ```powershell
@@ -136,8 +136,8 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 
 If a check fails, don't install the download. For five minutes after a release comes out,
 the server may still hand out some of the last release's files, so a check that fails
-then is worth trying again. A serial that stays lower than the one `status` or `doctor`
-named means the server is sending an older index than your connector holds, which the
+then is worth trying again. A serial that stays lower than the one `ovenlight status`
+shows means the server is sending an older index than your connector holds, which the
 other checks pass too: report it to team@snowyghost.com.
 
 ### From source
