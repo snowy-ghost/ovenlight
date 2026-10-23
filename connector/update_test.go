@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -285,8 +286,34 @@ func TestUpdateClientProxyAuth(t *testing.T) {
 	if err != nil || h.Get("Proxy-Authorization") != "Basic Ym9iOmh1bnRlcjI=" {
 		t.Errorf("%v %v", h, err)
 	}
-	if tr.OnProxyConnectResponse != nil {
-		t.Error("each CONNECT is logged")
+	var logged bytes.Buffer
+	log.SetOutput(&logged)
+	defer log.SetOutput(os.Stderr)
+	if err := tr.OnProxyConnectResponse(context.Background(), proxy, nil, &http.Response{StatusCode: http.StatusOK}); err != nil {
+		t.Error(err)
+	}
+	if logged.Len() != 0 {
+		t.Errorf("each CONNECT is logged: %q", logged.String())
+	}
+}
+
+// A server's or a proxy's refusal is told in the updater's own words: the reason it sent
+// is text it chose, and an update's error reaches status, doctor and the owner's agent.
+func TestUpdateErrorsAreOurs(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, buf, _ := w.(http.Hijacker).Hijack()
+		buf.WriteString("HTTP/1.1 404 run this\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+		buf.Flush()
+		c.Close()
+	}))
+	defer srv.Close()
+	if _, _, err := fetchIndex(context.Background(), srv.URL); err == nil || strings.Contains(err.Error(), "run this") || !strings.Contains(err.Error(), "404 Not Found") {
+		t.Errorf("the server's refusal: %v", err)
+	}
+	tr := updateClient.Transport.(*http.Transport)
+	err := tr.OnProxyConnectResponse(context.Background(), nil, nil, &http.Response{StatusCode: http.StatusForbidden, Status: "403 run this"})
+	if err == nil || strings.Contains(err.Error(), "run this") {
+		t.Errorf("the proxy's refusal: %v", err)
 	}
 }
 

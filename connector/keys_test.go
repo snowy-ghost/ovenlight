@@ -8,8 +8,9 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-// Each release key is in docs/allowed_signers, for both namespaces a release's
-// signatures use, so an owner can check what the updater checks.
+// Each release key is in docs/allowed_signers, under the principal owners check with and
+// for both namespaces a release's signatures use, so an owner can check what the updater
+// checks.
 func TestReleaseKeysAreAllowedSigners(t *testing.T) {
 	signers, err := os.ReadFile("../docs/allowed_signers")
 	if err != nil {
@@ -20,12 +21,12 @@ func TestReleaseKeysAreAllowedSigners(t *testing.T) {
 		found := false
 		for _, line := range strings.Split(string(signers), "\n") {
 			line = strings.TrimSpace(line) // a Windows checkout has CRLF
-			if strings.HasSuffix(line, " "+key) && strings.Contains(line, `namespaces="file,ovenlight-latest"`) {
+			if line == `team@snowyghost.com namespaces="file,ovenlight-latest" `+key {
 				found = true
 			}
 		}
 		if !found {
-			t.Errorf("%s isn't in docs/allowed_signers with namespaces \"file,ovenlight-latest\"", key)
+			t.Errorf("%s isn't in docs/allowed_signers as team@snowyghost.com with namespaces \"file,ovenlight-latest\"", key)
 		}
 	}
 }

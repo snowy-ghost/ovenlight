@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -179,13 +180,19 @@ func dayTime(t time.Time) time.Duration {
 
 // updateClient fetches updates. It follows no redirect, which could lead off the release
 // host, and takes the proxy Tailscale does, signing in to it as Tailscale does: on
-// Windows, the system's when the environment names none. Unlike Tailscale, it logs no
-// line for each CONNECT.
+// Windows, the system's when the environment names none, which the network can choose.
+// Unlike Tailscale, it logs no line for each CONNECT, and a proxy's refusal is told in
+// its own words, not the reason the proxy sent.
 var updateClient = &http.Client{
 	Transport: func() *http.Transport {
 		tr := &http.Transport{Proxy: tshttpproxy.ProxyFromEnvironment}
 		tshttpproxy.SetTransportGetProxyConnectHeader(tr)
-		tr.OnProxyConnectResponse = nil
+		tr.OnProxyConnectResponse = func(_ context.Context, _ *url.URL, _ *http.Request, r *http.Response) error {
+			if r.StatusCode != http.StatusOK {
+				return fmt.Errorf("the proxy refused the connection: %d %s", r.StatusCode, http.StatusText(r.StatusCode))
+			}
+			return nil
+		}
 		return tr
 	}(),
 	CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
@@ -230,7 +237,8 @@ func get(ctx context.Context, url string) (*http.Response, error) {
 	}
 	if resp.StatusCode != http.StatusOK {
 		resp.Body.Close()
-		return nil, fmt.Errorf("%s: %s", url, resp.Status)
+		// Its own words, not the reason the server sent, which it chose.
+		return nil, fmt.Errorf("%s: %d %s", url, resp.StatusCode, http.StatusText(resp.StatusCode))
 	}
 	return resp, nil
 }

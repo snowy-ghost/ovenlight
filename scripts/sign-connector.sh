@@ -348,10 +348,15 @@ release)
   sed 's/^/  /' "$b/SHA256SUMS"
 
   sign file "$b/SHA256SUMS"
+  # Owners check a release with docs/allowed_signers at its tag, which is this commit, so
+  # it's checked their way before anything is kept.
+  git -C "$root" show "$commit:docs/allowed_signers" > "$tmp/tagsigners"
+  ssh-keygen -Y verify -f "$tmp/tagsigners" -I team@snowyghost.com -n file -s "$b/SHA256SUMS.sig" < "$b/SHA256SUMS" > /dev/null 2>&1 ||
+    refuse "docs/allowed_signers at $commit doesn't verify SHA256SUMS.sig, so owners couldn't check $version: list this key there in a new commit and build again"
   index "$version" "$secure" "$reinstall" "$now" "$b/SHA256SUMS" > "$b/canary.json"
   sign ovenlight-canary "$b/canary.json"
   echo "$commit" > "$b/commit"
-  keep "$version" "$b"/{SHA256SUMS,SHA256SUMS.sig,index.json,commit,release_keys,canary.json,canary.json.sig}
+  keep "$version" "$b"/{SHA256SUMS,SHA256SUMS.sig,commit,release_keys,canary.json,canary.json.sig}
   echo "signed: on the mini, scripts/publish-connector.sh $version, then the canary with $sync/$version/canary.json"
   ;;
 

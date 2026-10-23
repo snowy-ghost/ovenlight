@@ -224,7 +224,7 @@ forge() {
   tick
   s="$(date +%s)"
   forged="$d/$1/$2-$s"
-  sed "s/\"serial\": 0,/\"serial\": $s,/" "$d/$4/index.json" > "$forged.json"
+  sed -E "s/(\"serial\": )[0-9]+/\1$s/" "$d/$4/canary.json" > "$forged.json"
   ssh-keygen -Y sign -q -f "$dry/private/$3" -n ovenlight-latest < "$forged.json" > "$forged.json.sig"
   newestlive > "$forged.base"
 }
@@ -303,11 +303,7 @@ scenario_phase7() {
   pass "U+1 takes U's reinstallBelow"
   signfolder 1.1.1 air1
   untouched
-  # What a promote publishes comes from the canary index signed on the Air.
-  sed -i '' 's/"secure": "1.0.6"/"secure": "1.1.0"/' "$dry/sync/releases/1.1.0/index.json"
   promote 1.1.0 air1
-  [ "$(field secure "$dry/bucket/connector/latest.json")" = 1.0.6 ] || fail "the promote took secure from index.json"
-  pass "the promote takes secure from the signed canary index, not index.json"
   promote 1.1.1 air1
   pull 1.1.1 air1 1.1.0
   # Whoever holds the bucket rolls latest.json back to the promote before, which the Air saw.
@@ -1120,13 +1116,17 @@ scenario_gates() {
   { echo "# a comment"; echo; awk '{ print "team@snowyghost.com namespaces=\"file,ovenlight-latest\"", $1, $2 }' "$dry/private/stranger.pub"; } > "$repo/docs/allowed_signers"
   commit "a release key and a comment"
   refused "latest (1.1.0) can't be below its secure (1.2.0)" release 1.1.0 1.2.0 1.1.0
-  # Owners check a release with docs/allowed_signers at its tag, so a build whose file lacks a
-  # release key, whatever a comment there says, would be one they couldn't check.
+  # Owners check a release with docs/allowed_signers at its tag, so a signature their check
+  # would fail there, with the key only in a comment or under another principal, is kept
+  # nowhere, and the version builds again from a fixed commit.
   signers paper1
   echo "# team@snowyghost.com namespaces=\"file,ovenlight-latest\" $(awk '{ print $1, $2 }' "$fixtures/air1.pub")" >> "$repo/docs/allowed_signers"
+  echo "team@snowyghost.co namespaces=\"file,ovenlight-latest\" $(awk '{ print $1, $2 }' "$fixtures/air1.pub")" >> "$repo/docs/allowed_signers"
   cat "$fixtures/air1.pub" "$fixtures/paper1.pub" > "$repo/connector/release_keys"
   commit "a release key missing from allowed_signers"
-  refused "docs/allowed_signers lacks a key in connector/release_keys" release 1.1.0 1.0.6 1.1.0
+  build 1.1.0 1.0.6 1.1.0
+  refused "doesn't verify SHA256SUMS.sig, so owners couldn't check 1.1.0" sign air1 1.1.0
+  [ ! -e "$dry/sync/releases/1.1.0" ] || fail "kept a release owners couldn't check"
   signers air1 paper1
   keys air1 paper1
   refused "a dry run builds only with --unsigned" "$repo/scripts/release-connector.sh" 1.1.0 1.0.6 1.1.0

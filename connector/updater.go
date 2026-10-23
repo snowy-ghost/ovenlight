@@ -246,10 +246,12 @@ func (u *updater) poll(ctx context.Context) {
 	if u.d.lastRequestTime().After(now) {
 		u.d.lastRequest.Store(now.UnixNano())
 	}
+	checked := false
 	if !now.Before(u.st.NextCheck) {
-		u.check(ctx)
+		_, _, _, err := u.check(ctx)
+		checked = err == nil
 	}
-	u.advance(ctx)
+	u.advance(ctx, checked)
 }
 
 // check fetches the published index and judges it against the one held. A verified
@@ -267,7 +269,7 @@ func (u *updater) check(ctx context.Context) (data, sig []byte, idx *updateIndex
 	now := u.now()
 	if err != nil {
 		log.Printf("update check: %v", err)
-		u.st.CheckError, u.st.NextCheck = err.Error(), now.Add(updateMinute+rand.N(59*updateMinute))
+		u.st.CheckError, u.st.NextCheck = errorText(err), now.Add(updateMinute+rand.N(59*updateMinute))
 		u.save()
 		return nil, nil, nil, err
 	}
@@ -289,10 +291,11 @@ func (u *updater) check(ctx context.Context) (data, sig []byte, idx *updateIndex
 	return data, sig, idx, nil
 }
 
-// advance downloads the release the index held names once it's due, and swaps it in at
-// its moment, after a fresh fetch of the index that still names it. updates-off is read
-// before the download, and before the swap once that fetch is done.
-func (u *updater) advance(ctx context.Context) {
+// advance downloads the release the index held names once it's due, after a check that
+// worked (checked says this poll's did), and swaps it in at its moment, after a fresh fetch
+// of the index that still names it. updates-off is read before the download, and before
+// the swap once that fetch is done.
+func (u *updater) advance(ctx context.Context, checked bool) {
 	now := u.now()
 	p := planUpdate(&u.st, u.v)
 	// Nothing is downloaded or swapped during the last update's trial, which may need the
@@ -300,12 +303,19 @@ func (u *updater) advance(ctx context.Context) {
 	if p.target == "" || now.Before(p.after) || updatesOff(u.d.stateDir) || u.d.onTrial() {
 		return
 	}
-	// A fetch that failed waits for its retry, as the daily check does, so a computer that
-	// wakes before its network does doesn't spend the night's try on a download that can't work.
+	// A fetch that failed waits for its retry, as the daily check does.
 	if u.st.CheckError != "" && now.Before(u.st.NextCheck) {
 		return
 	}
 	if u.ready != p.target {
+		// A failed download waits for the night, so it follows a check that worked: a start or
+		// a wake before the network is up then costs only the check's retry within the hour.
+		if !checked {
+			if _, _, _, err := u.check(ctx); err == nil {
+				u.advance(ctx, true) // on the index that check holds
+			}
+			return
+		}
 		if err := u.download(ctx, p.idx); err != nil && ctx.Err() == nil {
 			u.fail(p.target, err)
 		}
@@ -363,10 +373,14 @@ func (u *updater) fail(version string, err error) {
 	u.save()
 }
 
+// errorText is an update's error as status and doctor show it: on one line and short, since
+// some of it, such as a network error's, isn't ours.
+func errorText(err error) string { return clip(err.Error(), 300) }
+
 // noteFailure records a failed update of version at at, counting it with the failures of
 // that version before it.
 func (st *updateState) noteFailure(version string, at time.Time, err error) {
-	f := &updateFailure{Version: version, At: at, Error: err.Error(), Count: 1}
+	f := &updateFailure{Version: version, At: at, Error: errorText(err), Count: 1}
 	if st.Failed != nil && st.Failed.Version == version {
 		f.Count = st.Failed.Count + 1
 	}
@@ -546,10 +560,11 @@ func when(t time.Time) string { return t.Local().Format("2 Jan 15:04") }
 
 // installs says when Pending installs on its own, as status and doctor put it.
 func (u *updateView) installs(now time.Time) string {
+	// Once its moment has come, the download and the swap each follow a check that works.
+	if u.CheckError != "" && (!now.Before(u.InstallAfter) || !now.Before(u.InstallBy)) {
+		return "installs on its own once a check works"
+	}
 	if !now.Before(u.InstallBy) {
-		if u.CheckError != "" {
-			return "installs on its own once a check works" // the swap needs a fresh index
-		}
 		return "installs on its own as soon as it can"
 	}
 	if !u.InstallAfter.Before(u.InstallBy) {

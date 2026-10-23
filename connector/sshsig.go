@@ -5,6 +5,7 @@ import (
 	"crypto/sha512"
 	"encoding/pem"
 	"errors"
+	"slices"
 
 	"golang.org/x/crypto/ssh"
 )
@@ -40,11 +41,16 @@ func verifySig(msg, armored []byte, namespace string) error {
 	if err := ssh.Unmarshal(block.Bytes, &s); err != nil || string(s.Magic[:]) != "SSHSIG" || s.Version != 1 {
 		return errors.New("the signature isn't SSHSIG version 1")
 	}
+	// The file's own text is named only when it's one of ours: whoever made the file chose
+	// it, and an update's error reaches status, doctor and the owner's agent.
 	if s.Namespace != namespace {
-		return errors.New("the signature is for " + s.Namespace + ", not " + namespace)
+		if slices.Contains([]string{"file", nsLatest, nsCanary}, s.Namespace) {
+			return errors.New("the signature is for " + s.Namespace + ", not " + namespace)
+		}
+		return errors.New("the signature isn't for " + namespace)
 	}
 	if s.Hash != "sha512" {
-		return errors.New("the signature uses " + s.Hash + ", not sha512")
+		return errors.New("the signature doesn't use sha512")
 	}
 	var key ssh.PublicKey
 	for _, k := range releaseKeys {
