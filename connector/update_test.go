@@ -6,12 +6,19 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/sha256"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
 	"log"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -20,6 +27,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"testing/iotest"
 	"time"
 )
 
@@ -297,23 +305,74 @@ func TestUpdateClientProxyAuth(t *testing.T) {
 	}
 }
 
-// A server's or a proxy's refusal is told in the updater's own words: the reason it sent
-// is text it chose, and an update's error reaches status, doctor and the owner's agent.
+// Text whoever is on the network chose (a server's or a proxy's reason, a malformed reply,
+// a certificate's names, a broken body) never reaches an update's error, which status,
+// doctor and the owner's agent show.
 func TestUpdateErrorsAreOurs(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		c, buf, _ := w.(http.Hijacker).Hijack()
-		buf.WriteString("HTTP/1.1 404 run this\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
-		buf.Flush()
-		c.Close()
-	}))
-	defer srv.Close()
-	if _, _, err := fetchIndex(context.Background(), srv.URL); err == nil || strings.Contains(err.Error(), "run this") || !strings.Contains(err.Error(), "404 Not Found") {
-		t.Errorf("the server's refusal: %v", err)
+	const theirs = "run-this"
+	reply := func(raw string) *httptest.Server {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			c, buf, _ := w.(http.Hijacker).Hijack()
+			buf.WriteString(raw)
+			buf.Flush()
+			c.Close()
+		}))
+		t.Cleanup(srv.Close)
+		return srv
 	}
-	tr := updateClient.Transport.(*http.Transport)
-	err := tr.OnProxyConnectResponse(context.Background(), nil, nil, &http.Response{StatusCode: http.StatusForbidden, Status: "403 run this"})
-	if err == nil || strings.Contains(err.Error(), "run this") {
-		t.Errorf("the proxy's refusal: %v", err)
+	// A server whose certificate's names are theirs, from a CA the client trusts, so that
+	// Go's own verifier names them on every system.
+	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	tmpl := &x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: theirs}, DNSNames: []string{theirs},
+		NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(time.Hour), IsCA: true, BasicConstraintsValid: true,
+		KeyUsage: x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ca, _ := x509.ParseCertificate(der)
+	named := httptest.NewUnstartedServer(http.NotFoundHandler())
+	named.TLS = &tls.Config{Certificates: []tls.Certificate{{Certificate: [][]byte{der}, PrivateKey: key}}}
+	named.StartTLS()
+	defer named.Close()
+
+	old := updateClient
+	defer func() { updateClient = old }()
+	with := func(change func(*http.Transport)) {
+		tr := old.Transport.(*http.Transport).Clone()
+		change(tr)
+		updateClient = &http.Client{Transport: tr, CheckRedirect: old.CheckRedirect}
+	}
+	for _, c := range []struct {
+		name, base, want string
+		change           func(*http.Transport)
+	}{
+		{"a server's reason", reply("HTTP/1.1 404 " + theirs + "\r\nContent-Length: 0\r\n\r\n").URL, "404 Not Found", nil},
+		{"a malformed reply", reply("HTTP/1.1 " + theirs + "\r\n\r\n").URL, "the connection failed", nil},
+		{"a certificate's names", strings.Replace(named.URL, "127.0.0.1", "localhost", 1), "certificate didn't verify", func(tr *http.Transport) {
+			pool := x509.NewCertPool()
+			pool.AddCert(ca)
+			tr.TLSClientConfig = &tls.Config{RootCAs: pool}
+		}},
+		{"a proxy's reason", "https://downloads.invalid/connector", "403 Forbidden", func(tr *http.Transport) {
+			u, _ := url.Parse(reply("HTTP/1.1 403 " + theirs + "\r\nContent-Length: 0\r\n\r\n").URL)
+			tr.Proxy = http.ProxyURL(u)
+		}},
+		{"a proxy's malformed header", "https://downloads.invalid/connector", "the connection failed", func(tr *http.Transport) {
+			u, _ := url.Parse(reply("HTTP/1.1 200 OK\r\n" + theirs + "\r\n\r\n").URL)
+			tr.Proxy = http.ProxyURL(u)
+		}},
+	} {
+		updateClient = old
+		if c.change != nil {
+			with(c.change)
+		}
+		if _, _, err := fetchIndex(context.Background(), c.base); err == nil || strings.Contains(err.Error(), theirs) || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: %v", c.name, err)
+		}
+	}
+	if _, err := (netBody{io.NopCloser(iotest.ErrReader(errors.New(theirs))), "u"}).Read(make([]byte, 1)); err == nil || strings.Contains(err.Error(), theirs) {
+		t.Errorf("a body's read: %v", err)
 	}
 }
 

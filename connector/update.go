@@ -7,11 +7,14 @@ import (
 	"compress/gzip"
 	"context"
 	"crypto/sha256"
+	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -181,21 +184,27 @@ func dayTime(t time.Time) time.Duration {
 // updateClient fetches updates. It follows no redirect, which could lead off the release
 // host, and takes the proxy Tailscale does, signing in to it as Tailscale does: on
 // Windows, the system's when the environment names none, which the network can choose.
-// Unlike Tailscale, it logs no line for each CONNECT, and a proxy's refusal is told in
-// its own words, not the reason the proxy sent.
+// Unlike Tailscale, it logs no line for each CONNECT.
 var updateClient = &http.Client{
 	Transport: func() *http.Transport {
 		tr := &http.Transport{Proxy: tshttpproxy.ProxyFromEnvironment}
 		tshttpproxy.SetTransportGetProxyConnectHeader(tr)
 		tr.OnProxyConnectResponse = func(_ context.Context, _ *url.URL, _ *http.Request, r *http.Response) error {
 			if r.StatusCode != http.StatusOK {
-				return fmt.Errorf("the proxy refused the connection: %d %s", r.StatusCode, http.StatusText(r.StatusCode))
+				return proxyRefused(r.StatusCode)
 			}
 			return nil
 		}
 		return tr
 	}(),
 	CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+}
+
+// proxyRefused is a proxy's refusal of a CONNECT, by its status code.
+type proxyRefused int
+
+func (c proxyRefused) Error() string {
+	return fmt.Sprintf("the proxy refused the connection: %d %s", int(c), http.StatusText(int(c)))
 }
 
 // downloadTimeout bounds an archive's download: the cap at 1 Mbit/s takes 18 minutes.
@@ -225,7 +234,10 @@ func fetchSmall(ctx context.Context, url string) ([]byte, error) {
 	return b, err
 }
 
-// get fetches url, refusing anything but a 200. Its caller caps what it reads.
+// get fetches url, refusing anything but a 200. Its caller caps what it reads. Its
+// errors, and its body's, are in our own words: Go's can carry text from whoever is on the
+// network (a certificate's names, a proxy's or a server's reply, the reason a server sent),
+// and an update's error reaches status, doctor and the owner's agent. The log keeps Go's.
 func get(ctx context.Context, url string) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -233,14 +245,53 @@ func get(ctx context.Context, url string) (*http.Response, error) {
 	}
 	resp, err := updateClient.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, netError(url, err)
 	}
 	if resp.StatusCode != http.StatusOK {
 		resp.Body.Close()
-		// Its own words, not the reason the server sent, which it chose.
 		return nil, fmt.Errorf("%s: %d %s", url, resp.StatusCode, http.StatusText(resp.StatusCode))
 	}
+	resp.Body = netBody{resp.Body, url}
 	return resp, nil
+}
+
+// netBody is a response body whose read errors are in our own words.
+type netBody struct {
+	io.ReadCloser
+	url string
+}
+
+func (b netBody) Read(p []byte) (int, error) {
+	n, err := b.ReadCloser.Read(p)
+	if err != nil && err != io.EOF {
+		err = netError(b.url, err)
+	}
+	return n, err
+}
+
+// netError is why a fetch of url failed, in our own words, and logs Go's.
+func netError(url string, err error) error {
+	log.Printf("updates: fetching %s: %v", url, err)
+	var (
+		refused proxyRefused
+		timeout interface{ Timeout() bool }
+		dns     *net.DNSError
+		cert    *tls.CertificateVerificationError
+	)
+	what := "the connection failed"
+	switch {
+	case errors.As(err, &refused):
+		what = refused.Error()
+	case errors.Is(err, context.Canceled):
+		what = "it was cut short"
+	case errors.Is(err, context.DeadlineExceeded), errors.As(err, &timeout) && timeout.Timeout():
+		what = "it timed out"
+	case errors.As(err, &dns):
+		what = "a name didn't resolve"
+	case errors.As(err, &cert):
+		what = "the server's certificate didn't verify"
+	}
+	return fmt.Errorf("%s: %s", url, what)
 }
 
 // downloadArchive fetches this system's archive of idx's latest release, from its
