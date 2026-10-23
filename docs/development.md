@@ -211,8 +211,8 @@ leaves to `--check`. Its refusals say what to do, as when a pull signed and not 
 published blocks a promote or resign. Each script's header says what it checks, and
 `scripts/test-connector-release.sh` dry-runs them all. Each release restarts every owner's
 connector, and one promoted within two days of the last restarts every owner's wait, so
-batch what isn't urgent. A `--resign` restarts the wait too, for computers that haven't
-taken the live release.
+batch what isn't urgent. A `--resign` restarts the wait too, for a computer whose daily
+check fetches it before its moment to swap.
 
 Uploads go to the R2 bucket behind `https://downloads.ovenlight.app`, through `wrangler`
 (signed in with `npx wrangler@4.147.0 login`, or `CLOUDFLARE_API_TOKEN` and

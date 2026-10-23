@@ -184,7 +184,7 @@ folder)
   [ -f SHA256SUMS ] || refuse "no SHA256SUMS in build/release: build $version"
   sig="$records/$version/SHA256SUMS.sig"
   [ -f "$sig" ] || refuse "no $sig: sign $version on the Air"
-  cmp -s SHA256SUMS "$records/$version/SHA256SUMS" || refuse "build/release isn't the build of $version that was signed"
+  cmp -s SHA256SUMS "$records/$version/SHA256SUMS" || refuse "build/release isn't the build of $version that was signed: only that build goes up, so once it's replaced, release under a new version"
   # The release is what the signed SHA256SUMS lists, with or without Windows.
   files="$(awk '{ print $2 }' SHA256SUMS) SHA256SUMS"
   while read -r _ f; do checkarchive "$f"; done < SHA256SUMS
