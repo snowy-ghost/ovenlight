@@ -955,6 +955,8 @@ scenario_moved() {
   keys air2 paper1 air1
   ship 1.1.1 1.0.6 air1
   later 33
+  mv "$dry/sync/releases/1.1.1" "$dry/gone"
+  run nokey --check
   keys air2 paper1
   build 1.1.2 1.0.6
   signfolder 1.1.2 air2

@@ -672,11 +672,12 @@ To build and sign your own copy, change to your own:
   `olderDocs` in `connector/update.go`. A fork signs with release keys of its own: list
   them in `connector/release_keys`, which every build trusts, and in `docs/allowed_signers`
   (a test and the signing script check it lists each one), put their public halves in
-  `~/.ssh/ovenlight-release-keys/` on the computer that signs, and change `HANDLE` and the
-  `mini` host in `scripts/sign-connector.sh`, `minirelease` and `minisync` in
-  `scripts/connector-release-lib.sh`, and the `team@snowyghost.com` principal, which
-  `sign-connector.sh`, `publish-connector.sh` and connector.md verify `SHA256SUMS.sig` and
-  `latest.json.sig` with, and `connector/keys_test.go` wants in `allowed_signers`.
+  `~/.ssh/ovenlight-release-keys/` on the computer that signs, and change `HANDLE`, the
+  `mini` host and the site `fetchlive` reads in `scripts/sign-connector.sh`, `minirelease`
+  and `minisync` in `scripts/connector-release-lib.sh`, and the `team@snowyghost.com`
+  principal, which `sign-connector.sh`, `publish-connector.sh` and connector.md verify
+  `SHA256SUMS.sig` and `latest.json.sig` with, and `connector/keys_test.go` wants in
+  `allowed_signers`.
 
 ### Invite links
 

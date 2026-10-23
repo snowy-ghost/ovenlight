@@ -94,12 +94,15 @@ send() {
 }
 
 # books: in files, the books the mini needs: every index published and the newest signed,
-# with the signed files of each release they name.
+# with the signed files of each release they name, and when this Air saw each go up.
 books() {
   local id v ids="$published"
   files=()
   [ "$top" = "$newest" ] || ids+=$'\n'"$top"
-  for id in $ids; do files+=("$records/$id".{base,json.sig,json}); done
+  for id in $ids; do
+    files+=("$records/$id".{base,json.sig,json})
+    if [ -f "$records/$id.seen" ]; then files+=("$records/$id.seen"); fi
+  done
   for v in $(for id in $ids; do echo "${id%%/*}"; done | sort -u); do
     files+=("$records/$v"/{SHA256SUMS,SHA256SUMS.sig,canary.json,canary.json.sig,release_keys,commit})
   done
@@ -195,8 +198,8 @@ import() {
   records="$h"
   readrecords
   for id in $published; do
-    # When latest.json began naming it, which newkeywait never takes as before it was signed.
-    t="$(cat "$sync/$id.live" 2> /dev/null || true)"
+    # When latest.json began naming it, which marked never takes as before it was signed.
+    t="$(cat "$sync/$id.live" 2> /dev/null || cat "$sync/$id.seen" 2> /dev/null || true)"
     [[ "$t" =~ ^[1-9][0-9]{9}$ ]] || t="$(serialof "$id")"
     echo "$t" > "$h/$id.seen"
   done
