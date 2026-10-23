@@ -114,10 +114,12 @@ else
   else
     mv "$tmp" "$plist"
     launchctl bootout "$domain/$label" 2>/dev/null || true
-    # bootstrap can fail for a moment right after bootout while launchd tears down.
+    # bootstrap can fail for a moment right after bootout while launchd tears down, so only
+    # the last try's error shows: launchctl's own says to try again as root.
     for attempt in 1 2 3 4 5; do
-      launchctl bootstrap "$domain" "$plist" && break
+      err="$(launchctl bootstrap "$domain" "$plist" 2>&1)" && break
       if [ "$attempt" = 5 ]; then
+        echo "$err" >&2
         cat >&2 <<'EOF'
 launchctl bootstrap failed. The connector is a launchd agent of your login session, so it
 runs only while you're logged in to this Mac's desktop: log in there (not only over SSH)
