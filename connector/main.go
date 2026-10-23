@@ -898,7 +898,7 @@ func collectStatus(p *paths) (*statusOut, error) {
 	}
 	reply, daemonErr := callDaemon(p.state, "status", 10*time.Second)
 	if daemonErr != nil && !errors.Is(daemonErr, errDaemonDown) {
-		return nil, withHeld(p.state, daemonErr)
+		return nil, withHeld(p.state, fmt.Errorf("%w. %s", daemonErr, restartFix(p)))
 	}
 	out := &statusOut{Version: version(), Daemon: reply != nil, Apps: []appStatus{}}
 	out.Update, _ = daemonUpdate(p.state, reply, time.Now())
