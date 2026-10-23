@@ -148,7 +148,7 @@ isindex() {
 # only it goes up, and reads the records as they were when it was signed.
 newestsigned() {
   local cmd="--${top#*/}"
-  [ -n "$top" ] || refuse "no promote, pull or resign is signed in $records"
+  [ -n "$top" ] || refuse "no promote, pull or resign is signed in $records: if one is signed on the Air, scripts/sign-connector.sh --check there sends it here"
   # A latest.json signed after the newest index here means these records lack what put it
   # up, and publishing would take latest.json back.
   if fetch connector/latest.json "$tmp/live.json" && [[ "$(field serial "$tmp/live.json")" =~ ^[0-9]+$ ]] &&

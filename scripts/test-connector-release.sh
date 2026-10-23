@@ -349,7 +349,7 @@ scenario_canary() {
   refused "is a dry-run fixture key" realpublish 1.1.0
   run publish 1.1.0
   folder_is 1.1.0
-  refused "no promote, pull or resign is signed" publish --promote 1.1.0
+  refused "if one is signed on the Air, scripts/sign-connector.sh --check there sends it here" publish --promote 1.1.0
   refused "isn't the live release (nothing is promoted)" sign air1 --pull 1.1.0
   refused "no promote, pull or resign is signed" publish --pull 1.1.0
   refused "no index is published yet" sign air1 --resign
