@@ -140,7 +140,7 @@ elif ! $unsigned; then
     exit 1
   fi
   head="$(git -C "$root" rev-parse HEAD)"
-  if ! security find-identity -v -p codesigning | grep -qF "\"$IDENTITY\""; then
+  if ! security find-identity -v -p codesigning | grep -F "\"$IDENTITY\"" > /dev/null; then
     cat >&2 <<EOF
 No "$IDENTITY" signing identity in the keychain.
 The Account Holder creates a Developer ID Application certificate (developer.apple.com >

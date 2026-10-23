@@ -803,12 +803,12 @@ scenario_lostpaper() {
   # ~/Sync edits its release_keys there.
   cat "$fixtures/air1.pub" "$fixtures/paper2.pub" > "$dry/sync/releases/1.1.3/release_keys"
   refused "1.1.3's release_keys isn't the two keys in" sign air1 --promote 1.1.3
-  refused "four weeks and twelve days" sign paper2 --resign
+  refused "42 days after latest.json began naming" sign paper2 --resign
   # A release that mustn't ship goes out, and the new paper key pulls it, as it would after a
   # lost Air, without waiting.
   ship 1.1.2 1.0.6 air1
   pull 1.1.2 paper2 1.1.1
-  later 41
+  later 43
   ship 1.1.4 1.0.6 air1
   # The Air is lost, and the new paper key signs what the next R needs at once, with paper1
   # standing in for the paper key after it. The lost paper key signed nothing, so the import
@@ -884,28 +884,28 @@ scenario_move() {
   refused "1.1.2/pull-" sign air2 --resign
   land --pull 1.1.2
   latest_is 1.1.1 air1
-  # The new key alone waits four weeks and twelve days.
+  # The new key alone waits six weeks.
   tick
-  refused "four weeks and twelve days" sign air2 --promote 1.1.3
+  refused "42 days after latest.json began naming" sign air2 --promote 1.1.3
   # An agent holding ~/Sync sets back when latest.json began naming 1.1.1, so the wait would
   # seem over.
-  for f in "$dry"/sync/releases/1.1.1/promote-*.live; do echo $(($(cat "$f") - 41 * 86400)) > "$f"; done
-  refused "four weeks and twelve days" sign air2 --promote 1.1.3
+  for f in "$dry"/sync/releases/1.1.1/promote-*.live; do echo $(($(cat "$f") - 43 * 86400)) > "$f"; done
+  refused "42 days after latest.json began naming" sign air2 --promote 1.1.3
   tick
-  refused "four weeks and twelve days" sign air2 --resign
+  refused "42 days after latest.json began naming" sign air2 --resign
   forge 1.1.3 promote air2 1.1.3
-  refused "four weeks and twelve days" publish --promote 1.1.3
+  refused "42 days after latest.json began naming" publish --promote 1.1.3
   forge 1.1.1 resign air2 1.1.1
-  refused "four weeks and twelve days" publish --resign
+  refused "42 days after latest.json began naming" publish --resign
   # Each change to latest.json starts the two-day wait of computers still on 1.1.0 again, so
-  # the new key alone also waits twelve days after the last.
+  # the new key alone also waits two weeks after the last.
   later 30
   resign air1 1.1.1
-  later 11
+  later 13
   tick
-  refused "twelve days after 1.1.1/resign-" sign air2 --resign
+  refused "14 days after 1.1.1/resign-" sign air2 --resign
   forge 1.1.1 resign air2 1.1.1
-  refused "twelve days after 1.1.1/resign-" publish --resign
+  refused "14 days after 1.1.1/resign-" publish --resign
   later 1
   # The live index re-signed with the new key before the canary, once master's
   # docs/allowed_signers, which owners check latest.json with, lists that key. Then the promote
@@ -954,7 +954,7 @@ scenario_moved() {
   keyfolder air2 paper1
   keys air2 paper1 air1
   ship 1.1.1 1.0.6 air1
-  later 41
+  later 43
   mv "$dry/sync/releases/1.1.1" "$dry/gone"
   run nokey --check
   keys air2 paper1
@@ -1081,11 +1081,11 @@ scenario_repull() {
   keyfolder air2 paper1
   keys air2 paper1 air1
   ship 1.1.1 1.0.6 air1
-  later 41
+  later 43
   pull 1.1.1 air1 1.1.0
   ship 1.1.2 1.0.6 air1
   tick
-  refused "four weeks and twelve days" sign air2 --resign
+  refused "42 days after latest.json began naming" sign air2 --resign
 }
 
 scenario_gates() {
@@ -1194,6 +1194,12 @@ if [ "${1:-}" = --scenario ]; then
   echo "$checks" > "$3/$2.checks"
   exit
 fi
+# Under pipefail, a reader that stops early (head, grep -q, an awk exit) can end the command
+# writing to it with SIGPIPE, and set -e then ends the script with no message.
+if grep -nE '\|[[:space:]]*(head|grep -[[:alpha:]]*q|awk .*exit)' "$root"/scripts/{connector-release-lib,sign-connector,publish-connector,release-connector}.sh; then
+  fail "a release script pipes into a reader that stops early"
+fi
+pass "no release script pipes into a reader that stops early"
 # Each scenario runs in a process of its own, $JOBS at a time.
 scenarios=("$@")
 [ $# -gt 0 ] || while read -r s; do scenarios+=("$s"); done < <(sed -n 's/^scenario_\([a-z0-9]*\)() {$/\1/p' "$0")

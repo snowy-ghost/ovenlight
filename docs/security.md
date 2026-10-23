@@ -416,11 +416,11 @@ in a terminal never update themselves.
 One thing: a signature by one of the release keys built into the binary
 (`connector/release_keys`). Not TLS, and not the download server. Whoever took over
 downloads.ovenlight.app could hold updates and pulls back, but could install only a release
-we signed and published as the latest, and couldn't skip the two-day wait or bring a
+we signed as the latest, and couldn't skip the two-day wait or bring a
 pulled release back to a computer that saw the pull. An index doesn't expire, so while
 the server holds one back, `status` and `doctor` still show recent checks. The
 [verified steps](connector.md#check-a-download-first) for installing by hand check the
-same signed index, so they too take only a release once published as the latest, though
+same signed index, so they too take only a release once signed as the latest, though
 not that it still is: an older index, with its release, passes them too. They trust this
 repository's `allowed_signers`, so a change pushed to master changes what they accept:
 the connector itself trusts only the keys built into it.
@@ -496,12 +496,12 @@ wait), as you, beside your Tailscale API credential, and on Windows with adminis
 rights. `ovenlight update off` opts out.
 
 When one key is lost, the next release, signed with the other, replaces it. The signing
-script then waits four weeks and twelve days, and twelve days after the last change to the
-index, before signing with only the new key. A computer that stays off, or has updates
-off, for four weeks after that release comes out can't verify the releases signed with
-only the new key: its checks fail, `doctor` warns after seven days, and it needs one
-install by hand. If both keys were lost, every computer would be in that position once
-we publish a release signed with a new key.
+script then waits six weeks, and two weeks after the last change to the index, before
+signing with only the new key. A computer that stays off, or has updates off, for four
+weeks after that release comes out can't verify the releases signed with only the new key:
+its checks fail, `doctor` warns after seven days, and it needs one install by hand. If both
+keys were lost, every computer would be in that position once we publish a release signed
+with a new key.
 
 ### The files it keeps
 

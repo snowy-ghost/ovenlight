@@ -237,7 +237,7 @@ verify() {
 # signer <file> <sig> <namespace>: the key, of those any release lists, that made the signature.
 signer() {
   local t b
-  cat /dev/null "$records"/*/release_keys | awk 'NF >= 2 && !seen[$2]++ { print $1, $2 }' > "$tmp/candidates"
+  awk 'NF >= 2 && !seen[$2]++ { print $1, $2 }' /dev/null "$records"/*/release_keys > "$tmp/candidates"
   while read -r t b; do
     echo "$t $b" > "$tmp/candidate"
     if verify "$1" "$2" "$3" "$tmp/candidate"; then
@@ -304,20 +304,20 @@ verifyrule() {
 }
 
 # TAKE is the longest a computer on most days takes from an index going up to its swap, with a
-# day to spare: one off at weekends sees a Friday index on Monday, waits two days and its
-# one-day cap, and swaps the next morning it's on, which with that Friday and the Monday
-# after it off, as at Easter, is Tuesday. Off for longer, it counts with computers that
-# sleep. WAIT is four weeks for those, then TAKE.
-TAKE=$((12 * 86400)) WAIT=$((28 * 86400 + TAKE))
+# day to spare. One off at night, at weekends and for up to four days at a time takes up to
+# thirteen: off on a Thursday and Friday, it sees a Wednesday index on Monday, waits two days
+# and its one-day cap, and swaps the next morning it's on, which with the next Friday and
+# Monday off is Tuesday. Off for longer, it counts with computers that sleep. WAIT is four
+# weeks for those, then TAKE.
+TAKE=$((14 * 86400)) WAIT=$((28 * 86400 + TAKE))
 
 # newkeywait <blob> <now> [<what else signs>]: refuses a key that computers still on an older
-# release can't check yet. It waits until four weeks and twelve days after latest.json last
-# began naming releases that list it, so computers asleep on an older release have taken
-# one. A pull back to one that doesn't list it starts the wait again, and a promote signed
-# by another key doesn't. Each change to latest.json starts the two-day wait of computers
-# that haven't taken one again, so until the key has signed an index published since, it
-# also waits TAKE after the last. With nothing published in the records, it counts
-# what's signed.
+# release can't check yet. It waits until WAIT after latest.json last began naming releases
+# that list it, so computers asleep on an older release have taken one. A pull back to one
+# that doesn't list it starts the wait again, and a promote signed by another key doesn't.
+# Each change to latest.json starts the two-day wait of computers that haven't taken one
+# again, so until the key has signed an index published since, it also waits TAKE after the
+# last. With nothing published in the records, it counts what's signed.
 newkeywait() {
   local id v t old='' from='' after=''
   for id in ${published:-$signed}; do
@@ -332,15 +332,15 @@ newkeywait() {
   if [ -z "$old" ]; then return 0; fi
   from="${from:-$2}"
   if [ "$2" -lt $((from + WAIT)) ]; then
-    refuse "$old doesn't list this key, and computers asleep on it may not have updated yet: not before $(date -r $((from + WAIT))), four weeks and twelve days after latest.json began naming releases that list it${3:-}"
+    refuse "$old doesn't list this key, and computers asleep on it may not have updated yet: not before $(date -r $((from + WAIT))), $((WAIT / 86400)) days after latest.json began naming releases that list it${3:-}"
   fi
   if [ -z "$newest" ]; then return 0; fi
-  cat /dev/null "$records"/*/release_keys | awk -v b="$1" '$2 == b { print $1, $2; exit }' > "$tmp/newkey"
+  awk -v b="$1" '$2 == b { print $1, $2; exit }' /dev/null "$records"/*/release_keys > "$tmp/newkey"
   for id in $after; do
     if verify "$records/$id.json" "$records/$id.json.sig" ovenlight-latest "$tmp/newkey"; then return 0; fi
   done
   t="$(marked "$newest")" || t="$(serialof "$newest")"
   if [ "$2" -lt $((t + TAKE)) ]; then
-    refuse "$old doesn't list this key, and each change to latest.json starts the two-day wait of computers still on it again: not before $(date -r $((t + TAKE))), twelve days after $newest went up${3:-}"
+    refuse "$old doesn't list this key, and each change to latest.json starts the two-day wait of computers still on it again: not before $(date -r $((t + TAKE))), $((TAKE / 86400)) days after $newest went up${3:-}"
   fi
 }

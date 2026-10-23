@@ -500,12 +500,12 @@ func TestUpdaterSwapsAtAQuietMoment(t *testing.T) {
 
 // A security fix takes any quiet 10 minutes, day or night, even when its index was signed
 // after this computer's time: by an Air whose clock runs up to an hour ahead, or here on a
-// clock days behind.
+// clock days behind. The connector started 10 minutes before, so it downloads at once.
 func TestUpdaterSecurityFixByDay(t *testing.T) {
 	for _, signed := range []int64{100, at(0, 10, 0).Unix(), at(3, 9, 0).Unix()} {
 		srv := newReleaseServer(t)
 		srv.publish("1.2.0", "1.2.0", "1.1.0", signed)
-		tu := newTestUpdater(t, srv, t.TempDir(), "1.1.5", at(0, 9, 0), false)
+		tu := newTestUpdater(t, srv, t.TempDir(), "1.1.5", at(0, 8, 50), false)
 		tu.busyAt(at(0, 9, 0))
 		tu.pollAt(at(0, 9, 9))
 		if len(tu.swaps) != 0 {
@@ -586,6 +586,24 @@ func TestUpdaterDownloadFollowsACheck(t *testing.T) {
 		if tu.ready != "1.2.0" || tu.st.Failed != nil {
 			t.Errorf("%s: no download at the check's retry: %+v", name, tu.st)
 		}
+	}
+}
+
+// A download waits 10 minutes after a wake, as the swap does, so short wakes in the
+// computer's sleep don't spend the night's try.
+func TestUpdaterDownloadAfterAWake(t *testing.T) {
+	srv := newReleaseServer(t)
+	srv.publish("1.2.0", "1.1.0", "1.1.0", 100)
+	tu := newTestUpdater(t, srv, t.TempDir(), "1.1.5", at(0, 9, 0), false)
+	tu.pollAt(at(0, 9, 0))
+	tu.sleepUntil(at(2, 9, 30)) // due since 09:00
+	tu.pollAt(at(2, 9, 39))
+	if n := srv.count("/1.2.0/" + archiveName()); n != 0 || tu.ready != "" {
+		t.Fatalf("%d downloads within 10 minutes of waking", n)
+	}
+	tu.pollAt(at(2, 9, 40))
+	if tu.ready != "1.2.0" {
+		t.Error("no download 10 minutes after waking")
 	}
 }
 
@@ -765,16 +783,20 @@ func TestUpdaterCap(t *testing.T) {
 		t.Fatal("no swap after waking")
 	}
 
-	// Off through 02:00, and started that morning: it downloads again, then swaps 10
-	// minutes after the start.
+	// Off through 02:00, and started that morning: it downloads again 10 minutes after the
+	// start, then swaps.
 	srv, tu, _ := readyAt(t, false)
 	tu = newTestUpdater(t, srv, tu.d.stateDir, "1.1.5", at(4, 9, 0), false)
 	tu.busyAt(at(4, 9, 0))
 	tu.busyAt(at(4, 9, 9))
+	if tu.ready != "" {
+		t.Fatal("downloaded within 10 minutes of a start")
+	}
+	tu.busyAt(at(4, 9, 10))
 	if tu.ready != "1.2.0" || len(tu.swaps) != 0 {
 		t.Fatalf("after a start: ready %q, %d swaps", tu.ready, len(tu.swaps))
 	}
-	tu.busyAt(at(4, 9, 10))
+	tu.busyAt(at(4, 9, 11))
 	if len(tu.swaps) != 1 {
 		t.Error("no swap after a start")
 	}
