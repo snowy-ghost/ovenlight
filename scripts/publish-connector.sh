@@ -50,7 +50,8 @@ cap="$(sed -En 's|^const maxArchiveBytes = ([0-9][0-9 <]*)(//.*)?$|\1|p' "$root/
 cap=$((cap))
 
 # fetch <key> <file>: saves an object of the bucket, or fails when it doesn't exist (404).
-# Any other answer, or none, stops the publish, since it would skip a guard.
+# Any other answer, or none, stops the publish, since it would skip a guard. The query
+# string gets past the CDN's copy, which can be 5 minutes old.
 fetch() {
   local code
   if [ -n "$dry" ]; then
@@ -58,7 +59,7 @@ fetch() {
     cp "$dry/bucket/$1" "$2"
     return
   fi
-  code="$(curl -sS -o "$2" -w '%{http_code}' "$SITE/$1")" || refuse "couldn't fetch $SITE/$1"
+  code="$(curl -sS -o "$2" -w '%{http_code}' "$SITE/$1?$(date +%s)")" || refuse "couldn't fetch $SITE/$1"
   case "$code" in
   200) ;;
   404) return 1 ;;

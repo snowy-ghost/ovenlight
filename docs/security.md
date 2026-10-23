@@ -444,8 +444,9 @@ the service, the config or the state.
 
 ### How it installs
 
-1. It downloads this system's archive from `connector/<version>/`, within 30 minutes and
-   128 MB, and opens it only once its SHA-256 matches the index.
+1. Right after a check that works, it downloads this system's archive from
+   `connector/<version>/`, within 30 minutes and 128 MB, and opens it only once its
+   SHA-256 matches the index.
 2. It takes out one file, `ovenlight-connector-<version>/ovenlight` (`ovenlight.exe` on
    Windows), by its exact name, and nothing else.
 3. When the update's moment comes, it fetches the index again, and goes on only if it still
@@ -537,7 +538,8 @@ runs. A failed check is tried again within the hour, and a new release, or one a
 went back to, checks as soon as it starts. The check runs with updates off too, so the connector still knows when its release
 has a security problem. An update fetches the archive, whose name and folder show this
 computer's system (on Linux and Windows, its processor type too) and the version it
-installs, and fetches the index once more just before it installs. Like any request, each
+installs. It fetches the index again just before the download, unless it has just checked,
+and once more just before it installs. Like any request, each
 shows downloads.ovenlight.app the computer's IP address. Nothing else in the connector
 contacts ovenlight.app or its subdomains, and `ovenlight doctor` fetches nothing.
 

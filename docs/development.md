@@ -162,8 +162,9 @@ scripts/publish-connector.sh 1.2.0
 ovenlight update now --index ~/Sync/ovenlight/releases/1.2.0/canary.json
 ```
 
-The canary passes once the apps
-serve again and `ovenlight status` shows 1.2.0 running with a check made since it started.
+The canary passes once `ovenlight status` shows `Last update: <live> to 1.2.0`, written
+only when 1.2.0's 10-minute trial passes, and `last checked` no earlier than that, with no
+failed check.
 A release that raises `reinstallBelow` passes once `update now` says it needs its install
 script, the mini installs it by hand from `connector/1.2.0/`
 ([connector.md](connector.md#install-a-release-by-hand)), and status shows a check made
@@ -227,7 +228,12 @@ Uploads go to the R2 bucket behind `https://downloads.ovenlight.app`, through `w
 
 The first release that updates itself, 1.1.0 here, goes out once, with 1.1.1 after it:
 
-1. Before the updater reaches master, swap the mock release keys for the real ones, in
+1. On the Air, make the Touch ID key with the two commands under [Changing a release
+   key](#changing-a-release-key), if it isn't made yet. Then run key setup,
+   `scripts/release-key-setup.sh`, in Terminal there, not over ssh: it makes and prints the
+   paper key, and files both public keys and a test signature by each in
+   `~/.ssh/ovenlight-release-keys/`.
+2. Before the updater reaches master, swap the mock release keys for the real ones, in
    one commit:
    - `connector/release_keys` and `docs/allowed_signers` list the two real public keys,
      the latter in namespaces `file,ovenlight-latest`. The mock lines, the keys that
@@ -244,18 +250,18 @@ The first release that updates itself, 1.1.0 here, goes out once, with 1.1.1 aft
 
    `connector/testdata/releasekey/mock-*.pub` stay: `release-connector.sh` refuses any key
    there in `release_keys` or `allowed_signers`.
-2. Merge the updater to master. Check that `~/Sync/ovenlight/releases/` on the mini and
+3. Merge the updater to master. Check that `~/Sync/ovenlight/releases/` on the mini and
    `~/.ssh/ovenlight-release-keys/history/` on the Air hold no records yet, so 1.1.0
    names its own `reinstallBelow`:
    `scripts/release-connector.sh 1.1.0 1.0.6 1.1.0`. Sign and publish its folder, then
    build, sign and publish 1.1.1 from the same commit.
-3. Nothing before 1.1.0 updates itself, so it has no canary. The mini installs it by hand
+4. Nothing before 1.1.0 updates itself, so it has no canary. The mini installs it by hand
    from `connector/1.1.0/` ([connector.md](connector.md#install-a-release-by-hand)), then
    runs 1.1.1's canary. The trial passes on the canary index, but no daily check verifies
    while `latest.json` is 1.0.9's, which is unsigned. The mini's first verified check after
    1.1.0's promote completes the canary. The mini's Windows on Arm VM installs 1.1.0 by
    hand too, with no canary, and stays on it, to take 1.1.1 the way owners will.
-4. Deploy the site, so its privacy policy covers the update check, then promote 1.1.0.
+5. Deploy the site, so its privacy policy covers the update check, then promote 1.1.0.
    From the merge until that promote, both sets of install steps fail: the new ones on
    1.0.9's unsigned `latest.json`, and 1.0.x's, still on the site, on `latest/`'s
    `SHA256SUMS`, since master's `allowed_signers` no longer lists 1.0.9's key. So promote
@@ -660,12 +666,12 @@ To build and sign your own copy, change to your own:
   bucket and site in `scripts/publish-connector.sh`, and `releaseBase`, `installDocs` and
   `olderDocs` in `connector/update.go`. A fork signs with release keys of its own: list
   them in `connector/release_keys`, which every build trusts, and in `docs/allowed_signers`
-  (a test and the build check it lists each one), put their public halves in
+  (a test and the signing script check it lists each one), put their public halves in
   `~/.ssh/ovenlight-release-keys/` on the computer that signs, and change `HANDLE` and the
   `mini` host in `scripts/sign-connector.sh`, `minirelease` and `minisync` in
-  `scripts/connector-release-lib.sh`, and the `team@snowyghost.com` principal that
-  `publish-connector.sh` and connector.md verify `SHA256SUMS.sig` and `latest.json.sig`
-  with.
+  `scripts/connector-release-lib.sh`, and the `team@snowyghost.com` principal, which
+  `sign-connector.sh`, `publish-connector.sh` and connector.md verify `SHA256SUMS.sig` and
+  `latest.json.sig` with, and `connector/keys_test.go` wants in `allowed_signers`.
 
 ### Invite links
 
