@@ -245,7 +245,7 @@ func (u *updater) poll(ctx context.Context) {
 	if f := u.st.Failed; f != nil && f.At.After(now.Add(updateDay)) {
 		f.At = now
 	}
-	if u.d.lastRequestTime().After(now) {
+	if u.d.lastRequestTime(now).After(now) {
 		u.d.lastRequest.Store(now.UnixNano())
 	}
 	checked := false
@@ -328,7 +328,7 @@ func (u *updater) advance(ctx context.Context, checked bool) {
 		}
 		return // its swap comes at a later poll
 	}
-	if !swapNow(now, p, u.d.lastRequestTime(), u.awake) {
+	if !swapNow(now, p, u.d.lastRequestTime(now), u.awake) {
 		return
 	}
 	data, sig, idx, err := u.check(ctx)

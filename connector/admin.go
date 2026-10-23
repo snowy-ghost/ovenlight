@@ -111,7 +111,7 @@ func (n *appNode) adminHandler() http.Handler {
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if d != nil {
-			d.noteRequest()
+			defer d.noteRequest()()
 		}
 		start := time.Now()
 		rec := &statusRecorder{ResponseWriter: w}

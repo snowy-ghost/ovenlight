@@ -157,8 +157,11 @@ newestsigned() {
   fi
   cmd="${cmd%-*}"
   [ "$cmd" = --resign ] || cmd="$cmd ${top%%/*}"
+  cmd="scripts/publish-connector.sh $cmd"
+  # Publishing the newest again would only restart the waits counted from it.
+  if marked "$top" > /dev/null; then cmd="sign the index on the Air first: scripts/sign-connector.sh --$mode${version:+ $version}"; fi
   # shellcheck disable=SC2254 # the pattern is a glob
-  case "$top" in ${version:-*}/$mode-*) ;; *) refuse "$top is the newest index signed here, and only it goes up. If the Air holds a newer one, signed since or lost here, scripts/sign-connector.sh --check there sends it here. If not, scripts/publish-connector.sh $cmd" ;; esac
+  case "$top" in ${version:-*}/$mode-*) ;; *) refuse "$top is the newest index signed here, and only it goes up. If the Air holds a newer one, signed since or lost here, scripts/sign-connector.sh --check there sends it here. If not, $cmd" ;; esac
   id="$top" idx="$records/$top.json"
   [ -f "$idx.sig" ] || refuse "$id has no .sig in $records: scripts/sign-connector.sh --check on the Air sends it again"
   baseof "$id"

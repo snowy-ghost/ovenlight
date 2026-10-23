@@ -170,6 +170,7 @@ build() { run release "$@"; }
 signfolder() {
   local c
   run sign "$2" "$1"
+  cp "$dry/log" "$dry/signed"
   read -r c _ < "$dry/build/commit"
   git -C "$repo" tag -m "Connector $1" "connector-v$1" "$c" > /dev/null || fail "connector-v$1 is tagged already"
   run publish "$1"
@@ -429,7 +430,7 @@ scenario_early() {
   tick
   run sign air1 --promote 1.1.2
   pull 1.1.1 air1 1.1.0
-  refused "If not, scripts/publish-connector.sh --pull 1.1.1" publish --promote 1.1.2
+  refused "If not, sign the index on the Air first: scripts/sign-connector.sh --promote 1.1.2" publish --promote 1.1.2
   promote 1.1.2 air1
 }
 
@@ -777,11 +778,18 @@ scenario_lost() {
   build 1.1.2 1.0.6
   refused "isn't the two keys in" sign air2 1.1.2
   signfolder 1.1.2 paper1
+  grep -qF "then scripts/sign-connector.sh --resign here with a key 1.1.2 lists" "$dry/signed" || { cat "$dry/signed" >&2; fail "1.1.2 can't check the live index, and its folder's last line skips the resign"; }
+  pass "1.1.2's folder sends the live index for a resign before the canary"
   promote 1.1.2 paper1
   pull 1.1.2 paper1 1.1.0
   # The pulled rotation leaves owners on the old keys, so the next release repeats it.
   build 1.1.3 1.0.6
   signfolder 1.1.3 paper1
+  if ! grep -q "then the canary with" "$dry/signed" || grep -qF -- "--resign" "$dry/signed"; then
+    cat "$dry/signed" >&2
+    fail "1.1.3 checks the live index, and its folder's last line asks for a resign"
+  fi
+  pass "1.1.3's folder goes straight to the canary"
   promote 1.1.3 paper1
 }
 
@@ -1018,7 +1026,7 @@ scenario_secure() {
   latest_is 1.1.1 air1
   [ "$(field secure "$dry/bucket/connector/latest.json")" = 1.0.6 ] || fail "secure went up"
   pass "secure is still 1.0.6"
-  refused "If not, scripts/publish-connector.sh --resign" publish --promote 1.1.2
+  refused "If not, sign the index on the Air first: scripts/sign-connector.sh --promote 1.1.2" publish --promote 1.1.2
   refused "1.1.3 can't go below either" release 1.1.3 1.0.5
   forge 1.1.0 promote air1 1.1.0
   refused "1.1.0 was promoted already" publish --promote 1.1.0

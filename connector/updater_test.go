@@ -538,6 +538,48 @@ func TestUpdaterSecurityFixBusy(t *testing.T) {
 	}
 }
 
+// A request still open, as a stream or a WebSocket through an app is, keeps the computer
+// busy until it ends: a security fix doesn't swap 10 minutes after it began.
+func TestUpdaterWaitsForAnOpenRequest(t *testing.T) {
+	d, _ := testDaemon(t)
+	opened, release := make(chan struct{}), make(chan struct{})
+	app := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.(http.Flusher).Flush()
+		close(opened)
+		<-release
+	}))
+	t.Cleanup(app.Close)
+	end := sync.OnceFunc(func() { close(release) })
+	t.Cleanup(end) // first, since closing the app waits for the request
+	addApp(d, App{Name: "Terminal", Slug: "term", Port: app.Listener.Addr().(*net.TCPAddr).Port})
+	n := d.nodes["term"]
+	n.setOwner(d.cfg.Owner)
+	whoIsAs(n, ownerID)
+
+	srv := newReleaseServer(t)
+	srv.publish("1.2.0", "1.2.0", "1.1.0", 100)
+	tu := newTestUpdater(t, srv, d.stateDir, "1.1.5", at(0, 8, 50), false)
+	tu.d = d
+	served := make(chan struct{})
+	go func() {
+		n.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "https://term.tail1.ts.net/", nil))
+		close(served)
+	}()
+	<-opened
+	tu.busyAt(at(0, 9, 0)) // as it began then
+	tu.pollAt(at(0, 9, 30))
+	if len(tu.swaps) != 0 {
+		t.Fatal("swapped while a request was open")
+	}
+	end()
+	<-served
+	tu.busyAt(at(0, 9, 40)) // as it ended then
+	tu.pollAt(at(0, 9, 50))
+	if len(tu.swaps) != 1 {
+		t.Error("no swap 10 minutes after it ended")
+	}
+}
+
 // A pull published while an update waits stops its swap, and a fetch that fails before
 // the swap waits for its retry.
 func TestUpdaterFetchBeforeTheSwap(t *testing.T) {
@@ -709,7 +751,7 @@ func TestUpdaterClockRanAhead(t *testing.T) {
 	tu.st.Seen, tu.st.Checked, tu.st.Since = at(9, 9, 0), at(9, 9, 0), at(9, 9, 0)
 	tu.d.lastRequest.Store(at(9, 9, 0).UnixNano())
 	tu.pollAt(at(0, 9, 1))
-	for name, got := range map[string]time.Time{"seen": tu.st.Seen, "checked": tu.st.Checked, "since": tu.st.Since, "last request": tu.d.lastRequestTime()} {
+	for name, got := range map[string]time.Time{"seen": tu.st.Seen, "checked": tu.st.Checked, "since": tu.st.Since, "last request": tu.d.lastRequestTime(at(0, 9, 1))} {
 		if !got.Equal(at(0, 9, 1)) {
 			t.Errorf("%s %v", name, got)
 		}
@@ -1055,6 +1097,30 @@ func TestStatusDownShowsSerial(t *testing.T) {
 	text, _ := os.ReadFile(f.Name())
 	if err != nil || !strings.Contains(string(text), "Connector: not running") || !strings.Contains(string(text), "Update index held: serial 100.") {
 		t.Errorf("%v:\n%s", err, text)
+	}
+
+	// A connector that doesn't answer, or a config.json that can't be read, ends status on
+	// an error that names it too.
+	ln, err := net.Listen("unix", socketPath(state))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			conn.Close()
+		}
+	}()
+	bad := filepath.Join(t.TempDir(), "config.json")
+	os.WriteFile(bad, []byte(`{"apps": [`), 0o600)
+	for _, config := range []string{filepath.Join(t.TempDir(), "config.json"), bad} {
+		if err := cmdStatus([]string{"--config", config, "--state", state}); err == nil || !strings.HasSuffix(err.Error(), ". Update index held: serial 100.") {
+			t.Errorf("%s: %v", filepath.Base(filepath.Dir(config)), err)
+		}
 	}
 }
 

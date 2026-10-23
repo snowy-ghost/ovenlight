@@ -130,7 +130,7 @@ func fromThisSite(r *http.Request, name string) bool {
 // verified identity headers.
 func (n *appNode) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if n.host != nil {
-		n.host.noteRequest()
+		defer n.host.noteRequest()()
 	}
 	start := time.Now()
 	rec := &statusRecorder{ResponseWriter: w}
