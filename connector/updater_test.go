@@ -659,7 +659,8 @@ func TestUpdaterRetryOfAReleaseDueInTheNight(t *testing.T) {
 	}
 }
 
-// Times noted while the clock ran ahead don't hold the wait or a retry back.
+// Times noted while the clock ran ahead don't hold the wait or a retry back, and a start
+// with the clock behind doesn't bring a retry forward.
 func TestUpdaterClockRanAhead(t *testing.T) {
 	_, tu, _ := readyAt(t, false)
 	tu.st.Failed = &updateFailure{Version: "1.2.0", At: at(9, 2, 30), Error: "earlier", Count: 1}
@@ -669,7 +670,20 @@ func TestUpdaterClockRanAhead(t *testing.T) {
 		t.Errorf("a failure noted ahead held the retry back: %+v", tu.st.Failed)
 	}
 
-	srv := newReleaseServer(t)
+	// A start with the clock a day behind, as on a computer before its time sync, then put
+	// right, keeps the retry of a failure noted in the night in the next night, busy or not.
+	srv, tu, _ := readyAt(t, false)
+	tu.st.Failed = &updateFailure{Version: "1.2.0", At: at(3, 2, 20), Error: "earlier", Count: 1}
+	tu.busyAt(at(2, 9, 1))
+	tu.sleepUntil(at(3, 9, 5))
+	for m := 6; m < 60; m++ {
+		tu.busyAt(at(3, 9, m))
+	}
+	if p := planUpdate(&tu.st, "1.1.5"); len(tu.swaps) != 0 || !p.after.Equal(at(4, 2, 0)) {
+		t.Errorf("a clock behind brought the retry forward: %d swaps, from %v", len(tu.swaps), p.after)
+	}
+
+	srv = newReleaseServer(t)
 	srv.publish("1.2.0", "1.1.0", "1.1.0", 100)
 	tu = newTestUpdater(t, srv, t.TempDir(), "1.1.5", at(0, 9, 0), false)
 	tu.st.Minute = 10 * 60 // its night starts at 02:00

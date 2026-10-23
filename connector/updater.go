@@ -240,7 +240,9 @@ func (u *updater) poll(ctx context.Context) {
 			*t = now
 		}
 	}
-	if f := u.st.Failed; f != nil && f.At.After(now) {
+	// A failure less than a day ahead may be this start's clock still behind, so it keeps
+	// its time, and its retry stays in the night.
+	if f := u.st.Failed; f != nil && f.At.After(now.Add(updateDay)) {
 		f.At = now
 	}
 	if u.d.lastRequestTime().After(now) {
