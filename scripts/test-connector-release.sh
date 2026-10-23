@@ -803,7 +803,7 @@ scenario_lostpaper() {
   # ~/Sync edits its release_keys there.
   cat "$fixtures/air1.pub" "$fixtures/paper2.pub" > "$dry/sync/releases/1.1.3/release_keys"
   refused "1.1.3's release_keys isn't the two keys in" sign air1 --promote 1.1.3
-  refused "four weeks and twelve days" sign paper2 --resign
+  refused "four weeks and 12 days" sign paper2 --resign
   # A release that mustn't ship goes out, and the new paper key pulls it, as it would after a
   # lost Air, without waiting.
   ship 1.1.2 1.0.6 air1
@@ -886,26 +886,26 @@ scenario_move() {
   latest_is 1.1.1 air1
   # The new key alone waits four weeks and twelve days.
   tick
-  refused "four weeks and twelve days" sign air2 --promote 1.1.3
+  refused "four weeks and 12 days" sign air2 --promote 1.1.3
   # An agent holding ~/Sync sets back when latest.json began naming 1.1.1, so the wait would
   # seem over.
   for f in "$dry"/sync/releases/1.1.1/promote-*.live; do echo $(($(cat "$f") - 41 * 86400)) > "$f"; done
-  refused "four weeks and twelve days" sign air2 --promote 1.1.3
+  refused "four weeks and 12 days" sign air2 --promote 1.1.3
   tick
-  refused "four weeks and twelve days" sign air2 --resign
+  refused "four weeks and 12 days" sign air2 --resign
   forge 1.1.3 promote air2 1.1.3
-  refused "four weeks and twelve days" publish --promote 1.1.3
+  refused "four weeks and 12 days" publish --promote 1.1.3
   forge 1.1.1 resign air2 1.1.1
-  refused "four weeks and twelve days" publish --resign
+  refused "four weeks and 12 days" publish --resign
   # Each change to latest.json starts the two-day wait of computers still on 1.1.0 again, so
   # the new key alone also waits twelve days after the last.
   later 30
   resign air1 1.1.1
   later 11
   tick
-  refused "twelve days after 1.1.1/resign-" sign air2 --resign
+  refused "12 days after 1.1.1/resign-" sign air2 --resign
   forge 1.1.1 resign air2 1.1.1
-  refused "twelve days after 1.1.1/resign-" publish --resign
+  refused "12 days after 1.1.1/resign-" publish --resign
   later 1
   # The live index re-signed with the new key before the canary, once master's
   # docs/allowed_signers, which owners check latest.json with, lists that key. Then the promote
@@ -1085,7 +1085,7 @@ scenario_repull() {
   pull 1.1.1 air1 1.1.0
   ship 1.1.2 1.0.6 air1
   tick
-  refused "four weeks and twelve days" sign air2 --resign
+  refused "four weeks and 12 days" sign air2 --resign
 }
 
 scenario_gates() {

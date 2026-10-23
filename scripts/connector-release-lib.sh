@@ -311,13 +311,12 @@ verifyrule() {
 TAKE=$((12 * 86400)) WAIT=$((28 * 86400 + TAKE))
 
 # newkeywait <blob> <now> [<what else signs>]: refuses a key that computers still on an older
-# release can't check yet. It waits until four weeks and twelve days after latest.json last
-# began naming releases that list it, so computers asleep on an older release have taken
-# one. A pull back to one that doesn't list it starts the wait again, and a promote signed
-# by another key doesn't. Each change to latest.json starts the two-day wait of computers
-# that haven't taken one again, so until the key has signed an index published since, it
-# also waits TAKE after the last. With nothing published in the records, it counts
-# what's signed.
+# release can't check yet. It waits until WAIT after latest.json last began naming releases
+# that list it, so computers asleep on an older release have taken one. A pull back to one
+# that doesn't list it starts the wait again, and a promote signed by another key doesn't.
+# Each change to latest.json starts the two-day wait of computers that haven't taken one
+# again, so until the key has signed an index published since, it also waits TAKE after the
+# last. With nothing published in the records, it counts what's signed.
 newkeywait() {
   local id v t old='' from='' after=''
   for id in ${published:-$signed}; do
@@ -332,7 +331,7 @@ newkeywait() {
   if [ -z "$old" ]; then return 0; fi
   from="${from:-$2}"
   if [ "$2" -lt $((from + WAIT)) ]; then
-    refuse "$old doesn't list this key, and computers asleep on it may not have updated yet: not before $(date -r $((from + WAIT))), four weeks and twelve days after latest.json began naming releases that list it${3:-}"
+    refuse "$old doesn't list this key, and computers asleep on it may not have updated yet: not before $(date -r $((from + WAIT))), four weeks and $((TAKE / 86400)) days after latest.json began naming releases that list it${3:-}"
   fi
   if [ -z "$newest" ]; then return 0; fi
   cat /dev/null "$records"/*/release_keys | awk -v b="$1" '$2 == b { print $1, $2; exit }' > "$tmp/newkey"
@@ -341,6 +340,6 @@ newkeywait() {
   done
   t="$(marked "$newest")" || t="$(serialof "$newest")"
   if [ "$2" -lt $((t + TAKE)) ]; then
-    refuse "$old doesn't list this key, and each change to latest.json starts the two-day wait of computers still on it again: not before $(date -r $((t + TAKE))), twelve days after $newest went up${3:-}"
+    refuse "$old doesn't list this key, and each change to latest.json starts the two-day wait of computers still on it again: not before $(date -r $((t + TAKE))), $((TAKE / 86400)) days after $newest went up${3:-}"
   fi
 }
