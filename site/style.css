@@ -758,11 +758,12 @@ a:hover { text-decoration-thickness: 2px; }
   vertical-align: top;
 }
 .prose :is(th, td):first-child { min-width: 8rem; padding-left: 0; }
+/* On a phone, narrower cells let three columns fit; a wider table scrolls. */
+@media (max-width: 47.99em) { .prose :is(th, td), .prose :is(th, td):first-child { min-width: 7rem; } }
 .prose th { color: var(--ink); font-weight: 600; }
-/* Code in a table stays whole in the first column, which names the row, and on a phone,
-   where the table scrolls instead; elsewhere it wraps to fit. */
+/* Code in a table stays whole in the first column, which names the row; elsewhere it wraps
+   to fit. */
 .prose td:first-child code { overflow-wrap: normal; }
-@media (max-width: 47.99em) { .prose td code { overflow-wrap: normal; } }
 
 /* The docs index */
 
