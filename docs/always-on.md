@@ -156,11 +156,11 @@ Then sign it in, with [Tailscale SSH](https://tailscale.com/kb/1193/tailscale-ss
 sudo tailscale up --ssh --hostname=oven
 ```
 
-Open the link it prints and sign in with your Tailscale account, and if your tailnet
-requires device approval, approve `oven` on the Machines page too. Then, in the admin
-console's [Machines](https://console.tailscale.com/admin/machines) page, open the menu
-beside `oven` and choose Disable Key Expiry. Otherwise the server signs out after 180
-days, and you can't reach it until you sign it in again.
+Open the link it prints and sign in with your Tailscale account. Then, in the admin
+console's [Machines](https://console.tailscale.com/admin/machines) page, approve `oven` if
+your tailnet requires device approval, then open the menu beside `oven` and choose Disable
+Key Expiry. Otherwise the server signs out after 180 days, and you can't reach it until
+you sign it in again.
 
 Now switch to your laptop for good. Type `exit` (on a cloud server, close the browser
 terminal), then in Terminal on your laptop (PowerShell on Windows), connect over Tailscale,
