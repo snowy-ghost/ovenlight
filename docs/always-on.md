@@ -72,12 +72,15 @@ Then [set up the server](#set-up-the-server).
 ### A spare computer
 
 **A mini PC or an old laptop on Ubuntu or Debian** works like the Pi, and you can set it
-up at its own keyboard or over SSH. On Debian, if you set a root password at install, your user can't use
-`sudo` yet: [add yourself to the sudo group](https://wiki.debian.org/sudo) first. On a
-laptop, leave it plugged in. On any spare computer, so it never sleeps (even with a
-laptop's lid closed), run:
+up at its own keyboard or over SSH. On Debian, if you set a root password at install, your
+user can't use `sudo` yet: [add yourself to the sudo group](https://wiki.debian.org/sudo)
+first. On a laptop, leave it plugged in. On any spare computer, run these, which install
+curl for the steps that follow and keep the computer awake, even with a laptop's lid
+closed:
 
 ```sh
+sudo apt-get update
+sudo apt-get install -y curl
 sudo mkdir -p /etc/systemd/sleep.conf.d
 printf '[Sleep]\nAllowSuspend=no\nAllowHibernation=no\n' | sudo tee /etc/systemd/sleep.conf.d/stay-awake.conf
 ```
@@ -93,8 +96,8 @@ the connector as the [README](../README.md#get-started) shows. Then keep it awak
   display needs your account chosen under Users & Groups, Automatically log in as.
   FileVault turns automatic login off: with FileVault on, the connector waits for someone
   to log in after each restart.
-- **On Windows 11:** in Settings, under System > Power (Power & battery on a laptop), set
-  sleep to Never.
+- **On Windows 11:** in Settings, under System > Power (Power & battery on a laptop, which
+  must also stay open), set sleep to Never.
 
 `ovenlight doctor` then confirms that the computer won't sleep on its own.
 
@@ -179,8 +182,7 @@ The rest of the setup happens in this session. Tailscale may print a link to con
 you: open it, and the connection carries on. It asks again after 12 hours. When your
 coding agent's ssh command waits with no output, that's the check: run `ssh pi@oven true`
 yourself, open its link, and have the agent try again. Your tailnet policy's SSH rule can
-stretch the 12 hours up to a week with `checkPeriod`
-([Tailscale SSH](https://tailscale.com/kb/1193/tailscale-ssh)). This works with Tailscale's
+stretch the 12 hours up to a week with `checkPeriod`. This works with Tailscale's
 default policy. If you've edited your tailnet policy, it needs a rule allowing SSH to your
 own devices.
 
@@ -206,8 +208,8 @@ the SSH rule back if you ever need the browser terminal again.
 
 Let the server install security updates by itself and restart at 04:00 when one needs it,
 such as a new kernel. The same command installs rsync, which sending apps needs. A
-Raspberry Pi keeps your time zone. A cloud server's clock is UTC, where 04:00 is evening in the Americas: put `10:00`
-in its place there.
+Raspberry Pi keeps your time zone. A cloud server's clock is UTC, so put an hour that's
+night for you in UTC in place of `04:00`, such as `10:00` in the Americas.
 
 ```sh
 sudo apt-get update
@@ -290,7 +292,7 @@ Any app takes the same steps:
 
 1. Copy the project folder to `~/apps` on the server, leaving out its top-level
    `node_modules`, `.git` and data (a data folder, or a database file for an app that
-   keeps one), so the server's data stays. On Windows, use the `tar` form above.
+   keeps one), so the server's data stays.
 2. If the app has dependencies, install them on the server, in its folder (`npm ci` for a
    Node app with a `package-lock.json`). The server's system differs from your laptop's,
    so it builds its own.
