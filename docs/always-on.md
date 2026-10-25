@@ -162,22 +162,25 @@ console's [Machines](https://console.tailscale.com/admin/machines) page, open th
 beside `oven` and choose Disable Key Expiry. Otherwise the server signs out after 180
 days, and you can't reach it until you sign it in again.
 
-From now on, your laptop reaches the server from anywhere, with no password or SSH keys:
+Now switch to your laptop for good. Type `exit` (on a cloud server, close the browser
+terminal), then in Terminal on your laptop (PowerShell on Windows), connect over Tailscale,
+from anywhere, with no password or SSH keys:
 
 ```sh
 ssh pi@oven
 ```
 
-Tailscale may print a link to confirm it's you: open it, and the connection carries on. It
-asks again after 12 hours, also when your coding agent connects, so the agent hands you the
-link. Your tailnet policy's SSH rule can stretch that up to a week with `checkPeriod`
+The rest of the setup happens in this session. Tailscale may print a link to confirm it's
+you: open it, and the connection carries on. It asks again after 12 hours. When your
+coding agent's ssh command waits with no output, that's the check: run `ssh pi@oven true`
+yourself, open its link, and have the agent try again. Your tailnet policy's SSH rule can
+stretch the 12 hours up to a week with `checkPeriod`
 ([Tailscale SSH](https://tailscale.com/kb/1193/tailscale-ssh)). This works with Tailscale's
 default policy. If you've edited your tailnet policy, it needs a rule allowing SSH to your
 own devices.
 
 **On a Raspberry Pi or a spare computer, turn off its own SSH now.** Tailscale SSH doesn't
-use it, and it would otherwise keep taking passwords from anyone on your home network. In
-your `ssh pi@oven` session:
+use it, and it would otherwise keep taking passwords from anyone on your home network:
 
 ```sh
 sudo systemctl disable --now ssh.service ssh.socket
@@ -194,7 +197,7 @@ the SSH rule back if you ever need the browser terminal again.
 
 ### Updates, Node and the connector
 
-In your `ssh pi@oven` session, let the server install security updates by itself, and
+Let the server install security updates by itself, and
 restart at 04:00 when one needs it, such as a new kernel. A Raspberry Pi keeps your time
 zone. A cloud server's clock is UTC, where 04:00 is evening in the Americas: put `10:00`
 in its place there.
@@ -241,14 +244,23 @@ Paste this into Claude Code, or another coding agent, on your laptop, with your 
 user in place of `pi`:
 
 ```text
-I have an always-on computer for Ovenlight, `oven`, which I reach with `ssh pi@oven`. Save this in your memory or instructions for every session: when I ask you to put an app on my phone, or to change one I've put there, build it here on this computer, then send it to `oven` and publish it there, as https://ovenlight.app/docs/always-on.md under "Send an app" describes. Read the building guide with `ssh pi@oven ~/.local/bin/ovenlight guide`. Don't publish apps on this computer. If ssh prints a link for me to open, give it to me and wait.
+I have an always-on computer for Ovenlight, `oven`, which I reach with `ssh pi@oven`. Save this in your memory or instructions for every session: when I ask you to put an app on my phone, or to change one I've put there, build it here on this computer, then send it to `oven` and publish it there, as https://ovenlight.app/docs/always-on.md under "Send an app" describes. Read the building guide with `ssh pi@oven '~/.local/bin/ovenlight guide'`, and start a new app with `ssh pi@oven '~/.local/bin/ovenlight new "App Name" --dir ~/src'`, then copy it here with rsync to work on. Don't publish apps on this computer. If an ssh command waits with no output, Tailscale wants me to confirm it's me: ask me to run `ssh pi@oven true` in my own terminal, then try again.
 ```
 
 With Ovenlight's Claude Code plugin, the agent follows that note too.
 
 ### Send an app
 
-To send one yourself, for the starter app in `~/src/family-list` on a Mac or Linux laptop:
+To send one yourself on a Mac or Linux laptop, start with an app. No app yet? Make the
+starter on the server, which has the connector, and copy it to your laptop to work on:
+
+```sh
+ssh pi@oven '~/.local/bin/ovenlight new "Family List" --dir ~/src'
+mkdir -p ~/src
+rsync -a pi@oven:src/family-list ~/src/
+```
+
+Then send it, and publish it there:
 
 ```sh
 rsync -a --exclude data --exclude node_modules --exclude .git ~/src/family-list pi@oven:apps/
@@ -257,8 +269,9 @@ ssh pi@oven '~/.local/bin/ovenlight publish --port 27748 --name "Family List" --
 
 Any app takes the same steps:
 
-1. Copy the project folder to `~/apps` on the server, leaving out its data folder,
-   `node_modules` and `.git`, so the server's data stays. On Windows, where rsync is
+1. Copy the project folder to `~/apps` on the server, leaving out `node_modules`, `.git`
+   and its data (a data folder, or a database file for an app that keeps one), so the
+   server's data stays. On Windows, where rsync is
    missing, send the same folders from Git Bash with `tar` over `ssh` instead.
 2. If the app has dependencies, install them on the server, in its folder (`npm ci` for a
    Node app with a `package-lock.json`). The server's system differs from your laptop's,
