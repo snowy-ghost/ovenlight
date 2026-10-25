@@ -13,7 +13,8 @@ system to build.
   later (kept logged in), a Linux computer with systemd (such as Ubuntu), or a Windows 11
   PC. A laptop must stay open, since closing its lid puts it to sleep. Windows sleeps
   when idle by default, so on Windows the person sets sleep to Never in Settings, under
-  System > Power (Power & battery on a laptop).
+  System > Power (Power & battery on a laptop). A person with only a laptop can rent a
+  small cloud server instead: https://ovenlight.app/docs/always-on.md sets one up.
 - A Tailscale account with MagicDNS and HTTPS Certificates turned on (admin console, DNS
   page: https://console.tailscale.com/admin/dns). Tailscale's free Personal plan is for
   non-commercial use, so a business needs one of Tailscale's paid plans
@@ -104,6 +105,8 @@ then:
 - [Privacy Policy for Android](https://ovenlight.app/privacy/android)
 - [The connector](https://ovenlight.app/docs/connector.md): installing and updating it,
   publishing and sharing apps, moving to a new computer and uninstalling
+- [A computer that stays on](https://ovenlight.app/docs/always-on.md): setting one up at
+  home or on a rented cloud server, with steps an agent can run over SSH
 - [Building apps](https://ovenlight.app/docs/building-apps.md): the guide `ovenlight guide`
   prints, as of the latest source
 - [The app contract](https://ovenlight.app/docs/app-contract.md): what an app behind

@@ -147,6 +147,9 @@ docs/development.md ([iPhone](docs/development.md#the-iphone-app),
 
 ## Get started
 
+No computer that stays on? [docs/always-on.md](docs/always-on.md) sets one up, at home
+or on a server you rent.
+
 ### 1. Turn on HTTPS certificates
 
 In the Tailscale admin console, under [DNS](https://console.tailscale.com/admin/dns), turn
@@ -422,6 +425,8 @@ what an app must do to stay safe.
 
 - [docs/connector.md](docs/connector.md): installing and updating the connector,
   publishing and sharing apps, moving to a new computer and uninstalling.
+- [docs/always-on.md](docs/always-on.md): a computer that stays on for your apps, at home
+  or on a server you rent.
 - [docs/building-apps.md](docs/building-apps.md): building an app that works and feels
   native in Ovenlight, for coding agents and people.
 - [docs/app-contract.md](docs/app-contract.md): what an app behind Ovenlight must do and
