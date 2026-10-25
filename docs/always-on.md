@@ -165,9 +165,23 @@ From now on, your laptop reaches the server from anywhere, with no password or S
 ssh pi@oven
 ```
 
-Tailscale may print a link to confirm it's you: open it. It asks again after 12 hours.
-This works with Tailscale's default policy. If you've edited your tailnet policy, it needs
-a rule [allowing SSH](https://tailscale.com/kb/1193/tailscale-ssh) to your own devices.
+Tailscale may print a link to confirm it's you: open it, and the connection carries on. It
+asks again after 12 hours, also when your coding agent connects, so the agent hands you the
+link. Your tailnet policy's SSH rule can stretch that up to a week with `checkPeriod`
+([Tailscale SSH](https://tailscale.com/kb/1193/tailscale-ssh)). This works with Tailscale's
+default policy. If you've edited your tailnet policy, it needs a rule allowing SSH to your
+own devices.
+
+**On a Raspberry Pi or a spare computer, turn off its own SSH now.** Tailscale SSH doesn't
+use it, and it would otherwise keep taking passwords from anyone on your home network. In
+your `ssh pi@oven` session:
+
+```sh
+sudo systemctl disable --now ssh.service ssh.socket
+```
+
+If Tailscale ever stops working, plug a keyboard and screen into the computer, log in and
+run `sudo systemctl enable --now ssh` to reach it over your home network again.
 
 **On a cloud server, close the firewall now.** Tailscale and the connector only dial out,
 so nothing needs to reach the server from the internet. In the Lightsail console, open the
@@ -272,5 +286,5 @@ coding agent can finish the setup. Paste this into Claude Code, or another agent
 laptop, with `ubuntu@oven` in place of `pi@oven` for a cloud server:
 
 ```text
-Set up my always-on computer for Ovenlight. I reach it with `ssh pi@oven`. Follow https://ovenlight.app/docs/always-on.md under "Updates, Node and the connector", running each code block on the server as one SSH command, and show me what each prints. Don't change anything in my Tailscale or cloud accounts. If ssh or sudo asks me for anything, tell me what to run myself. Finish by running `~/.local/bin/ovenlight doctor` on the server and telling me what's left for me to do. From then on, when I ask you to put an app on my phone, send it to this computer as that page's "Send an app" section describes.
+Set up my always-on computer for Ovenlight. I reach it with `ssh pi@oven`. Follow https://ovenlight.app/docs/always-on.md under "Updates, Node and the connector", running each code block on the server as one SSH command, and show me what each prints. Don't change anything in my Tailscale or cloud accounts. If ssh prints a link for me to open, give it to me and wait. If sudo asks for a password, tell me what to run myself. Finish by running `~/.local/bin/ovenlight doctor` on the server and telling me what's left for me to do. From then on, when I ask you to put an app on my phone, send it to this computer as that page's "Send an app" section describes.
 ```
