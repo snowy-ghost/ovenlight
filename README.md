@@ -80,7 +80,8 @@ Once your computer is [set up](#get-started) and your agent
   ads. Phones reach your computer over a Tailscale connection built into Ovenlight, never
   through servers of ours. No phone needs a VPN or the Tailscale app. The iPhone and
   Android apps and the connector are free, under the Apache License 2.0. It's made
-  by Dimitri Cole at [Snowy Ghost](https://snowyghost.com).
+  by [Dimitri Cole Restaino](https://www.dimitricole.com) at
+  [Snowy Ghost](https://snowyghost.com).
 
 ## Why not a VPN, a tunnel or the cloud?
 
