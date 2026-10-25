@@ -129,17 +129,6 @@ hours a month until December 31, 2026, but the offer covers only the instance: E
 its disk and public IPv4 address apart, so it costs more than Lightsail's 2 GB plan, with
 more to set up.
 
-On the 2 GB plan, first add a swap file in the browser terminal, which gives a busy moment
-room:
-
-```sh
-sudo fallocate -l 2G /swapfile
-sudo chmod 600 /swapfile
-sudo mkswap /swapfile
-sudo swapon /swapfile
-echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
-```
-
 To keep a copy of everything on it, turn on Automatic snapshots in the instance's
 Snapshots tab: Lightsail keeps the last seven daily copies of the whole server, at $0.05
 per GB a month, and deletes them with the instance.
@@ -155,11 +144,15 @@ that user in place of `pi`.
 
 ### Tailscale
 
-Install Tailscale and sign the server in, with
-[Tailscale SSH](https://tailscale.com/kb/1193/tailscale-ssh) on:
+Install Tailscale on the server:
 
 ```sh
 curl -fsSL https://tailscale.com/install.sh | sh
+```
+
+Then sign it in, with [Tailscale SSH](https://tailscale.com/kb/1193/tailscale-ssh) on:
+
+```sh
 sudo tailscale up --ssh --hostname=oven
 ```
 
@@ -203,6 +196,16 @@ so nothing needs to reach the server from the internet. In the Lightsail console
 instance's Networking tab and delete every rule under IPv4 Firewall and IPv6 Firewall (SSH
 and HTTP). The browser terminal stops working, but `ssh ubuntu@oven` keeps working. Add
 the SSH rule back if you ever need the browser terminal again.
+
+**On a cloud server's 2 GB plan, add a swap file now**, which gives a busy moment room:
+
+```sh
+sudo fallocate -l 2G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+```
 
 ### Updates, Node and the connector
 
