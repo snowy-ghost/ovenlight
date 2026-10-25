@@ -266,14 +266,15 @@ their own. If one doesn't, run `ovenlight doctor` on the computer.
 
 ## With a coding agent
 
-The connector is also an MCP server, so Claude Code, or another agent that supports local
-MCP servers, can follow Ovenlight's building guide, publish your app, check it, restart
+The connector is also an MCP server, so your coding agent (Claude Code, Codex and others
+that support local MCP servers) can follow Ovenlight's building guide, publish your app, check it, restart
 it, read its logs and read the feedback people send. Through the MCP tools, what guests
 write and what apps print come marked as untrusted text. Once it's connected, ask it to
 put an app on your phone.
 
 In Claude Code, install Ovenlight's plugin. It adds the MCP server and a skill that reads
-the guide whenever you ask to put an app on your phone:
+the guide whenever you ask to put an app on your phone. The skill is Claude Code's own:
+any agent connected to the MCP server gets the same tools and the guide.
 
 ```
 /plugin marketplace add snowy-ghost/ovenlight
@@ -297,6 +298,13 @@ when that's set). On Windows, in PowerShell:
 
 ```powershell
 claude mcp add --scope user ovenlight -- "$env:LOCALAPPDATA\ovenlight\bin\ovenlight.exe" mcp
+```
+
+In Codex, on a Mac (on Linux, with the path above):
+
+```sh
+codex mcp add ovenlight -- \
+  ~/Library/Application\ Support/ovenlight/bin/ovenlight mcp
 ```
 
 For another agent, add a local MCP server whose command is the connector's full path, such

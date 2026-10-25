@@ -83,8 +83,15 @@ On Windows, in PowerShell:
 claude mcp add --scope user ovenlight -- "$env:LOCALAPPDATA\ovenlight\bin\ovenlight.exe" mcp
 ```
 
+For Codex on a Mac (on Linux, use the binary path above):
+
+```sh
+codex mcp add ovenlight -- ~/Library/Application\ Support/ovenlight/bin/ovenlight mcp
+```
+
 Claude Code can install Ovenlight's plugin instead. It adds the same MCP server and a
-skill that reads the guide whenever the person asks to put an app on their phone. In
+skill that reads the guide whenever the person asks to put an app on their phone. Any
+agent connected to the MCP server gets the same tools and the guide. In
 Claude Code, run:
 
 ```

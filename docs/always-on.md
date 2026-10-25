@@ -14,7 +14,8 @@ There are two ways to work with it:
   coding agent copies each app to the computer that stays on and publishes it there, which
   then only serves your apps. Most people want this.
 - **Build on it.** Your coding agent runs on the computer that stays on, and you work there
-  over SSH from your laptop. It needs more memory, since Claude Code asks for 4 GB.
+  over SSH from your laptop. It needs more memory, since Claude Code and Codex each ask
+  for 4 GB.
 
 And two places for it:
 
@@ -259,8 +260,8 @@ replaces it.
 
 ### Let your agent send your apps
 
-Paste this into Claude Code, or another coding agent, on your laptop, with your server's
-user in place of `pi`:
+Paste this into your coding agent (Claude Code, Codex and others) on your laptop, with
+your server's user in place of `pi`:
 
 ```text
 I have an always-on computer for Ovenlight, `oven`, which I reach with
@@ -279,7 +280,8 @@ run `ssh pi@oven true` in my own terminal and open its link), then
 try again.
 ```
 
-With Ovenlight's Claude Code plugin, the agent follows that note too.
+Claude Code with Ovenlight's plugin also has a skill that takes the same steps. Any other
+agent follows the note, and reads the guide over `ssh` as it says.
 
 ### Send an app
 
@@ -289,7 +291,7 @@ server: run `ovenlight unpublish family-list` on your laptop and delete its node
 comes up as `family-list-1`. People you shared it with need new invites.
 
 To send one yourself, start with an app. On Windows, run this whole section in Git Bash,
-which Claude Code also uses there, since Windows PowerShell 5.1 mangles the inner quotes.
+since Windows PowerShell 5.1 mangles the inner quotes.
 Git Bash has no rsync, so use `tar` over `ssh` in place of each `rsync` line below. To
 copy an app back from the server:
 `ssh pi@oven 'tar czf - -C apps family-list' | tar xzf - -C ~/src`. To send it:
@@ -338,14 +340,28 @@ your phone: touch and hold the app in Ovenlight and choose Share.
 ## Build on the server
 
 To work on the server itself, install `tmux`, so your agent keeps working when your laptop
-closes, and [Claude Code](https://code.claude.com/docs/en/setup), or another coding agent:
+closes:
 
 ```sh
 sudo apt-get install -y tmux
+```
+
+Then install your coding agent. For [Claude Code](https://code.claude.com/docs/en/setup):
+
+```sh
 curl -fsSL https://claude.ai/install.sh | bash
 ```
 
-As with the connector, skip the `PATH` line the installer suggests: log out with `exit`
-and run `ssh pi@oven` again. Then run `tmux`, and `claude` in it. Open the link it prints
-to sign in, and [connect it](../README.md#with-a-coding-agent) to Ovenlight. When you come back,
-`ssh pi@oven` and `tmux attach` pick up where you left off.
+For [Codex](https://learn.chatgpt.com/docs/codex/cli):
+
+```sh
+curl -fsSL https://chatgpt.com/codex/install.sh | sh
+```
+
+As with the connector, skip any `PATH` line an installer suggests: log out with `exit` and
+run `ssh pi@oven` again. Then run `tmux`, and your agent in it, `claude` or `codex`.
+Claude Code prints a link to sign in. Sign Codex in first: turn on device code login in
+ChatGPT's security settings (in a workspace, its admin allows it), then run
+`codex login --device-auth`, which prints a link and a code. Then
+[connect your agent](../README.md#with-a-coding-agent) to Ovenlight. When you come back, `ssh pi@oven` and `tmux attach` pick up where you left
+off.
