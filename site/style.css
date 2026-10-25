@@ -724,9 +724,16 @@ a:hover { text-decoration-thickness: 2px; }
 @media (min-width: 48em) { .prose pre { padding: 1rem 1.25rem; font-size: 0.875rem; } }
 .prose pre code { padding: 0; border: 0; border-radius: 0; background: none; font-size: inherit; overflow-wrap: normal; }
 
-/* docs.js wraps each code block to give it a Copy button. */
-.code { position: relative; }
-.code pre { margin: 0; padding-right: 4.5rem; }
+/* docs.js wraps each code block to give it a Copy button. The wrap takes over the box and
+   keeps the button in a gutter of its own, so a long line scrolls beside it, never under it. */
+.code {
+  position: relative;
+  padding-right: 4.25rem;
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  background: var(--paper);
+}
+.code pre { margin: 0; border: 0; border-radius: inherit; background: none; }
 .code button {
   position: absolute;
   top: 0.45rem;
