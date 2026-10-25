@@ -14,11 +14,14 @@ The `ovenlight` connector on that computer publishes each app and tells it who i
 2. **If the person sends apps to an always-on computer** (their notes or instructions name
    one, such as `oven`, reached with `ssh`), build on this computer and publish there, not
    here: read the guide with `ssh <user>@oven '~/.local/bin/ovenlight guide'` (quoted, so
-   `~` is the server's), start a new app there with `ovenlight new "<App Name>" --dir ~/apps` and copy it here, and
-   send each app as https://ovenlight.app/docs/always-on.md under "Send an app" describes,
-   never copying over the server's data. Run the connector's commands there over `ssh`. If
-   an ssh command waits with no output, Tailscale wants the person to confirm: ask them to
-   run `ssh <user>@oven true` in their own terminal, then try again.
+   `~` is the server's), start a new app there with
+   `ssh <user>@oven '~/.local/bin/ovenlight new "<App Name>" --dir ~/apps'` and copy it
+   here, and send each app as https://ovenlight.app/docs/always-on.md under "Send an app"
+   describes (with its tar forms on Windows, where Git Bash has no rsync), never copying
+   over the server's data. The connector's commands run there as `~/.local/bin/ovenlight`
+   inside single quotes, over `ssh`. If an ssh command waits with no output, Tailscale
+   wants the person to confirm: ask them to run `ssh <user>@oven true` in their own
+   terminal, then try again.
 3. **If the connector isn't installed** (the MCP tools don't answer, and there's no
    `~/Library/Application Support/ovenlight/bin/ovenlight` on a Mac,
    `%LOCALAPPDATA%\ovenlight\bin\ovenlight.exe` on Windows, or

@@ -188,6 +188,8 @@ use it, and it would otherwise keep taking passwords from anyone on your home ne
 sudo systemctl disable --now ssh.service ssh.socket
 ```
 
+If it says a unit doesn't exist, SSH was never on and there's nothing to turn off.
+
 If Tailscale ever stops working, plug a keyboard and screen into the computer, log in and
 run `sudo systemctl enable --now ssh` to reach it over your home network again.
 
@@ -246,7 +248,7 @@ Paste this into Claude Code, or another coding agent, on your laptop, with your 
 user in place of `pi`:
 
 ```text
-I have an always-on computer for Ovenlight, `oven`, which I reach with `ssh pi@oven`. Save this in your memory or instructions for every session: when I ask you to put an app on my phone, or to change one I've put there, build it here on this computer, then send it to `oven` and publish it there, as https://ovenlight.app/docs/always-on.md under "Send an app" describes. Read the building guide with `ssh pi@oven '~/.local/bin/ovenlight guide'`, and start a new app with `ssh pi@oven '~/.local/bin/ovenlight new "App Name" --dir ~/apps'`, then copy it here with rsync to work on. Don't publish apps on this computer. If an ssh command waits with no output, Tailscale wants me to confirm it's me: ask me to run `ssh pi@oven true` in my own terminal, then try again.
+I have an always-on computer for Ovenlight, `oven`, which I reach with `ssh pi@oven`. Save this in your memory or instructions for every session: when I ask you to put an app on my phone, or to change one I've put there, build it here on this computer, then send it to `oven` and publish it there, as https://ovenlight.app/docs/always-on.md under "Send an app" describes. Read the building guide with `ssh pi@oven '~/.local/bin/ovenlight guide'`, and start a new app with `ssh pi@oven '~/.local/bin/ovenlight new "App Name" --dir ~/apps'`, then copy it here with rsync to work on (on Windows, where Git Bash has no rsync, use the tar forms that section gives). Don't publish apps on this computer. If an ssh command waits with no output, Tailscale wants me to confirm it's me: ask me to run `ssh pi@oven true` in my own terminal, then try again.
 ```
 
 With Ovenlight's Claude Code plugin, the agent follows that note too.
@@ -255,6 +257,11 @@ With Ovenlight's Claude Code plugin, the agent follows that note too.
 
 To send one yourself, start with an app. On Windows, run this whole section in Git Bash,
 which Claude Code also uses there, since Windows PowerShell 5.1 mangles the inner quotes.
+Git Bash has no rsync, so use `tar` over `ssh` in place of each `rsync` line below. To
+copy an app back from the server:
+`ssh pi@oven 'tar czf - -C apps family-list' | tar xzf - -C ~/src`. To send it:
+`tar czf - --exclude ./data --exclude ./node_modules --exclude ./.git -C ~/src/family-list . | ssh pi@oven 'mkdir -p apps/family-list && tar xzf - -C apps/family-list'`.
+
 No app yet? Make the starter on the server, which has the connector, and copy it to your
 laptop to work on:
 
@@ -275,9 +282,7 @@ Any app takes the same steps:
 
 1. Copy the project folder to `~/apps` on the server, leaving out its top-level
    `node_modules`, `.git` and data (a data folder, or a database file for an app that
-   keeps one), so the server's data stays. On Windows, where rsync is missing, send it
-   with `tar` over `ssh` instead:
-   `tar czf - --exclude ./data --exclude ./node_modules --exclude ./.git -C ~/src/family-list . | ssh pi@oven 'mkdir -p apps/family-list && tar xzf - -C apps/family-list'`.
+   keeps one), so the server's data stays. On Windows, use the `tar` form above.
 2. If the app has dependencies, install them on the server, in its folder (`npm ci` for a
    Node app with a `package-lock.json`). The server's system differs from your laptop's,
    so it builds its own.
@@ -295,8 +300,8 @@ To share an app, connect with `ssh pi@oven` and follow
 questions in a terminal, so they don't work as `ssh pi@oven '…'`. After that, share from
 your phone: touch and hold the app in Ovenlight and choose Share.
 
-An app also published on your laptop needs to go there first: run
-`ovenlight unpublish family-list` on your laptop and delete its node on the
+Unpublish an app that's also published on your laptop before you publish it on the
+server: run `ovenlight unpublish family-list` on your laptop and delete its node on the
 [Machines](https://console.tailscale.com/admin/machines) page. Otherwise the server's copy
 comes up as `family-list-1`. People you shared it with need new invites.
 
