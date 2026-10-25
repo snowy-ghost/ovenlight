@@ -18,13 +18,12 @@ There are two ways to work with it:
 
 And two places for it:
 
-| | At home | In the cloud |
-|---|---|---|
-| What it is | A Raspberry Pi, or a spare computer you own | A server you rent from AWS Lightsail |
-| To send apps to it | A Raspberry Pi 5 with 4 GB, bought once | $12 a month (2 GB) |
-| To build on it | A Raspberry Pi 5 with 8 GB, bought once | $24 a month (4 GB) |
-| Your data | Stays in your house | On the provider's disk, in its data center |
-| Stays up while | Your power and internet do | You keep paying |
+- **At home:** a Raspberry Pi, or a spare computer you own. A Raspberry Pi 5 with 4 GB
+  to send apps to it, or 8 GB to build on it, bought once. Your data stays in your house,
+  and it stays up while your power and internet do.
+- **In the cloud:** a server you rent from AWS Lightsail, $12 a month (2 GB) to send apps
+  to it, or $24 a month (4 GB) to build on it. Your data sits on the provider's disk, in
+  its data center, and it stays up while you keep paying.
 
 A rented server is the provider's computer. It runs the hardware and holds the disk, so
 your apps and their data sit with it, under its terms. Ovenlight still reaches it over your
@@ -209,7 +208,11 @@ the SSH rule back if you ever need the browser terminal again.
 Let the server install security updates by itself and restart at 04:00 when one needs it,
 such as a new kernel. The same command installs rsync, which sending apps needs. A
 Raspberry Pi keeps your time zone. A cloud server's clock is UTC, so put an hour that's
-night for you in UTC in place of `04:00`, such as `10:00` in the Americas.
+night for you in UTC in place of `04:00`, such as `10:00` in the Americas. A Raspberry
+Pi's kernel and firmware come from Raspberry Pi's own archive, which these updates leave
+out, so on a Pi, run `sudo apt update` and then `sudo apt full-upgrade` now and then, as
+[Raspberry Pi's docs](https://www.raspberrypi.com/documentation/computers/os.html#update-software)
+advise.
 
 ```sh
 sudo apt-get update
@@ -238,6 +241,9 @@ sudo loginctl enable-linger "$USER"
 ./install.sh
 ```
 
+If install.sh says `~/.local/bin` isn't on your PATH yet, skip the profile line it
+suggests: Ubuntu, Debian and Raspberry Pi OS add it at your next login.
+
 The connector, your apps and Tailscale start again by themselves after a restart.
 `~/.local/bin/ovenlight doctor` checks the setup.
 
@@ -253,7 +259,19 @@ Paste this into Claude Code, or another coding agent, on your laptop, with your 
 user in place of `pi`:
 
 ```text
-I have an always-on computer for Ovenlight, `oven`, which I reach with `ssh pi@oven`. Save this in your memory or instructions for every session: when I ask you to put an app on my phone, or to change one I've put there, build it here on this computer, then send it to `oven` and publish it there, as https://ovenlight.app/docs/always-on.md under "Send an app" describes. Read the building guide with `ssh pi@oven '~/.local/bin/ovenlight guide'`, and start a new app with `ssh pi@oven '~/.local/bin/ovenlight new "App Name" --dir ~/apps'`, then copy it here with rsync to work on (on Windows, where Git Bash has no rsync, use the tar forms that section gives). Don't publish apps on this computer. If an ssh command waits with no output, Tailscale wants me to confirm it's me: ask me to run `ssh pi@oven true` in my own terminal, then try again.
+I have an always-on computer for Ovenlight, `oven`, which I reach with
+`ssh pi@oven`. Save this in your memory or instructions for every
+session: when I ask you to put an app on my phone, or to change one I've
+put there, build it here on this computer, then send it to `oven` and
+publish it there, as https://ovenlight.app/docs/always-on.md under "Send
+an app" describes. Read the building guide with
+`ssh pi@oven '~/.local/bin/ovenlight guide'`, and start a new app with
+`ssh pi@oven '~/.local/bin/ovenlight new "App Name" --dir ~/apps'`, then
+copy it here with rsync to work on (on Windows, where Git Bash has no
+rsync, use the tar forms that section gives). Don't publish apps on this
+computer. If an ssh command waits with no output, Tailscale wants me to
+confirm it's me: ask me to run `ssh pi@oven true` in my own terminal,
+then try again.
 ```
 
 With Ovenlight's Claude Code plugin, the agent follows that note too.
