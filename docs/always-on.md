@@ -338,8 +338,7 @@ sudo apt-get install -y tmux
 curl -fsSL https://claude.ai/install.sh | bash
 ```
 
-The installer asks you to add `~/.local/bin` to your `PATH`. The system adds it at login,
-so instead log out with `exit` and run `ssh pi@oven` again. Then run `tmux`, and `claude`
-in it. Open the link it prints to sign in, and
-[connect it](../README.md#with-a-coding-agent) to Ovenlight. When you come back,
+As with the connector, skip the `PATH` line the installer suggests: log out with `exit`
+and run `ssh pi@oven` again. Then run `tmux`, and `claude` in it. Open the link it prints
+to sign in, and [connect it](../README.md#with-a-coding-agent) to Ovenlight. When you come back,
 `ssh pi@oven` and `tmux attach` pick up where you left off.
