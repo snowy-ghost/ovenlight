@@ -147,8 +147,9 @@ docs/development.md ([iPhone](docs/development.md#the-iphone-app),
 
 ## Get started
 
-No computer that stays on? [docs/always-on.md](docs/always-on.md) sets one up, at home
-or on a server you rent.
+Want your apps up all the time? Run them on your own server:
+[docs/always-on.md](docs/always-on.md) covers a Mac mini, a Raspberry Pi or a spare PC at
+home, or a server you rent.
 
 ### 1. Turn on HTTPS certificates
 
@@ -433,8 +434,8 @@ what an app must do to stay safe.
 
 - [docs/connector.md](docs/connector.md): installing and updating the connector,
   publishing and sharing apps, moving to a new computer and uninstalling.
-- [docs/always-on.md](docs/always-on.md): a computer that stays on for your apps, at home
-  or on a server you rent.
+- [docs/always-on.md](docs/always-on.md): your own server for your apps, at home (a Mac
+  mini, a Raspberry Pi or a spare PC) or rented.
 - [docs/building-apps.md](docs/building-apps.md): building an app that works and feels
   native in Ovenlight, for coding agents and people.
 - [docs/app-contract.md](docs/app-contract.md): what an app behind Ovenlight must do and

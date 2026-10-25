@@ -1,40 +1,74 @@
-# A computer that stays on
+# Your own server
 
 Ovenlight opens your apps only while the computer that runs them is on and awake. A laptop
 works while it's open, plugged in and awake, and its apps go offline when the lid closes.
-For apps that open any time, this page sets up a computer that stays on: a Raspberry Pi or
-a spare computer at home, or a server you rent in the cloud. The connector runs on it as
-[connector.md](connector.md) describes, over your own tailnet.
+For apps that open any time, run them on your own server: a computer you own that stays on
+at home, such as a Mac mini, a spare PC or a Raspberry Pi. The connector runs on it as
+[connector.md](connector.md) describes, over your own tailnet. If you can't keep a computer
+at home, a server you rent in the cloud works too.
 
 ## Which to choose
 
 There are two ways to work with it:
 
 - **Build on your laptop, and send apps to it.** Keep building where you do now. Your
-  coding agent copies each app to the computer that stays on and publishes it there, which
-  then only serves your apps. Most people want this.
-- **Build on it.** Your coding agent runs on the computer that stays on, and you work there
-  over SSH from your laptop. It needs more memory, since Claude Code and Codex each ask
-  for 4 GB.
+  coding agent copies each app to your server and publishes it there, which then only
+  serves your apps. Most people want this.
+- **Build on it.** Your coding agent runs on your server, and you work there over SSH from
+  your laptop. It needs more memory, since Claude Code and Codex each ask for 4 GB.
 
-And two places for it:
+And where it lives:
 
-- **At home:** a Raspberry Pi, or a spare computer you own. A Raspberry Pi 5 with 4 GB
-  to send apps to it, or 8 GB to build on it, bought once. Your data stays in your house,
-  and it stays up while your power and internet do.
-- **In the cloud:** a server you rent from AWS Lightsail, $12 a month (2 GB) to send apps
-  to it, or $24 a month (4 GB) to build on it. Your data sits on the provider's disk, in
-  its data center, and it stays up while you keep paying.
-
-A rented server is the provider's computer. It runs the hardware and holds the disk, so
-your apps and their data sit with it, under its terms. Ovenlight still reaches it over your
-tailnet, and nothing passes through our servers.
+- **At home, on hardware you own:** a computer you already have that can stay on, or a
+  Raspberry Pi bought for it, once: a Raspberry Pi 5 with 4 GB to send apps to it, or
+  8 GB to build on it. A spare PC or an old laptop on Ubuntu or Debian takes apps from
+  your laptop as a Pi does, and a Mac, such as a Mac mini, or a Windows PC runs the apps
+  you build on it. Your data stays in your house, and it stays up while your power and
+  internet do.
+- **Rented, if you can't keep one at home:** a server from AWS Lightsail, $12 a month
+  (2 GB) to send apps to it, or $24 a month (4 GB) to build on it. It's the provider's
+  computer: your apps and their data sit on its disk, in its data center, under its terms,
+  and it stays up while you keep paying. Ovenlight still reaches it over your tailnet, and
+  nothing passes through our servers.
 
 Either way, your laptop needs [Tailscale](https://tailscale.com/download), signed in with
 the account you use for Ovenlight, with MagicDNS and HTTPS certificates on (the README's
 [first step](../README.md#1-turn-on-https-certificates)).
 
 ## At home
+
+### A computer you have
+
+**A mini PC or an old laptop on Ubuntu or Debian** makes a good server, and you can set it
+up at its own keyboard or over SSH. On Debian, if you set a root password at install, your
+user can't use `sudo` yet: [add yourself to the sudo group](https://wiki.debian.org/sudo)
+first. On a laptop, leave it plugged in. On any spare computer, run these, which install
+curl for the steps that follow and keep the computer awake, even with a laptop's lid
+closed:
+
+```sh
+sudo apt-get update
+sudo apt-get install -y curl
+sudo mkdir -p /etc/systemd/sleep.conf.d
+printf '[Sleep]\nAllowSuspend=no\nAllowHibernation=no\n' | sudo tee /etc/systemd/sleep.conf.d/stay-awake.conf
+```
+
+Then [set it up as a server](#set-up-the-server).
+
+**A Mac, such as a Mac mini, or a Windows PC**, even one you use every day, can run your
+apps too: build on it, and install
+the connector as the [README](../README.md#get-started) shows. Then keep it awake:
+
+- **On a Mac:** in System Settings, under Energy, turn on Prevent automatic sleeping when
+  the display is off (under Battery, Options on a laptop, which must also stay open). The
+  connector runs only while you're logged in to the Mac's desktop, so a Mac without a
+  display needs your account chosen under Users & Groups, Automatically log in as.
+  FileVault turns automatic login off: with FileVault on, the connector waits for someone
+  to log in after each restart.
+- **On Windows 11:** in Settings, under System > Power (Power & battery on a laptop, which
+  must also stay open), set sleep to Never.
+
+`ovenlight doctor` then confirms that the computer won't sleep on its own.
 
 ### A Raspberry Pi
 
@@ -69,39 +103,7 @@ ssh pi@oven.local
 
 Then [set up the server](#set-up-the-server).
 
-### A spare computer
-
-**A mini PC or an old laptop on Ubuntu or Debian** works like the Pi, and you can set it
-up at its own keyboard or over SSH. On Debian, if you set a root password at install, your
-user can't use `sudo` yet: [add yourself to the sudo group](https://wiki.debian.org/sudo)
-first. On a laptop, leave it plugged in. On any spare computer, run these, which install
-curl for the steps that follow and keep the computer awake, even with a laptop's lid
-closed:
-
-```sh
-sudo apt-get update
-sudo apt-get install -y curl
-sudo mkdir -p /etc/systemd/sleep.conf.d
-printf '[Sleep]\nAllowSuspend=no\nAllowHibernation=no\n' | sudo tee /etc/systemd/sleep.conf.d/stay-awake.conf
-```
-
-Then [set it up as a server](#set-up-the-server).
-
-**A Mac or a Windows PC** you use every day can run your apps too: build on it, and install
-the connector as the [README](../README.md#get-started) shows. Then keep it awake:
-
-- **On a Mac:** in System Settings, under Energy, turn on Prevent automatic sleeping when
-  the display is off (under Battery, Options on a laptop, which must also stay open). The
-  connector runs only while you're logged in to the Mac's desktop, so a Mac without a
-  display needs your account chosen under Users & Groups, Automatically log in as.
-  FileVault turns automatic login off: with FileVault on, the connector waits for someone
-  to log in after each restart.
-- **On Windows 11:** in Settings, under System > Power (Power & battery on a laptop, which
-  must also stay open), set sleep to Never.
-
-`ovenlight doctor` then confirms that the computer won't sleep on its own.
-
-## In the cloud
+## Rented in the cloud
 
 ### Create the server on AWS Lightsail
 
