@@ -14,7 +14,7 @@ The `ovenlight` connector on that computer publishes each app and tells it who i
 2. **If the person sends apps to an always-on computer** (their notes or instructions name
    one, such as `oven`, reached with `ssh`), build on this computer and publish there, not
    here: read the guide with `ssh <user>@oven '~/.local/bin/ovenlight guide'` (quoted, so
-   `~` is the server's), start a new app there with `ovenlight new` and copy it here, and
+   `~` is the server's), start a new app there with `ovenlight new "<App Name>" --dir ~/apps` and copy it here, and
    send each app as https://ovenlight.app/docs/always-on.md under "Send an app" describes,
    never copying over the server's data. Run the connector's commands there over `ssh`. If
    an ssh command waits with no output, Tailscale wants the person to confirm: ask them to

@@ -72,7 +72,9 @@ Then [set up the server](#set-up-the-server).
 ### A spare computer
 
 **A mini PC or an old laptop on Ubuntu or Debian** works like the Pi:
-[set it up as a server](#set-up-the-server), at its own keyboard or over SSH. On a laptop,
+[set it up as a server](#set-up-the-server), at its own keyboard or over SSH. On Debian, if
+you set a root password at install, your user can't use `sudo` yet:
+[add yourself to the sudo group](https://wiki.debian.org/sudo) first. On a laptop,
 leave it plugged in. So it never sleeps, even with the lid closed, also run:
 
 ```sh
@@ -244,35 +246,38 @@ Paste this into Claude Code, or another coding agent, on your laptop, with your 
 user in place of `pi`:
 
 ```text
-I have an always-on computer for Ovenlight, `oven`, which I reach with `ssh pi@oven`. Save this in your memory or instructions for every session: when I ask you to put an app on my phone, or to change one I've put there, build it here on this computer, then send it to `oven` and publish it there, as https://ovenlight.app/docs/always-on.md under "Send an app" describes. Read the building guide with `ssh pi@oven '~/.local/bin/ovenlight guide'`, and start a new app with `ssh pi@oven '~/.local/bin/ovenlight new "App Name" --dir ~/src'`, then copy it here with rsync to work on. Don't publish apps on this computer. If an ssh command waits with no output, Tailscale wants me to confirm it's me: ask me to run `ssh pi@oven true` in my own terminal, then try again.
+I have an always-on computer for Ovenlight, `oven`, which I reach with `ssh pi@oven`. Save this in your memory or instructions for every session: when I ask you to put an app on my phone, or to change one I've put there, build it here on this computer, then send it to `oven` and publish it there, as https://ovenlight.app/docs/always-on.md under "Send an app" describes. Read the building guide with `ssh pi@oven '~/.local/bin/ovenlight guide'`, and start a new app with `ssh pi@oven '~/.local/bin/ovenlight new "App Name" --dir ~/apps'`, then copy it here with rsync to work on. Don't publish apps on this computer. If an ssh command waits with no output, Tailscale wants me to confirm it's me: ask me to run `ssh pi@oven true` in my own terminal, then try again.
 ```
 
 With Ovenlight's Claude Code plugin, the agent follows that note too.
 
 ### Send an app
 
-To send one yourself on a Mac or Linux laptop, start with an app. No app yet? Make the
-starter on the server, which has the connector, and copy it to your laptop to work on:
+To send one yourself, start with an app. On Windows, run this whole section in Git Bash,
+which Claude Code also uses there, since Windows PowerShell 5.1 mangles the inner quotes.
+No app yet? Make the starter on the server, which has the connector, and copy it to your
+laptop to work on:
 
 ```sh
-ssh pi@oven '~/.local/bin/ovenlight new "Family List" --dir ~/src'
+ssh pi@oven '~/.local/bin/ovenlight new "Family List" --dir ~/apps'
 mkdir -p ~/src
-rsync -a pi@oven:src/family-list ~/src/
+rsync -a pi@oven:apps/family-list ~/src/
 ```
 
 Then send it, and publish it there:
 
 ```sh
-rsync -a --exclude data --exclude node_modules --exclude .git ~/src/family-list pi@oven:apps/
+rsync -a --exclude /data --exclude /node_modules --exclude /.git ~/src/family-list/ pi@oven:apps/family-list/
 ssh pi@oven '~/.local/bin/ovenlight publish --port 27748 --name "Family List" --run "npm start" --dir ~/apps/family-list'
 ```
 
 Any app takes the same steps:
 
-1. Copy the project folder to `~/apps` on the server, leaving out `node_modules`, `.git`
-   and its data (a data folder, or a database file for an app that keeps one), so the
-   server's data stays. On Windows, where rsync is
-   missing, send the same folders from Git Bash with `tar` over `ssh` instead.
+1. Copy the project folder to `~/apps` on the server, leaving out its top-level
+   `node_modules`, `.git` and data (a data folder, or a database file for an app that
+   keeps one), so the server's data stays. On Windows, where rsync is missing, send it
+   with `tar` over `ssh` instead:
+   `tar czf - --exclude ./data --exclude ./node_modules --exclude ./.git -C ~/src/family-list . | ssh pi@oven 'mkdir -p apps/family-list && tar xzf - -C apps/family-list'`.
 2. If the app has dependencies, install them on the server, in its folder (`npm ci` for a
    Node app with a `package-lock.json`). The server's system differs from your laptop's,
    so it builds its own.
@@ -282,9 +287,13 @@ Any app takes the same steps:
 
 To send a new version, copy the folder again the same way, install dependencies again if
 they changed, then run `ssh pi@oven '~/.local/bin/ovenlight restart family-list'`. The
-connector's other commands work over `ssh pi@oven` too, such as `ovenlight logs` and
-`ovenlight check`. To share an app, touch and hold it in Ovenlight on your phone and choose
-Share.
+connector's other commands work over `ssh pi@oven` too, such as
+`ssh pi@oven '~/.local/bin/ovenlight logs family-list'`.
+
+To share an app, connect with `ssh pi@oven` and follow
+[Share an app](connector.md#share-an-app) there, once for each app. Its commands ask
+questions in a terminal, so they don't work as `ssh pi@oven '…'`. After that, share from
+your phone: touch and hold the app in Ovenlight and choose Share.
 
 An app also published on your laptop needs to go there first: run
 `ovenlight unpublish family-list` on your laptop and delete its node on the
