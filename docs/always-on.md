@@ -71,16 +71,18 @@ Then [set up the server](#set-up-the-server).
 
 ### A spare computer
 
-**A mini PC or an old laptop on Ubuntu or Debian** works like the Pi:
-[set it up as a server](#set-up-the-server), at its own keyboard or over SSH. On Debian, if
-you set a root password at install, your user can't use `sudo` yet:
-[add yourself to the sudo group](https://wiki.debian.org/sudo) first. On a laptop,
-leave it plugged in. So it never sleeps, even with the lid closed, also run:
+**A mini PC or an old laptop on Ubuntu or Debian** works like the Pi, and you can set it
+up at its own keyboard or over SSH. On Debian, if you set a root password at install, your user can't use
+`sudo` yet: [add yourself to the sudo group](https://wiki.debian.org/sudo) first. On a
+laptop, leave it plugged in. On any spare computer, so it never sleeps (even with a
+laptop's lid closed), run:
 
 ```sh
 sudo mkdir -p /etc/systemd/sleep.conf.d
 printf '[Sleep]\nAllowSuspend=no\nAllowHibernation=no\n' | sudo tee /etc/systemd/sleep.conf.d/stay-awake.conf
 ```
+
+Then [set it up as a server](#set-up-the-server).
 
 **A Mac or a Windows PC** you use every day can run your apps too: build on it, and install
 the connector as the [README](../README.md#get-started) shows. Then keep it awake:
@@ -166,7 +168,8 @@ days, and you can't reach it until you sign it in again.
 
 Now switch to your laptop for good. Type `exit` (on a cloud server, close the browser
 terminal), then in Terminal on your laptop (PowerShell on Windows), connect over Tailscale,
-from anywhere, with no password or SSH keys:
+from anywhere, with no password or SSH keys. If ssh asks whether to trust the computer,
+answer `yes`:
 
 ```sh
 ssh pi@oven
@@ -201,14 +204,14 @@ the SSH rule back if you ever need the browser terminal again.
 
 ### Updates, Node and the connector
 
-Let the server install security updates by itself, and
-restart at 04:00 when one needs it, such as a new kernel. A Raspberry Pi keeps your time
-zone. A cloud server's clock is UTC, where 04:00 is evening in the Americas: put `10:00`
+Let the server install security updates by itself and restart at 04:00 when one needs it,
+such as a new kernel. The same command installs rsync, which sending apps needs. A
+Raspberry Pi keeps your time zone. A cloud server's clock is UTC, where 04:00 is evening in the Americas: put `10:00`
 in its place there.
 
 ```sh
 sudo apt-get update
-sudo apt-get install -y unattended-upgrades
+sudo apt-get install -y unattended-upgrades rsync
 printf 'Unattended-Upgrade::Automatic-Reboot "true";\nUnattended-Upgrade::Automatic-Reboot-Time "04:00";\n' | sudo tee /etc/apt/apt.conf.d/52automatic-reboot
 ```
 
@@ -255,6 +258,11 @@ With Ovenlight's Claude Code plugin, the agent follows that note too.
 
 ### Send an app
 
+Unpublish an app that's also published on your laptop before you publish it on the
+server: run `ovenlight unpublish family-list` on your laptop and delete its node on the
+[Machines](https://console.tailscale.com/admin/machines) page. Otherwise the server's copy
+comes up as `family-list-1`. People you shared it with need new invites.
+
 To send one yourself, start with an app. On Windows, run this whole section in Git Bash,
 which Claude Code also uses there, since Windows PowerShell 5.1 mangles the inner quotes.
 Git Bash has no rsync, so use `tar` over `ssh` in place of each `rsync` line below. To
@@ -299,11 +307,6 @@ To share an app, connect with `ssh pi@oven` and follow
 [Share an app](connector.md#share-an-app) there, once for each app. Its commands ask
 questions in a terminal, so they don't work as `ssh pi@oven '…'`. After that, share from
 your phone: touch and hold the app in Ovenlight and choose Share.
-
-Unpublish an app that's also published on your laptop before you publish it on the
-server: run `ovenlight unpublish family-list` on your laptop and delete its node on the
-[Machines](https://console.tailscale.com/admin/machines) page. Otherwise the server's copy
-comes up as `family-list-1`. People you shared it with need new invites.
 
 ## Build on the server
 
