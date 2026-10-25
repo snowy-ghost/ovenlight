@@ -314,8 +314,10 @@ ssh pi@oven '~/.local/bin/ovenlight publish --port 27748 --name "Family List" --
 Any app takes the same steps:
 
 1. Copy the project folder to `~/apps` on the server, leaving out its top-level
-   `node_modules`, `.git` and data (a data folder, or a database file for an app that
-   keeps one), so the server's data stays.
+   `node_modules`, `.git` and `data`, so the server's data stays. An app keeps
+   everything people add in `data` ([the app contract](app-contract.md#keep-what-people-add-in-the-data-folder)),
+   so move a database or uploads kept anywhere else into it before you send it (on the
+   server too, for an app already there).
 2. If the app has dependencies, install them on the server, in its folder (`npm ci` for a
    Node app with a `package-lock.json`). The server's system differs from your laptop's,
    so it builds its own.

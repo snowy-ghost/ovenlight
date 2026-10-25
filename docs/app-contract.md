@@ -59,6 +59,14 @@ change state: no "delete on GET", no one-click actions behind a link.
 Use `Ovenlight-User-Id` as the key for anything that belongs to a person. It is stable
 for the owner and for every device of one guest. The other headers are labels.
 
+### Keep what people add in the data folder
+
+Keep everything people add, the database and uploads included, in a `data` folder at the
+top of the app's folder, as the starter does. Sending a new version to an always-on
+computer copies everything else over the server's copy
+([always-on.md](always-on.md#send-an-app)), so a database kept beside the code is
+replaced by the laptop's.
+
 ## May rely on
 
 ### Identity headers

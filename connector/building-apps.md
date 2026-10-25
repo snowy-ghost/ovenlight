@@ -33,8 +33,10 @@ Ovenlight already does them, or they break inside it.
 
 The right size is one process and one data file: SQLite (built into Python, and
 `node:sqlite` in Node 24) or a JSON file written whole to a temporary file and renamed
-into place. Keep the data file next to the server, outside the folder of public files,
-and not in `/tmp`.
+into place. Keep the data file, and anything else people add such as uploads, in a
+`data` folder at the top of the app's folder, as the starter does: outside the folder of
+public files, and not in `/tmp`. A new version sent to an always-on computer leaves
+`data` alone and copies the rest over the server's copy.
 
 ## Serve plain HTTP on 127.0.0.1
 
