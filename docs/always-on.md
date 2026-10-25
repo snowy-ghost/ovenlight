@@ -163,7 +163,8 @@ curl -fsSL https://tailscale.com/install.sh | sh
 sudo tailscale up --ssh --hostname=oven
 ```
 
-Open the link it prints and sign in with your Tailscale account. Then, in the admin
+Open the link it prints and sign in with your Tailscale account, and if your tailnet
+requires device approval, approve `oven` on the Machines page too. Then, in the admin
 console's [Machines](https://console.tailscale.com/admin/machines) page, open the menu
 beside `oven` and choose Disable Key Expiry. Otherwise the server signs out after 180
 days, and you can't reach it until you sign it in again.
@@ -179,11 +180,11 @@ ssh pi@oven
 
 The rest of the setup happens in this session. Tailscale may print a link to confirm it's
 you: open it, and the connection carries on. It asks again after 12 hours. When your
-coding agent's ssh command waits with no output, that's the check: run `ssh pi@oven true`
-yourself, open its link, and have the agent try again. Your tailnet policy's SSH rule can
-stretch the 12 hours up to a week with `checkPeriod`. This works with Tailscale's
-default policy. If you've edited your tailnet policy, it needs a rule allowing SSH to your
-own devices.
+coding agent's ssh command hangs, or prints that Tailscale SSH requires an additional
+check, open the link it printed (or run `ssh pi@oven true` yourself and open its link),
+then have the agent try again. Your tailnet policy's SSH rule can stretch the 12 hours up
+to a week with `checkPeriod`. This works with Tailscale's default policy. If you've edited
+your tailnet policy, it needs a rule allowing SSH to your own devices.
 
 **On a Raspberry Pi or a spare computer, turn off its own SSH now.** Tailscale SSH doesn't
 use it, and it would otherwise keep taking passwords from anyone on your home network:
@@ -269,9 +270,10 @@ an app" describes. Read the building guide with
 `ssh pi@oven '~/.local/bin/ovenlight new "App Name" --dir ~/apps'`, then
 copy it here with rsync to work on (on Windows, where Git Bash has no
 rsync, use the tar forms that section gives). Don't publish apps on this
-computer. If an ssh command waits with no output, Tailscale wants me to
-confirm it's me: ask me to run `ssh pi@oven true` in my own terminal,
-then try again.
+computer. If an ssh command hangs, or prints that Tailscale SSH requires
+an additional check, give me the link it printed (or ask me to
+run `ssh pi@oven true` in my own terminal and open its link), then
+try again.
 ```
 
 With Ovenlight's Claude Code plugin, the agent follows that note too.
