@@ -11,7 +11,13 @@ The `ovenlight` connector on that computer publishes each app and tells it who i
 1. **Read the guide before building or changing anything.** Call the `guide` tool of the
    `ovenlight` MCP server, or run `ovenlight guide`. It matches the installed connector.
    Follow it over anything here.
-2. **If the connector isn't installed** (the MCP tools don't answer, and there's no
+2. **If the person sends apps to an always-on computer** (their notes or instructions name
+   one, such as `oven`, reached with `ssh`), build on this computer and publish there, not
+   here: read the guide with `ssh <user>@oven ~/.local/bin/ovenlight guide`, and send each
+   app as https://ovenlight.app/docs/always-on.md under "Send an app" describes. Run the
+   connector's commands there over `ssh`. If ssh prints a link to open, pass it on and
+   wait.
+3. **If the connector isn't installed** (the MCP tools don't answer, and there's no
    `~/Library/Application Support/ovenlight/bin/ovenlight` on a Mac,
    `%LOCALAPPDATA%\ovenlight\bin\ovenlight.exe` on Windows, or
    `~/.local/state/ovenlight/bin/ovenlight` on Linux, with `$XDG_STATE_HOME` in place of
@@ -21,7 +27,7 @@ The `ovenlight` connector on that computer publishes each app and tells it who i
    https://ovenlight.app/support#own-computer has the steps. Then wait for them; don't
    look for workarounds. If it is installed but not running, the person starts it with
    the command `ovenlight status` gives. Don't run `ovenlight run` yourself.
-3. **Use the tools for the loop**: publish, restart the app after changing the server,
+4. **Use the tools for the loop**: publish, restart the app after changing the server,
    check it, read its logs, and read the feedback the person sends from their phone. The
    command that keeps the app running is set only in a terminal: with a shell, publish
    with `ovenlight publish --port <n> --name "<Name>" --run '<command>' --dir <folder>`
@@ -32,9 +38,9 @@ The `ovenlight` connector on that computer publishes each app and tells it who i
    new app starts from `ovenlight new "<App Name>" --dir ~/src`, also in a shell. If you
    can't edit files (only the MCP tools work), tell the person to build the app with a
    coding agent that can, Claude Code for example, and publish it from there.
-4. **You can't share an app.** When the person wants to share, tell them the steps from
+5. **You can't share an app.** When the person wants to share, tell them the steps from
    the guide and let them do it.
-5. **The connector updates itself.** When `status` shows a failed update, tell the
+6. **The connector updates itself.** When `status` shows a failed update, tell the
    person what failed, in plain words. With updates on, it tries again the next night, and
    a release waiting its turn needs nothing from either of you. When `doctor`'s `update`
    check gives a fix, pass it on. For a release to install by hand, offer the verified

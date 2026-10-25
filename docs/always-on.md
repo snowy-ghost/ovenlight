@@ -71,7 +71,7 @@ Then [set up the server](#set-up-the-server).
 
 ### A spare computer
 
-**A mini PC or an old laptop on Ubuntu**, or another Linux with systemd, works like the Pi:
+**A mini PC or an old laptop on Ubuntu or Debian** works like the Pi:
 [set it up as a server](#set-up-the-server), at its own keyboard or over SSH. On a laptop,
 leave it plugged in. So it never sleeps, even with the lid closed, also run:
 
@@ -123,8 +123,8 @@ hours a month until December 31, 2026, but the offer covers only the instance: E
 its disk and public IPv4 address apart, so it costs more than Lightsail's 2 GB plan, with
 more to set up.
 
-In the browser terminal, [set up the server](#set-up-the-server), starting with Tailscale.
-On the 2 GB plan, add a swap file too, which gives a busy moment room:
+On the 2 GB plan, first add a swap file in the browser terminal, which gives a busy moment
+room:
 
 ```sh
 sudo fallocate -l 2G /swapfile
@@ -138,11 +138,14 @@ To keep a copy of everything on it, turn on Automatic snapshots in the instance'
 Snapshots tab: Lightsail keeps the last seven daily copies of the whole server, at $0.05
 per GB a month, and deletes them with the instance.
 
+Then, in the browser terminal, [set up the server](#set-up-the-server).
+
 ## Set up the server
 
-These steps are the same on a Raspberry Pi, a spare Linux computer and a cloud server. A
-cloud server's user is `ubuntu`: wherever a command below says `pi@oven`, use
-`ubuntu@oven` in its place.
+These steps are the same on a Raspberry Pi, a spare computer and a cloud server, and you
+run them yourself, since `sudo` may ask for your password. A cloud server's user is
+`ubuntu`, and a spare computer's is your own: wherever a command below says `pi@oven`, use
+that user in place of `pi`.
 
 ### Tailscale
 
@@ -189,17 +192,17 @@ instance's Networking tab and delete every rule under IPv4 Firewall and IPv6 Fir
 and HTTP). The browser terminal stops working, but `ssh ubuntu@oven` keeps working. Add
 the SSH rule back if you ever need the browser terminal again.
 
-From here, your coding agent can do the rest: see [Let your agent do it](#let-your-agent-do-it).
-
 ### Updates, Node and the connector
 
-In an `ssh pi@oven` session, let the server install security updates by itself, and
-restart when one needs it, such as a new kernel. Its clock may be UTC, where 10:00 is the
-small hours in the Americas: put a night hour where you are in its place.
+In your `ssh pi@oven` session, let the server install security updates by itself, and
+restart at 04:00 when one needs it, such as a new kernel. A Raspberry Pi keeps your time
+zone. A cloud server's clock is UTC, where 04:00 is evening in the Americas: put `10:00`
+in its place there.
 
 ```sh
+sudo apt-get update
 sudo apt-get install -y unattended-upgrades
-printf 'Unattended-Upgrade::Automatic-Reboot "true";\nUnattended-Upgrade::Automatic-Reboot-Time "10:00";\n' | sudo tee /etc/apt/apt.conf.d/52automatic-reboot
+printf 'Unattended-Upgrade::Automatic-Reboot "true";\nUnattended-Upgrade::Automatic-Reboot-Time "04:00";\n' | sudo tee /etc/apt/apt.conf.d/52automatic-reboot
 ```
 
 Node, for the starter app and most apps an agent builds, from
@@ -232,22 +235,31 @@ Your laptop keeps the code. The server runs a copy of each app, and keeps its da
 whatever people add to an app lives on the server, and sending a new version never
 replaces it.
 
+### Let your agent send your apps
+
+Paste this into Claude Code, or another coding agent, on your laptop, with your server's
+user in place of `pi`:
+
+```text
+I have an always-on computer for Ovenlight, `oven`, which I reach with `ssh pi@oven`. Save this in your memory or instructions for every session: when I ask you to put an app on my phone, or to change one I've put there, build it here on this computer, then send it to `oven` and publish it there, as https://ovenlight.app/docs/always-on.md under "Send an app" describes. Read the building guide with `ssh pi@oven ~/.local/bin/ovenlight guide`. Don't publish apps on this computer. If ssh prints a link for me to open, give it to me and wait.
+```
+
+With Ovenlight's Claude Code plugin, the agent follows that note too.
+
 ### Send an app
 
-Ask your coding agent to put the app on your phone through `oven`, and point it to this
-section. Or do it yourself. For the starter app in `~/src/family-list`, on a Mac or Linux
-laptop:
+To send one yourself, for the starter app in `~/src/family-list` on a Mac or Linux laptop:
 
 ```sh
 rsync -a --exclude data --exclude node_modules --exclude .git ~/src/family-list pi@oven:apps/
 ssh pi@oven '~/.local/bin/ovenlight publish --port 27748 --name "Family List" --run "npm start" --dir ~/apps/family-list'
 ```
 
-This is what any app takes:
+Any app takes the same steps:
 
 1. Copy the project folder to `~/apps` on the server, leaving out its data folder,
-   `node_modules` and `.git`. On Windows, where rsync is missing, your agent can copy it
-   with `scp`.
+   `node_modules` and `.git`, so the server's data stays. On Windows, where rsync is
+   missing, send the same folders from Git Bash with `tar` over `ssh` instead.
 2. If the app has dependencies, install them on the server, in its folder (`npm ci` for a
    Node app with a `package-lock.json`). The server's system differs from your laptop's,
    so it builds its own.
@@ -255,36 +267,29 @@ This is what any app takes:
    prints a login link: open it on your laptop and sign in with your Tailscale account.
    Then [open the app on your phone](../README.md#4-open-it-on-your-phone).
 
-To send a new version, copy the folder again the same way, then run
-`ssh pi@oven '~/.local/bin/ovenlight restart family-list'`. The connector's other commands
-work the same way from your laptop, such as `ovenlight logs family-list` and
-`ovenlight check family-list` after `ssh pi@oven`. To share an app, touch and hold it in
-Ovenlight on your phone and choose Share.
+To send a new version, copy the folder again the same way, install dependencies again if
+they changed, then run `ssh pi@oven '~/.local/bin/ovenlight restart family-list'`. The
+connector's other commands work over `ssh pi@oven` too, such as `ovenlight logs` and
+`ovenlight check`. To share an app, touch and hold it in Ovenlight on your phone and choose
+Share.
 
-Leave the app unpublished on your laptop: two connectors publishing one app give it two
-nodes, and the second comes up as `family-list-1`.
+An app also published on your laptop needs to go there first: run
+`ovenlight unpublish family-list` on your laptop and delete its node on the
+[Machines](https://console.tailscale.com/admin/machines) page. Otherwise the server's copy
+comes up as `family-list-1`. People you shared it with need new invites.
 
 ## Build on the server
 
-To work on the server itself, install [Claude Code](https://code.claude.com/docs/en/setup),
-or another coding agent, there:
+To work on the server itself, install `tmux`, so your agent keeps working when your laptop
+closes, and [Claude Code](https://code.claude.com/docs/en/setup), or another coding agent:
 
 ```sh
+sudo apt-get install -y tmux
 curl -fsSL https://claude.ai/install.sh | bash
 ```
 
-It asks you to add `~/.local/bin` to your `PATH`. The system adds it at login, so instead
-log out with `exit` and run `ssh pi@oven` again. Then start a `tmux` session, so the agent
-keeps working when your laptop closes, and run `claude` in it. Open the link it prints to
-sign in, and [connect it](../README.md#with-a-coding-agent) to Ovenlight. When you come
-back, `ssh pi@oven` and `tmux attach` pick up where you left off.
-
-## Let your agent do it
-
-Once `ssh pi@oven` works from your laptop, and a cloud server's firewall is closed, your
-coding agent can finish the setup. Paste this into Claude Code, or another agent, on your
-laptop, with `ubuntu@oven` in place of `pi@oven` for a cloud server:
-
-```text
-Set up my always-on computer for Ovenlight. I reach it with `ssh pi@oven`. Follow https://ovenlight.app/docs/always-on.md under "Updates, Node and the connector", running each code block on the server as one SSH command, and show me what each prints. Don't change anything in my Tailscale or cloud accounts. If ssh prints a link for me to open, give it to me and wait. If sudo asks for a password, tell me what to run myself. Finish by running `~/.local/bin/ovenlight doctor` on the server and telling me what's left for me to do. From then on, when I ask you to put an app on my phone, send it to this computer as that page's "Send an app" section describes.
-```
+The installer asks you to add `~/.local/bin` to your `PATH`. The system adds it at login,
+so instead log out with `exit` and run `ssh pi@oven` again. Then run `tmux`, and `claude`
+in it. Open the link it prints to sign in, and
+[connect it](../README.md#with-a-coding-agent) to Ovenlight. When you come back,
+`ssh pi@oven` and `tmux attach` pick up where you left off.
