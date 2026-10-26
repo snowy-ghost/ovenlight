@@ -437,15 +437,17 @@ its release. The verified steps, with the serial `status` shows, rule that out. 
 index whose signature went unchecked. There `install.sh` trusts the HTTPS download, as the
 steps by hand do without the check. `install.ps1` trusts our build computer's code
 signature in place of the release keys, so it takes any release from 1.1.0 on that Snowy
-Ghost LLC signed, even a build never released. It checks that the release's
-`ovenlight.exe`, `install.ps1` and `uninstall.ps1` carry valid code signatures under one
-certificate (one signing run leaves them that way) and that the certificate carries the
-EKU naming our Microsoft Artifact Signing profile. It also checks that the release holds
-nothing else but its notices, and that the binary names 1.1.0 or later, the first release
-that updates itself. And a script you pipe into a shell does whatever the site serving it
-says: whoever took over ovenlight.app could change it. To check before you run anything,
-save a copy, read it and run that copy ([connector.md](connector.md#read-the-script-first)
-shows how), or use the [verified steps](connector.md#check-a-download-first).
+Ghost LLC signed, even a build never released. Releases signed within the same few days
+share a certificate, so it may also take one's binary with another's scripts. It checks
+that the release's `ovenlight.exe`, `install.ps1` and `uninstall.ps1` carry valid code
+signatures under one certificate (one signing run leaves them that way) and that the
+certificate carries the EKU naming our Microsoft Artifact Signing profile. It also checks
+that the release holds nothing else but its notices, and that the binary names 1.1.0 or
+later, the first release that updates itself. And a script you pipe into a shell does
+whatever the site serving it says: whoever took over ovenlight.app could change it. To
+check before you run anything, save a copy, read it and run that copy
+([connector.md](connector.md#read-the-script-first) shows how), or use the [verified
+steps](connector.md#check-a-download-first).
 
 Once a day the connector fetches the signed index,
 `https://downloads.ovenlight.app/connector/latest.json`, and its signature,

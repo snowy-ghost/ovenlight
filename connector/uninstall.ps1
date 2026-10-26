@@ -6,6 +6,7 @@
 # stay in your tailnet, offline, until you remove them in the admin console).
 # Run it from an administrator PowerShell, as install.ps1:
 #   powershell -ExecutionPolicy Bypass -File .\uninstall.ps1 [--purge]
+# The site's install.ps1 knows this script by its first line: keep it.
 $ErrorActionPreference = 'Stop'
 
 $task = 'ovenlight'
