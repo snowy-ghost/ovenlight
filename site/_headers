@@ -35,6 +35,13 @@
 /docs*
   Content-Security-Policy: default-src 'none'; script-src https://ovenlight.app/docs.js; style-src 'self' 'unsafe-inline'; img-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'none'
 
+# The one-line installers, as text: a browser shows them to read first, and PowerShell's
+# irm hands iex a string.
+/install.sh
+  Content-Type: text/plain; charset=utf-8
+/install.ps1
+  Content-Type: text/plain; charset=utf-8
+
 # Each doc's Markdown, beside its page, for coding agents.
 /docs/*.md
   Content-Type: text/markdown; charset=utf-8

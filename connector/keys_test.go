@@ -2,6 +2,8 @@ package main
 
 import (
 	"os"
+	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -27,6 +29,29 @@ func TestReleaseKeysAreAllowedSigners(t *testing.T) {
 		}
 		if !found {
 			t.Errorf("%s isn't in docs/allowed_signers as team@snowyghost.com with namespaces \"file,ovenlight-latest\"", key)
+		}
+	}
+}
+
+// The one-line installers on the site check latest.json with the keys in
+// docs/allowed_signers, as the verified steps do, so they list those keys exactly.
+func TestInstallersListAllowedSigners(t *testing.T) {
+	signers, err := os.ReadFile("../docs/allowed_signers")
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer := regexp.MustCompile(`team@snowyghost\.com namespaces="[^"]*" \S+ [A-Za-z0-9+/]+=*`)
+	want := signer.FindAllString(string(signers), -1)
+	if len(want) == 0 {
+		t.Fatal("no keys in docs/allowed_signers")
+	}
+	for _, name := range []string{"../site/install.sh", "../site/install.ps1"} {
+		script, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := signer.FindAllString(string(script), -1); !slices.Equal(got, want) {
+			t.Errorf("%s lists %q, not docs/allowed_signers' %q", name, got, want)
 		}
 	}
 }
