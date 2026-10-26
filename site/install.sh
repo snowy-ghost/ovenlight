@@ -62,15 +62,15 @@ main() {
 
   printf '%s\n' "$signers" >"$tmp/allowed_signers"
   cut -d ' ' -f 3- "$tmp/allowed_signers" >"$tmp/keys.pub"
-  # An ssh-keygen before OpenSSH 8.2, such as RHEL 8's, can't read the key that signs with
-  # Touch ID, and leaves it out here.
+  # An ssh-keygen without security keys, from before OpenSSH 8.2 (RHEL 8's) or Apple's on
+  # macOS 13, can't read the key that signs with Touch ID, and leaves it out here.
   if command -v ssh-keygen >/dev/null &&
     [ "$(ssh-keygen -l -f "$tmp/keys.pub" 2>/dev/null | wc -l)" -eq "$(wc -l <"$tmp/keys.pub")" ]; then
     ssh-keygen -Y verify -f "$tmp/allowed_signers" -I team@snowyghost.com -n ovenlight-latest \
       -s "$tmp/latest.json.sig" <"$tmp/latest.json" ||
       fail "the release index's signature doesn't check out, so nothing was installed"
   else
-    echo "This computer's ssh-keygen can't check the release index's signature (that needs OpenSSH 8.2 or later), so the download is checked against the index alone."
+    echo "The release index's signature couldn't be checked: no ssh-keygen here can read the release key that signs with Touch ID (that takes OpenSSH 8.2 or later, and macOS 14 or later on a Mac). Only that the download matches the index is checked."
   fi
 
   version="$(sed -n 's/^{"latest": "\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)".*/\1/p' "$tmp/latest.json")"
@@ -108,7 +108,7 @@ add_path() {
   esac
   if [ -n "$profile" ] && grep -qxF "$path_line" "$profile" 2>/dev/null; then
     echo "$profile puts ~/.local/bin on your PATH: open a new terminal window to run ovenlight"
-  elif [ -n "$profile" ] && printf '\n%s\n' "$path_line" >>"$profile" 2>/dev/null; then
+  elif [ -n "$profile" ] && printf '\n%s\n' "$path_line" 2>/dev/null >>"$profile"; then
     echo "added ~/.local/bin to your PATH in $profile: open a new terminal window to run ovenlight"
   else
     echo "~/.local/bin isn't on your PATH. Add this line to your shell's profile, then open a new terminal window to run ovenlight:"

@@ -46,19 +46,20 @@
     [IO.File]::WriteAllText("$tmp\keys.pub", (($signers | ForEach-Object { ($_ -split ' ', 3)[2] }) -join "`n") + "`n")
     # Windows' own OpenSSH before 8.9 can't read the key that signs with Touch ID, and
     # leaves it out here. cmd runs ssh-keygen, since PowerShell 5.1 can't redirect a file to
-    # a program's input, and would turn its error output into errors that stop this.
+    # a program's input. No program here writes to its error output unless it fails: a
+    # PowerShell without a console, such as the ISE, turns that into an error that stops this.
     if ((Get-Command ssh-keygen -ErrorAction SilentlyContinue) -and @(cmd /c 'ssh-keygen -l -f keys.pub 2>nul').Count -eq $signers.Count) {
       cmd /c 'ssh-keygen -Y verify -f allowed_signers -I team@snowyghost.com -n ovenlight-latest -s latest.json.sig < latest.json'
       if ($LASTEXITCODE) { throw "the release index's signature doesn't check out, so nothing was installed" }
     } else {
-      Write-Output "This computer's ssh-keygen can't check the release index's signature (that needs OpenSSH 8.9 or later), so the download is checked against the index alone."
+      Write-Output "The release index's signature couldn't be checked: no ssh-keygen here can read the release key that signs with Touch ID (that takes OpenSSH 8.9 or later). Only that the download matches the index is checked."
     }
 
     $index = Get-Content -Raw latest.json | ConvertFrom-Json
     $version = $index.latest
     if ($version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+$') { throw 'the release index names no release' }
     Write-Output "downloading the Ovenlight connector $version for $system"
-    curl.exe -fL --proto =https --progress-bar -o $archive "$base/$version/$archive"
+    curl.exe -fsSL --proto =https -o $archive "$base/$version/$archive"
     if ($LASTEXITCODE) { throw "couldn't download $archive" }
     if ((Get-FileHash $archive).Hash -ne $index.archives.$archive) {
       throw "$archive doesn't match the release index, so nothing was installed"
