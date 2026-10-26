@@ -1,6 +1,7 @@
 // Command sitedocs renders the Markdown docs in docs/ as pages of ovenlight.app, and is
 // their link checker: it fails on any relative link or #anchor in them that doesn't
-// resolve. wrangler.jsonc runs it before each deploy, and CI on each push.
+// resolve. wrangler.jsonc runs it before each deploy, and CI on each push. It also fails a
+// month before site/.well-known/security.txt expires.
 //
 // Run it from this directory. It writes site/docs.html, site/docs/ with each doc's page
 // and its Markdown, and site/sitemap.xml, all of which git ignores.
@@ -17,6 +18,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/yuin/goldmark"
@@ -67,6 +69,9 @@ func main() {
 }
 
 func run() error {
+	if err := checkSecurityTxt(time.Now()); err != nil {
+		return err
+	}
 	byName := map[string]*doc{}
 	var all []*doc
 	for _, d := range docs {
@@ -154,6 +159,28 @@ func run() error {
 	}
 	sitemap.WriteString("</urlset>\n")
 	return os.WriteFile(filepath.Join(root, "site", "sitemap.xml"), []byte(sitemap.String()), 0o644)
+}
+
+// checkSecurityTxt fails within 30 days of security.txt's Expires, so a deploy or CI's weekly
+// run asks for a new date before the file goes stale. RFC 9116 wants it under a year away.
+func checkSecurityTxt(now time.Time) error {
+	src, err := os.ReadFile(filepath.Join(root, "site", ".well-known", "security.txt"))
+	if err != nil {
+		return err
+	}
+	for _, line := range strings.Split(string(src), "\n") {
+		if v, ok := strings.CutPrefix(line, "Expires: "); ok {
+			t, err := time.Parse(time.RFC3339, v)
+			if err != nil {
+				return fmt.Errorf("security.txt: %w", err)
+			}
+			if t.Sub(now) < 30*24*time.Hour {
+				return fmt.Errorf("site/.well-known/security.txt expires at %s: move Expires to under a year from now", v)
+			}
+			return nil
+		}
+	}
+	return errors.New("site/.well-known/security.txt has no Expires line")
 }
 
 // setIDs gives each heading the ID GitHub gives it, so that links into the docs work the

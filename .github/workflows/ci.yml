@@ -385,7 +385,8 @@ jobs:
             android/app/build/outputs/androidTest-results/connected/
             ${{ runner.temp }}/*.log
 
-  # The docs as the site renders them: a link or #anchor in docs/ that goes nowhere fails.
+  # The docs as the site renders them: a link or #anchor in docs/ that goes nowhere fails,
+  # as does a security.txt within a month of expiring.
   docs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5

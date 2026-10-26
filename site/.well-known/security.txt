@@ -1,0 +1,6 @@
+Contact: mailto:team@snowyghost.com
+Contact: https://github.com/snowy-ghost/ovenlight/security/advisories/new
+Expires: 2027-10-01T00:00:00Z
+Policy: https://github.com/snowy-ghost/ovenlight/blob/master/SECURITY.md
+Preferred-Languages: en
+Canonical: https://ovenlight.app/.well-known/security.txt

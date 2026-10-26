@@ -34,6 +34,9 @@ Play's app signing key only (Play Console, Test and release, App integrity), nev
 key, which a sideloaded build could carry. Android 14 and earlier read it only when the app is
 installed or updated.
 
+`.well-known/security.txt` points security reports at SECURITY.md (RFC 9116). Its `Expires`
+date stays under a year away: `scripts/sitedocs` fails a month before it, so move it then.
+
 ## Deploying
 
 Deploy origin/master from a worktree of its own, not from a checkout someone may be

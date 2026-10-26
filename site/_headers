@@ -10,6 +10,10 @@
 /.well-known/apple-app-site-association
   Content-Type: application/json
 
+# RFC 9116 asks for the charset, which Cloudflare leaves off text/plain.
+/.well-known/security.txt
+  Content-Type: text/plain; charset=utf-8
+
 # The invite, key included, rides in the join page's fragment. The same policy
 # as the page's own meta tag: only join.js runs (named by URL, since 'self' would
 # also allow scripts Cloudflare injects from /cdn-cgi/), and nothing may be
