@@ -44,7 +44,10 @@ The `ovenlight` connector on that computer publishes each app and tells it who i
    person to stop their own copy and run the `--slug` command from the app's folder. A
    new app starts from `ovenlight new "<App Name>" --dir ~/src`, also in a shell. If you
    can't edit files (only the MCP tools work), tell the person to build the app with a
-   coding agent that can, Claude Code for example, and publish it from there.
+   coding agent that can, Claude Code for example, and publish it from there. When you
+   give the person an app's address, tell them it opens in Ovenlight on their phone, and
+   in a browser only on a device running the Tailscale app signed in to their own
+   Tailscale account.
 5. **You can't share an app.** When the person wants to share, tell them the steps from
    the guide and let them do it.
 6. **The connector updates itself.** When `status` shows a failed update, tell the
