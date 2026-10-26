@@ -1,8 +1,8 @@
 {
   "name": "ovenlight",
   "displayName": "Ovenlight",
-  "description": "Build web apps that feel at home in Ovenlight, publish them from your own computer, and read feedback sent from the phone. Needs the Ovenlight connector installed on that computer.",
-  "version": "1.0.2",
+  "description": "Put the web apps you build with Claude Code on your phone, served from your own computer, and share them with family and friends, who only install the Ovenlight app. Claude publishes and checks each app and reads the feedback people send from their phones. It needs a Tailscale account and the Ovenlight connector on your computer.",
+  "version": "1.0.3",
   "icon": "./.claude-plugin/icon.png",
   "author": {
     "name": "Snowy Ghost",
