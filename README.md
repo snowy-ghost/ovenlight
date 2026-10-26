@@ -137,8 +137,9 @@ When you share an app, your friend's phone joins your tailnet as a guest device.
 
 ## Where your apps run
 
-- **Your laptop,** to start today. Your apps work while it's open, plugged in and awake, and
-  go offline when you close the lid. [Get started](#get-started) sets it up.
+- **Your laptop** is where to start. Your apps work while it's plugged in and awake, and
+  once you change [one setting](docs/connector.md#a-laptop-with-its-lid-closed), they stay
+  up with the lid closed. [Get started](#get-started) sets up the rest.
 - **A computer at home,** such as a Mac mini, a spare PC or an old laptop, can stay on so
   your apps open any time. Your data stays in your house.
   [docs/always-on.md](docs/always-on.md#at-home) sets it up.
@@ -153,9 +154,8 @@ for you, since you run the apps.
 
 - **A computer that stays on and awake** while anyone uses your apps: a Mac with macOS 13
   or later, logged in to its desktop; a Linux computer with systemd, such as Ubuntu; or a
-  Windows 11 PC. A laptop must stay open, since closing its lid puts it to sleep, and
-  Windows sleeps when idle until you
-  [turn that off](docs/connector.md#what-the-computer-needs).
+  Windows 11 PC. Out of the box, a laptop sleeps when you close its lid and Windows sleeps
+  when it's idle. You can [change both](docs/connector.md#what-the-computer-needs).
 - **Ovenlight on your phone,** from the [App Store](https://apps.apple.com/app/id6817561066)
   or [Google Play](https://play.google.com/store/apps/details?id=com.snowyghost.ovenlight).
   It runs on an iPhone with iOS 18.1 or later, or on a phone with Android 10 or later. Your

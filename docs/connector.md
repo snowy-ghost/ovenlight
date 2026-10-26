@@ -8,8 +8,9 @@ version.
 
 ## What the computer needs
 
-The computer must stay on and awake while anyone uses your apps, so a laptop must stay
-open: closing its lid puts it to sleep. It must be one of these:
+The computer must stay on and awake while anyone uses your apps. A laptop can keep
+serving with its lid closed once you change one setting
+([how](#a-laptop-with-its-lid-closed)). It must be one of these:
 
 - **A Mac with macOS 13 or later**, logged in to its desktop; `ovenlight doctor` checks
   that it won't sleep. The connector is a launchd agent, which runs only in a logged-in
@@ -26,6 +27,31 @@ open: closing its lid puts it to sleep. It must be one of these:
   with another account's password installs the connector for that account. Windows puts
   an idle computer to sleep by default: in Settings, under System > Power (Power &
   battery on a laptop), set sleep to Never. `ovenlight doctor` checks that too.
+
+### A laptop with its lid closed
+
+Closing a laptop's lid puts it to sleep, and your apps go offline, until you change one
+setting. After that it stays fully awake even with the lid closed, so keep it plugged in,
+and don't put it in a bag while it's on: it can overheat there.
+
+- **On a Mac,** turn off sleep in Terminal:
+
+  ```sh
+  sudo pmset -a disablesleep 1
+  ```
+
+  The Mac then never sleeps, with the lid open or closed and on battery too. To turn sleep
+  back on, run the same command with `0` in place of `1`. `ovenlight doctor` says so when
+  closing the lid would still put the Mac to sleep. Amphetamine, a Mac app, can do this
+  for you with its Power Protect add-on, available on Apple Silicon laptops. It turns the
+  setting on for a session and off again when the session ends.
+- **On Windows 11,** set what closing the lid does to Do nothing when plugged in. It's in
+  Control Panel, under Power Options > Choose what closing the lid does, and on Windows 11
+  24H2 or later also in Settings, under System > Power & battery. `ovenlight doctor`
+  doesn't check this one.
+- **On Linux,** the commands under
+  [A computer you have](always-on.md#a-computer-you-have) keep a laptop awake with its
+  lid closed.
 
 You also need a Tailscale account with MagicDNS and HTTPS certificates turned on in the
 admin console, under [DNS](https://console.tailscale.com/admin/dns); `ovenlight doctor`

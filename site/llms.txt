@@ -14,7 +14,8 @@ Ovenlight on their phone.
 
 - A computer that stays on and awake while the apps are used: a Mac with macOS 13 or
   later (kept logged in), a Linux computer with systemd (such as Ubuntu), or a Windows 11
-  PC. A laptop must stay open, since closing its lid puts it to sleep. Windows sleeps
+  PC. A laptop sleeps when its lid closes until the person changes one setting
+  (https://ovenlight.app/docs/connector.md#a-laptop-with-its-lid-closed). Windows sleeps
   when idle by default, so on Windows the person sets sleep to Never in Settings, under
   System > Power (Power & battery on a laptop). A person with only a laptop can run their
   own server (a computer at home on Linux, or a small rented cloud server) and keep

@@ -1,7 +1,10 @@
 # Your own server
 
 Ovenlight opens your apps only while the computer that runs them is on and awake. A laptop
-works while it's open, plugged in and awake, and its apps go offline when the lid closes.
+works while it's plugged in and awake, and once you change one setting it keeps serving
+with its lid closed ([how](connector.md#a-laptop-with-its-lid-closed)). On another network
+it still serves over Tailscale, and its apps go offline only while it's asleep or has no
+internet.
 For apps that open any time, run them on your own server: a computer you own that stays on
 at home, such as a Mac mini, a spare PC or a Raspberry Pi. The connector runs on it as
 [connector.md](connector.md) describes, over your own tailnet. If you can't keep a computer
@@ -63,13 +66,17 @@ shows. Then keep it awake:
 
 - **On a Mac:** in System Settings, under Energy, turn on Prevent automatic sleeping when
   the display is off, and Start up automatically after a power failure. On a laptop, find
-  the first under Battery, Options instead, and keep the lid open. The connector runs only while
+  the first under Battery, Options instead. To keep a laptop serving with its lid closed,
+  also run `sudo pmset -a disablesleep 1` in Terminal, which turns off sleep altogether
+  ([details](connector.md#a-laptop-with-its-lid-closed)). The connector runs only while
   you're logged in to the Mac's desktop, so a Mac without a display needs your account
   chosen under Users & Groups, Automatically log in as. FileVault turns automatic login
   off: with FileVault on, the connector waits for someone to log in after each restart.
-- **On Windows 11:** in Settings, under System > Power (Power & battery on a laptop, which
-  must also stay open), set sleep to Never. On a desktop, turn on Restore on AC Power Loss
-  in its BIOS, as above.
+- **On Windows 11:** in Settings, under System > Power (Power & battery on a laptop), set
+  sleep to Never. On a laptop, also set what closing the lid does to Do nothing when
+  plugged in, in Control Panel under Power Options > Choose what closing the lid does (or,
+  on 24H2 or later, in Settings, under System > Power & battery). On a desktop, turn on Restore on AC
+  Power Loss in its BIOS, as above.
 
 `ovenlight doctor` then confirms that the computer won't sleep on its own. That's all the
 setup it needs: publish apps on it as the README's
