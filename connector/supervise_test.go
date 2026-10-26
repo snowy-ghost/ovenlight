@@ -703,6 +703,7 @@ func TestMCPCannotSetACommand(t *testing.T) {
 	res := out.(*publishResult)
 	exe, _ := os.Executable() // not the ovenlight on PATH, so the note names it in full
 	if !strings.Contains(res.Note, shellQuote(exe)+" publish --config "+shellQuote(p.config)+" --state "+shellQuote(p.state)+" --slug notes --dir '<folder>' --run '<command>'") ||
+		!strings.Contains(res.Note, "give the person the filled-in line as a step only they can do") ||
 		!strings.Contains(res.Note, "No connector is running for --config") {
 		t.Errorf("note = %q", res.Note)
 	}

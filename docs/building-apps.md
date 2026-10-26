@@ -411,8 +411,11 @@ locked.
    tailnet itself.
 2. With a shell:
    `ovenlight publish --port <n> --name "<Name>" --run '<command>' --dir <project>`.
-   With only MCP: `publish`, then ask the person to stop their own running copy, if
-   any, and run `ovenlight publish --slug <slug> --run '<command>'` from the app's folder. A
+   With only MCP: `publish`, then give the person the line its result's note gives, with
+   the app's folder and start command filled in, to run in a terminal once they've
+   stopped their own running copy, if any:
+   `ovenlight publish --slug <slug> --dir '<folder>' --run '<command>'`. Until then,
+   nothing keeps the app running or starts it after a restart. A
    new app first needs the person to open its login link (see below), unless an API token
    is stored and an earlier app has logged in.
    The app then appears in Ovenlight on its own, unless the person removed it before;
@@ -447,6 +450,8 @@ tap. Don't work around them. Doctor marks the checks only the person can fix wit
   the admin console (Machines). A token lasts at most 90 days; when
   `ovenlight auth status --check` or doctor says it no longer works, the person stores a
   new one.
+- **Give the app its start command** after a publish through MCP: they run the filled-in
+  line from The loop, step 2, in a terminal.
 - **Allow a protected folder** when a Mac asks (see Keep it running); after Don't
   Allow, it's in System Settings > Privacy & Security > Files and Folders.
 - **Connect the phone.** Install Ovenlight from the App Store or Google Play, choose Use My

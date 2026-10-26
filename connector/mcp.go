@@ -184,6 +184,15 @@ func runNote(p *paths, slug string) string {
 		republish(p, slug) + " --dir '<folder>' --run '<command>'"
 }
 
+// agentRunNote is runNote for the agent that published the app through this server,
+// which knows the app's folder and command, and passes the line on when it can't run it.
+func agentRunNote(p *paths, slug string) string {
+	return "The app has no start command yet, so nothing keeps it running or starts it after a restart. " +
+		"Stop any copy you started, by its pid, never with pkill by name. Then fill in <folder> and <command> yourself, " +
+		"and when you can't run the line, give the person the filled-in line as a step only they can do. " +
+		runNote(p, slug)
+}
+
 // republish is the start of a command to paste that publishes the app again.
 func republish(p *paths, slug string) string {
 	return ovenlightCommand() + " publish" + pathFlags(p) + " --slug " + slug
@@ -409,7 +418,7 @@ func callTool(name string, raw json.RawMessage, p *paths) (any, error) {
 		app.Run, app.Dir = res.App.Run, res.App.Dir
 		notes := []string{ownCopy(app)}
 		if app.Run == "" {
-			notes = append(notes, runNote(p, slug))
+			notes = append(notes, agentRunNote(p, slug))
 		}
 		if !res.Daemon {
 			notes = append(notes, "The connector isn't running, so nothing is served until it runs. "+startFix(p)+".")
