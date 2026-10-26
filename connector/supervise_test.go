@@ -713,6 +713,26 @@ func TestMCPCannotSetACommand(t *testing.T) {
 	}
 }
 
+func TestMCPPublishSaysWhereTheAddressOpens(t *testing.T) {
+	serving := &publishResult{State: "serving", URL: "https://notes.example.ts.net"}
+	if note := addressNote(serving); !strings.Contains(note, "opens in Ovenlight on their phone") || !strings.Contains(note, "only on a device running the Tailscale app") {
+		t.Errorf("a new app: %q", note)
+	}
+	serving.Replaced = true
+	if note := addressNote(serving); strings.Contains(note, "Ovenlight on their phone") || !strings.Contains(note, "only on a device running the Tailscale app") {
+		t.Errorf("a republished app: %q", note)
+	}
+	// Until the address works, there is nothing to pass on.
+	for _, res := range []*publishResult{
+		{State: "needs-approval"},
+		{State: "serving", Problems: []Check{{ID: "certificate"}}},
+	} {
+		if note := addressNote(res); note != "" {
+			t.Errorf("%+v: %q", res, note)
+		}
+	}
+}
+
 // lockedBuffer is a strings.Builder that one goroutine writes while another reads.
 type lockedBuffer struct {
 	mu sync.Mutex

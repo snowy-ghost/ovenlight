@@ -193,6 +193,19 @@ func agentRunNote(p *paths, slug string) string {
 		runNote(p, slug)
 }
 
+// addressNote tells the agent where the app's address opens, for it to pass on, once
+// the app is served as the CLI's publish would say.
+func addressNote(res *publishResult) string {
+	if res.State != "serving" || findID(res.Problems, "certificate") != nil {
+		return ""
+	}
+	note := "The app's address opens in a browser only on a device running the Tailscale app signed in to the person's own Tailscale account, so say so whenever you give it to them."
+	if !res.Replaced {
+		note = "Tell the person the app opens in Ovenlight on their phone, signed in to their own Tailscale account (the first time, they choose to use their own computers, then tap Connect). " + note
+	}
+	return note
+}
+
 // republish is the start of a command to paste that publishes the app again.
 func republish(p *paths, slug string) string {
 	return ovenlightCommand() + " publish" + pathFlags(p) + " --slug " + slug
@@ -423,6 +436,7 @@ func callTool(name string, raw json.RawMessage, p *paths) (any, error) {
 		if !res.Daemon {
 			notes = append(notes, "The connector isn't running, so nothing is served until it runs. "+startFix(p)+".")
 		}
+		notes = append(notes, addressNote(res))
 		personFixes(p, res.Problems, app, "The command in note has the connector run it.")
 		res.Note = strings.TrimSpace(strings.Join(notes, " "))
 		return res, nil
