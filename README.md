@@ -48,8 +48,9 @@ online, at home or away.
 Your computer is the server. The app and its data stay on it and off the internet, and
 your apps open while it's on and awake. It can be your laptop or a computer at home that
 stays on. If you can't keep one at home, [a server you rent](#where-your-apps-run) works
-too. You install Ovenlight's connector on it and use a Tailscale account of your own
-(free for personal use). The people you share with need only Ovenlight.
+too. You install Ovenlight's connector on it and sign up for a Tailscale account, which
+is free for personal use. The people you share with only install Ovenlight on their phone.
+They don't need a computer, the connector or a Tailscale account.
 
 Once your computer is [set up](#get-started) and your agent
 [connected](#with-a-coding-agent), ask it to put the app on your phone:
@@ -71,27 +72,27 @@ Once your computer is [set up](#get-started) and your agent
 ## What you get
 
 - **Friends join with a link and a tap.** A friend installs Ovenlight, opens your invite
-  and taps Join, with no account and nothing to sign in to. The app arrives marked with
-  your name.
+  and taps Join. They don't make an account or sign in to anything. The app arrives marked
+  with your name.
 - **Share one app, not your computer.** A friend's phone reaches only the apps you shared
   with it, and none of your other devices. When you stop sharing, their access ends at
   once, and the app and its data leave their phone the next time Ovenlight connects.
-- **Nothing to deploy, no login to build.** The app stays on your computer, off the
-  internet. Ovenlight's connector, a program that runs beside it, gives it an HTTPS
+- **There's nothing to deploy and no login to build.** The app stays on your computer and
+  off the internet. Ovenlight's connector, a program that runs beside it, gives it an HTTPS
   address in your Tailscale network and tells it who is calling. Any web app that serves
-  plain HTTP on `127.0.0.1` can sit behind it, AI-built or not.
+  plain HTTP on `127.0.0.1` can sit behind it, whether AI built it or not.
 - **Your coding agent does the publishing.** Through the connector's MCP server, your agent
   can publish the app, check it, read its logs and read the notes and screenshots people
-  send from inside it. Inviting people is up to you: Ovenlight gives the agent no tool for
-  it.
-- **It opens like an app.** Full screen, from its own icon, in a launcher that works like
-  your phone's home screen, with its storage kept apart from the others. One unlock, with
-  Face&nbsp;ID or your fingerprint, opens them all.
-- **Private and open source.** There's no Ovenlight account, no analytics and no
-  ads. Phones reach your computer over a Tailscale connection built into Ovenlight, never
-  through servers of ours. No phone needs a VPN or the Tailscale app. The iPhone and
-  Android apps and the connector are under the Apache License 2.0. It's made
-  by [Dimitri Cole Restaino](https://www.dimitricole.com) at
+  send from inside it. Inviting people is up to you: Ovenlight doesn't give your agent a
+  way to do it.
+- **It opens like an app.** Each app opens full screen from its own icon, in a launcher
+  that works like your phone's home screen, and keeps its storage apart from the others.
+  Unlock Ovenlight once, with Face&nbsp;ID or your fingerprint, and they all open.
+- **It's private and open source.** There's no Ovenlight account, no analytics and no ads.
+  Phones reach your computer over a Tailscale connection built into Ovenlight, never
+  through our servers, so neither you nor your friends need a VPN or the Tailscale app.
+  The iPhone and Android apps and the connector are under the Apache License 2.0. It's
+  made by [Dimitri Cole Restaino](https://www.dimitricole.com) at
   [Snowy Ghost](https://snowyghost.com).
 
 ## Why not a VPN, a tunnel or a hosting service?
@@ -138,30 +139,33 @@ When you share an app, your friend's phone joins your tailnet as a guest device.
 
 - **Your laptop,** to start today. Your apps work while it's open, plugged in and awake, and
   go offline when you close the lid. [Get started](#get-started) sets it up.
-- **A computer at home,** such as a Mac mini, a spare PC or an old laptop that stays on,
-  so your apps open any time. Your data stays in your house.
+- **A computer at home,** such as a Mac mini, a spare PC or an old laptop, can stay on so
+  your apps open any time. Your data stays in your house.
   [docs/always-on.md](docs/always-on.md#at-home) sets it up.
-- **A server you rent,** if you can't keep one at home. It's the provider's
-  computer, so your apps and their data sit on its disk, under its terms.
+- **A server you rent** works if you can't keep one at home. It's the provider's
+  computer, so your apps and their data sit on its disk, and its terms apply.
   [docs/always-on.md](docs/always-on.md#rented-in-the-cloud) sets it up.
 
 ## What you need
+
+The people you share with only install Ovenlight on their phone. Everything else here is
+for you, since you run the apps.
 
 - **A computer that stays on and awake** while anyone uses your apps: a Mac with macOS 13
   or later, logged in to its desktop; a Linux computer with systemd, such as Ubuntu; or a
   Windows 11 PC. A laptop must stay open, since closing its lid puts it to sleep, and
   Windows sleeps when idle until you
   [turn that off](docs/connector.md#what-the-computer-needs).
-- **An iPhone with iOS 18.1 or later, or a phone with Android 10 or later,** and
-  Ovenlight from the [App Store](https://apps.apple.com/app/id6817561066) or
-  [Google Play](https://play.google.com/store/apps/details?id=com.snowyghost.ovenlight), for
-  you and for everyone you share with.
-- **A Tailscale account**, for you only. The people you share with need none, and no phone
-  or computer needs the Tailscale app. Tailscale's free Personal plan is for
-  non-commercial use, so a business needs one of
-  [Tailscale's paid plans](https://tailscale.com/pricing). Each shareable app and each
-  guest's phone is a tagged device, which Tailscale's plans count. The free Personal plan
-  includes a set number and charges for more ([details](docs/connector.md#share-an-app)).
+- **Ovenlight on your phone,** from the [App Store](https://apps.apple.com/app/id6817561066)
+  or [Google Play](https://play.google.com/store/apps/details?id=com.snowyghost.ovenlight).
+  It runs on an iPhone with iOS 18.1 or later, or on a phone with Android 10 or later. Your
+  friends need the same to join.
+- **A Tailscale account.** You sign up for one, but you don't need the Tailscale app on
+  your phone or your computer. Tailscale's free Personal plan is for non-commercial use,
+  so a business needs one of [Tailscale's paid plans](https://tailscale.com/pricing). Each
+  shareable app and each guest's phone is a tagged device, which Tailscale's plans count.
+  The free Personal plan includes a set number and charges for more
+  ([details](docs/connector.md#share-an-app)).
 
 [docs/connector.md](docs/connector.md#what-the-computer-needs) says how the connector runs
 on each system, including on a Mac without a display. To build either app yourself, see
@@ -171,7 +175,7 @@ docs/development.md ([iPhone](docs/development.md#the-iphone-app),
 
 ## Get started
 
-Start on the computer you have, laptop included. For apps that open any time, run them
+You can start on the computer you have, even a laptop. For apps that open any time, run them
 on [your own server](docs/always-on.md).
 
 ### 1. Turn on HTTPS certificates
@@ -365,9 +369,10 @@ argument is `mcp`. An agent with a shell can also run `ovenlight doctor --json` 
 
 ## Share an app
 
-Your friend needs only Ovenlight. You need an API access token from the Tailscale admin
-console, under [Settings, Keys](https://console.tailscale.com/admin/settings/keys). Store
-it with `auth set`, which asks for it with input hidden:
+Your friend only installs Ovenlight on their phone. You need an API access token from the
+Tailscale admin console, under
+[Settings, Keys](https://console.tailscale.com/admin/settings/keys). Store it with
+`auth set`, which asks for it with input hidden:
 
 ```sh
 ovenlight auth set
@@ -404,40 +409,41 @@ removing someone from one app and unpublishing a shareable app, and
 
 Ovenlight can serve a team's internal apps. Put them on one computer the team controls,
 which stays on and awake, and share each with the colleagues who need it. Each app is
-told who's calling, so it needs no login of its own, and removing someone ends their
+told who's calling, so it doesn't need a login of its own, and removing someone ends their
 access at once. Know the limits first:
 
-- **Phones only.** Colleagues open shared apps in Ovenlight on their phone, not in a
+- **It's for phones.** Colleagues open shared apps in Ovenlight on their phone, not in a
   laptop browser. Each phone joins your tailnet as a guest device that reaches only its
   apps, without waiting for device approval.
-- **One sharing computer, one owner.** Only one connector per tailnet can share apps, and
+- **One computer does the sharing.** Only one connector per tailnet can share apps, and
   one person's login owns every app it shares.
-- **A Mac or work PC stays logged in.** A Mac runs the connector only while you're logged
-  in, and so does a Windows PC on a work, school or domain account
+- **A Mac or work PC has to stay logged in.** A Mac runs the connector only while you're
+  logged in, and so does a Windows PC on a work, school or domain account
   ([details](docs/connector.md#what-the-computer-needs)).
-- **A Tailscale admin's credential.** Sharing edits your tailnet's access rules and
+- **Sharing needs a Tailscale admin's credential.** It edits your tailnet's access rules and
   deletes devices, so its API access token or OAuth client must come from the tailnet's
   [Owner or an Admin](https://tailscale.com/kb/1138/user-roles). A token lasts at most 90
   days. An OAuth client lasts until revoked but needs each shared app's tags
   ([details](docs/security.md#the-api-credential)).
-- **Everything on that computer is trusted.** Anything that runs as you there, apps and
-  coding agents included, can read every app's data and that admin credential. The
+- **Everything on that computer is trusted.** Anything that runs as you there, including
+  your apps and coding agents, can read every app's data and that admin credential. The
   computer's other accounts can reach every app directly and claim to be anyone.
-- **A paid Tailscale plan.** Tailscale's free Personal plan is for non-commercial use.
+- **You need a paid Tailscale plan.** Tailscale's free Personal plan is for non-commercial
+  use.
 
 Colleagues don't sign in. Each is known by the invite they opened, under the name you
 gave them, so removing someone from your company's identity provider doesn't remove them
-here. Nor can an app add your identity provider's sign-in, which
+here. An app can't add your identity provider's sign-in either, since that
 [doesn't work](docs/building-apps.md#dont-build-these) inside Ovenlight. Tailscale's admin
 console lists each app as a device, but only the sharing computer knows who can open it.
 If your team needs more, write to team@snowyghost.com.
 
 ## Security
 
-- **Two locks on every guest request.** Your tailnet policy lets a guest's phone reach only
-  the apps you shared with it, on port 443. The connector then checks which device is
-  calling and refuses anyone you didn't invite to that app, other people in your tailnet
-  included.
+- **Every guest request passes two locks.** Your tailnet policy lets a guest's phone reach
+  only the apps you shared with it, on port 443. The connector then checks which device is
+  calling and refuses anyone you didn't invite to that app, including other people in your
+  tailnet.
 - **You approve the policy change.** `publish --shareable` shows it to you first. It
   narrows an allow-everything rule so guests don't inherit it, stops when it can't change
   the policy safely, and rolls the change back if the policy doesn't read back as written
@@ -447,17 +453,18 @@ If your team needs more, write to team@snowyghost.com.
 - **Apps can trust who is calling**, as long as they follow the
   [app contract](docs/app-contract.md): the connector removes any identity headers a
   caller sends and sets its own from Tailscale.
-- **Signed releases.** The connector installs only an update signed with a release key
+- **Releases are signed.** The connector installs only an update signed with a release key
   built into it, never on the download server's word
   ([how updates work](docs/security.md#updates)). You can check a download against the
   same signed index, with the keys listed in this repository
   ([how to verify](docs/connector.md#check-a-download-first)). Its Windows program and
   scripts are signed by Snowy Ghost LLC.
 
-Out of scope: anything running as you on the computer, such as a coding agent with a shell
-or one of your apps, can do what you can, including reading the Tailscale API credential
-that `ovenlight auth set` stores there. The computer's other accounts can reach an app on
-`127.0.0.1` directly too, so they must belong to people you trust.
+Ovenlight can't protect you from anything running as you on the computer, such as a coding
+agent with a shell or one of your apps. It can do what you can, including reading the
+Tailscale API credential that `ovenlight auth set` stores there. The computer's other
+accounts can reach an app on `127.0.0.1` directly too, so they must belong to people you
+trust.
 [docs/security.md](docs/security.md) has the full threat model, and
 [what to do](docs/security.md#if-something-goes-wrong) about a leaked link or credential,
 a lost phone, a stolen computer or a compromised app. To report a vulnerability, see
@@ -465,8 +472,8 @@ a lost phone, a stolen computer or a compromised app. To report a vulnerability,
 
 ## Build apps for Ovenlight
 
-Web apps that serve plain HTTP on `127.0.0.1` work, in any language, and they need no
-login of their own: the connector tells the app who is calling with headers such as
+Any web app that serves plain HTTP on `127.0.0.1` works, whatever it's written in, and it
+doesn't need a login of its own: the connector tells the app who is calling with headers such as
 `Ovenlight-User-Id` and `Ovenlight-Role`. A web manifest gives the app its icon and color
 in Ovenlight. Signing in through Google or another OAuth provider doesn't work inside
 Ovenlight ([why](docs/building-apps.md#dont-build-these)), and neither do

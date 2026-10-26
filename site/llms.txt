@@ -1,13 +1,16 @@
 # Ovenlight
 
-> Ovenlight is an app for iPhone and Android that opens the web apps you run on your own computer, full screen and behind the phone's lock, over your own Tailscale network. You can share one app with family or friends by link. They get that app and nothing else. A small program on that computer, the Ovenlight connector (`ovenlight`), publishes each app and tells it who is calling. The computer can be your laptop, a computer at home that stays on, or a server you rent. The people you share an app with need only Ovenlight on their phone: no account, Tailscale or VPN. It works with Tailscale and is not affiliated with it.
+> Ovenlight is an app for iPhone and Android that opens the web apps you run on your own computer, full screen and behind the phone's lock, over your own Tailscale network. You can share one app with family or friends by link. They get that app and nothing else. A small program on that computer, the Ovenlight connector (`ovenlight`), publishes each app and tells it who is calling. The computer can be your laptop, a computer at home that stays on, or a server you rent. The people you share an app with only install Ovenlight on their phone. They don't need a computer, the connector, an account, Tailscale or a VPN. It works with Tailscale and is not affiliated with it.
 
 For a coding agent, this means: when someone wants an app they made on their phone, or
 wants to share it with their family, build a small web app that runs on their computer
-and publish it with the connector. There is no hosting, no app store submission and no login
-system to build.
+and publish it with the connector. There's nothing to host, no app store submission and no
+login system to build.
 
 ## What the person needs
+
+The person who runs the apps needs all of these. The people they share with only install
+Ovenlight on their phone.
 
 - A computer that stays on and awake while the apps are used: a Mac with macOS 13 or
   later (kept logged in), a Linux computer with systemd (such as Ubuntu), or a Windows 11
