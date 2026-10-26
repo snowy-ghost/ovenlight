@@ -359,12 +359,19 @@ func TestSleepCheck(t *testing.T) {
 		}
 	}
 
+	// With sleep disabled outright, a desktop never sleeps, whatever the idle timer says.
+	if c := sleepCheck(pmset("10")+" SleepDisabled\t\t1\n", "Now drawing from 'AC Power'\n"); c.Status != statusOK || c.Message != "sleep is turned off, so the Mac never sleeps" {
+		t.Errorf("desktop with sleep disabled: %+v", c)
+	}
+
 	// A laptop that doesn't sleep on its own still sleeps when its lid closes.
 	const battery = "Now drawing from 'AC Power'\n -InternalBattery-0 (id=4653155)\t100%; charged; 0:00 remaining present: true\n"
 	for out, want := range map[string]struct{ status, message string }{
-		pmset("0"):                           {statusOK, "the Mac doesn't sleep on its own, but closing its lid puts it to sleep"},
-		pmset("0") + " SleepDisabled\t\t1\n": {statusOK, "the Mac doesn't sleep on its own"},
-		pmset("10"):                          {statusWarn, "the Mac sleeps after 10 minutes idle, and your apps are offline while it does"},
+		pmset("0"):                            {statusOK, "the Mac doesn't sleep on its own, but closing its lid puts it to sleep"},
+		pmset("0") + " SleepDisabled\t\t1\n":  {statusOK, "sleep is turned off, so the Mac never sleeps, even with its lid closed"},
+		pmset("10") + " SleepDisabled\t\t1\n": {statusOK, "sleep is turned off, so the Mac never sleeps, even with its lid closed"},
+		pmset("10") + " SleepDisabled\t\t0\n": {statusWarn, "the Mac sleeps after 10 minutes idle, and your apps are offline while it does"},
+		pmset("10"):                           {statusWarn, "the Mac sleeps after 10 minutes idle, and your apps are offline while it does"},
 	} {
 		if c := sleepCheck(out, battery); c.Status != want.status || c.Message != want.message {
 			t.Errorf("laptop %q: %+v", out, c)

@@ -389,15 +389,23 @@ func hostRejection(status int, body string) (server, fix string) {
 
 // sleepCheck reads `pmset -g` output and warns when the Mac sleeps on its own, which
 // takes every app offline. Something holding sleep off now (caffeinate, a Screen Sharing
-// session) still warns: the Mac sleeps once it lets go. On a laptop, where `pmset -g batt`
-// shows an internal battery, a Mac that doesn't sleep on its own still sleeps when its
-// lid closes, unless sleep is disabled outright.
+// session) still warns: the Mac sleeps once it lets go. With sleep disabled outright
+// (`pmset -a disablesleep 1`), it never sleeps, whatever the idle timer says. On a laptop,
+// where `pmset -g batt` shows an internal battery, a Mac that doesn't sleep on its own
+// otherwise still sleeps when its lid closes.
 func sleepCheck(pmsetOutput, battOutput string) Check {
 	c := Check{ID: "sleep", Status: statusWarn}
 	lines := strings.Split(pmsetOutput, "\n")
-	lidSleeps := strings.Contains(battOutput, "InternalBattery") && !slices.ContainsFunc(lines, func(line string) bool {
+	laptop := strings.Contains(battOutput, "InternalBattery")
+	if slices.ContainsFunc(lines, func(line string) bool {
 		return slices.Equal(strings.Fields(line), []string{"SleepDisabled", "1"})
-	})
+	}) {
+		c.Status, c.Message = statusOK, "sleep is turned off, so the Mac never sleeps"
+		if laptop {
+			c.Message += ", even with its lid closed"
+		}
+		return c
+	}
 	for _, line := range lines {
 		fields := strings.Fields(line)
 		if len(fields) < 2 || fields[0] != "sleep" {
@@ -408,7 +416,7 @@ func sleepCheck(pmsetOutput, battOutput string) Check {
 		switch {
 		case err == nil && minutes == 0:
 			c.Status, c.Message = statusOK, "the Mac doesn't sleep on its own"
-			if lidSleeps {
+			if laptop {
 				c.Message += ", but closing its lid puts it to sleep"
 			}
 		case err == nil:
