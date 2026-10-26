@@ -19,9 +19,11 @@
 # <secure> is the oldest version without a known security problem: doctor fails on any
 # older one, and computers below it update without waiting. <reinstallBelow> is the oldest
 # version that may update to this one by binary alone, so a release that changes what the
-# install scripts install raises it. Neither is ever lowered. <reinstallBelow> defaults to
-# the highest reinstallBelow of the releases below it in ~/Sync/ovenlight/releases, so it
-# carries forward. The first release names its own.
+# install scripts install raises it, and the site's install.ps1, which refuses any release
+# below 1.1.0 when it can't check the index's signature, then needs the new floor too.
+# Neither is ever lowered. <reinstallBelow> defaults to the highest reinstallBelow of the
+# releases below it in ~/Sync/ovenlight/releases, so it carries forward. The first release
+# names its own.
 #
 # It builds with the Go version on connector/go.mod's go line, as CI does, and only a
 # clean HEAD on origin/master, checking that each binary carries that commit (go1.26
