@@ -2,7 +2,7 @@
   "name": "ovenlight",
   "displayName": "Ovenlight",
   "description": "Build web apps that feel at home in Ovenlight, publish them from your own computer, and read feedback sent from the phone. Needs the Ovenlight connector installed on that computer.",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "icon": "./.claude-plugin/icon.png",
   "author": {
     "name": "Snowy Ghost",
@@ -10,6 +10,9 @@
     "url": "https://ovenlight.app"
   },
   "homepage": "https://ovenlight.app",
+  "documentationUrl": "https://ovenlight.app/docs",
+  "supportUrl": "https://ovenlight.app/support",
+  "privacyPolicyUrl": "https://ovenlight.app/privacy",
   "repository": "https://github.com/snowy-ghost/ovenlight",
   "license": "Apache-2.0",
   "keywords": ["ovenlight", "iphone", "android", "web-apps", "self-hosted"]
