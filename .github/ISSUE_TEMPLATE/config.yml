@@ -3,6 +3,9 @@ contact_links:
   - name: Report a security problem
     url: https://github.com/snowy-ghost/ovenlight/security/advisories/new
     about: Report it privately, as SECURITY.md says, not in a public issue.
+  - name: Ask a question
+    url: https://github.com/snowy-ghost/ovenlight/discussions/categories/q-a
+    about: Setting up, sharing or building apps for Ovenlight.
   - name: Help setting up Ovenlight
     url: https://ovenlight.app/support
     about: Steps for the Ovenlight app and the connector.

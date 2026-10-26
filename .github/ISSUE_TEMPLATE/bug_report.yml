@@ -1,0 +1,60 @@
+name: Bug report
+description: Something in Ovenlight or the connector doesn't work as it should
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before you post, take these out of anything you paste, such as `ovenlight doctor`'s output:
+        - Any login.tailscale.com link. Whoever opens a pending login link first gets that app's node.
+        - Any ovenlight.app/join or ovenlight://join link. An invite link lets someone join.
+        - Any value starting with `tskey-`. It's a key to your tailnet.
+
+        Report security problems privately, as [SECURITY.md](https://github.com/snowy-ghost/ovenlight/blob/master/SECURITY.md) says. For help setting up, ask in [Q&A](https://github.com/snowy-ghost/ovenlight/discussions/categories/q-a).
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: And what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where it happens
+      multiple: true
+      options:
+        - The connector on a Mac
+        - The connector on Linux
+        - The connector on Windows
+        - Ovenlight on an iPhone
+        - Ovenlight on an Android phone
+        - A coding agent, through the plugin or the MCP server
+        - The docs or ovenlight.app
+    validations:
+      required: true
+  - type: input
+    id: connector
+    attributes:
+      label: Connector version
+      description: What `ovenlight version` prints.
+  - type: input
+    id: app
+    attributes:
+      label: Ovenlight version
+      description: In Ovenlight, under More, Settings, Version.
+  - type: input
+    id: systems
+    attributes:
+      label: Computer and phone
+      description: Their systems and versions, such as macOS 26.1 and iOS 26.1, or Ubuntu 24.04 and Android 16.
+  - type: textarea
+    id: doctor
+    attributes:
+      label: What ovenlight doctor prints
+      description: With the links and keys above removed.
+      render: text

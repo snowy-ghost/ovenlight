@@ -525,8 +525,10 @@ distribute needs its own name and icon.
 
 ## Contributing
 
-Issues and bug reports are welcome. We don't accept code contributions yet, so please don't
-open pull requests: describe the change you'd like in an issue.
+Ask questions and show what you've built in
+[Discussions](https://github.com/snowy-ghost/ovenlight/discussions). Bug reports and ideas
+are welcome as issues. We don't accept code contributions yet, so please don't open pull
+requests: describe the change you'd like in an issue.
 
 <sub>Apple, the Apple logo, App Store, Face ID, iPhone, Mac and macOS are trademarks of
 Apple Inc., registered in the U.S. and other countries and regions. IOS is a trademark or
