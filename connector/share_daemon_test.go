@@ -929,7 +929,21 @@ func TestMCPServer(t *testing.T) {
 	}
 	var names []string
 	for _, tool := range replies[1]["result"].(map[string]any)["tools"].([]any) {
-		names = append(names, tool.(map[string]any)["name"].(string))
+		tool := tool.(map[string]any)
+		names = append(names, tool["name"].(string))
+		// A missing destructiveHint or openWorldHint would count as true.
+		a, _ := tool["annotations"].(map[string]any)
+		if title, _ := a["title"].(string); title == "" {
+			t.Errorf("%s has no title: %v", tool["name"], a)
+		}
+		for _, hint := range []string{"readOnlyHint", "destructiveHint", "idempotentHint", "openWorldHint"} {
+			if _, ok := a[hint].(bool); !ok {
+				t.Errorf("%s has no %s: %v", tool["name"], hint, a)
+			}
+		}
+		if a["readOnlyHint"] == true && a["destructiveHint"] == true {
+			t.Errorf("%s is read-only and destructive", tool["name"])
+		}
 	}
 	if strings.Join(names, ",") != "guide,status,doctor,check_app,publish,unpublish,feedback_list,logs,restart_app" {
 		t.Errorf("tools = %v", names)
