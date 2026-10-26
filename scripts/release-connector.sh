@@ -44,6 +44,7 @@ set -euo pipefail
 IDENTITY="Developer ID Application: Snowy Ghost LLC (A84T8TANK8)"
 LABEL=com.snowyghost.ovenlight.connector
 # Azure Artifact Signing: the account's regional endpoint, and <account>/<certificate profile>.
+# The site's install.ps1 trusts the profile's own EKU: a new profile needs it there too.
 WIN_ENDPOINT=eus.codesigning.azure.net
 WIN_PROFILE=snowyghost/ovenlight
 # Go's own minimum. cgo compiles and links with clang, which would otherwise target the

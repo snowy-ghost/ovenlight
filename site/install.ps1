@@ -24,6 +24,9 @@
     'team@snowyghost.com namespaces="file,ovenlight-latest" sk-ecdsa-sha2-nistp256@openssh.com AAAAInNrLWVjZHNhLXNoYTItbmlzdHAyNTZAb3BlbnNzaC5jb20AAAAIbmlzdHAyNTYAAABBBNGElEfuj/FR/VGf3W0dW/8AZBqOHB+dY1qIa91ydBA/yMgdbWvBZ6GE1FTXrbGRzyp9AQygHn2lkSDzQbfAleEAAAAEc3NoOg=='
     'team@snowyghost.com namespaces="file,ovenlight-latest" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEDOy2WEnSb8Zrd39QCghqqIg37IYk9ayCjxB15ukqD4'
   )
+  # The usage every certificate from Snowy Ghost LLC's Artifact Signing profile carries,
+  # which names that profile and no one else's (scripts/release-connector.sh).
+  $profileUsage = '1.3.6.1.4.1.311.97.6252835.228622275.171996091.878164712'
 
   $me = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
   if (-not $me.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
@@ -79,10 +82,14 @@
     if ($LASTEXITCODE) { throw "couldn't unpack $archive" }
     if (-not $indexChecked) {
       # Without the index's signature, the release's own code signature vouches for what
-      # runs, before any of it reaches $dir.
+      # runs, before any of it reaches $dir. A link could show the check one file and the
+      # copy another, so a release holding one goes no further.
+      if (Get-ChildItem -Recurse -Force -Attributes ReparsePoint release) {
+        throw "$archive holds links, so nothing was installed"
+      }
       foreach ($file in 'ovenlight.exe', 'install.ps1', 'uninstall.ps1') {
         $signature = Get-AuthenticodeSignature (Join-Path $tmp "release\$file")
-        if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notlike 'CN=Snowy Ghost LLC, O=Snowy Ghost LLC, *') {
+        if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.EnhancedKeyUsageList.ObjectId -notcontains $profileUsage) {
           throw "$file in $archive isn't signed by Snowy Ghost LLC, so nothing was installed"
         }
       }

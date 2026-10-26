@@ -436,10 +436,12 @@ them too: the verified steps, with the serial `status` shows, rule that out. Whe
 `ssh-keygen` can't read the release keys, they say so and check the download against an
 index whose signature went unchecked. There `install.sh` trusts the HTTPS download, as the
 steps by hand do without the check, and `install.ps1` takes any release Snowy Ghost LLC
-signed: it installs only when `ovenlight.exe`, `install.ps1` and `uninstall.ps1` carry
-that code signature. And a script you pipe into a shell does whatever the site serving it
-says: whoever took over ovenlight.app could change it. To check before you run anything,
-read it first, or use the [verified steps](connector.md#check-a-download-first).
+signed: it installs only when `ovenlight.exe`, `install.ps1` and `uninstall.ps1` carry a
+valid code signature from our Microsoft Artifact Signing profile, which it knows by the
+EKU that names that profile, and the release holds no links. And a script you pipe into
+a shell does whatever the site serving it says: whoever took over ovenlight.app could
+change it. To check before you run anything, read it first, or use the
+[verified steps](connector.md#check-a-download-first).
 
 Once a day the connector fetches the signed index,
 `https://downloads.ovenlight.app/connector/latest.json`, and its signature,
