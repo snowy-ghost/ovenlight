@@ -57,11 +57,13 @@
     # a program's input, and /d keeps it from running the user's AutoRun commands first. No
     # program here writes to its error output unless it fails: a PowerShell without a
     # console, such as the ISE, turns that into an error that stops this.
-    $indexChecked = (Get-Command ssh-keygen -ErrorAction SilentlyContinue) -and
-      @(cmd /d /c 'ssh-keygen -l -f keys.pub 2>nul').Count -eq $signers.Count
+    $keygen = Get-Command ssh-keygen -ErrorAction SilentlyContinue
+    $indexChecked = $keygen -and @(cmd /d /c 'ssh-keygen -l -f keys.pub 2>nul').Count -eq $signers.Count
     if ($indexChecked) {
       cmd /d /c 'ssh-keygen -Y verify -f allowed_signers -I team@snowyghost.com -n ovenlight-latest -s latest.json.sig < latest.json'
       if ($LASTEXITCODE) { throw "the release index's signature doesn't check out, so nothing was installed. For five minutes after a release that can happen: try again, and if it keeps failing, write to team@snowyghost.com" }
+    } elseif (-not $keygen) {
+      Write-Output "This computer has no ssh-keygen to check the release index's signature with (Windows' OpenSSH Client, an optional feature, adds one). The download is checked against the index, and its programs against Snowy Ghost LLC's code signature, instead."
     } else {
       Write-Output "This computer can't check the release index's signature: its ssh-keygen can't read the release key (that takes OpenSSH 8.9 or later). The download is checked against the index, and its programs against Snowy Ghost LLC's code signature, instead."
     }
@@ -94,7 +96,19 @@
           throw "$file in $archive isn't signed by Snowy Ghost LLC, so nothing was installed"
         }
       }
-      Write-Output 'checked that Snowy Ghost LLC signed ovenlight.exe, install.ps1 and uninstall.ps1'
+      # Nothing unchecked rides along, such as a program a later command in that folder
+      # would run (scripts/release-connector.sh packs these).
+      $shipped = 'ovenlight.exe', 'install.ps1', 'uninstall.ps1', 'LICENSE', 'NOTICE', 'THIRD_PARTY_NOTICES.txt'
+      if (Get-ChildItem -Force $release | Where-Object { $_.PSIsContainer -or $_.Name -notin $shipped }) {
+        throw "$archive holds files a release doesn't, so nothing was installed"
+      }
+      # A release before 1.1.0 never updates itself, so one served as the latest would stay.
+      # The binary, now known to be ours, says which release it is.
+      $got = (& (Join-Path $release 'ovenlight.exe') version | Out-String).Trim()
+      if (-not ($got -as [version]) -or [version]$got -lt [version]'1.1.0') {
+        throw "$archive holds release $got, older than any that updates itself, so nothing was installed"
+      }
+      Write-Output "checked that Snowy Ghost LLC signed ovenlight.exe, install.ps1 and uninstall.ps1 of release $got"
     }
     New-Item -ItemType Directory -Force $dir | Out-Null
     Copy-Item -Recurse -Force (Join-Path $release '*') $dir

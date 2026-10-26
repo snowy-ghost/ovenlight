@@ -71,9 +71,9 @@ checks that Snowy Ghost LLC signed `ovenlight.exe`, `install.ps1` and `uninstall
 
 To read the script before it runs, save a copy, read it, and run that copy. On a Mac or
 Linux, `curl -fsSLO https://ovenlight.app/install.sh` saves it and `sh install.sh` runs
-it. On Windows, `irm https://ovenlight.app/install.ps1 -OutFile install.ps1` saves it and
-`powershell -ExecutionPolicy Bypass -File .\install.ps1` runs it. Reading it at its address
-in a browser isn't the same: the site could send your terminal another one.
+it. On Windows, `irm https://ovenlight.app/install.ps1 -OutFile $HOME\install.ps1` saves
+it and `powershell -ExecutionPolicy Bypass -File $HOME\install.ps1` runs it. Reading it at
+its address in a browser isn't the same: the site could send your terminal another one.
 
 ### Open a terminal
 
@@ -155,10 +155,10 @@ On Linux, put `linux-amd64` or `linux-arm64` in place of `macos`, and if `shasum
 missing, `sha256sum` in place of `shasum -a 256`. The first check prints
 `Good "ovenlight-latest" signature`. On macOS 13, or Linux with OpenSSH before 8.2, it
 says `unknown or unsupported key type` instead: check the download on a Mac with macOS 14
-or later, or Linux with OpenSSH 8.2 or later. The second check prints the index, which names the release
-after `"latest"` and its serial after `"serial"`. If both checks pass, and the serial is
-no lower than the one `ovenlight status` shows for the index your connector holds, unpack
-the archive and run its install script, in the same window:
+or later, or Linux with OpenSSH 8.2 or later. The second check prints the index, which
+names the release after `"latest"` and its serial after `"serial"`. If both checks pass,
+and the serial is no lower than the one `ovenlight status` shows for the index your
+connector holds, unpack the archive and run its install script, in the same window:
 
 ```sh
 tar xzf "$archive" --strip-components 1
@@ -182,10 +182,9 @@ On an Arm PC, use `windows-arm64` in place of `windows-amd64`. The first check n
 OpenSSH 8.9 or later (`ssh -V` shows yours): an older one can't read the release key that
 signs with Touch ID, and says `unknown or unsupported key type`. If yours is older, check
 the download on a Mac with macOS 14 or later, or Linux with OpenSSH 8.2 or later. If the
-first check prints
-`Good "ovenlight-latest" signature`, the second `True`, and the last the index's serial, no
-lower than the one `ovenlight status` shows, unpack the archive and run its install script,
-in the same window:
+first check prints `Good "ovenlight-latest" signature`, the second `True`, and the last
+the index's serial, no lower than the one `ovenlight status` shows, unpack the archive and
+run its install script, in the same window:
 
 ```powershell
 tar -xf $archive --strip-components 1
@@ -249,10 +248,10 @@ Linux (`journalctl --user -eu ovenlight`). The updater keeps a few files of its 
 state directory and the bin folder ([security.md](security.md#the-files-it-keeps)).
 
 On macOS and Linux, `install.sh` links `ovenlight` in `~/.local/bin`, but never replaces a
-file it didn't make. When `~/.local/bin` isn't on your `PATH`, it prints the
-`export PATH` line to add to your shell profile, and `ovenlight` works in terminal
-windows opened after you add it. On Windows, `install.ps1` adds the bin folder to your
-`PATH`, for PowerShell windows opened after it.
+file it didn't make. Run by hand, when `~/.local/bin` isn't on your `PATH`, it prints the
+`export PATH` line to add to your shell profile (the one-line installer adds it for you),
+and `ovenlight` works in terminal windows opened after that. On Windows, `install.ps1`
+adds the bin folder to your `PATH`, for PowerShell windows opened after it.
 
 ### Start and stop
 
@@ -608,5 +607,5 @@ Without it, all of that stays, so a reinstall needs no new logins and keeps upda
 you turned them off. Neither deletes `~/ovenlight-connector`, the unpacked release the
 uninstall script runs from. Afterwards, `rm -r ~/ovenlight-connector` deletes it, or on
 Windows, `cd ~` and then `Remove-Item -Recurse -Force $HOME\ovenlight-connector`. The
-`PATH` line the one-line installer added to your shell's profile (`~/.zshrc`, `~/.bashrc`
-or `~/.bash_profile`) stays, since other tools may use `~/.local/bin` too.
+`PATH` line the one-line installer added stays in the profile it named, since other tools
+may use `~/.local/bin` too.

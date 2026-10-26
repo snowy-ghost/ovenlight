@@ -66,8 +66,9 @@ main() {
   cut -d ' ' -f 3- "$tmp/allowed_signers" >"$tmp/keys.pub"
   # An ssh-keygen without security keys, from before OpenSSH 8.2 (RHEL 8's) or Apple's on
   # macOS 13, can't read the key that signs with Touch ID, and leaves it out here.
-  if command -v ssh-keygen >/dev/null &&
-    [ "$(ssh-keygen -l -f "$tmp/keys.pub" 2>/dev/null | wc -l)" -eq "$(wc -l <"$tmp/keys.pub")" ]; then
+  if ! command -v ssh-keygen >/dev/null; then
+    echo "This computer has no ssh-keygen to check the release index's signature with (installing OpenSSH's client adds one). The download is checked against the index alone."
+  elif [ "$(ssh-keygen -l -f "$tmp/keys.pub" 2>/dev/null | wc -l)" -eq "$(wc -l <"$tmp/keys.pub")" ]; then
     ssh-keygen -Y verify -f "$tmp/allowed_signers" -I team@snowyghost.com -n ovenlight-latest \
       -s "$tmp/latest.json.sig" <"$tmp/latest.json" ||
       fail "the release index's signature doesn't check out, so nothing was installed. For five minutes after a release that can happen: try again, and if it keeps failing, write to team@snowyghost.com"

@@ -257,8 +257,8 @@ logged in and after a restart.
 
 ##### Windows
 
-Signed in as the account that will own the apps, in PowerShell opened with Run as
-administrator:
+Sign in as the account that will own the apps, which must be an administrator. Open
+PowerShell with Run as administrator, then run:
 
 ```powershell
 mkdir $HOME\ovenlight-connector -Force | Out-Null; cd $HOME\ovenlight-connector
