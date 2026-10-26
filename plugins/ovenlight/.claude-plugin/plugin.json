@@ -2,7 +2,7 @@
   "name": "ovenlight",
   "displayName": "Ovenlight",
   "description": "Build web apps that feel at home in Ovenlight, publish them from your own computer, and read feedback sent from the phone. Needs the Ovenlight connector installed on that computer.",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "icon": "./.claude-plugin/icon.png",
   "author": {
     "name": "Snowy Ghost",
