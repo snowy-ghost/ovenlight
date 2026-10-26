@@ -29,7 +29,11 @@ Ovenlight is built so that:
 Out of scope: anything running as you on the computer, a coding agent with a shell included,
 can do what you can. A tailnet admin can change the policy, and an app that listens on a
 LAN address can be reached around the connector. The computer's other accounts can
-reach an app on `127.0.0.1` directly too, so they must belong to people you trust.
+reach an app on `127.0.0.1` directly too, so they must belong to people you trust. And
+every device signed in to Tailscale as you, such as a server you keep on or a NAS,
+reaches your apps as you, along with everything on it: its other accounts and its
+containers included. Their other accounts must belong to people you trust too, and run
+only containers you trust on those devices.
 
 ## Two locks
 

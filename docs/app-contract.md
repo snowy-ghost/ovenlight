@@ -84,6 +84,10 @@ the calling device. Only the owner and invited guests reach the app; everyone el
 | `Tailscale-User-Login` | the owner's login | not sent |
 | `Tailscale-User-Name` | the owner's display name | not sent |
 
+The owner's headers mean the request came from a device signed in to Tailscale as the
+owner, not that the owner is the one at its keyboard. Anything running on that device,
+its containers included, gets them too.
+
 Values that aren't plain ASCII are RFC 2047 encoded, as `tailscale serve` does.
 
 ### Forwarding headers
