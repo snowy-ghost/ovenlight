@@ -32,8 +32,9 @@ system to build.
   `~/Library/Application Support/ovenlight/bin/ovenlight` on a Mac,
   `~/.local/state/ovenlight/bin/ovenlight` on Linux and
   `%LOCALAPPDATA%\ovenlight\bin\ovenlight.exe` on Windows, and keeps it running. On a Mac
-  or Linux it adds `~/.local/bin` to the PATH in the shell's profile, so `ovenlight` works
-  by name in terminal windows opened afterwards (until then, `~/.local/bin/ovenlight`).
+  or Linux, when `~/.local/bin` isn't on the PATH, it adds it in the profile of zsh or
+  bash, so `ovenlight` works by name in terminal windows opened afterwards (until then,
+  `~/.local/bin/ovenlight`). For another shell it prints the line to add.
   To install by hand instead, download the archive for the computer:
   - Mac: https://downloads.ovenlight.app/connector/latest/ovenlight-connector-macos.tar.gz
   - Linux on amd64: https://downloads.ovenlight.app/connector/latest/ovenlight-connector-linux-amd64.tar.gz
@@ -44,7 +45,7 @@ system to build.
   Unpack it and run `./install.sh` in its folder, or on Windows
   `powershell -ExecutionPolicy Bypass -File .\install.ps1` there, in PowerShell opened with
   Run as administrator. If `install.sh` prints an `export PATH` line, the person adds it to
-  their shell profile.
+  their shell profile and opens a new terminal window.
 
 Signing in to Tailscale, connecting the phone and sharing an app are steps only the
 person can do. Ask them, in plain words, rather than working around them.

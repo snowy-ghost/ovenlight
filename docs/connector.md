@@ -48,23 +48,28 @@ administrator. Open PowerShell with Run as administrator and run:
 irm https://ovenlight.app/install.ps1 | iex
 ```
 
-The script takes the [verified steps](#check-a-download-first) for you. It fetches the
-index the connector updates from and checks the index's signature with the release keys. It
-downloads this computer's archive of the release the index names and checks it against the
-index. Then it unpacks the archive into `~/ovenlight-connector` (`$HOME\ovenlight-connector`
-on Windows) and runs its install script. If a check fails, it stops with nothing installed.
+Never used a terminal? [Here's how to open one](#open-a-terminal).
+
+The script takes the [verified steps](#check-a-download-first) for you, all but comparing
+the index's serial with the one your connector holds. It fetches the index the connector
+updates from and checks the index's signature with the release keys. It downloads this
+computer's archive of the release the index names and checks it against the index. Then
+it unpacks the archive into `~/ovenlight-connector` (`$HOME\ovenlight-connector` on
+Windows) and runs its install script. If a check fails, it stops with nothing installed.
 On a Mac or Linux, when `~/.local/bin` isn't on your `PATH`, it adds
 `export PATH="$HOME/.local/bin:$PATH"` to your shell's profile: `~/.zshrc` for zsh, and for
 bash `~/.bashrc` on Linux and `~/.bash_profile` on a Mac (or the `~/.bash_login` or
-`~/.profile` bash reads in its place). For another shell, it prints the line to add. Running it again installs the release the index names over yours, keeping
-your apps, node state and update settings.
+`~/.profile` bash reads in its place). For another shell, it prints the line to add.
+Running it again installs the release the index names over yours, keeping your apps, node
+state and update settings.
 
 Checking the signature needs an `ssh-keygen` that reads the release key that signs with
 Touch ID: OpenSSH 8.2 or later on Linux, 8.9 or later on Windows, and macOS 14 or later on
 a Mac. Without one, the script says so and checks the download against the index alone, so
 it trusts the HTTPS download, as the steps by hand do when you skip the check. On Windows
 it then also checks that Snowy Ghost LLC signed `ovenlight.exe`, `install.ps1` and
-`uninstall.ps1`. To read the script first, open [install.sh](https://ovenlight.app/install.sh) or
+`uninstall.ps1`. To read the script first, open
+[install.sh](https://ovenlight.app/install.sh) or
 [install.ps1](https://ovenlight.app/install.ps1).
 
 ### Open a terminal
@@ -72,13 +77,15 @@ it then also checks that Snowy Ghost LLC signed `ovenlight.exe`, `install.ps1` a
 The command goes in a terminal, a window where you type commands:
 
 - **Mac:** press Command-Space, type `Terminal` and press Return.
-- **Linux:** on Ubuntu, press Ctrl-Alt-T. Elsewhere, open Terminal from your apps.
+- **Linux:** on Ubuntu, press Ctrl-Alt-T. Elsewhere, open Terminal from your apps. If the
+  command then says `curl` isn't found, install it with `sudo apt install curl` (or your
+  system's package manager) and run the command again.
 - **Windows:** open Start, type `PowerShell`, choose Run as administrator, and choose Yes
   when Windows asks.
 
 Copy the command, paste it into the terminal (Command-V on a Mac, Ctrl-Shift-V on Linux,
-Ctrl-V on Windows) and press Return (Enter on a PC). The script says what it does as it goes, and ends
-with your next steps.
+Ctrl-V on Windows) and press Return (Enter on a PC). The script says what it does as it
+goes, and ends with your next steps.
 
 ### Or install by hand
 
@@ -307,8 +314,9 @@ again.
 
 A release that changes what the install script sets up can't come as an update: `status`
 and `doctor` say when yours needs its install script. To install it, or the latest
-release at any time, run the [install command](#install) again, or take the
-[verified steps](#check-a-download-first) yourself. Either replaces the files in
+release at any time, run the [install command](#install) again. To also check that the
+index is no older than the one your connector holds, take the
+[verified steps](#check-a-download-first) yourself instead. Either replaces the files in
 `~/ovenlight-connector`, and the install script reinstalls the connector.
 
 Each release from 1.0.1 on also stays in its own folder, such as
@@ -596,4 +604,5 @@ feedback inbox, the policy backups, the updater's record and settings, and the l
 Without it, all of that stays, so a reinstall needs no new logins and keeps updates off if
 you turned them off. Neither deletes `~/ovenlight-connector` (`$HOME\ovenlight-connector` on
 Windows), the unpacked release the uninstall script runs from: delete that folder
-afterwards, from another folder such as your home folder (`cd ~`). The `PATH` line the one-line installer added to your shell's profile stays too.
+afterwards, from another folder such as your home folder (`cd ~`). The `PATH` line the
+one-line installer added to your shell's profile stays too.

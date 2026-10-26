@@ -109,7 +109,8 @@
           <p>On Windows, sign in as the account that will own the apps, which must be an administrator. Open PowerShell with Run as administrator, then run:</p>
 <pre><code>irm https://ovenlight.app/install.ps1 | iex</code></pre>
           <p>Never used a terminal? <a href="/docs/connector#open-a-terminal">Here's how to open one</a>. When the script is done, open a new terminal window. On Linux, if it prints a <code>sudo loginctl enable-linger</code> command, run that too, so the connector keeps serving with nobody logged in and after a restart.</p>
-          <p>Or install by hand. On a Mac, run this in Terminal:</p>
+          <h3>Or install by hand</h3>
+          <p>On a Mac, run this in Terminal:</p>
 <pre><code>mkdir -p ~/ovenlight-connector &amp;&amp; cd ~/ovenlight-connector
 curl -fsSL https://downloads.ovenlight.app/connector/latest/ovenlight-connector-macos.tar.gz |
   tar xz --strip-components 1

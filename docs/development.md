@@ -673,8 +673,9 @@ To build and sign your own copy, change to your own:
   `AppLinks.privacyPolicy`;
 - to release the connector, the Developer ID identity (`IDENTITY`) and the Artifact
   Signing profile (`WIN_ENDPOINT`, `WIN_PROFILE`) in `scripts/release-connector.sh`, the
-  bucket and site in `scripts/publish-connector.sh`, `base` in the site's `install.sh`
-  and `install.ps1` and the signer `install.ps1` checks, and `releaseBase`, `installDocs` and
+  bucket and site in `scripts/publish-connector.sh`, the download host, doc links and
+  contact address in the site's `install.sh` and `install.ps1` (and the code signer
+  `install.ps1` checks), and `releaseBase`, `installDocs` and
   `olderDocs` in `connector/update.go`. A fork signs with release keys of its own: list
   them in `connector/release_keys`, which every build trusts, in `docs/allowed_signers`
   (a test and the signing script check it lists each one), and in the site's `install.sh`

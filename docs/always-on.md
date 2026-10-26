@@ -258,8 +258,8 @@ sudo loginctl enable-linger "$USER"
 ```
 
 If the installer says the connector runs only while you're logged in, the last line takes
-care of that. The installer also adds `~/.local/bin` to your PATH in `~/.bashrc`, for your
-next login.
+care of that. If `~/.local/bin` isn't on your PATH yet, the installer adds it in
+`~/.bashrc`, for your next login.
 
 The connector, your apps and Tailscale start again by themselves after a restart.
 `~/.local/bin/ovenlight doctor` checks the setup.
