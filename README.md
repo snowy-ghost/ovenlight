@@ -39,9 +39,11 @@
   </picture>
 </p>
 
-You built a small web app for your family, your garden or your book club, maybe in an
-afternoon with a coding agent. Ovenlight puts it on your phone and on the phone of anyone
-you invite, and it opens wherever the phone is online, at home or away.
+People are using coding agents to build incredible things that make life better and work
+easier. Maybe yours is a small web app for your family, your garden or your book club.
+Ovenlight is an easy way to share it with the people who'd benefit. It puts the app on
+your phone and on the phone of anyone you invite, and it opens wherever the phone is
+online, at home or away.
 
 Your computer is the server. The app and its data stay on it and off the internet, and
 your apps open while it's on and awake. It can be your laptop or a computer at home that
