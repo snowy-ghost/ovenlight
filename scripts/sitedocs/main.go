@@ -35,6 +35,7 @@ const (
 var docs = []struct{ name, summary string }{
 	{"connector", "Installing and updating the connector, publishing and sharing apps, moving to a new computer and uninstalling."},
 	{"always-on", "Your own server for your apps: at home (a Mac mini, a Raspberry Pi or a spare PC) or rented in the cloud."},
+	{"apps-you-run", "Apps you already self-host, such as Grafana or Home Assistant, behind Ovenlight, and when guests can sign in by header."},
 	{"building-apps", "Building an app that works and feels native in Ovenlight, for coding agents and people."},
 	{"app-contract", "What an app behind Ovenlight must do and may rely on."},
 	{"security", "The threat model, the tailnet policy change, logging and privacy."},

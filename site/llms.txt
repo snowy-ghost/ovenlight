@@ -120,6 +120,9 @@ then:
   publishing and sharing apps, moving to a new computer and uninstalling
 - [Your own server](https://ovenlight.app/docs/always-on.md): a Raspberry Pi, a spare PC
   on Linux or a rented cloud server, set up and sent apps over SSH by an agent on the laptop
+- [Apps you already run](https://ovenlight.app/docs/apps-you-run.md): recipes for apps
+  people already self-host, such as Grafana or Home Assistant, and when guests can sign in
+  by header
 - [Building apps](https://ovenlight.app/docs/building-apps.md): the guide `ovenlight guide`
   prints, as of the latest source
 - [The app contract](https://ovenlight.app/docs/app-contract.md): what an app behind

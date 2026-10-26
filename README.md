@@ -493,6 +493,8 @@ what an app must do to stay safe.
   publishing and sharing apps, moving to a new computer and uninstalling.
 - [docs/always-on.md](docs/always-on.md): your own server for your apps, at home (a Mac
   mini, a Raspberry Pi or a spare PC) or rented.
+- [docs/apps-you-run.md](docs/apps-you-run.md): apps you already self-host, such as
+  Grafana or Home Assistant, behind Ovenlight.
 - [docs/building-apps.md](docs/building-apps.md): building an app that works and feels
   native in Ovenlight, for coding agents and people.
 - [docs/app-contract.md](docs/app-contract.md): what an app behind Ovenlight must do and
