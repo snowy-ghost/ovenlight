@@ -55,15 +55,16 @@ index. Then it unpacks the archive into `~/ovenlight-connector` (`$HOME\ovenligh
 on Windows) and runs its install script. If a check fails, it stops with nothing installed.
 On a Mac or Linux, when `~/.local/bin` isn't on your `PATH`, it adds
 `export PATH="$HOME/.local/bin:$PATH"` to your shell's profile: `~/.zshrc` for zsh, and for
-bash `~/.bashrc` on Linux and `~/.bash_profile` on a Mac. For another shell, it prints the
-line to add. Running it again installs the latest release over yours, keeping your apps,
-node state and update settings.
+bash `~/.bashrc` on Linux and `~/.bash_profile` on a Mac (or the `~/.bash_login` or
+`~/.profile` bash reads in its place). For another shell, it prints the line to add. Running it again installs the release the index names over yours, keeping
+your apps, node state and update settings.
 
 Checking the signature needs an `ssh-keygen` that reads the release key that signs with
 Touch ID: OpenSSH 8.2 or later on Linux, 8.9 or later on Windows, and macOS 14 or later on
 a Mac. Without one, the script says so and checks the download against the index alone, so
-it trusts the HTTPS download, as the steps by hand do when you skip the check. To read the
-script first, open [install.sh](https://ovenlight.app/install.sh) or
+it trusts the HTTPS download, as the steps by hand do when you skip the check. On Windows
+it then also checks that Snowy Ghost LLC signed `ovenlight.exe`, `install.ps1` and
+`uninstall.ps1`. To read the script first, open [install.sh](https://ovenlight.app/install.sh) or
 [install.ps1](https://ovenlight.app/install.ps1).
 
 ### Open a terminal

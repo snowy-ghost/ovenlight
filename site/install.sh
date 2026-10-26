@@ -47,6 +47,9 @@ main() {
   esac
   archive="ovenlight-connector-$system.tar.gz"
   command -v curl >/dev/null || fail "it needs curl"
+  case "$(command -v curl)" in
+  /snap/*) fail "curl from snap can't save the download: run sudo snap remove curl, then sudo apt install curl, and run this again" ;;
+  esac
   if command -v sha256sum >/dev/null; then
     sha256=sha256sum
   elif command -v shasum >/dev/null; then
@@ -57,7 +60,7 @@ main() {
 
   tmp="$(mktemp -d)"
   trap 'rm -rf "$tmp"' EXIT
-  curl -fsS --proto =https -o "$tmp/latest.json" "$base/latest.json" \
+  curl -fsS --fail-early --proto =https -o "$tmp/latest.json" "$base/latest.json" \
     -o "$tmp/latest.json.sig" "$base/latest.json.sig" || fail "couldn't download the release index"
 
   printf '%s\n' "$signers" >"$tmp/allowed_signers"
@@ -68,7 +71,7 @@ main() {
     [ "$(ssh-keygen -l -f "$tmp/keys.pub" 2>/dev/null | wc -l)" -eq "$(wc -l <"$tmp/keys.pub")" ]; then
     ssh-keygen -Y verify -f "$tmp/allowed_signers" -I team@snowyghost.com -n ovenlight-latest \
       -s "$tmp/latest.json.sig" <"$tmp/latest.json" ||
-      fail "the release index's signature doesn't check out, so nothing was installed"
+      fail "the release index's signature doesn't check out, so nothing was installed. For five minutes after a release that can happen: try again, and if it keeps failing, write to team@snowyghost.com"
   else
     echo "The release index's signature couldn't be checked: no ssh-keygen here can read the release key that signs with Touch ID (that takes OpenSSH 8.2 or later, and macOS 14 or later on a Mac). Only that the download matches the index is checked."
   fi
@@ -103,7 +106,17 @@ add_path() {
   shell="${SHELL:-}"
   case "${shell##*/}" in
   zsh) profile="${ZDOTDIR:-$HOME}/.zshrc" ;;
-  bash) if [ "$system" = macos ]; then profile="$HOME/.bash_profile"; else profile="$HOME/.bashrc"; fi ;;
+  bash)
+    profile="$HOME/.bashrc"
+    if [ "$system" = macos ]; then
+      # Terminal starts bash as a login shell, which reads only the first of these that
+      # exists. With none, the loop ends on .bash_profile.
+      for profile in .bash_profile .bash_login .profile .bash_profile; do
+        [ -e "$HOME/$profile" ] && break
+      done
+      profile="$HOME/$profile"
+    fi
+    ;;
   *) profile= ;;
   esac
   if [ -n "$profile" ] && grep -qxF "$path_line" "$profile" 2>/dev/null; then

@@ -7,9 +7,10 @@
 # (https://ovenlight.app/docs/connector#check-a-download-first) for you. It fetches the
 # index the connector updates from, latest.json, and checks its signature against the
 # release keys below when this computer's ssh-keygen can. It downloads this computer's
-# archive of the release the index names, checks it against the index, unpacks it into
-# $HOME\ovenlight-connector and runs its install.ps1, which also puts ovenlight on your
-# PATH.
+# archive of the release the index names and checks it against the index (and, when the
+# index's signature went unchecked, checks that Snowy Ghost LLC signed its programs). Then
+# it unpacks it into $HOME\ovenlight-connector and runs its install.ps1, which also puts
+# ovenlight on your PATH.
 #
 # Everything happens in one script block: a download cut short doesn't parse, so it runs
 # nothing, and the block stops with an error rather than closing your PowerShell window.
@@ -28,6 +29,10 @@
   if (-not $me.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     throw 'install.ps1 needs an administrator PowerShell: right-click PowerShell, choose Run as administrator, and run it again.'
   }
+  # A 32-bit PowerShell can't see Windows' own ssh-keygen.
+  if ([Environment]::Is64BitOperatingSystem -and -not [Environment]::Is64BitProcess) {
+    throw 'install.ps1 needs the 64-bit PowerShell: open Windows PowerShell, not Windows PowerShell (x86), with Run as administrator, and run it again.'
+  }
   # The computer's own processor, even in a PowerShell that runs emulated.
   $cpu = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment').PROCESSOR_ARCHITECTURE
   $system = @{ AMD64 = 'windows-amd64'; ARM64 = 'windows-arm64' }[$cpu]
@@ -38,7 +43,7 @@
   New-Item -ItemType Directory $tmp | Out-Null
   Push-Location $tmp
   try {
-    curl.exe -fsS --proto =https -o latest.json "$base/latest.json" -o latest.json.sig "$base/latest.json.sig"
+    curl.exe -fsS --fail-early --proto =https -o latest.json "$base/latest.json" -o latest.json.sig "$base/latest.json.sig"
     if ($LASTEXITCODE) { throw "couldn't download the release index" }
 
     # With Unix line ends, as ssh-keygen reads them.
@@ -46,13 +51,16 @@
     [IO.File]::WriteAllText("$tmp\keys.pub", (($signers | ForEach-Object { ($_ -split ' ', 3)[2] }) -join "`n") + "`n")
     # Windows' own OpenSSH before 8.9 can't read the key that signs with Touch ID, and
     # leaves it out here. cmd runs ssh-keygen, since PowerShell 5.1 can't redirect a file to
-    # a program's input. No program here writes to its error output unless it fails: a
-    # PowerShell without a console, such as the ISE, turns that into an error that stops this.
-    if ((Get-Command ssh-keygen -ErrorAction SilentlyContinue) -and @(cmd /c 'ssh-keygen -l -f keys.pub 2>nul').Count -eq $signers.Count) {
-      cmd /c 'ssh-keygen -Y verify -f allowed_signers -I team@snowyghost.com -n ovenlight-latest -s latest.json.sig < latest.json'
-      if ($LASTEXITCODE) { throw "the release index's signature doesn't check out, so nothing was installed" }
+    # a program's input, and /d keeps it from running the user's AutoRun commands first. No
+    # program here writes to its error output unless it fails: a PowerShell without a
+    # console, such as the ISE, turns that into an error that stops this.
+    $indexChecked = (Get-Command ssh-keygen -ErrorAction SilentlyContinue) -and
+      @(cmd /d /c 'ssh-keygen -l -f keys.pub 2>nul').Count -eq $signers.Count
+    if ($indexChecked) {
+      cmd /d /c 'ssh-keygen -Y verify -f allowed_signers -I team@snowyghost.com -n ovenlight-latest -s latest.json.sig < latest.json'
+      if ($LASTEXITCODE) { throw "the release index's signature doesn't check out, so nothing was installed. For five minutes after a release that can happen: try again, and if it keeps failing, write to team@snowyghost.com" }
     } else {
-      Write-Output "The release index's signature couldn't be checked: no ssh-keygen here can read the release key that signs with Touch ID (that takes OpenSSH 8.9 or later). Only that the download matches the index is checked."
+      Write-Output "The release index's signature couldn't be checked: no ssh-keygen here can read the release key that signs with Touch ID (that takes OpenSSH 8.9 or later). The download is checked against the index, and its programs against Snowy Ghost LLC's code signature, instead."
     }
 
     $index = Get-Content -Raw latest.json | ConvertFrom-Json
@@ -66,14 +74,27 @@
     }
     Write-Output "checked $archive against the release index"
 
-    New-Item -ItemType Directory -Force $dir | Out-Null
-    tar.exe -xf $archive -C $dir --strip-components 1
+    New-Item -ItemType Directory release | Out-Null
+    tar.exe -xf $archive -C release --strip-components 1
     if ($LASTEXITCODE) { throw "couldn't unpack $archive" }
+    if (-not $indexChecked) {
+      # Without the index's signature, the release's own code signature vouches for what
+      # runs, before any of it reaches $dir.
+      foreach ($file in 'ovenlight.exe', 'install.ps1', 'uninstall.ps1') {
+        $signature = Get-AuthenticodeSignature (Join-Path $tmp "release\$file")
+        if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notlike 'CN=Snowy Ghost LLC, O=Snowy Ghost LLC, *') {
+          throw "$file in $archive isn't signed by Snowy Ghost LLC, so nothing was installed"
+        }
+      }
+      Write-Output 'checked that Snowy Ghost LLC signed ovenlight.exe, install.ps1 and uninstall.ps1'
+    }
+    New-Item -ItemType Directory -Force $dir | Out-Null
+    Copy-Item -Recurse -Force (Join-Path $tmp 'release\*') $dir
     Write-Output "unpacked into $dir"
   } finally {
     Pop-Location
     Remove-Item -Recurse -Force $tmp
   }
-  powershell -ExecutionPolicy Bypass -File (Join-Path $dir 'install.ps1')
+  powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dir 'install.ps1')
   if ($LASTEXITCODE) { throw 'the install script stopped: its message is above' }
 }
