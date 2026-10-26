@@ -228,6 +228,20 @@ Uploads go to the R2 bucket behind `https://downloads.ovenlight.app`, through `w
   `secure` updates without the two-day wait, and `doctor` fails on it, so raise `secure`
   with any release that fixes a security problem.
 
+Once a release is promoted, publish its GitHub Release, which is what people watching the
+repository's releases hear about:
+
+```sh
+gh release create connector-v1.2.0 --verify-tag --title "Connector 1.2.0" --notes-file notes.md
+```
+
+The notes say what changed for owners since the last Release, a security fix first, and
+point a connector that doesn't update itself to the [install command](connector.md#install).
+The archives stay on downloads.ovenlight.app alone, so the Release attaches none. A phone
+app version gets a Release once it's live in its store: tag the commit its build came from
+with `git tag -s`, as `ios-v1.2.0` or `android-v1.2.0`, and push the tag. Give its What's
+New as the notes, and add `--latest=false`, so the connector's stays the latest.
+
 #### The first updater release
 
 The first release that updates itself, 1.1.0 here, goes out once, with 1.1.1 after it:
