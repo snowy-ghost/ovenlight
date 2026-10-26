@@ -428,6 +428,16 @@ them, and the steps take no index with a lower one. They trust this
 repository's `allowed_signers`, so a change pushed to master changes what they accept:
 the connector itself trusts only the keys built into it.
 
+The one-line installers, [install.sh](https://ovenlight.app/install.sh) and
+[install.ps1](https://ovenlight.app/install.ps1), take those steps for you, with the keys in
+`allowed_signers` written into them (a test keeps them the same). They compare no serial,
+since a new computer has none to compare. Where `ssh-keygen` can't read the release keys,
+they say so and check the download against an index whose signature went unchecked, so
+there they trust the HTTPS download, as the steps by hand do without the check. And a
+script you pipe into a shell does whatever the site serving it says: whoever took over
+ovenlight.app could change it. To check before you run anything, read it first, or use the
+[verified steps](connector.md#check-a-download-first).
+
 Once a day the connector fetches the signed index,
 `https://downloads.ovenlight.app/connector/latest.json`, and its signature,
 `latest.json.sig`. The index names the latest release, the oldest without a known

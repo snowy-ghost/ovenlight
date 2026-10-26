@@ -281,6 +281,9 @@ from then on plus the old key that signs R, as `sign-connector.sh` requires.
 `allowed_signers` until the release after R+1 is promoted, since a pull back to a release
 it signed puts that release's files in `latest/` again, and 1.0.x's docs check those with
 master's `allowed_signers`. `publish-connector.sh --pull` says when one has to come back.
+The one-line installers, `site/install.sh` and `site/install.ps1`, check `latest.json` with
+the keys they list, which a test keeps equal to `allowed_signers`: deploy the site from R's
+commit before an index signed with a new key goes up.
 
 `TestReleaseKeySignatures` wants one test signature in `connector/testdata/update/` for
 each key in `release_keys`. R adds one for each new key, as the next free
@@ -672,14 +675,16 @@ To build and sign your own copy, change to your own:
   Signing profile (`WIN_ENDPOINT`, `WIN_PROFILE`) in `scripts/release-connector.sh`, the
   bucket and site in `scripts/publish-connector.sh`, and `releaseBase`, `installDocs` and
   `olderDocs` in `connector/update.go`. A fork signs with release keys of its own: list
-  them in `connector/release_keys`, which every build trusts, and in `docs/allowed_signers`
-  (a test and the signing script check it lists each one), put their public halves in
+  them in `connector/release_keys`, which every build trusts, in `docs/allowed_signers`
+  (a test and the signing script check it lists each one), and in the site's `install.sh`
+  and `install.ps1`, which also name the download host (a test checks they list
+  `allowed_signers`' keys), put their public halves in
   `~/.ssh/ovenlight-release-keys/` on the computer that signs, and change `HANDLE`, the
   `mini` host and the site `fetchlive` reads in `scripts/sign-connector.sh`, `minirelease`
   and `minisync` in `scripts/connector-release-lib.sh`, and the `team@snowyghost.com`
-  principal, which `sign-connector.sh`, `publish-connector.sh` and connector.md verify
-  `SHA256SUMS.sig` and `latest.json.sig` with, and `connector/keys_test.go` wants in
-  `allowed_signers`.
+  principal, which `sign-connector.sh`, `publish-connector.sh`, connector.md and the
+  site's installers verify `SHA256SUMS.sig` and `latest.json.sig` with, and
+  `connector/keys_test.go` wants in `allowed_signers` and the installers.
 
 ### Invite links
 

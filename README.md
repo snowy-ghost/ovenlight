@@ -189,10 +189,36 @@ address in your tailnet, and Ovenlight opens apps only over HTTPS.
 
 ### 2. Install the connector
 
-Follow the steps for your computer's system. On each, the script installs the `ovenlight`
-command and keeps the connector running.
+On a Mac or Linux, run this in a terminal:
 
-#### Mac
+```sh
+curl -fsSL https://ovenlight.app/install.sh | sh
+```
+
+On Windows, sign in as the account that will own the apps, which must be an administrator.
+Open PowerShell with Run as administrator, then run:
+
+```powershell
+irm https://ovenlight.app/install.ps1 | iex
+```
+
+Never used a terminal? [Here's how to open one](docs/connector.md#open-a-terminal).
+
+The script picks the release for your computer and checks the download, then installs the
+`ovenlight` command and keeps the connector running
+([what it checks and changes](docs/connector.md#install)). When it's done, open a new
+terminal window, so the commands below work as written. On Linux, if it prints a
+`sudo loginctl enable-linger` command, run that too, so the connector keeps serving with
+nobody logged in and after a restart.
+
+#### Or install by hand
+
+To see each step before it runs, follow these for your computer's system, or read
+[install.sh](https://ovenlight.app/install.sh) and
+[install.ps1](https://ovenlight.app/install.ps1) first. On each, the archive's script
+installs the `ovenlight` command and keeps the connector running.
+
+##### Mac
 
 In Terminal:
 
@@ -212,7 +238,7 @@ echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
 
 Then open a new Terminal window, so the commands below work as written.
 
-#### Linux
+##### Linux
 
 In a terminal:
 
@@ -228,7 +254,7 @@ line for your shell profile, add it to `~/.bashrc` and open a new terminal. If i
 `sudo loginctl enable-linger` command, run it, so the connector keeps serving with nobody
 logged in and after a restart.
 
-#### Windows
+##### Windows
 
 Sign in as the account that will own the apps, which must be an administrator. Open
 PowerShell with Run as administrator, then run:

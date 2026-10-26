@@ -23,22 +23,28 @@ system to build.
   (https://tailscale.com/pricing).
 - Ovenlight on their phone: an iPhone with iOS 18.1 or later, or a phone with Android 10
   or later. https://ovenlight.app/ shows where to get it.
-- The connector. Download the archive for the computer:
+- The connector. On a Mac or Linux, install it with
+  `curl -fsSL https://ovenlight.app/install.sh | sh` in a terminal. On Windows, the person
+  signs in as the account that will own the apps, which must be an administrator, opens
+  PowerShell with Run as administrator and runs
+  `irm https://ovenlight.app/install.ps1 | iex`. The script picks the release for the
+  computer, checks the download, installs `ovenlight` at
+  `~/Library/Application Support/ovenlight/bin/ovenlight` on a Mac,
+  `~/.local/state/ovenlight/bin/ovenlight` on Linux and
+  `%LOCALAPPDATA%\ovenlight\bin\ovenlight.exe` on Windows, and keeps it running. On a Mac
+  or Linux it adds `~/.local/bin` to the PATH in the shell's profile, so `ovenlight` works
+  by name in terminal windows opened afterwards (until then, `~/.local/bin/ovenlight`).
+  To install by hand instead, download the archive for the computer:
   - Mac: https://downloads.ovenlight.app/connector/latest/ovenlight-connector-macos.tar.gz
   - Linux on amd64: https://downloads.ovenlight.app/connector/latest/ovenlight-connector-linux-amd64.tar.gz
   - Linux on arm64: https://downloads.ovenlight.app/connector/latest/ovenlight-connector-linux-arm64.tar.gz
   - Windows on x64: https://downloads.ovenlight.app/connector/latest/ovenlight-connector-windows-amd64.zip
   - Windows on Arm: https://downloads.ovenlight.app/connector/latest/ovenlight-connector-windows-arm64.zip
 
-  Unpack it and run `./install.sh` in its folder. On Windows, the person signs in as the
-  account that will own the apps, which must be an administrator. They open PowerShell
-  with Run as administrator and run `powershell -ExecutionPolicy Bypass -File .\install.ps1`
-  in that folder. The script installs `ovenlight` at
-  `~/Library/Application Support/ovenlight/bin/ovenlight` on a Mac,
-  `~/.local/state/ovenlight/bin/ovenlight` on Linux and
-  `%LOCALAPPDATA%\ovenlight\bin\ovenlight.exe` on Windows, and keeps it running. If
-  `install.sh` prints an `export PATH` line, the person adds it to their shell profile
-  and opens a new terminal window, so `ovenlight` works by name.
+  Unpack it and run `./install.sh` in its folder, or on Windows
+  `powershell -ExecutionPolicy Bypass -File .\install.ps1` there, in PowerShell opened with
+  Run as administrator. If `install.sh` prints an `export PATH` line, the person adds it to
+  their shell profile.
 
 Signing in to Tailscale, connecting the phone and sharing an app are steps only the
 person can do. Ask them, in plain words, rather than working around them.

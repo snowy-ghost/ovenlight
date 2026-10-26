@@ -21,6 +21,11 @@ preview images, `og.jpg` for the site and `og-invite.jpg` for the join page's in
 are written by `design/og/generate.py`, and the icons, `icon.svg` and `icon-180.png`, by
 `design/icon/generate.py`.
 
+`install.sh` and `install.ps1` are the connector's one-line installers
+(`curl -fsSL https://ovenlight.app/install.sh | sh`, `irm https://ovenlight.app/install.ps1 | iex`),
+served as plain text by `_headers`. They carry the release keys, which
+`connector/keys_test.go` keeps equal to `docs/allowed_signers`.
+
 `.well-known/apple-app-site-association` makes invite links open the app. iOS
 accepts it only when it is served directly, with no redirect, as
 `application/json`; `_headers` sets the content type.

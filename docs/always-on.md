@@ -248,19 +248,18 @@ sudo apt-get install -y nodejs
 echo 'Unattended-Upgrade::Origins-Pattern:: "site=deb.nodesource.com";' | sudo tee /etc/apt/apt.conf.d/52nodesource
 ```
 
-Then the connector, set to keep running with nobody logged in, and the folder your apps
-go in:
+Then the folder your apps go in, and the connector, set to keep running with nobody
+logged in:
 
 ```sh
-mkdir -p ~/apps ~/ovenlight-connector && cd ~/ovenlight-connector
-curl -fsSL "https://downloads.ovenlight.app/connector/latest/ovenlight-connector-linux-$(dpkg --print-architecture).tar.gz" |
-  tar xz --strip-components 1
+mkdir -p ~/apps
+curl -fsSL https://ovenlight.app/install.sh | sh
 sudo loginctl enable-linger "$USER"
-./install.sh
 ```
 
-If install.sh says `~/.local/bin` isn't on your PATH yet, skip the profile line it
-suggests: Ubuntu, Debian and Raspberry Pi OS add it at your next login.
+If the installer says the connector runs only while you're logged in, the last line takes
+care of that. The installer also adds `~/.local/bin` to your PATH in `~/.bashrc`, for your
+next login.
 
 The connector, your apps and Tailscale start again by themselves after a restart.
 `~/.local/bin/ovenlight doctor` checks the setup.

@@ -35,7 +35,51 @@ is for non-commercial use, so a business needs one of
 
 ## Install
 
-### From a release
+On a Mac or Linux, in a terminal:
+
+```sh
+curl -fsSL https://ovenlight.app/install.sh | sh
+```
+
+On Windows, signed in as the account that will own the apps, open PowerShell with Run as
+administrator and run:
+
+```powershell
+irm https://ovenlight.app/install.ps1 | iex
+```
+
+The script takes the [verified steps](#check-a-download-first) for you. It fetches the
+index the connector updates from and checks the index's signature with the release keys. It
+downloads this computer's archive of the release the index names and checks it against the
+index. Then it unpacks the archive into `~/ovenlight-connector` (`$HOME\ovenlight-connector`
+on Windows) and runs its install script. If a check fails, it stops with nothing installed.
+On a Mac or Linux, when `~/.local/bin` isn't on your `PATH`, it adds
+`export PATH="$HOME/.local/bin:$PATH"` to your shell's profile: `~/.zshrc` for zsh, and for
+bash `~/.bashrc` on Linux and `~/.bash_profile` on a Mac. For another shell, it prints the
+line to add. Running it again installs the latest release over yours, keeping your apps,
+node state and update settings.
+
+Checking the signature needs an `ssh-keygen` that reads the release key that signs with
+Touch ID: OpenSSH 8.2 or later on Linux, 8.9 or later on Windows, and macOS 14 or later on
+a Mac. Without one, the script says so and checks the download against the index alone, so
+it trusts the HTTPS download, as the steps by hand do when you skip the check. To read the
+script first, open [install.sh](https://ovenlight.app/install.sh) or
+[install.ps1](https://ovenlight.app/install.ps1).
+
+### Open a terminal
+
+The command goes in a terminal, a window where you type commands:
+
+- **Mac:** press Command-Space, type `Terminal` and press Return.
+- **Linux:** on Ubuntu, press Ctrl-Alt-T. Elsewhere, open Terminal from your apps.
+- **Windows:** open Start, type `PowerShell`, choose Run as administrator, and choose Yes
+  when Windows asks.
+
+Copy the command, paste it into the terminal (Command-V on a Mac, Ctrl-Shift-V on Linux,
+Ctrl-V on Windows) and press Return. The script says what it does as it goes, and ends
+with your next steps.
+
+### Or install by hand
 
 On a Mac, in Terminal:
 
@@ -101,7 +145,9 @@ missing, `sha256sum` in place of `shasum -a 256`. The first check prints
 `Good "ovenlight-latest" signature`, and the second prints the index, which names the
 release after `"latest"` and its serial after `"serial"`. If both do, and the serial is no
 lower than the one `ovenlight status` shows for the index your connector holds, unpack the
-archive and run its install script, in the same window:
+archive and run its install script, in the same window. On macOS 13, whose `ssh-keygen`
+leaves security keys out, the first check says `unknown or unsupported key type`: check
+the download on Linux or a Mac with macOS 14 or later.
 
 ```sh
 tar xzf "$archive" --strip-components 1
@@ -124,10 +170,11 @@ cmd /c 'ssh-keygen -Y verify -f allowed_signers -I team@snowyghost.com -n ovenli
 On an Arm PC, use `windows-arm64` in place of `windows-amd64`. The first check needs
 OpenSSH 8.9 or later (`ssh -V` shows yours): an older one can't read the release key that
 signs with Touch ID, and says `unknown or unsupported key type`. If yours is older, check
-the download where `ssh -V` shows 8.9 or later, such as a Mac or Linux. If the first check
-prints `Good "ovenlight-latest" signature`, the second `True`, and the last the index's
-serial, no lower than the one `ovenlight status` shows, unpack the archive and run its
-install script, in the same window:
+the download where `ssh -V` shows 8.9 or later, such as Linux or a Mac with macOS 14 or
+later (macOS 13's leaves security keys out). If the first check prints
+`Good "ovenlight-latest" signature`, the second `True`, and the last the index's serial, no
+lower than the one `ovenlight status` shows, unpack the archive and run its install script,
+in the same window:
 
 ```powershell
 tar -xf $archive --strip-components 1
@@ -545,4 +592,6 @@ since other services of yours may need it: `loginctl disable-linger` turns it of
 `--purge` deletes node state, the config, the stored API credential, guest records, the
 feedback inbox, the policy backups, the updater's record and settings, and the logs.
 Without it, all of that stays, so a reinstall needs no new logins and keeps updates off if
-you turned them off.
+you turned them off. Neither deletes `~/ovenlight-connector` (`$HOME\ovenlight-connector` on
+Windows), the unpacked release the uninstall script runs from: delete that folder
+afterwards. The `PATH` line the one-line installer added to your shell's profile stays too.

@@ -104,7 +104,12 @@
       <ol>
         <li>In the Tailscale admin console, under <a href="https://console.tailscale.com/admin/dns">DNS</a>, turn on MagicDNS if it's off, then turn on HTTPS certificates.</li>
         <li>
-          <p>Install the connector. On a Mac, run this in Terminal:</p>
+          <p>Install the connector. On a Mac or Linux, run this in a terminal:</p>
+<pre><code>curl -fsSL https://ovenlight.app/install.sh | sh</code></pre>
+          <p>On Windows, sign in as the account that will own the apps, which must be an administrator. Open PowerShell with Run as administrator, then run:</p>
+<pre><code>irm https://ovenlight.app/install.ps1 | iex</code></pre>
+          <p>Never used a terminal? <a href="/docs/connector#open-a-terminal">Here's how to open one</a>. When the script is done, open a new terminal window. On Linux, if it prints a <code>sudo loginctl enable-linger</code> command, run that too, so the connector keeps serving with nobody logged in and after a restart.</p>
+          <p>Or install by hand. On a Mac, run this in Terminal:</p>
 <pre><code>mkdir -p ~/ovenlight-connector &amp;&amp; cd ~/ovenlight-connector
 curl -fsSL https://downloads.ovenlight.app/connector/latest/ovenlight-connector-macos.tar.gz |
   tar xz --strip-components 1
@@ -113,7 +118,7 @@ curl -fsSL https://downloads.ovenlight.app/connector/latest/ovenlight-connector-
 <pre><code>echo &gt;&gt; ~/.zshrc
 echo 'export PATH="$HOME/.local/bin:$PATH"' &gt;&gt; ~/.zshrc</code></pre>
           <p>On Linux, run the same commands in a terminal, with <code>linux-amd64</code> (or <code>linux-arm64</code> on an Arm computer) in place of <code>macos</code>, and <code>~/.bashrc</code> in place of <code>~/.zshrc</code>. If the script prints a <code>sudo loginctl enable-linger</code> command, run that too.</p>
-          <p>On Windows, sign in as the account that will own the apps, which must be an administrator. Open PowerShell with Run as administrator, then run:</p>
+          <p>On Windows, in PowerShell opened with Run as administrator:</p>
 <pre><code>mkdir $HOME\ovenlight-connector -Force | Out-Null; cd $HOME\ovenlight-connector
 curl.exe -fsSL https://downloads.ovenlight.app/connector/latest/ovenlight-connector-windows-amd64.zip -o connector.zip
 tar -xf connector.zip --strip-components 1
