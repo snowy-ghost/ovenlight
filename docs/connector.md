@@ -63,14 +63,17 @@ bash `~/.bashrc` on Linux and `~/.bash_profile` on a Mac (or the `~/.bash_login`
 Running it again installs the release the index names over yours, keeping your apps, node
 state and update settings.
 
-Checking the signature needs an `ssh-keygen` that reads the release key that signs with
-Touch ID: OpenSSH 8.2 or later on Linux, 8.9 or later on Windows, and macOS 14 or later on
-a Mac. Without one, the script says so and checks the download against the index alone, so
-it trusts the HTTPS download, as the steps by hand do when you skip the check. On Windows
-it then also checks that Snowy Ghost LLC signed `ovenlight.exe`, `install.ps1` and
-`uninstall.ps1`. To read the script first, open
-[install.sh](https://ovenlight.app/install.sh) or
-[install.ps1](https://ovenlight.app/install.ps1).
+Checking the signature needs an `ssh-keygen` that can read the release key: OpenSSH 8.2
+or later on Linux, 8.9 or later on Windows, and macOS 14 or later on a Mac. Without one,
+the script says so and checks the download against the index alone, so it trusts the
+HTTPS download, as the steps by hand do when you skip the check. On Windows it then also
+checks that Snowy Ghost LLC signed `ovenlight.exe`, `install.ps1` and `uninstall.ps1`.
+
+To read the script before it runs, save a copy, read it, and run that copy. On a Mac or
+Linux, `curl -fsSLO https://ovenlight.app/install.sh` saves it and `sh install.sh` runs
+it. On Windows, `irm https://ovenlight.app/install.ps1 -OutFile install.ps1` saves it and
+`powershell -ExecutionPolicy Bypass -File .\install.ps1` runs it. Reading it at its address
+in a browser isn't the same: the site could send your terminal another one.
 
 ### Open a terminal
 
@@ -150,9 +153,9 @@ grep -F "\"$archive\": \"$(shasum -a 256 "$archive" | cut -d ' ' -f 1)\"" latest
 
 On Linux, put `linux-amd64` or `linux-arm64` in place of `macos`, and if `shasum` is
 missing, `sha256sum` in place of `shasum -a 256`. The first check prints
-`Good "ovenlight-latest" signature`. On macOS 13, whose `ssh-keygen` leaves security keys
-out, it says `unknown or unsupported key type` instead: check the download on Linux or a
-Mac with macOS 14 or later. The second check prints the index, which names the release
+`Good "ovenlight-latest" signature`. On macOS 13, or Linux with OpenSSH before 8.2, it
+says `unknown or unsupported key type` instead: check the download on a Mac with macOS 14
+or later, or Linux with OpenSSH 8.2 or later. The second check prints the index, which names the release
 after `"latest"` and its serial after `"serial"`. If both checks pass, and the serial is
 no lower than the one `ovenlight status` shows for the index your connector holds, unpack
 the archive and run its install script, in the same window:
@@ -178,8 +181,8 @@ cmd /c 'ssh-keygen -Y verify -f allowed_signers -I team@snowyghost.com -n ovenli
 On an Arm PC, use `windows-arm64` in place of `windows-amd64`. The first check needs
 OpenSSH 8.9 or later (`ssh -V` shows yours): an older one can't read the release key that
 signs with Touch ID, and says `unknown or unsupported key type`. If yours is older, check
-the download where `ssh -V` shows 8.9 or later, such as Linux or a Mac with macOS 14 or
-later. If the first check prints
+the download on a Mac with macOS 14 or later, or Linux with OpenSSH 8.2 or later. If the
+first check prints
 `Good "ovenlight-latest" signature`, the second `True`, and the last the index's serial, no
 lower than the one `ovenlight status` shows, unpack the archive and run its install script,
 in the same window:
@@ -276,8 +279,8 @@ that's only stopped starts again within a minute.
 
 ## Update
 
-The connector updates itself. Releases up to 1.0.9 don't: install a newer release [by
-hand](#install-a-release-by-hand) once, and from then on it does. It checks once a day,
+The connector updates itself. Releases up to 1.0.9 don't: run the
+[install command](#install) once, and from then on it does. It checks once a day,
 and installs a new release two days after it first sees it, at a quiet moment in the
 night: once nothing has used your apps or the connector for 10 minutes. Each computer's
 night starts at a time of its own between 02:00 and 04:00, and ends at 05:00, its own
@@ -602,7 +605,8 @@ since other services of yours may need it: `loginctl disable-linger` turns it of
 `--purge` deletes node state, the config, the stored API credential, guest records, the
 feedback inbox, the policy backups, the updater's record and settings, and the logs.
 Without it, all of that stays, so a reinstall needs no new logins and keeps updates off if
-you turned them off. Neither deletes `~/ovenlight-connector` (`$HOME\ovenlight-connector` on
-Windows), the unpacked release the uninstall script runs from: delete that folder
-afterwards, from another folder such as your home folder (`cd ~`). The `PATH` line the
-one-line installer added to your shell's profile stays too.
+you turned them off. Neither deletes `~/ovenlight-connector`, the unpacked release the
+uninstall script runs from. Afterwards, `rm -r ~/ovenlight-connector` deletes it, or on
+Windows, `cd ~` and then `Remove-Item -Recurse -Force $HOME\ovenlight-connector`. The
+`PATH` line the one-line installer added to your shell's profile (`~/.zshrc`, `~/.bashrc`
+or `~/.bash_profile`) stays, since other tools may use `~/.local/bin` too.

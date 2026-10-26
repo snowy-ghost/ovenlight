@@ -438,9 +438,10 @@ index whose signature went unchecked. There `install.sh` trusts the HTTPS downlo
 steps by hand do without the check, and `install.ps1` takes any release Snowy Ghost LLC
 signed: it installs only when `ovenlight.exe`, `install.ps1` and `uninstall.ps1` carry a
 valid code signature from our Microsoft Artifact Signing profile, which it knows by the
-EKU that names that profile, and the release holds no links. And a script you pipe into
+EKU that names that profile. And a script you pipe into
 a shell does whatever the site serving it says: whoever took over ovenlight.app could
-change it. To check before you run anything, read it first, or use the
+change it. To check before you run anything, save a copy, read it and run that copy
+([connector.md](connector.md#install) shows how), or use the
 [verified steps](connector.md#check-a-download-first).
 
 Once a day the connector fetches the signed index,

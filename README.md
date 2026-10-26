@@ -213,9 +213,8 @@ nobody logged in and after a restart.
 
 #### Or install by hand
 
-To see each step before it runs, follow these for your computer's system, or read
-[install.sh](https://ovenlight.app/install.sh) and
-[install.ps1](https://ovenlight.app/install.ps1) first. On each, the archive's script
+To see each step before it runs, follow these for your computer's system, or
+[read the installer first](docs/connector.md#install). On each, the archive's script
 installs the `ovenlight` command and keeps the connector running. To check a download's
 signature by hand too, follow
 [check a download first](docs/connector.md#check-a-download-first).
@@ -258,7 +257,8 @@ logged in and after a restart.
 
 ##### Windows
 
-In PowerShell opened with Run as administrator:
+Signed in as the account that will own the apps, in PowerShell opened with Run as
+administrator:
 
 ```powershell
 mkdir $HOME\ovenlight-connector -Force | Out-Null; cd $HOME\ovenlight-connector

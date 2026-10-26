@@ -47,9 +47,6 @@ main() {
   esac
   archive="ovenlight-connector-$system.tar.gz"
   command -v curl >/dev/null || fail "it needs curl"
-  case "$(command -v curl)" in
-  /snap/*) fail "curl from snap can't save the download: run sudo snap remove curl, then sudo apt install curl, and run this again" ;;
-  esac
   if command -v sha256sum >/dev/null; then
     sha256=sha256sum
   elif command -v shasum >/dev/null; then
@@ -60,8 +57,10 @@ main() {
 
   tmp="$(mktemp -d)"
   trap 'rm -rf "$tmp"' EXIT
-  curl -fsS --fail-early --proto =https -o "$tmp/latest.json" "$base/latest.json" \
-    -o "$tmp/latest.json.sig" "$base/latest.json.sig" || fail "couldn't download the release index"
+  # The shell writes each download, since curl from snap can't write to /tmp.
+  for file in latest.json latest.json.sig; do
+    curl -fsS --proto =https "$base/$file" >"$tmp/$file" || fail "couldn't download the release index"
+  done
 
   printf '%s\n' "$signers" >"$tmp/allowed_signers"
   cut -d ' ' -f 3- "$tmp/allowed_signers" >"$tmp/keys.pub"
@@ -73,13 +72,13 @@ main() {
       -s "$tmp/latest.json.sig" <"$tmp/latest.json" ||
       fail "the release index's signature doesn't check out, so nothing was installed. For five minutes after a release that can happen: try again, and if it keeps failing, write to team@snowyghost.com"
   else
-    echo "The release index's signature couldn't be checked: no ssh-keygen here can read the release key that signs with Touch ID (that takes OpenSSH 8.2 or later, and macOS 14 or later on a Mac). Only that the download matches the index is checked."
+    echo "This computer can't check the release index's signature: its ssh-keygen can't read the release key (that takes macOS 14 or later on a Mac, and OpenSSH 8.2 or later on Linux). The download is checked against the index alone."
   fi
 
   version="$(sed -n 's/^{"latest": "\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)".*/\1/p' "$tmp/latest.json")"
   [ -n "$version" ] || fail "the release index names no release"
   echo "downloading the Ovenlight connector $version for $system"
-  curl -fL --proto =https --progress-bar -o "$tmp/$archive" "$base/$version/$archive" ||
+  curl -fL --proto =https --progress-bar "$base/$version/$archive" >"$tmp/$archive" ||
     fail "couldn't download $archive"
   sum="$($sha256 "$tmp/$archive" | cut -d ' ' -f 1)"
   grep -qF "\"$archive\": \"$sum\"" "$tmp/latest.json" ||
@@ -124,7 +123,7 @@ add_path() {
   elif [ -n "$profile" ] && printf '\n%s\n' "$path_line" 2>/dev/null >>"$profile"; then
     echo "added ~/.local/bin to your PATH in $profile: open a new terminal window to run ovenlight"
   else
-    echo "~/.local/bin isn't on your PATH. Add this line to your shell's profile, then open a new terminal window to run ovenlight:"
+    echo "~/.local/bin isn't on your PATH. Add this line to your shell's profile, then open a new terminal window to run ovenlight (until then, run it as ~/.local/bin/ovenlight):"
     echo "  $path_line"
   fi
 }

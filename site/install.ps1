@@ -63,7 +63,7 @@
       cmd /d /c 'ssh-keygen -Y verify -f allowed_signers -I team@snowyghost.com -n ovenlight-latest -s latest.json.sig < latest.json'
       if ($LASTEXITCODE) { throw "the release index's signature doesn't check out, so nothing was installed. For five minutes after a release that can happen: try again, and if it keeps failing, write to team@snowyghost.com" }
     } else {
-      Write-Output "The release index's signature couldn't be checked: no ssh-keygen here can read the release key that signs with Touch ID (that takes OpenSSH 8.9 or later). The download is checked against the index, and its programs against Snowy Ghost LLC's code signature, instead."
+      Write-Output "This computer can't check the release index's signature: its ssh-keygen can't read the release key (that takes OpenSSH 8.9 or later). The download is checked against the index, and its programs against Snowy Ghost LLC's code signature, instead."
     }
 
     $index = Get-Content -Raw latest.json | ConvertFrom-Json
@@ -77,26 +77,27 @@
     }
     Write-Output "checked $archive against the release index"
 
-    New-Item -ItemType Directory release | Out-Null
-    tar.exe -xf $archive -C release --strip-components 1
-    if ($LASTEXITCODE) { throw "couldn't unpack $archive" }
+    # .NET's own zip reader reads nothing but a zip, makes no links, and keeps every file
+    # inside the folder it unpacks into.
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    [IO.Compression.ZipFile]::ExtractToDirectory((Join-Path $tmp $archive), (Join-Path $tmp 'release'))
+    $release = Join-Path $tmp "release\ovenlight-connector-$version"
     if (-not $indexChecked) {
       # Without the index's signature, the release's own code signature vouches for what
-      # runs, before any of it reaches $dir. A link could show the check one file and the
-      # copy another, so a release holding one goes no further.
-      if (Get-ChildItem -Recurse -Force -Attributes ReparsePoint release) {
-        throw "$archive holds links, so nothing was installed"
-      }
+      # runs, before any of it reaches $dir.
       foreach ($file in 'ovenlight.exe', 'install.ps1', 'uninstall.ps1') {
-        $signature = Get-AuthenticodeSignature (Join-Path $tmp "release\$file")
-        if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.EnhancedKeyUsageList.ObjectId -notcontains $profileUsage) {
+        $signature = Get-AuthenticodeSignature (Join-Path $release $file)
+        if ($signature.Status -ne 'Valid') {
+          throw "$file in $archive has no valid code signature ($($signature.StatusMessage)), so nothing was installed"
+        }
+        if ($signature.SignerCertificate.EnhancedKeyUsageList.ObjectId -notcontains $profileUsage) {
           throw "$file in $archive isn't signed by Snowy Ghost LLC, so nothing was installed"
         }
       }
       Write-Output 'checked that Snowy Ghost LLC signed ovenlight.exe, install.ps1 and uninstall.ps1'
     }
     New-Item -ItemType Directory -Force $dir | Out-Null
-    Copy-Item -Recurse -Force (Join-Path $tmp 'release\*') $dir
+    Copy-Item -Recurse -Force (Join-Path $release '*') $dir
     Write-Output "unpacked into $dir"
   } finally {
     Pop-Location
