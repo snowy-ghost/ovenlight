@@ -40,11 +40,14 @@
 </p>
 
 You built a small web app for your family, your garden or your book club, maybe in an
-afternoon with a coding agent, and it runs on your own computer. Ovenlight puts it on your
-phone and on the phone of anyone you invite, and it opens wherever the phone is online,
-at home or away. It takes a computer that stays on, with Ovenlight's connector installed,
-and a Tailscale account of your own (free for personal use). The people you share with
-need only Ovenlight.
+afternoon with a coding agent. Ovenlight puts it on your phone and on the phone of anyone
+you invite, and it opens wherever the phone is online, at home or away.
+
+Your computer is the server. The app and its data stay on it and off the internet, and
+your apps open while it's on and awake. It can be your laptop or a computer at home that
+stays on. If you can't keep one at home, [a server you rent](#where-your-apps-run) works
+too. You install Ovenlight's connector on it and use a Tailscale account of your own
+(free for personal use). The people you share with need only Ovenlight.
 
 Once your computer is [set up](#get-started) and your agent
 [connected](#with-a-coding-agent), ask it to put the app on your phone:
@@ -56,6 +59,12 @@ Once your computer is [set up](#get-started) and your agent
 >
 > **Your agent:** Chore Chart is ready. It will show up in Ovenlight on your phone once you
 > sign in with your Tailscale account at this link: `https://login.tailscale.com/a/…`
+>
+> **You:** Can Sam have it too?
+>
+> **Your agent:** That part's yours. In a terminal, store a Tailscale API access token with
+> `ovenlight auth set`, then run `ovenlight publish --slug chore-chart --shareable` and
+> answer its questions. Last, touch and hold Chore Chart in Ovenlight and choose Share.
 
 ## What you get
 
@@ -76,14 +85,14 @@ Once your computer is [set up](#get-started) and your agent
 - **It opens like an app.** Full screen, from its own icon, in a launcher that works like
   your phone's home screen, with its storage kept apart from the others. One unlock, with
   Face&nbsp;ID or your fingerprint, opens them all.
-- **Private, free and open source.** There's no Ovenlight account, no analytics and no
+- **Private and open source.** There's no Ovenlight account, no analytics and no
   ads. Phones reach your computer over a Tailscale connection built into Ovenlight, never
   through servers of ours. No phone needs a VPN or the Tailscale app. The iPhone and
-  Android apps and the connector are free, under the Apache License 2.0. It's made
+  Android apps and the connector are under the Apache License 2.0. It's made
   by [Dimitri Cole Restaino](https://www.dimitricole.com) at
   [Snowy Ghost](https://snowyghost.com).
 
-## Why not a VPN, a tunnel or the cloud?
+## Why not a VPN, a tunnel or a hosting service?
 
 - **A VPN and a bookmark** work for you. A friend would need a VPN app and an account, and
   unless you write access rules for them, they'd reach your computer, not just one app.
@@ -92,9 +101,19 @@ Once your computer is [set up](#get-started) and your agent
 - **A tunnel or an open port** works in any browser, on any phone, but puts the app on the
   internet, where the app or the tunnel has to keep strangers out. Ovenlight keeps the app
   off the internet and turns away anyone you didn't invite.
-- **A cloud host** keeps the app up while your computer is off, but puts the app on the
-  internet and its data off your computer. Ovenlight keeps both on your computer, which has
-  to be on and awake while people use the app.
+- **A hosting service** keeps the app up while your computer is off, but puts the app on
+  the internet. Ovenlight keeps it off the internet, whether it runs on your own computer
+  or a [server you rent](#where-your-apps-run). Either way, that computer has to be on and
+  awake while people use the app.
+
+## Why I made it
+
+I'm proud of Ovenlight, and I'm even more excited about what you'll build on it. I've
+seen people use coding agents to build incredible things that make life better and work
+easier. I made Ovenlight so you'd have an easy way to share what you build with the people
+who'd benefit.
+
+Dimitri Cole Restaino
 
 ## How it works
 
@@ -122,6 +141,17 @@ flowchart LR
 When you share an app, your friend's phone joins your tailnet as a guest device.
 [Security](#security) says what it can reach and how that's enforced.
 
+## Where your apps run
+
+- **Your laptop,** to start today. Your apps work while it's open, plugged in and awake, and
+  go offline when you close the lid. [Get started](#get-started) sets it up.
+- **A computer at home,** such as a Mac mini, a spare PC or an old laptop that stays on,
+  so your apps open any time. Your data stays in your house.
+  [docs/always-on.md](docs/always-on.md#at-home) sets it up.
+- **A server you rent,** if you can't keep one at home. It's the provider's
+  computer, so your apps and their data sit on its disk, under its terms.
+  [docs/always-on.md](docs/always-on.md#rented-in-the-cloud) sets it up.
+
 ## What you need
 
 - **A computer that stays on and awake** while anyone uses your apps: a Mac with macOS 13
@@ -148,9 +178,8 @@ docs/development.md ([iPhone](docs/development.md#the-iphone-app),
 
 ## Get started
 
-Want your apps up all the time? Run them on your own server:
-[docs/always-on.md](docs/always-on.md) covers a Mac mini, a Raspberry Pi or a spare PC at
-home, or a server you rent.
+Start on the computer you have, laptop included. For apps that open any time, run them
+on [your own server](docs/always-on.md).
 
 ### 1. Turn on HTTPS certificates
 

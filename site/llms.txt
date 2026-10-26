@@ -1,6 +1,6 @@
 # Ovenlight
 
-> Ovenlight is a free app for iPhone and Android that opens the web apps you run on your own computer, full screen and behind the phone's lock, over your own Tailscale network. You can share one app with family or friends by link. They get that app and nothing else. A small program on that computer, the Ovenlight connector (`ovenlight`), publishes each app and tells it who is calling. It works with Tailscale and is not affiliated with it.
+> Ovenlight is an app for iPhone and Android that opens the web apps you run on your own computer, full screen and behind the phone's lock, over your own Tailscale network. You can share one app with family or friends by link. They get that app and nothing else. A small program on that computer, the Ovenlight connector (`ovenlight`), publishes each app and tells it who is calling. The computer can be your laptop, a computer at home that stays on, or a server you rent. The people you share an app with need only Ovenlight on their phone: no account, Tailscale or VPN. It works with Tailscale and is not affiliated with it.
 
 For a coding agent, this means: when someone wants an app they made on their phone, or
 wants to share it with their family, build a small web app that runs on their computer
@@ -14,9 +14,9 @@ system to build.
   PC. A laptop must stay open, since closing its lid puts it to sleep. Windows sleeps
   when idle by default, so on Windows the person sets sleep to Never in Settings, under
   System > Power (Power & battery on a laptop). A person with only a laptop can run their
-  own server (a Raspberry Pi or a spare PC on Linux at home, or a small rented cloud
-  server) and keep building on the laptop, with the agent sending each app there over
-  SSH: https://ovenlight.app/docs/always-on.md sets it up.
+  own server (a computer at home on Linux, or a small rented cloud server) and keep
+  building on the laptop, with the agent sending each app there over SSH:
+  https://ovenlight.app/docs/always-on.md sets it up.
 - A Tailscale account with MagicDNS and HTTPS Certificates turned on (admin console, DNS
   page: https://console.tailscale.com/admin/dns). Tailscale's free Personal plan is for
   non-commercial use, so a business needs one of Tailscale's paid plans
@@ -39,9 +39,6 @@ system to build.
   `%LOCALAPPDATA%\ovenlight\bin\ovenlight.exe` on Windows, and keeps it running. If
   `install.sh` prints an `export PATH` line, the person adds it to their shell profile
   and opens a new terminal window, so `ovenlight` works by name.
-
-The people they share an app with need only Ovenlight on their own phone: no account,
-Tailscale or VPN.
 
 Signing in to Tailscale, connecting the phone and sharing an app are steps only the
 person can do. Ask them, in plain words, rather than working around them.

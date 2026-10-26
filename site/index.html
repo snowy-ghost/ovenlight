@@ -3,24 +3,24 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Your own AI-built web apps, securely on your phone · Ovenlight</title>
-<meta name="description" content="Put the web apps you or your AI coding agent built on your iPhone or Android phone, served privately from your own computer. Share one with a friend by link.">
+<title>Your apps, on the phones of the people you made them for · Ovenlight</title>
+<meta name="description" content="Run the apps you and your coding agent build on your own computer, and open them on your phone and on the phones of the people you made them for. The people you invite don't need an account.">
 <link rel="canonical" href="https://ovenlight.app/">
 <meta name="theme-color" content="#faf5ee" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#19110d" media="(prefers-color-scheme: dark)">
 
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Ovenlight">
-<meta property="og:title" content="Your own AI-built web apps, securely on your phone · Ovenlight">
-<meta property="og:description" content="Cooking up apps with AI? Serve them to the people you made them for, and no one else. Your apps run on your own computer and open on your iPhone or Android phone, privately.">
+<meta property="og:title" content="Your apps, on the phones of the people you made them for · Ovenlight">
+<meta property="og:description" content="Your computer is the server. Ovenlight puts the apps you and your coding agent build on your phone, and on the phones of the people they're for.">
 <meta property="og:image" content="https://ovenlight.app/og.jpg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="Web apps from your computer, on your phone: the Ovenlight launcher on a phone, with apps such as Recipe Box, Garden Log, Trip Planner and Book Club, in warm light.">
 <meta property="og:url" content="https://ovenlight.app/">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Your own AI-built web apps, securely on your phone · Ovenlight">
-<meta name="twitter:description" content="Cooking up apps with AI? Serve them to the people you made them for, and no one else. Your apps run on your own computer and open on your iPhone or Android phone, privately.">
+<meta name="twitter:title" content="Your apps, on the phones of the people you made them for · Ovenlight">
+<meta name="twitter:description" content="Your computer is the server. Ovenlight puts the apps you and your coding agent build on your phone, and on the phones of the people they're for.">
 <meta name="twitter:image" content="https://ovenlight.app/og.jpg">
 
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
@@ -31,7 +31,7 @@
   "@context": "https://schema.org",
   "@type": "MobileApplication",
   "name": "Ovenlight",
-  "description": "Put the web apps you or your AI coding agent built on your phone, served from your own computer and locked with Face ID or your fingerprint.",
+  "description": "Put the apps you and your coding agent build on your phone and on the phones of the people you made them for, served from your own computer and locked with Face ID or your fingerprint.",
   "operatingSystem": "iOS 18.1 or later, Android 10 or later",
   "applicationCategory": "DeveloperApplication",
   "url": "https://ovenlight.app/",
@@ -69,8 +69,8 @@
     <div class="container">
       <h1 class="wordmark">Ovenlight</h1>
       <span class="rack" aria-hidden="true"></span>
-      <p class="lead">Cooking up apps with AI? Serve them to the people you made them for, and no&nbsp;one&nbsp;else.</p>
-      <p class="lead-more">Your web apps run on your own computer, stay off the internet and open on your phone, behind Face&nbsp;ID or your fingerprint.</p>
+      <p class="lead">Your computer is the server. Ovenlight puts the apps you and your coding agent build on your phone, and on the phones of the people they&rsquo;re&nbsp;for.</p>
+      <p class="lead-more">Your apps stay off the internet and open full screen on iPhone or Android, behind Face&nbsp;ID or your fingerprint. The people you invite need no&nbsp;account.</p>
       <p class="stores">
         <a class="store" href="https://apps.apple.com/app/id6817561066">
           <img src="/images/app-store-badge-black.svg" width="150" height="50" alt="Download on the App Store">
@@ -96,7 +96,7 @@
   <section class="section section-band" aria-labelledby="who">
     <div class="container intro">
       <h2 class="section-title" id="who">Who it's for</h2>
-      <p>You built a small web app for your family, your garden or your book club, maybe in an afternoon with a coding agent, and it runs on your own computer. The hard part now is getting it to the people it's for. Ovenlight puts it on your phone and theirs without putting it on the internet. They need nothing but Ovenlight.</p>
+      <p>You built a small web app for your family, your garden or your book club, maybe in an afternoon with a coding agent. It already runs on your own computer. The hard part is getting it to the people it's for without putting it on the internet. Ovenlight does that part.</p>
     </div>
   </section>
 
@@ -116,13 +116,55 @@
             <li><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 10.5l3.5 3.5 7.5-8"/></svg><p>Checked it for Ovenlight <code>ovenlight check</code></p></li>
           </ol>
           <p class="ask-reply"><span class="visually-hidden">Your agent: </span>Chore Chart is ready. It will show up in Ovenlight on your phone once you sign in with your Tailscale account at this link: <code>https://login.tailscale.com/a/&hellip;</code></p>
+          <p class="ask-you"><span class="visually-hidden">You: </span>Can Sam have it too?</p>
+          <p class="ask-reply"><span class="visually-hidden">Your agent: </span>That part's yours. Run these in a terminal and answer what they ask: <code>ovenlight auth set</code>
+            <code>ovenlight publish --slug chore-chart --shareable</code> Then touch and hold Chore Chart in Ovenlight and choose Share.</p>
         </div>
         <figcaption>In your coding agent</figcaption>
       </figure>
     </div>
   </section>
 
-  <section class="section" aria-labelledby="what">
+  <section class="section" aria-labelledby="sharing">
+    <div class="container share">
+      <div>
+        <h2 class="section-title" id="sharing">Share an app in four steps</h2>
+        <ol class="steps">
+          <li><p>You make an app shareable once, on the computer that runs it.</p></li>
+          <li><p>You send an invite from Ovenlight or from that computer: a link or a QR code that works once and expires after 7 days.</p></li>
+          <li><p>Your friend opens it on their iPhone or Android phone and taps Join, with no account to create and nothing to sign in to.</p></li>
+          <li><p>The app shows up in their Ovenlight marked with your name, and they can send you feedback from inside it. Your coding agent can read that feedback, screenshot included, and fix the app.</p></li>
+        </ol>
+        <p class="share-after">You can stop sharing at any time. Their access ends at once, and the app and everything it stored are removed from their phone the next time Ovenlight connects.</p>
+      </div>
+      <div class="pair">
+        <figure>
+          <div class="phone">
+            <picture>
+              <source type="image/webp" media="(prefers-color-scheme: dark)" srcset="/images/sharing-dark-480.webp 480w, /images/sharing-dark-960.webp 960w" sizes="(min-width: 600px) 232px, 42vw">
+              <source media="(prefers-color-scheme: dark)" srcset="/images/sharing-dark-480.jpg 480w, /images/sharing-dark-960.jpg 960w" sizes="(min-width: 600px) 232px, 42vw">
+              <source type="image/webp" srcset="/images/sharing-480.webp 480w, /images/sharing-960.webp 960w" sizes="(min-width: 600px) 232px, 42vw">
+              <img src="/images/sharing-960.jpg" srcset="/images/sharing-480.jpg 480w, /images/sharing-960.jpg 960w" sizes="(min-width: 600px) 232px, 42vw" width="960" height="2086" loading="lazy" decoding="async" alt="Sharing Book Club in Ovenlight: a Share button, two people who have joined, and an open invite that expires tomorrow.">
+            </picture>
+          </div>
+          <figcaption>On your phone</figcaption>
+        </figure>
+        <figure>
+          <div class="phone">
+            <picture>
+              <source type="image/webp" media="(prefers-color-scheme: dark)" srcset="/images/join-dark-480.webp 480w, /images/join-dark-960.webp 960w" sizes="(min-width: 600px) 232px, 42vw">
+              <source media="(prefers-color-scheme: dark)" srcset="/images/join-dark-480.jpg 480w, /images/join-dark-960.jpg 960w" sizes="(min-width: 600px) 232px, 42vw">
+              <source type="image/webp" srcset="/images/join-480.webp 480w, /images/join-960.webp 960w" sizes="(min-width: 600px) 232px, 42vw">
+              <img src="/images/join-960.jpg" srcset="/images/join-480.jpg 480w, /images/join-960.jpg 960w" sizes="(min-width: 600px) 232px, 42vw" width="960" height="2086" loading="lazy" decoding="async" alt="An invite in Ovenlight asking: Join Riley's Movie Night? It explains the app runs on Riley's computer, with Join and Not Now buttons.">
+            </picture>
+          </div>
+          <figcaption>On your friend's phone</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section-follow" aria-labelledby="what">
     <div class="container">
       <h2 class="section-title" id="what">Like real apps, but yours</h2>
 
@@ -174,48 +216,32 @@
     </div>
   </section>
 
-  <section class="section section-follow" aria-labelledby="why">
+  <section class="section section-band" aria-labelledby="why">
     <div class="container intro">
-      <h2 class="section-title" id="why">Why not a VPN and a bookmark?</h2>
-      <p>That works for you. For a friend, it means a VPN app and an account. With Ovenlight they get one app with its own icon, nothing to set up, and you can take it back whenever you like. Nothing passes through servers of ours, and Ovenlight has no account, analytics or ads.</p>
+      <h2 class="section-title" id="why">Why not a public link or a VPN?</h2>
+      <p>A public link puts the app on the internet, where it has to keep strangers out on its own. A VPN works for you, but each friend would need a VPN app and an account. With Ovenlight they get one app with its own icon and nothing to set up, and you can take it back whenever you like. Nothing passes through servers of ours, and Ovenlight has no account, analytics or ads.</p>
     </div>
   </section>
 
-  <section class="section section-band" aria-labelledby="sharing">
-    <div class="container share">
-      <div>
-        <h2 class="section-title" id="sharing">Share an app in four steps</h2>
-        <ol class="steps">
-          <li><p>You make an app shareable once, on the computer that runs it.</p></li>
-          <li><p>You send an invite from Ovenlight or from that computer: a link or a QR code that works once and expires after 7 days.</p></li>
-          <li><p>Your friend opens it on their iPhone or Android phone and taps Join, with no account to create and nothing to sign in to.</p></li>
-          <li><p>The app shows up in their Ovenlight marked with your name, and they can send you feedback from inside it. Your coding agent can read that feedback, screenshot included, and fix the app.</p></li>
-        </ol>
-        <p class="share-after">You can stop sharing at any time. Their access ends at once, and the app and everything it stored are removed from their phone the next time Ovenlight connects.</p>
-      </div>
-      <div class="pair">
-        <figure>
-          <div class="phone">
-            <picture>
-              <source type="image/webp" media="(prefers-color-scheme: dark)" srcset="/images/sharing-dark-480.webp 480w, /images/sharing-dark-960.webp 960w" sizes="(min-width: 600px) 232px, 42vw">
-              <source media="(prefers-color-scheme: dark)" srcset="/images/sharing-dark-480.jpg 480w, /images/sharing-dark-960.jpg 960w" sizes="(min-width: 600px) 232px, 42vw">
-              <source type="image/webp" srcset="/images/sharing-480.webp 480w, /images/sharing-960.webp 960w" sizes="(min-width: 600px) 232px, 42vw">
-              <img src="/images/sharing-960.jpg" srcset="/images/sharing-480.jpg 480w, /images/sharing-960.jpg 960w" sizes="(min-width: 600px) 232px, 42vw" width="960" height="2086" loading="lazy" decoding="async" alt="Sharing Book Club in Ovenlight: a Share button, two people who have joined, and an open invite that expires tomorrow.">
-            </picture>
-          </div>
-          <figcaption>On your phone</figcaption>
-        </figure>
-        <figure>
-          <div class="phone">
-            <picture>
-              <source type="image/webp" media="(prefers-color-scheme: dark)" srcset="/images/join-dark-480.webp 480w, /images/join-dark-960.webp 960w" sizes="(min-width: 600px) 232px, 42vw">
-              <source media="(prefers-color-scheme: dark)" srcset="/images/join-dark-480.jpg 480w, /images/join-dark-960.jpg 960w" sizes="(min-width: 600px) 232px, 42vw">
-              <source type="image/webp" srcset="/images/join-480.webp 480w, /images/join-960.webp 960w" sizes="(min-width: 600px) 232px, 42vw">
-              <img src="/images/join-960.jpg" srcset="/images/join-480.jpg 480w, /images/join-960.jpg 960w" sizes="(min-width: 600px) 232px, 42vw" width="960" height="2086" loading="lazy" decoding="async" alt="An invite in Ovenlight asking: Join Riley's Movie Night? It explains the app runs on Riley's computer, with Join and Not Now buttons.">
-            </picture>
-          </div>
-          <figcaption>On your friend's phone</figcaption>
-        </figure>
+  <section class="section section-band section-follow" aria-labelledby="where">
+    <div class="container">
+      <h2 class="section-title" id="where">Where your apps run</h2>
+      <div class="rungs">
+        <div class="rung">
+          <h3>Your laptop</h3>
+          <p>Start today, on the computer you have. Your apps work while it's open, plugged in and awake, and go offline when you close the lid.</p>
+          <a href="/support#own-computer">Set up your computer</a>
+        </div>
+        <div class="rung">
+          <h3>A computer at home</h3>
+          <p>A Mac mini, a spare PC or an old laptop that stays on, so your apps open any time. Your data stays in your house.</p>
+          <a href="/docs/always-on#at-home">Run your own server</a>
+        </div>
+        <div class="rung">
+          <h3>A server you rent</h3>
+          <p>Can't keep one at home? A small cloud server works too. It's the provider's computer, so your apps and their data sit on its disk, under its terms.</p>
+          <a href="/docs/always-on#rented-in-the-cloud">Rent a server</a>
+        </div>
       </div>
     </div>
   </section>
@@ -233,13 +259,23 @@
           <span>To run your own apps, you also need a computer that stays on and awake while anyone uses them, with the Ovenlight connector, and a Tailscale account. The connector runs on a Mac with macOS&nbsp;13 or later (kept logged in), on Linux with systemd, and on Windows&nbsp;11.</span>
         </p>
       </div>
-      <p class="needs-more">Ovenlight is free, and so is the connector. <a href="/support#own-computer">Set up your computer.</a> Only a laptop? <a href="/docs/always-on">Run it on your own server: a Mac mini, a Raspberry Pi or a spare PC.</a></p>
+      <p class="needs-more">Ovenlight and the connector are open source. <a href="/support#own-computer">Set up your computer.</a></p>
+    </div>
+  </section>
+
+  <section class="section section-follow" aria-labelledby="made">
+    <div class="container intro">
+      <h2 class="section-title" id="made">Why I made it</h2>
+      <div class="note">
+        <p>I'm proud of Ovenlight, and I'm even more excited about what you'll build on it. I've seen people use coding agents to build incredible things that make life better and work easier. I made Ovenlight so you'd have an easy way to share what you build with the people who'd benefit.</p>
+        <p class="signed">Dimitri Cole Restaino</p>
+      </div>
     </div>
   </section>
 
   <section class="closing section-band" aria-labelledby="closing">
     <div class="container">
-      <h2 class="closing-title" id="closing">Your apps are already running. Put them on your phone.</h2>
+      <h2 class="closing-title" id="closing">Your app is ready. Put it on your phone, and theirs.</h2>
       <img class="closing-icon" src="/icon.svg" width="88" height="88" alt="" loading="lazy">
       <p class="stores">
         <a class="store" href="https://apps.apple.com/app/id6817561066">

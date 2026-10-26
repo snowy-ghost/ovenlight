@@ -548,6 +548,28 @@ a:hover { text-decoration-thickness: 2px; }
 .need svg { width: 2rem; height: 2rem; flex: none; color: var(--ember); }
 .needs-more { margin-top: 1.5rem; color: var(--ink-soft); }
 
+/* Where your apps run: three cards, laptop to rented server */
+
+.rungs { display: grid; gap: 1rem; margin-top: 2.25rem; }
+@media (min-width: 52em) { .rungs { grid-template-columns: repeat(3, 1fr); } }
+.rung {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 1.5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+}
+.rung h3 { font-size: var(--step-1); }
+.rung p { color: var(--ink); }
+.rung a { margin-top: auto; padding-top: 0.4rem; }
+
+/* Why I made it: a signed note */
+
+.note { display: grid; gap: 1rem; }
+.note .signed { font-size: var(--step-0); color: var(--ink-soft); }
+
 /* Closing call to action */
 
 .closing {
