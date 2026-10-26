@@ -431,22 +431,21 @@ the connector itself trusts only the keys built into it.
 The one-line installers, [install.sh](https://ovenlight.app/install.sh) and
 [install.ps1](https://ovenlight.app/install.ps1), take those steps for you, with the keys
 in `allowed_signers` written into them (a test keeps them the same). They compare no
-serial, so on a computer the connector already runs on, an older index, with its release,
-passes them too: the verified steps, with the serial `status` shows, rule that out. Where
+serial, so on a computer the connector already runs on, they also take an older index and
+its release. The verified steps, with the serial `status` shows, rule that out. Where
 `ssh-keygen` can't read the release keys, they say so and check the download against an
 index whose signature went unchecked. There `install.sh` trusts the HTTPS download, as the
 steps by hand do without the check. `install.ps1` trusts our build computer's code
 signature in place of the release keys, so it takes any release from 1.1.0 on that Snowy
 Ghost LLC signed, even a build never released. It checks that the release's
-`ovenlight.exe`, `install.ps1` and `uninstall.ps1` carry a valid code signature from our
-Microsoft Artifact Signing profile, which it knows by the EKU that names that profile, all
-three under one certificate, as one signing run leaves them. It also checks that the
-release holds nothing else but its notices, and that the binary names 1.1.0 or later, the
-first release that updates itself. And a script you pipe into a shell does whatever the
-site serving it says: whoever took over ovenlight.app could change it. To check before you
-run anything, save a copy, read it and run that copy
-([connector.md](connector.md#read-the-script-first) shows how), or use the [verified
-steps](connector.md#check-a-download-first).
+`ovenlight.exe`, `install.ps1` and `uninstall.ps1` carry valid code signatures under one
+certificate (one signing run leaves them that way) and that the certificate carries the
+EKU naming our Microsoft Artifact Signing profile. It also checks that the release holds
+nothing else but its notices, and that the binary names 1.1.0 or later, the first release
+that updates itself. And a script you pipe into a shell does whatever the site serving it
+says: whoever took over ovenlight.app could change it. To check before you run anything,
+save a copy, read it and run that copy ([connector.md](connector.md#read-the-script-first)
+shows how), or use the [verified steps](connector.md#check-a-download-first).
 
 Once a day the connector fetches the signed index,
 `https://downloads.ovenlight.app/connector/latest.json`, and its signature,

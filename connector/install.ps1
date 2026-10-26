@@ -10,6 +10,8 @@
 # apps: only an administrator can register a task that runs with nobody signed in or
 # with administrator rights.
 #   powershell -ExecutionPolicy Bypass -File .\install.ps1
+#
+# The site's install.ps1 knows this script by its first line: keep it.
 $ErrorActionPreference = 'Stop'
 
 function Fail($message) {

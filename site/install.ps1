@@ -104,6 +104,11 @@
       if (@($certificates | Select-Object -Unique).Count -ne 1) {
         throw "$archive mixes files from different signings, so nothing was installed"
       }
+      # A signature doesn't name its file, so the uninstaller could stand in for install.ps1,
+      # which is known by its first line.
+      if ((Get-Content -TotalCount 1 (Join-Path $release 'install.ps1')) -notlike '# Installs the Ovenlight connector *') {
+        throw "install.ps1 in $archive isn't the release's install script, so nothing was installed"
+      }
       # Nothing unchecked rides along, such as a program a later command in that folder
       # would run (scripts/release-connector.sh packs these).
       $shipped = 'ovenlight.exe', 'install.ps1', 'uninstall.ps1', 'LICENSE', 'NOTICE', 'THIRD_PARTY_NOTICES.txt'
