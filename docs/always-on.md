@@ -299,8 +299,8 @@ give me the link it printed (or ask me to run `ssh pi@oven true` in my
 own terminal and open its link), then try again.
 ```
 
-Paste it even if Claude Code has Ovenlight's plugin: the plugin's skill takes the same
-steps, but only this note tells it where your server is.
+Paste it even if Claude Code has Ovenlight's plugin: only this note tells the plugin's
+skill where your server is and how to send your apps there.
 
 ### Send an app
 

@@ -16,14 +16,14 @@ The `ovenlight` connector on that computer publishes each app and tells it who i
    here: read the guide with `ssh <user>@oven '~/.local/bin/ovenlight guide'` (quoted, so
    `~` is the server's), start a new app there with
    `ssh <user>@oven '~/.local/bin/ovenlight new "<App Name>" --dir ~/apps'` and copy it
-   here, and send each app as https://ovenlight.app/docs/always-on.md under "Send an app"
-   describes (with its tar forms on Windows, where Git Bash has no rsync), never copying
-   over the server's data. Keep everything people add, the database included, in the
-   app's top-level `data` folder, which the copy leaves out. The connector's commands run
-   there as `~/.local/bin/ovenlight` inside single quotes, over `ssh`. If an ssh command
-   hangs, or prints that Tailscale SSH requires an additional check, give the person the
-   link it printed (or ask them to run `ssh <user>@oven true` in their own terminal and
-   open its link), then try again.
+   here, and send each app the way their note says (on Windows, where Git Bash has no
+   rsync, in the tar forms it points to), never copying over the server's data. Keep
+   everything people add, the database included, in the app's top-level `data` folder,
+   which the copy leaves out. The connector's commands run there as
+   `~/.local/bin/ovenlight` inside single quotes, over `ssh`. If an ssh command hangs, or
+   prints that Tailscale SSH requires an additional check, give the person the link it
+   printed (or ask them to run `ssh <user>@oven true` in their own terminal and open its
+   link), then try again.
 3. **If the connector isn't installed** (the MCP tools don't answer, and there's no
    `~/Library/Application Support/ovenlight/bin/ovenlight` on a Mac,
    `%LOCALAPPDATA%\ovenlight\bin\ovenlight.exe` on Windows, or
@@ -54,8 +54,8 @@ The `ovenlight` connector on that computer publishes each app and tells it who i
 6. **The connector updates itself.** When `status` shows a failed update, tell the
    person what failed, in plain words. With updates on, it tries again the next night, and
    a release waiting its turn needs nothing from either of you. When `doctor`'s `update`
-   check gives a fix, pass it on. For a release to install by hand, offer the verified
-   steps, never a bare download: those at
+   check gives a fix, pass it on. For a release to install by hand, give the person the
+   link to the verified steps, never a bare download: those at
    https://github.com/snowy-ghost/ovenlight/blob/master/docs/connector.md#check-a-download-first
    for the latest, including one an older connector's `doctor` names with a download
    link, and those at

@@ -70,8 +70,8 @@ If you install the connector after the plugin, reconnect the `ovenlight` server 
 
 When you send apps to an always-on computer, finish by pasting the note under
 [Let your agent send your apps](https://github.com/snowy-ghost/ovenlight/blob/master/docs/always-on.md#let-your-agent-send-your-apps)
-into Claude Code on your laptop. The skill takes the same steps, but only that note tells
-it where your server is. The plugin's `ovenlight` MCP server won't connect on your laptop,
+into Claude Code on your laptop. Only that note tells the skill where your server is and
+how to send your apps there. The plugin's `ovenlight` MCP server won't connect on your laptop,
 since the connector isn't there. Leave it: the note has Claude Code run the connector on
 your server over `ssh`.
 
