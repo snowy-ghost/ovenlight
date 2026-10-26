@@ -1,9 +1,11 @@
-# The plugin's launchers keep their line endings in every checkout, including one made
-# with Git for Windows' core.autocrlf: cmd reads mcp.cmd with CRLF and sh reads mcp with LF.
-*.cmd text eol=crlf
-plugins/ovenlight/scripts/mcp text eol=lf
-# Gradle's wrapper scripts, for the same reason: sh reads gradlew with LF, cmd reads gradlew.bat with CRLF.
-android/gradlew text eol=lf
-*.bat text eol=crlf
+# The plugin's launchers and Gradle's wrapper scripts keep the line endings they're
+# committed with in every checkout and archive, including one made with Git for Windows'
+# core.autocrlf: cmd reads mcp.cmd and gradlew.bat with CRLF, sh reads mcp and gradlew
+# with LF. -text converts nothing, since Anthropic's plugin directory won't validate a
+# repository whose attributes rewrite file contents.
+*.cmd -text
+*.bat -text
+plugins/ovenlight/scripts/mcp -text
+android/gradlew -text
 # Signed test data stays byte for byte as signed.
 connector/testdata/update/** -text
