@@ -89,6 +89,7 @@ index() {
   [[ "$4" =~ ^[0-9]+$ ]] || refuse "an index's serial is a number of seconds, not \"$4\""
   ! grep -Evq '^[0-9a-f]{64}  ovenlight-connector-[a-z0-9-]+\.(tar\.gz|zip)$' "$5" ||
     refuse "$5 holds a line that isn't an archive's SHA-256 and name"
+  # site/install.sh and connector.md's verified steps read this exact layout.
   s="$(printf '{"latest": "%s", "secure": "%s", "reinstallBelow": "%s", "serial": %s, "archives": {' "$1" "$2" "$3" "$4"
     awk 'NR > 1 { printf ", " } { printf "\"%s\": \"%s\"", $2, $1 }' "$5"
     printf '}}')"

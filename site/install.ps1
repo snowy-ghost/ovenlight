@@ -100,7 +100,7 @@
     Write-Output "unpacked into $dir"
   } finally {
     Pop-Location
-    Remove-Item -Recurse -Force $tmp
+    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $tmp
   }
   powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dir 'install.ps1')
   if ($LASTEXITCODE) { throw 'the install script stopped: its message is above' }

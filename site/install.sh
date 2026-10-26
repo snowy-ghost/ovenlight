@@ -93,7 +93,7 @@ main() {
   *":$HOME/.local/bin:"*) "$dir/install.sh" ;;
   *)
     # With ~/.local/bin on its PATH, install.sh leaves the profile line to this script.
-    PATH="$HOME/.local/bin:$PATH" "$dir/install.sh"
+    PATH="$PATH:$HOME/.local/bin" "$dir/install.sh"
     add_path
     ;;
   esac
