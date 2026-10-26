@@ -6,7 +6,8 @@
 # shadows; the system supplies them, and Xcode renders every appearance and the pre-iOS 26
 # images from this document. It also writes the website's icon.svg and icon-180.png, and
 # Android's adaptive icon (a gradient background, the flat light, rack and apps in front, and
-# a monochrome layer for themed icons) with the Play Store's 512 px icon.
+# a monochrome layer for themed icons) with the Play Store's 512 px icon, which the Claude
+# Code plugin uses too.
 #   uv run --with pillow --with numpy python3 generate.py   # rewrites ../../Ovenlight/Resources/AppIcon.icon, the site's and Android's icons
 # Preview any rendition with ictool (Icon Composer.app/Contents/Executables):
 #   ictool AppIcon.icon --export-image --output-file icon.png --platform iOS \
@@ -246,6 +247,9 @@ def android_icons():
     # Google Play's icon: full bleed and square, since Play rounds and shadows it itself.
     play = door(N)
     play.alpha_composite(front)
-    play.resize((512, 512), Image.LANCZOS).convert("RGBA").save(os.path.join(HERE, "play-icon-512.png"), optimize=True)
+    play = play.resize((512, 512), Image.LANCZOS).convert("RGBA")
+    play.save(os.path.join(HERE, "play-icon-512.png"), optimize=True)
+    # The Claude Code plugin's listing icon is the same square.
+    play.save(os.path.join(HERE, "../../plugins/ovenlight/.claude-plugin/icon.png"), optimize=True)
 
 android_icons()

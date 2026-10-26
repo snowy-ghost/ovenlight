@@ -30,7 +30,7 @@ The `ovenlight` connector on that computer publishes each app and tells it who i
    `~/.local/state/ovenlight/bin/ovenlight` on Linux, with `$XDG_STATE_HOME` in place of
    `~/.local/state` when that's set), tell the person what Ovenlight needs, in plain
    words: a computer that stays on and awake (a laptop with its lid open), a Tailscale
-   account, the Ovenlight app on their phone, and the connector, a free download.
+   account, the Ovenlight app on their phone, and the connector.
    https://ovenlight.app/support#own-computer has the steps. Then wait for them; don't
    look for workarounds. If it is installed but not running, the person starts it with
    the command `ovenlight status` gives. Don't run `ovenlight run` yourself.

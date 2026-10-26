@@ -15,7 +15,8 @@
   icon, and the site's `icon.svg` and `icon-180.png`.
 - `.claude-plugin/marketplace.json`, `plugins/ovenlight/`: the Claude Code plugin (the MCP
   server and a skill that points to `ovenlight guide`). Check it with
-  `claude plugin validate .`.
+  `claude plugin validate .`. Raise `version` in its `plugin.json` with every change to
+  the plugin: Claude Code keeps people on their cached copy until it changes.
 - `design/og/generate.py`: writes the link preview images, `site/og.jpg` for the site and
   `site/og-invite.jpg` for invite links.
 
