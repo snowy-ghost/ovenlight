@@ -688,9 +688,9 @@ func cmdPublish(args []string) error {
 		} else {
 			fmt.Printf("\nServing at %s\n", res.URL)
 			if !res.Replaced {
-				fmt.Println("Open it in Ovenlight on your phone, signed in with the same Tailscale account (the first time, choose to use your own computers, then tap Connect).")
+				fmt.Println("Open it in Ovenlight on your phone, signed in to your own Tailscale account (the first time, choose to use your own computers, then tap Connect).")
 			}
-			fmt.Println("This address works only in your tailnet, so a browser on this computer can't open it unless Tailscale runs here too.")
+			fmt.Println("This address opens in a browser only on a device running the Tailscale app signed in to your own Tailscale account. A browser on this computer can't open it unless the Tailscale app runs here too.")
 		}
 	default:
 		fmt.Println("\nThe node is still starting; run `ovenlight status` in a moment.")
