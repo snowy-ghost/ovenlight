@@ -4,13 +4,14 @@
 #   irm https://ovenlight.app/install.ps1 | iex
 #
 # It takes the verified steps in docs/connector.md
-# (https://ovenlight.app/docs/connector#check-a-download-first) for you. It fetches the
-# index the connector updates from, latest.json, and checks its signature against the
-# release keys below when this computer's ssh-keygen can. It downloads this computer's
-# archive of the release the index names and checks it against the index (and, when the
-# index's signature went unchecked, checks that Snowy Ghost LLC signed its programs). Then
-# it unpacks it into $HOME\ovenlight-connector and runs its install.ps1, which also puts
-# ovenlight on your PATH.
+# (https://ovenlight.app/docs/connector#check-a-download-first) for you, all but comparing
+# the index's serial with the one your connector holds. It fetches the index the connector
+# updates from, latest.json, and checks its signature against the release keys below when
+# this computer's ssh-keygen can. It downloads this computer's archive of the release the
+# index names and checks it against the index (and, when the index's signature went
+# unchecked, checks that Snowy Ghost LLC signed its programs). Then it unpacks it into
+# $HOME\ovenlight-connector and runs its install.ps1, which also puts ovenlight on your
+# PATH.
 #
 # Everything happens in one script block: a download cut short doesn't parse, so it runs
 # nothing, and the block stops with an error rather than closing your PowerShell window.
@@ -87,7 +88,7 @@
     if (-not $indexChecked) {
       # Without the index's signature, the release's own code signature vouches for what
       # runs, before any of it reaches $dir.
-      foreach ($file in 'ovenlight.exe', 'install.ps1', 'uninstall.ps1') {
+      $certificates = foreach ($file in 'ovenlight.exe', 'install.ps1', 'uninstall.ps1') {
         $signature = Get-AuthenticodeSignature (Join-Path $release $file)
         if ($signature.Status -ne 'Valid') {
           throw "$file in $archive has no valid code signature ($($signature.StatusMessage)), so nothing was installed"
@@ -95,6 +96,13 @@
         if ($signature.SignerCertificate.EnhancedKeyUsageList.ObjectId -notcontains $profileUsage) {
           throw "$file in $archive isn't signed by Snowy Ghost LLC, so nothing was installed"
         }
+        $signature.SignerCertificate.Thumbprint
+      }
+      # One jsign run signs all three under one certificate. No release before 1.1.0, whose
+      # install.ps1 sets up a connector that never updates itself, shares a certificate
+      # with a later one, so its script can't ride along with a newer binary.
+      if (@($certificates | Select-Object -Unique).Count -ne 1) {
+        throw "$archive mixes files from different signings, so nothing was installed"
       }
       # Nothing unchecked rides along, such as a program a later command in that folder
       # would run (scripts/release-connector.sh packs these).

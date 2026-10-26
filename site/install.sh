@@ -4,12 +4,13 @@
 #   curl -fsSL https://ovenlight.app/install.sh | sh
 #
 # It takes the verified steps in docs/connector.md
-# (https://ovenlight.app/docs/connector#check-a-download-first) for you. It fetches the
-# index the connector updates from, latest.json, and checks its signature against the
-# release keys below when this computer's ssh-keygen can. It downloads this computer's
-# archive of the release the index names, checks it against the index, unpacks it into
-# ~/ovenlight-connector and runs its install.sh. Then, if ~/.local/bin isn't on your PATH,
-# it adds the line for it to your shell's profile.
+# (https://ovenlight.app/docs/connector#check-a-download-first) for you, all but comparing
+# the index's serial with the one your connector holds. It fetches the index the connector
+# updates from, latest.json, and checks its signature against the release keys below when
+# this computer's ssh-keygen can. It downloads this computer's archive of the release the
+# index names, checks it against the index, unpacks it into ~/ovenlight-connector and runs
+# its install.sh. Then, if ~/.local/bin isn't on your PATH, it adds the line for it to your
+# shell's profile.
 #
 # Everything happens in main, called on the last line, so a download cut short runs nothing.
 set -eu
@@ -30,9 +31,10 @@ fail() {
 }
 
 main() {
-  # The connector runs as you, so sudo would install it for root.
-  if [ "$(id -u)" = 0 ] && [ -n "${SUDO_USER:-}" ]; then
-    fail "run it without sudo: the connector runs as your own user"
+  # The connector runs as you, so sudo would install it for root. On a Mac it runs in your
+  # login session, which root has none of.
+  if [ "$(id -u)" = 0 ] && { [ -n "${SUDO_USER:-}" ] || [ "$(uname -s)" = Darwin ]; }; then
+    fail "run it as your own user, without sudo: the connector runs as you"
   fi
   case "$(uname -s)" in
   Darwin) system=macos ;; # one archive for Apple silicon and Intel
@@ -59,7 +61,7 @@ main() {
   trap 'rm -rf "$tmp"' EXIT
   # The shell writes each download, since curl from snap can't write to /tmp.
   for file in latest.json latest.json.sig; do
-    curl -fsS --proto =https "$base/$file" >"$tmp/$file" || fail "couldn't download the release index"
+    curl -fsS --proto '=https' "$base/$file" >"$tmp/$file" || fail "couldn't download the release index"
   done
 
   printf '%s\n' "$signers" >"$tmp/allowed_signers"
@@ -79,7 +81,7 @@ main() {
   version="$(sed -n 's/^{"latest": "\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)".*/\1/p' "$tmp/latest.json")"
   [ -n "$version" ] || fail "the release index names no release"
   echo "downloading the Ovenlight connector $version for $system"
-  curl -fL --proto =https --progress-bar "$base/$version/$archive" >"$tmp/$archive" ||
+  curl -fL --proto '=https' --progress-bar "$base/$version/$archive" >"$tmp/$archive" ||
     fail "couldn't download $archive"
   sum="$($sha256 "$tmp/$archive" | cut -d ' ' -f 1)"
   grep -qF "\"$archive\": \"$sum\"" "$tmp/latest.json" ||

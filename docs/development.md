@@ -283,7 +283,8 @@ it signed puts that release's files in `latest/` again, and 1.0.x's docs check t
 master's `allowed_signers`. `publish-connector.sh --pull` says when one has to come back.
 The one-line installers, `site/install.sh` and `site/install.ps1`, check `latest.json` with
 the keys they list, which a test keeps equal to `allowed_signers`: deploy the site from R's
-commit before an index signed with a new key goes up.
+commit before an index signed with a new key goes up, and again whenever a key leaves
+`allowed_signers`.
 
 `TestReleaseKeySignatures` wants one test signature in `connector/testdata/update/` for
 each key in `release_keys`. R adds one for each new key, as the next free

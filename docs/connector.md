@@ -69,12 +69,6 @@ the script says so and checks the download against the index alone, so it trusts
 HTTPS download, as the steps by hand do when you skip the check. On Windows it then also
 checks that Snowy Ghost LLC signed `ovenlight.exe`, `install.ps1` and `uninstall.ps1`.
 
-To read the script before it runs, save a copy, read it, and run that copy. On a Mac or
-Linux, `curl -fsSLO https://ovenlight.app/install.sh` saves it and `sh install.sh` runs
-it. On Windows, `irm https://ovenlight.app/install.ps1 -OutFile $HOME\install.ps1` saves
-it and `powershell -ExecutionPolicy Bypass -File $HOME\install.ps1` runs it. Reading it at
-its address in a browser isn't the same: the site could send your terminal another one.
-
 ### Open a terminal
 
 The command goes in a terminal, a window where you type commands:
@@ -88,7 +82,16 @@ The command goes in a terminal, a window where you type commands:
 
 Copy the command, paste it into the terminal (Command-V on a Mac, Ctrl-Shift-V on Linux,
 Ctrl-V on Windows) and press Return (Enter on a PC). The script says what it does as it
-goes, and ends with your next steps.
+goes. When it's done, open a new terminal window for the next steps it lists.
+
+### Read the script first
+
+To read the script before it runs, save a copy, read it, and run that copy. On a Mac or
+Linux, `curl -fsSLO https://ovenlight.app/install.sh` saves it and `sh install.sh` runs
+it. On Windows, in an administrator PowerShell,
+`irm https://ovenlight.app/install.ps1 -OutFile $HOME\install.ps1` saves it and
+`powershell -ExecutionPolicy Bypass -File $HOME\install.ps1` runs it. Reading it at its
+address in a browser isn't the same: the site could send your terminal another one.
 
 ### Or install by hand
 

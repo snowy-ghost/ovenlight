@@ -235,7 +235,8 @@ for os in linux windows; do
       cp "$conn/systemd/ovenlight.service" "$dir/systemd/"
       pack "$tmp/$os-$arch" "ovenlight-connector-linux-$arch.tar.gz"
     else
-      # The site's install.ps1 lists what a Windows release holds: a new file goes there too.
+      # The site's install.ps1 lists what a Windows release holds, these and the files pack
+      # and notices add: a new file goes there too.
       cp "$conn/install.ps1" "$conn/uninstall.ps1" "$dir/"
       # Smart App Control refuses an unsigned binary, and an App Control policy that
       # enforces scripts runs an unsigned script in Constrained Language Mode. The
