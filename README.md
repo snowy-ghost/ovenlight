@@ -106,15 +106,6 @@ Once your computer is [set up](#get-started) and your agent
   or a [server you rent](#where-your-apps-run). Either way, that computer has to be on and
   awake while people use the app.
 
-## Why I made it
-
-I'm proud of Ovenlight, and I'm even more excited about what you'll build on it. I've
-seen people use coding agents to build incredible things that make life better and work
-easier. I made Ovenlight so you'd have an easy way to share what you build with the people
-who'd benefit.
-
-Dimitri Cole Restaino
-
 ## How it works
 
 ```mermaid

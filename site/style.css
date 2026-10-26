@@ -565,11 +565,6 @@ a:hover { text-decoration-thickness: 2px; }
 .rung p { color: var(--ink); }
 .rung a { margin-top: auto; padding-top: 0.4rem; }
 
-/* Why I made it: a signed note */
-
-.note { display: grid; gap: 1rem; }
-.note .signed { font-size: var(--step-0); color: var(--ink-soft); }
-
 /* Closing call to action */
 
 .closing {
