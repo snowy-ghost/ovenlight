@@ -216,7 +216,9 @@ nobody logged in and after a restart.
 To see each step before it runs, follow these for your computer's system, or read
 [install.sh](https://ovenlight.app/install.sh) and
 [install.ps1](https://ovenlight.app/install.ps1) first. On each, the archive's script
-installs the `ovenlight` command and keeps the connector running.
+installs the `ovenlight` command and keeps the connector running. To check a download's
+signature by hand too, follow
+[check a download first](docs/connector.md#check-a-download-first).
 
 ##### Mac
 
@@ -256,8 +258,7 @@ logged in and after a restart.
 
 ##### Windows
 
-Sign in as the account that will own the apps, which must be an administrator. Open
-PowerShell with Run as administrator, then run:
+In PowerShell opened with Run as administrator:
 
 ```powershell
 mkdir $HOME\ovenlight-connector -Force | Out-Null; cd $HOME\ovenlight-connector
@@ -273,7 +274,7 @@ works in PowerShell windows opened after the install.
 
 The connector updates itself, at a quiet moment in the night two days after it first sees
 a new release, and sooner for a security fix. `ovenlight update off` stops it. Releases up
-to 1.0.9 don't update themselves: install a newer one by hand once.
+to 1.0.9 don't update themselves: run the install command above once.
 [docs/connector.md](docs/connector.md#update) has the details, and how to install a
 release by hand with its signature checked.
 

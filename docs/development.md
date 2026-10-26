@@ -673,12 +673,12 @@ To build and sign your own copy, change to your own:
   `AppLinks.privacyPolicy`;
 - to release the connector, the Developer ID identity (`IDENTITY`) and the Artifact
   Signing profile (`WIN_ENDPOINT`, `WIN_PROFILE`) in `scripts/release-connector.sh`, the
-  bucket and site in `scripts/publish-connector.sh`, and `releaseBase`, `installDocs` and
+  bucket and site in `scripts/publish-connector.sh`, `base` in the site's `install.sh`
+  and `install.ps1`, and `releaseBase`, `installDocs` and
   `olderDocs` in `connector/update.go`. A fork signs with release keys of its own: list
   them in `connector/release_keys`, which every build trusts, in `docs/allowed_signers`
   (a test and the signing script check it lists each one), and in the site's `install.sh`
-  and `install.ps1`, which also name the download host (a test checks they list
-  `allowed_signers`' keys), put their public halves in
+  and `install.ps1` (a test checks they list the same keys), put their public halves in
   `~/.ssh/ovenlight-release-keys/` on the computer that signs, and change `HANDLE`, the
   `mini` host and the site `fetchlive` reads in `scripts/sign-connector.sh`, `minirelease`
   and `minisync` in `scripts/connector-release-lib.sh`, and the `team@snowyghost.com`

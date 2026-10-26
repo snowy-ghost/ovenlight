@@ -41,8 +41,8 @@ On a Mac or Linux, in a terminal:
 curl -fsSL https://ovenlight.app/install.sh | sh
 ```
 
-On Windows, signed in as the account that will own the apps, open PowerShell with Run as
-administrator and run:
+On Windows, sign in as the account that will own the apps, which must be an
+administrator. Open PowerShell with Run as administrator and run:
 
 ```powershell
 irm https://ovenlight.app/install.ps1 | iex
@@ -76,7 +76,7 @@ The command goes in a terminal, a window where you type commands:
   when Windows asks.
 
 Copy the command, paste it into the terminal (Command-V on a Mac, Ctrl-Shift-V on Linux,
-Ctrl-V on Windows) and press Return. The script says what it does as it goes, and ends
+Ctrl-V on Windows) and press Return (Enter on a PC). The script says what it does as it goes, and ends
 with your next steps.
 
 ### Or install by hand
@@ -142,12 +142,12 @@ grep -F "\"$archive\": \"$(shasum -a 256 "$archive" | cut -d ' ' -f 1)\"" latest
 
 On Linux, put `linux-amd64` or `linux-arm64` in place of `macos`, and if `shasum` is
 missing, `sha256sum` in place of `shasum -a 256`. The first check prints
-`Good "ovenlight-latest" signature`, and the second prints the index, which names the
-release after `"latest"` and its serial after `"serial"`. If both do, and the serial is no
-lower than the one `ovenlight status` shows for the index your connector holds, unpack the
-archive and run its install script, in the same window. On macOS 13, whose `ssh-keygen`
-leaves security keys out, the first check says `unknown or unsupported key type`: check
-the download on Linux or a Mac with macOS 14 or later.
+`Good "ovenlight-latest" signature`. On macOS 13, whose `ssh-keygen` leaves security keys
+out, it says `unknown or unsupported key type` instead: check the download on Linux or a
+Mac with macOS 14 or later. The second check prints the index, which names the release
+after `"latest"` and its serial after `"serial"`. If both checks pass, and the serial is
+no lower than the one `ovenlight status` shows for the index your connector holds, unpack
+the archive and run its install script, in the same window:
 
 ```sh
 tar xzf "$archive" --strip-components 1
@@ -171,7 +171,7 @@ On an Arm PC, use `windows-arm64` in place of `windows-amd64`. The first check n
 OpenSSH 8.9 or later (`ssh -V` shows yours): an older one can't read the release key that
 signs with Touch ID, and says `unknown or unsupported key type`. If yours is older, check
 the download where `ssh -V` shows 8.9 or later, such as Linux or a Mac with macOS 14 or
-later (macOS 13's leaves security keys out). If the first check prints
+later. If the first check prints
 `Good "ovenlight-latest" signature`, the second `True`, and the last the index's serial, no
 lower than the one `ovenlight status` shows, unpack the archive and run its install script,
 in the same window:
@@ -306,8 +306,9 @@ again.
 
 A release that changes what the install script sets up can't come as an update: `status`
 and `doctor` say when yours needs its install script. To install it, or the latest
-release at any time, use the [verified steps](#check-a-download-first). They replace the
-files in `~/ovenlight-connector`, and the install script reinstalls the connector.
+release at any time, run the [install command](#install) again, or take the
+[verified steps](#check-a-download-first) yourself. Either replaces the files in
+`~/ovenlight-connector`, and the install script reinstalls the connector.
 
 Each release from 1.0.1 on also stays in its own folder, such as
 `https://downloads.ovenlight.app/connector/1.0.9/`, with its checksums signed by the keys
@@ -594,4 +595,4 @@ feedback inbox, the policy backups, the updater's record and settings, and the l
 Without it, all of that stays, so a reinstall needs no new logins and keeps updates off if
 you turned them off. Neither deletes `~/ovenlight-connector` (`$HOME\ovenlight-connector` on
 Windows), the unpacked release the uninstall script runs from: delete that folder
-afterwards. The `PATH` line the one-line installer added to your shell's profile stays too.
+afterwards, from another folder such as your home folder (`cd ~`). The `PATH` line the one-line installer added to your shell's profile stays too.
