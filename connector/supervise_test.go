@@ -1203,6 +1203,56 @@ func TestServiceCommandsMatchDocs(t *testing.T) {
 	}
 }
 
+// docs/connector.md's Commands has every command and flag in usage, and its table of MCP
+// tools has every tool and argument, so neither falls behind the connector.
+func TestCommandsAndToolsMatchDocs(t *testing.T) {
+	src, err := os.ReadFile("../docs/connector.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := string(src)
+	_, commands, _ := strings.Cut(doc, "\n## Commands\n")
+	commands, _, _ = strings.Cut(commands, "\n## ")
+	for _, line := range strings.Split(usage, "\n") {
+		syntax, ok := strings.CutPrefix(line, "  ovenlight ")
+		if !ok {
+			continue
+		}
+		syntax, _, _ = strings.Cut(syntax, "   ") // the line's description
+		words := strings.Fields(syntax)
+		name := words[0]
+		if len(words) > 1 && (name == "auth" || name == "update") {
+			name += " " + strings.Split(words[1], "|")[0]
+		}
+		if !strings.Contains(commands, "`ovenlight "+name) {
+			t.Errorf("Commands in docs/connector.md has no ovenlight %s", name)
+		}
+		for _, flag := range regexp.MustCompile(`--?[a-z][a-z-]*`).FindAllString(syntax, -1) {
+			if !regexp.MustCompile(regexp.QuoteMeta(flag) + `([^a-z-]|$)`).MatchString(commands) {
+				t.Errorf("Commands in docs/connector.md has no %s for ovenlight %s", flag, name)
+			}
+		}
+	}
+	args := map[string]string{} // each table row's Arguments cell, by its first cell
+	for _, line := range strings.Split(doc, "\n") {
+		if cells := strings.Split(line, " | "); len(cells) == 3 && strings.HasPrefix(cells[0], "| `") {
+			args[strings.Trim(cells[0], "| `")] = cells[1]
+		}
+	}
+	for _, tool := range mcpTools {
+		cell, ok := args[tool.Name]
+		if !ok {
+			t.Errorf("the MCP tools in docs/connector.md have no %s", tool.Name)
+			continue
+		}
+		for arg := range tool.InputSchema["properties"].(map[string]any) {
+			if !strings.Contains(cell, "`"+arg+"`") {
+				t.Errorf("the MCP tools in docs/connector.md have no %s argument for %s", arg, tool.Name)
+			}
+		}
+	}
+}
+
 // publish exits 1 when the app fails a check, though it is saved, and a new app needs a
 // port.
 func TestCLIPublishFailures(t *testing.T) {
