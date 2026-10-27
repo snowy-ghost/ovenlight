@@ -1,7 +1,7 @@
 # Building apps for Ovenlight
 
 Ovenlight opens web apps that run on the person's own computer, full screen on their
-phone (an iPhone or an Android phone), behind its lock. The connector (`ovenlight`) puts
+phone (iPhone or Android), behind its lock. The connector (`ovenlight`) puts
 each app on its own HTTPS address in the person's Tailscale network (their tailnet) and
 tells the app who is calling. An app can be shared with friends and family, who get that
 one app and nothing else.
@@ -37,6 +37,26 @@ into place. Keep the data file, and anything else people add such as uploads, in
 `data` folder at the top of the app's folder, as the starter does: outside the folder of
 public files, and not in `/tmp`. A new version sent to an always-on computer leaves
 `data` alone and copies the rest over the server's copy.
+
+## What doesn't work
+
+- **Notifications.** No Web Push and no Notification API.
+- **Popups and `window.opener`.** `window.open` and `target="_blank"` to the app's own
+  address load in the same view; any other site opens in a browser on top of Ovenlight.
+- **Service workers and offline copies.** Ovenlight doesn't run them: assume the app is
+  online.
+- **WebRTC.** It isn't available: Ovenlight removes it from pages, since its traffic would
+  go around Ovenlight's connection to the computer. Don't build calls or peer-to-peer
+  features.
+- **Location.** Ovenlight doesn't ask the phone for location, so `navigator.geolocation`
+  always fails with a permission error.
+- **Speech recognition and barcode detection.** On Android, `SpeechRecognition` and
+  `BarcodeDetector` aren't available.
+
+The microphone and camera work. The phone asks once whether Ovenlight may use them. The
+owner's own apps then get the microphone without a second prompt, while for the camera,
+and in shared apps, the person is asked first. Nothing gets either while Ovenlight is
+locked.
 
 ## Serve plain HTTP on 127.0.0.1
 
@@ -87,12 +107,12 @@ settings included. Remove `admin/` from `urls.py` (or allow it only when
 `caller()` below. Keep `CommonMiddleware`: its `ALLOWED_HOSTS` check answers a foreign
 `Host` with 400.
 
-`GET /` must answer with a page, or a redirect to one, that loads even without identity
-headers, since the connector reads it (and the web manifest) to find the app's icon and
-color. And a GET must never change anything: a link on another site can send one.
-Read each request's body in full, or close the connection: the connector asks the app
-to close the connection after a request with a body, but a server that ignores that can
-take an unread body for a request of its own, with forged identity headers.
+`GET /` must answer with a page, or a redirect to one, that loads without identity
+headers: the connector reads it and the web manifest for the app's icon and color. A GET
+must never change anything, since a link on another site can send one. Read each
+request's body in full, or close the connection. The connector asks the app to close it
+after a request with a body, but a server that ignores that can take an unread body for a
+new request, with forged identity headers.
 
 ## Keep it running
 
@@ -408,28 +428,9 @@ only to adjust presentation: anyone can send that string.
 
 **Android's page script.** On Android, Ovenlight adds a small script to every frame,
 before the page's own. It hides service workers, WebRTC, and the speech and barcode APIs
-listed below, and wraps `getUserMedia`, `URL.createObjectURL` and clicks on
-`<a download>`, so it can stop streams and save files. Don't replace those yourself.
-
-## What doesn't work
-
-- **Notifications.** No Web Push and no Notification API.
-- **Popups and `window.opener`.** `window.open` and `target="_blank"` to the app's own
-  address load in the same view; any other site opens in a browser on top of Ovenlight.
-- **Service workers and offline copies.** Ovenlight doesn't run them: assume the app is
-  online.
-- **WebRTC.** It isn't available: Ovenlight removes it from pages, since its traffic would
-  go around Ovenlight's connection to the computer. Don't build calls or peer-to-peer
-  features.
-- **Location.** Ovenlight doesn't ask the phone for location, so `navigator.geolocation`
-  always fails with a permission error.
-- **Speech recognition and barcode detection.** On Android, `SpeechRecognition` and
-  `BarcodeDetector` aren't available.
-
-The microphone and camera work. The phone asks once whether Ovenlight may use them. The
-owner's own apps then get the microphone without a second prompt, while for the camera,
-and in shared apps, the person is asked first. Nothing gets either while Ovenlight is
-locked.
+listed in [What doesn't work](#what-doesnt-work), and wraps `getUserMedia`,
+`URL.createObjectURL` and clicks on `<a download>`, so it can stop streams and save files.
+Don't replace those yourself.
 
 ## The loop
 
@@ -490,9 +491,9 @@ tap. Don't work around them. Doctor marks the checks only the person can fix wit
 - **Connect the phone.** Install Ovenlight from the App Store or Google Play, choose Use My
   Own Computers, then Connect, and sign in with the same Tailscale account. If the tailnet
   has device approval on, approve the phone in the admin console (Machines).
-- **Change a shared app.** Once an app is shareable, only the person can change its
-  port, command or folder, or unpublish it, in a terminal. Give them the command the
-  error prints.
-- **Share.** You can't share an app or let anyone in. With the API token stored, the
-  person runs `ovenlight publish --slug <slug> --shareable` in a terminal and types `yes`,
-  then touches and holds the app in Ovenlight and chooses Share.
+- **Change a shared app.** Once an app is shareable, the person changes its port,
+  command or folder, or unpublishes it, in a terminal. Give them the command the error
+  prints.
+- **Share.** Ovenlight gives you no tool to share an app or let anyone in. With the API
+  token stored, the person runs `ovenlight publish --slug <slug> --shareable` in their own
+  terminal and types `yes`, then touches and holds the app in Ovenlight and chooses Share.
