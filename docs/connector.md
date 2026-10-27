@@ -2,7 +2,7 @@
 
 The connector, the `ovenlight` command, runs on the computer with your apps. It publishes
 each app as its own node (a device in your tailnet) with HTTPS, and manages guests.
-[Set up your computer](https://ovenlight.app/support#own-computer) has the short version.
+[Support's setup steps](https://ovenlight.app/support#own-computer) are the short version.
 This page has the full one, from installing to uninstalling, then
 [Troubleshooting](#troubleshooting), [every command](#commands), and for reference,
 [installing by hand](#install-by-hand) and [what it installs](#what-it-installs).
@@ -13,21 +13,18 @@ The computer must stay on and awake while anyone uses your apps. A laptop can ke
 serving with its lid closed once you change one setting
 ([how](#a-laptop-with-its-lid-closed)). It must be one of these:
 
-- **A Mac with macOS 13 or later**, logged in to its desktop; `ovenlight doctor` checks
-  that it won't sleep. The connector is a launchd agent, which runs only in a logged-in
-  session, so a Mac without a display needs automatic login. FileVault turns automatic
-  login off, so after a power cut, or a restart for a macOS update, the connector waits
-  until someone logs in at the Mac.
+- **A Mac with macOS 13 or later**, logged in to its desktop. The connector runs only
+  while you're logged in, so a Mac without a display needs automatic login. FileVault
+  turns automatic login off, so after any restart, such as a power cut or a macOS update,
+  the connector waits until someone logs in at the Mac. `ovenlight doctor` checks that
+  the Mac won't sleep.
 - **A Linux computer with systemd**, such as Ubuntu. The connector is a systemd user
   service, and with linger on, it runs from startup with nobody logged in. `install.sh`
   turns linger on, or prints the `sudo` command for it when it can't.
-- **A Windows 11 PC.** The connector is a scheduled task that runs as you from startup,
-  with nobody signed in. On a work or school account (Microsoft Entra ID) or a domain
-  account, Windows runs it only while you're signed in. Installing it needs an
-  administrator PowerShell, signed in as the account that will own the apps: elevating
-  with another account's password installs the connector for that account. Windows puts
-  an idle computer to sleep by default: in Settings, under System > Power (Power &
-  battery on a laptop), set sleep to Never. `ovenlight doctor` checks that too.
+- **A Windows 11 PC** that never sleeps: in Settings, under System > Power (Power &
+  battery on a laptop), set sleep to Never, which `ovenlight doctor` checks. The
+  connector runs as you from startup, with nobody signed in. On a work or school account
+  (Microsoft Entra ID) or a domain account, it runs only while you're signed in.
 
 You also need a Tailscale account with MagicDNS and HTTPS certificates turned on in the
 admin console, under [DNS](https://console.tailscale.com/admin/dns); `ovenlight doctor`
@@ -37,9 +34,9 @@ is for non-commercial use, so a business needs one of
 
 ### A laptop with its lid closed
 
-Closing a laptop's lid puts it to sleep, and your apps go offline, until you change one
-setting. After that it stays fully awake even with the lid closed, so keep it plugged in,
-and don't put it in a bag while it's on: it can overheat there.
+Closing a laptop's lid puts it to sleep and takes your apps offline, until you change one
+setting. Then it stays fully awake with the lid closed, so keep it plugged in, and never
+put it in a bag while it's on, where it can overheat.
 
 - **On a Mac,** turn off sleep in Terminal:
 
@@ -47,11 +44,10 @@ and don't put it in a bag while it's on: it can overheat there.
   sudo pmset -a disablesleep 1
   ```
 
-  The Mac then never sleeps, with the lid open or closed and on battery too. To turn sleep
-  back on, run the same command with `0` in place of `1`. `ovenlight doctor` says so when
-  closing the lid would still put the Mac to sleep. Amphetamine, a Mac app, can do this
-  for you with its Power Protect add-on, available on Apple Silicon laptops. It turns the
-  setting on for a session and off again when the session ends.
+  The Mac then never sleeps, lid open or closed, even on battery. The same command with
+  `0` in place of `1` turns sleep back on. `ovenlight doctor` says so when closing the lid
+  would still put the Mac to sleep. On an Apple Silicon laptop, the Amphetamine app's
+  Power Protect add-on can turn this setting on for a session and off again when it ends.
 - **On Windows 11,** set what closing the lid does to Do nothing when plugged in. It's in
   Control Panel, under Power Options > Choose what closing the lid does, and on Windows 11
   24H2 or later also in Settings, under System > Power & battery. `ovenlight doctor`
@@ -69,7 +65,8 @@ curl -fsSL https://ovenlight.app/install.sh | sh
 ```
 
 On Windows, sign in as the account that will own the apps, which must be an
-administrator. Open PowerShell with Run as administrator and run:
+administrator: elevating with another account's password installs the connector for that
+account. Open PowerShell with Run as administrator and run:
 
 ```powershell
 irm https://ovenlight.app/install.ps1 | iex
@@ -79,8 +76,8 @@ Never used a terminal? [Here's how to open one](#open-a-terminal).
 
 The script checks the download before it installs anything, and stops with nothing
 installed if a check fails ([Read the script first](#read-the-script-first) has what it
-checks and changes). To check a download yourself, install without the script or build
-from source, see [Install by hand](#install-by-hand).
+checks and changes). [Install by hand](#install-by-hand) covers checking a download
+yourself, installing without the script and building from source.
 
 ### Open a terminal
 
@@ -107,58 +104,56 @@ it. On Windows, in an administrator PowerShell,
 address in a browser isn't the same: the site could send your terminal another one.
 
 The script takes the [verified steps](#check-a-download-first) for you, all but comparing
-the index's serial with the one your connector holds. It fetches the index the connector
-updates from and checks the index's signature with the release keys. It downloads this
-computer's archive of the release the index names and checks it against the index. Then
-it unpacks the archive into `~/ovenlight-connector` (`$HOME\ovenlight-connector` on
-Windows) and runs its install script. If a check fails, it stops with nothing installed.
-On a Mac or Linux, when `~/.local/bin` isn't on your `PATH`, it adds
-`export PATH="$HOME/.local/bin:$PATH"` to your shell's profile: `~/.zshrc` for zsh, and for
-bash `~/.bashrc` on Linux and `~/.bash_profile` on a Mac (or the `~/.bash_login` or
-`~/.profile` bash reads in its place). For another shell, it prints the line to add.
-Running it again installs the release the index names over yours, keeping your apps, node
-state and update settings.
+the index's serial with the one your connector holds. Then it unpacks the archive into
+`~/ovenlight-connector` (`$HOME\ovenlight-connector` on Windows) and runs its install
+script. On a Mac or Linux, when `~/.local/bin` isn't on your `PATH`, it adds the line that
+puts it there to your zsh or bash profile and names the file, or prints the line for
+another shell. Running it again installs the latest release over yours, keeping your apps,
+node state and update settings.
 
-Checking the signature needs an `ssh-keygen` that can read the release key: OpenSSH 8.2
-or later on Linux, 8.9 or later on Windows, and macOS 14 or later on a Mac. Without one,
-the script says so and checks the download against the index alone, so it trusts the
-HTTPS download, as the steps by hand do when you skip the check. On Windows it then also
-checks that Snowy Ghost LLC signed `ovenlight.exe`, `install.ps1` and `uninstall.ps1`.
+Checking the signature needs an `ssh-keygen` that can read the release key: macOS 14 or
+later, or OpenSSH 8.2 or later on Linux and 8.9 or later on Windows. Without one, the
+script says so and checks the download against the index alone, trusting HTTPS as
+installing by hand without the check does. On Windows it then also checks that Snowy
+Ghost LLC signed `ovenlight.exe`, `install.ps1` and `uninstall.ps1`.
+[What it trusts](security.md#what-it-trusts) has the rest.
 
 ## Publish an app
 
 Run your app on the computer with the connector. It must serve plain HTTP on `127.0.0.1`,
 and serve static files only from a public folder, never from the project's folder with its
-data and code. Give it a port nothing else uses; on a Mac, avoid 5000 and 7000, where
-AirPlay Receiver listens. Then:
+data and code. Give it a port nothing else uses (on a Mac, avoid 5000 and 7000, where
+AirPlay Receiver listens). No app yet? `ovenlight new "Family List" --dir ~/src` makes a
+starter app that suits Ovenlight and says how to publish it.
+
+Choose a name you don't mind people seeing: once the app has its HTTPS certificate, public
+Certificate Transparency logs list its full address, which includes your tailnet's name.
+Then:
 
 ```sh
 ovenlight publish --port 4317 --name "Recipe Box"
 ```
 
-The hostname comes from the name; `--slug` chooses another. These commands help along the
-way:
+Recipe Box becomes its own node, at `https://recipe-box.<your-tailnet>.ts.net/`. The
+hostname comes from the name, and `--slug` chooses another. For each new app, `publish`
+prints a login link: open it and sign in with your Tailscale account. The node then gets
+its HTTPS certificate, which can take up to a minute the first time (`publish` waits for
+it when the node is already signed in), and the connector renews it before it runs out.
+
+An app's sign-in expires on your tailnet's key expiry schedule (180 days by default), and
+`doctor` warns 30 days ahead. A stored API credential ([Share an app](#share-an-app))
+turns key expiry off, and with an API access token, later apps sign in as you without the
+browser (the first still needs its login link).
+
+These commands help along the way, and [Commands](#commands) lists every one:
 
 - `ovenlight status`: apps, node state, URL, owner, whether each app answers, and any
   login link.
-- `ovenlight doctor`: checks, each with its fix; it exits 1 on any failure.
+- `ovenlight doctor`: checks, each with its fix. It exits 1 on any failure.
 - `ovenlight check recipe-box`: how the app will look and work on the phone, with fixes.
 - `ovenlight unpublish recipe-box`: stops serving it (see [Unpublish](#unpublish)).
-- `ovenlight new "Family List" --dir ~/src`: a starter app that suits Ovenlight, and how
-  to publish it.
 
-Recipe Box becomes its own node, at `https://recipe-box.<your-tailnet>.ts.net/`.
-Once the node is signed in, it gets its HTTPS certificate, which can take up to a minute
-the first time. `publish` waits for it when the node is already signed in, and the
-connector renews it before it runs out. Once a node has its certificate, its full
-address, including your tailnet's name, is listed in public Certificate Transparency
-logs, so choose names and slugs you don't mind people seeing. For each new app,
-`publish` prints a login link: open it and sign in with your Tailscale account. Once you
-store an API access token of your own (see [Share an app](#share-an-app)), later apps
-sign in as you without the browser; the first app on a fresh install still needs its
-link. Without a stored API credential, each app's sign-in expires on your tailnet's key
-expiry schedule (180 days by default), and `doctor` warns 30 days ahead; with one, the
-connector turns key expiry off.
+### Open it on your phone
 
 On your phone, open Ovenlight, choose Use My Own Computers, tap Connect, and sign in with
 the same Tailscale account. If you've already joined someone else's app, Use My Own
@@ -167,9 +162,6 @@ approve the phone in the admin console. An app you signed in with a login link w
 there for approval too, listed by its slug. Ovenlight then finds your published apps by
 itself. Add App, under the More button, also takes an app's address, but only one on your
 own tailnet; apps on other people's computers come by invite.
-
-[Commands](#commands) lists every command. `publish` edits the app list (see the
-[table](#what-it-installs)) and reloads the connector.
 
 ### Keep an app running
 
@@ -193,44 +185,35 @@ restart empties, and out of Desktop, Documents, Downloads, iCloud Drive, cloud s
 folders and external drives: macOS asks on the Mac's screen before the connector may use
 those, and the app waits until you click Allow.
 
-On macOS and Linux, the command runs with `/bin/sh` in the environment of your login
-shell, which leaves out what only a terminal's shell loads: zsh, the macOS default, reads
-`~/.zprofile` but not `~/.zshrc`, and bash on Ubuntu and Debian skips what `~/.bashrc`
-sets up. So a tool set up only in `~/.zshrc` or `~/.bashrc` (nvm, pyenv) isn't found: for
-a simple command, `publish` warns about it, and for any command, `ovenlight logs <slug>`
-says command not found. Put the tool's directory first on `PATH` in the command:
+A project's own tools aren't on the command's `PATH`: run them through `npx` (`npx vite`)
+or an npm script, and a Python virtual environment's tools by path (`.venv/bin/uvicorn`,
+or `.venv\Scripts\uvicorn` on Windows) or through `uv run`.
+
+On macOS and Linux, the command runs with `/bin/sh` in your login shell's environment,
+without what only a terminal's shell sets up. So a tool set up only in `~/.zshrc` or
+`~/.bashrc` (nvm, pyenv) isn't found, and `ovenlight logs <slug>` says command not found.
+Put its directory first on `PATH` in the command, such as
 `--run 'PATH=/path/to/node/bin:$PATH npm start'`, with the directory from
-`command -v node`. Single quotes keep `$PATH` and `$PORT` for the connector's shell to
-expand. A project's own tools aren't on `PATH` either: run them through `npx` (`npx vite`)
-or an npm script, and a Python virtual environment's tools by path (`.venv/bin/uvicorn`)
-or through `uv run`.
+`command -v node`. A variable exported only in those files is missing too, and nothing
+warns about it: keep settings the app needs in a file in its folder, outside the public
+one. On Windows, the command runs with `cmd`, without the connector's administrator
+rights. [Keep it running](building-apps.md#keep-it-running) in the building guide has the
+rest: quoting, virtual environments and Windows.
 
-A variable exported only in `~/.zshrc` or `~/.bashrc` is missing too, and nothing warns
-about it: keep settings the app needs in a file in its folder, outside the public one.
-
-On Windows, the command runs with `cmd`, without the administrator rights the connector
-has, as in a PowerShell window not run as administrator. It gets the environment Windows
-keeps for your account, which the connector reads again when you publish or restart the
-app: a tool installed since is found after `ovenlight restart <slug>`, and anything only
-a PowerShell profile sets is missing. `$PORT` and `$HOST` still work, since the connector
-passes them on as `%PORT%` and `%HOST%`. A Python virtual environment's tools are in
-`.venv\Scripts`, written with backslashes, in place of `.venv/bin`.
-
-The connector starts the command again whenever it exits, waiting longer after each exit,
-up to a minute. Once a run has lasted a minute and served on the app's port, the wait
-starts over. The command's output goes to `<slug>.log` in `~/Library/Logs/ovenlight` on
-macOS, and in the `logs` folder of the state directory on Linux and Windows; `status`
-shows whether it runs. Publishing the app again keeps the command and folder; `--run=`
-stops running it, and so does `unpublish`.
+Whenever the command exits, the connector starts it again, waiting longer each time, up to
+a minute. Once a run has lasted a minute and served on the app's port, the wait starts
+over. Output goes to `<slug>.log` in `~/Library/Logs/ovenlight` on macOS, and in the
+`logs` folder of the [state directory](#what-it-installs) on Linux and Windows. `status`
+shows whether the command runs. Publishing the app again keeps the command and folder, and
+`--run=` or `unpublish` stops running it.
 
 ### Unpublish
 
 `unpublish` stops serving an app. Its node stays in your tailnet, offline, so publishing
-it again needs no new login; a shareable app's node is deleted instead (see
-[Share an app](#share-an-app)). On your phone, an unpublished app's tile stays until you
-remove it (touch and hold it, then choose Remove App): discovery adds apps but never
-removes one. Once you remove an app, discovery doesn't add it back, even when you publish
-it again; Add App, under the More button, adds it by its address.
+it again needs no new login. A shareable app's node is deleted instead
+([Share an app](#share-an-app)). On your phone, the app's tile stays until you remove it
+(touch and hold it, then choose Remove App). Ovenlight doesn't add a removed app back,
+even when you publish it again: add it by its address with Add App, under the More button.
 
 ## Connect a coding agent
 
@@ -256,10 +239,11 @@ then:
 ```
 
 If you install the connector after the plugin, reconnect the `ovenlight` server in `/mcp`.
-To add only the MCP server to Claude Code instead, on a Mac:
+
+In Codex, on a Mac:
 
 ```sh
-claude mcp add --scope user ovenlight -- \
+codex mcp add ovenlight -- \
   ~/Library/Application\ Support/ovenlight/bin/ovenlight mcp
 ```
 
@@ -267,26 +251,31 @@ On Linux, the path is `~/.local/state/ovenlight/bin/ovenlight` (under `$XDG_STAT
 when that's set). On Windows, in PowerShell:
 
 ```powershell
-claude mcp add --scope user ovenlight -- "$env:LOCALAPPDATA\ovenlight\bin\ovenlight.exe" mcp
+codex mcp add ovenlight -- "$env:LOCALAPPDATA\ovenlight\bin\ovenlight.exe" mcp
 ```
 
-In Codex, on a Mac (on Linux, with the path above):
+To add only the MCP server to Claude Code, without the plugin's skill, on a Mac (on Linux,
+with the path above):
 
 ```sh
-codex mcp add ovenlight -- \
+claude mcp add --scope user ovenlight -- \
   ~/Library/Application\ Support/ovenlight/bin/ovenlight mcp
 ```
 
 On Windows, in PowerShell:
 
 ```powershell
-codex mcp add ovenlight -- "$env:LOCALAPPDATA\ovenlight\bin\ovenlight.exe" mcp
+claude mcp add --scope user ovenlight -- "$env:LOCALAPPDATA\ovenlight\bin\ovenlight.exe" mcp
 ```
 
 For another agent, add a local MCP server whose command is the connector's binary and
 whose one argument is `mcp`. Write the binary's path out in full, with no `~` or
 `%LOCALAPPDATA%`, such as `/Users/you/Library/Application Support/ovenlight/bin/ovenlight`
 on a Mac ([What it installs](#what-it-installs) has the path on each system).
+
+Then ask your agent to put your app on your phone. It publishes and checks the app, and
+asks you for what only you can do, such as opening the login link and connecting your
+phone.
 
 ### The MCP tools
 
@@ -327,7 +316,7 @@ guests use 13, for example. The free Personal plan includes a set number and cha
 more ([pricing](https://tailscale.com/pricing)). Removing a guest from all your apps
 deletes their device, so it stops counting. `ovenlight guests` says how many tagged
 devices your tailnet has and how many are Ovenlight's, and when each guest last opened
-each app, so you can tell who no longer uses them.
+each app.
 
 First create an API access token in the Tailscale admin console, under
 [Settings, Keys](https://console.tailscale.com/admin/settings/keys), and store it once;
@@ -372,11 +361,11 @@ It prints a link, a QR code and a message to send. The other sharing commands:
   review, which lasts 90 days and works on up to 10 devices
   ([development.md](development.md#app-review-invites)).
 
-An invite link works once and expires after 7 days (a review invite's works on up to 10
-devices for 90 days). Your friend's phone joins without waiting for your approval, even
-if your tailnet has device approval on ([security.md](security.md#invites) says why). You
-can also share apps and remove guests in Ovenlight on your phone: touch and hold one of
-your apps, or open People & Sharing under the More button.
+Apart from a review invite, an invite link works once and expires after 7 days. Your
+friend's phone joins without waiting for your approval, even if your tailnet has device
+approval on ([security.md](security.md#invites) says why). You can also share apps and
+remove guests in Ovenlight on your phone: touch and hold one of your apps, or open People
+& Sharing under the More button.
 
 Revoking takes effect at once on the connector. As soon as the guest's phone notices it's
 no longer in your tailnet, it removes the app and its data. If the guest still has another
@@ -396,22 +385,28 @@ run, and [security.md](security.md#later-changes) has the details.
 ## Update
 
 The connector updates itself. Releases up to 1.0.9 don't: run the
-[install command](#install) once, and from then on it does. It checks once a day,
-and installs a new release two days after it first sees it, at a quiet moment in the
-night: once nothing has used your apps or the connector for 10 minutes. Each computer's
-night starts at a time of its own between 02:00 and 04:00, and ends at 05:00, its own
-time. A release that fixes a security problem in yours goes in at the first quiet 10
-minutes, day or night. On a computer that's never quiet, or asleep every night, it goes in
-anyway, busy or not, from the start of the next night, and any other update from the start
-of the first night a day after it was due. Either waits until the connector has been
-running and awake for 10 minutes. Installing restarts the connector, so the apps it runs
-stop and open connections drop for a few seconds (about 10 on Linux, up to a minute on
-Windows). If the new release doesn't serve your apps again within 10 minutes, the
-connector goes back to the one before. Unpublishing an app before the new release serves
-it again has the same effect. A restart of your computer in those 10 minutes starts them
-again. On Windows, the Stop or Restart command above in that time makes it go back too, as
-does shutting down or signing out of a work, school or domain account. An update that
-fails, whether it went back or its download broke off, is tried again at the start of the
+[install command](#install) once, and from then on it does.
+
+It checks once a day and installs a new release two days after it first sees it, at a
+quiet moment in the night: once nothing has used your apps or the connector for 10
+minutes. Each computer's night starts at its own time between 02:00 and 04:00 and ends at
+05:00, local time.
+
+- A release that fixes a security problem in yours goes in at the first quiet 10 minutes,
+  day or night.
+- On a computer that's never quiet, or asleep every night, updates go in busy or not: a
+  security fix from the start of the next night, and any other update from the start of
+  the first night a day after it was due. Each waits until the connector has been running
+  and awake for 10 minutes.
+
+Installing restarts the connector, so the apps it runs stop and open connections drop for
+a few seconds (about 10 on Linux, up to a minute on Windows). If the new release doesn't
+serve your apps again within 10 minutes, the connector goes back to the one before.
+Unpublishing an app before the new release serves it again also makes the connector go
+back. On Windows, so does running Stop or Restart from [Start and stop](#start-and-stop)
+in those 10 minutes, or shutting down or signing out of a work, school or domain account.
+A restart of your computer in those 10 minutes starts the 10 minutes over. A failed
+update, whether it went back or its download broke off, is tried again at the start of the
 next night, busy or not.
 
 `ovenlight status` shows the last check, a release waiting its turn and when it installs,
@@ -460,18 +455,16 @@ shared with you don't move: ask for a new invite.
 ## Uninstall
 
 Uninstalling changes nothing in your tailnet. So first, with the connector still running,
-run `ovenlight unpublish <slug>` for each shareable app: it removes the app's guests,
-deletes its node and offers to take its tags and rule out of your policy. Other app nodes
-stay in your tailnet, offline, until you remove them in the admin console, and the API
-credential works until you revoke it there.
+run `ovenlight unpublish <slug>` for each shareable app, which
+[takes it out of your tailnet](#share-an-app). Other app nodes stay in your tailnet,
+offline, until you remove them in the admin console, and the API credential works until
+you revoke it there.
 
 ```sh
 ~/ovenlight-connector/uninstall.sh
 ```
 
-If you installed from another folder, run the `uninstall.sh` beside the `install.sh` you
-ran (`connector/uninstall.sh` in a clone). Add `--purge` to delete the connector's data
-too.
+Add `--purge` to delete the connector's data too.
 
 On Windows, run this in an administrator PowerShell, adding `--purge` to the second line
 to delete the data too:
@@ -481,8 +474,8 @@ cd $HOME\ovenlight-connector
 powershell -ExecutionPolicy Bypass -File .\uninstall.ps1
 ```
 
-If you installed from another folder, run the `uninstall.ps1` beside the `install.ps1` you
-ran (`connector\uninstall.ps1` in a clone).
+If you installed from another folder, run the uninstall script beside the install script
+you ran (`connector/uninstall.sh`, or `connector\uninstall.ps1` on Windows, in a clone).
 
 `uninstall.ps1` also takes the bin folder out of your `PATH`. On Linux, linger stays on,
 since other services of yours may need it: `loginctl disable-linger` turns it off.
@@ -499,39 +492,38 @@ may use `~/.local/bin` too.
 ## Troubleshooting
 
 Start with `ovenlight doctor`. It checks the computer's side and gives a fix for each
-problem it finds, such as an app that isn't listening or listens on the wrong address,
-another program on an app's port, a node waiting for its login, a missing HTTPS
-certificate, a Mac or Windows PC that sleeps, or sharing that isn't fully set up.
+problem it finds, such as an app on the wrong address or a node waiting for its login.
 `ovenlight check <slug>` looks at one app the way your phone will. When `ovenlight` isn't
 found, or neither finds the problem, look here.
 
 - **Your terminal says command not found for `ovenlight`** (on Windows, that it isn't
-  recognized). Open a new terminal window, since the install puts it on your `PATH` only
-  for windows opened after it. If it's still not found on a Mac or Linux, add
-  `export PATH="$HOME/.local/bin:$PATH"` to your shell's profile ([Install](#install)
-  names the file for zsh and bash) and open a new window. Until then, run
-  `~/.local/bin/ovenlight`. On Windows, run it by its full path:
+  recognized). Open a new terminal window: the install puts it on your `PATH` only for
+  windows opened after it. If it's still not found on a Mac or Linux, add
+  `export PATH="$HOME/.local/bin:$PATH"` to your shell's profile and open a new window.
+  The profile is `~/.zshrc` for zsh, and for bash, `~/.bashrc` on Linux or
+  `~/.bash_profile` on a Mac (or the `~/.bash_login` or `~/.profile` bash reads in its
+  place). Until then, run `~/.local/bin/ovenlight`. On Windows, run
   `& "$env:LOCALAPPDATA\ovenlight\bin\ovenlight.exe"`.
 - **The connector isn't running.** `ovenlight status` gives the command that starts it,
   the same as in [Start and stop](#start-and-stop). If it starts and then stops again,
   the end of its log says why, or after a crash the stderr log beside it (the user
   journal on Linux). [What it installs](#what-it-installs) says where each is.
-- **Your coding agent doesn't have Ovenlight's tools.** On a laptop that sends your apps to
-  a Linux server of your own, that's expected: the agent runs the connector over `ssh`, as
-  [Let your agent send your apps](always-on.md#let-your-agent-send-your-apps) sets up, so
+- **Your coding agent doesn't have Ovenlight's tools.** If your laptop sends apps to a
+  Linux server of your own, that's expected: the agent runs the connector over `ssh`
+  ([Let your agent send your apps](always-on.md#let-your-agent-send-your-apps)), so
   don't install the connector on the laptop. Otherwise, install it and
-  [connect the agent](#connect-a-coding-agent) if you haven't, then start a new session
-  (in Claude Code, reconnecting `ovenlight` in `/mcp` also works). A setting you added by
-  hand has to name the binary at its installed path
-  ([What it installs](#what-it-installs)). `claude mcp list` checks each server Claude
-  Code has. In Codex, `/mcp` lists the tools it has.
+  [connect the agent](#connect-a-coding-agent), then start a new session (or in Claude
+  Code, reconnect `ovenlight` in `/mcp`). A setting you added by hand must name the binary
+  at its [installed path](#what-it-installs). `claude mcp list` checks Claude Code's
+  servers, and `/mcp` in Codex lists its tools.
 - **Your app doesn't appear on your phone.** The phone must be signed in to the same
   Tailscale account as the computer. To check, tap the More button in Ovenlight, then
   Settings, then Advanced, which shows the phone's account and tailnet. If it's another
   account, choose Sign Out in Settings and connect again with the right one. With device
   approval on in your tailnet, the phone and any app that signed in with a login link
-  wait for you to approve them ([Publish an app](#publish-an-app)). An app you removed
-  from the phone stays removed until you add it back ([Unpublish](#unpublish)).
+  wait for you to approve them ([Open it on your phone](#open-it-on-your-phone)). An app
+  you removed from the phone stays removed until you add it back
+  ([Unpublish](#unpublish)).
 - **Ovenlight says it can't reach one of your apps.** The computer has to be on, awake
   and online ([What the computer needs](#what-the-computer-needs) covers a Mac's login and
   a laptop's lid). Once it is, `ovenlight status` says whether the connector is running.
@@ -545,10 +537,11 @@ found, or neither finds the problem, look here.
   until it trusts the connector as a proxy. Follow the app's recipe in
   [Apps you already run](apps-you-run.md), or [Any app](apps-you-run.md#any-app) for one
   without a recipe.
-- **An app's output in `ovenlight logs <slug>` says command not found.** On a Mac or
-  Linux, the app's command doesn't get tools set up only in `~/.zshrc` or `~/.bashrc`,
-  such as nvm and pyenv. [Keep an app running](#keep-an-app-running) has the fix, and
-  what differs on Windows.
+- **An app's output in `ovenlight logs <slug>` says command not found.** A project's own
+  tools, such as `vite`, aren't on the command's `PATH`. On a Mac or Linux, neither are
+  tools set up only in `~/.zshrc` or `~/.bashrc`, such as nvm and pyenv. On Windows, a
+  tool installed after you published the app is found once you run
+  `ovenlight restart <slug>`. [Keep an app running](#keep-an-app-running) has the fixes.
 - **A change doesn't show on the phone.** Choose Reload in the app's menu on the phone,
   after `ovenlight restart <slug>` if the app's command doesn't reload when files change.
   For a new icon or color, run `ovenlight publish --slug <slug>` again, then touch and hold
@@ -650,7 +643,10 @@ curl -fsSL https://downloads.ovenlight.app/connector/latest/ovenlight-connector-
 ./install.sh
 ```
 
-On Linux, use `linux-amd64` or `linux-arm64` in place of `macos`.
+On Linux, use `linux-amd64` or `linux-arm64` in place of `macos`. If `install.sh` prints
+an `export PATH` line, add that line to the profile `install.sh` names and open a new
+terminal window. On Linux, if it prints a `sudo loginctl enable-linger` command, run that
+too, so the connector keeps serving with nobody logged in and after a restart.
 
 On Windows, signed in as the account that will own the apps, open PowerShell with Run as
 administrator and run:
@@ -662,9 +658,10 @@ tar -xf connector.zip --strip-components 1
 powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
-On an Arm PC, use `windows-arm64` in place of `windows-amd64`. `ovenlight.exe`,
-`install.ps1` and `uninstall.ps1` are signed by Snowy Ghost LLC. To check one, open its
-Properties and look under Digital Signatures.
+On an Arm PC, use `windows-arm64` in place of `windows-amd64`. The `ovenlight` command
+works in PowerShell windows opened after the install. `ovenlight.exe`, `install.ps1` and
+`uninstall.ps1` are signed by Snowy Ghost LLC. To check one, open its Properties and look
+under Digital Signatures.
 
 To download in a browser instead, use these links:
 [macOS](https://downloads.ovenlight.app/connector/latest/ovenlight-connector-macos.tar.gz)
@@ -845,11 +842,11 @@ replacing the one before. What bypasses the log, such as a crash, goes to
 Linux (`journalctl --user -eu ovenlight`). The updater keeps a few files of its own in the
 state directory and the bin folder ([security.md](security.md#the-files-it-keeps)).
 
-On macOS and Linux, `install.sh` links `ovenlight` in `~/.local/bin`, but never replaces a
-file it didn't make. Run by hand, when `~/.local/bin` isn't on your `PATH`, it prints the
-`export PATH` line to add to your shell profile (the one-line installer adds it for you),
-and `ovenlight` works in terminal windows opened after that. On Windows, `install.ps1`
-adds the bin folder to your `PATH`, for PowerShell windows opened after it.
+On macOS and Linux, `install.sh` links `ovenlight` in `~/.local/bin`, never replacing a
+file it didn't make. When `~/.local/bin` isn't on your `PATH`, it prints the
+`export PATH` line to add to your shell profile, which the one-line installer adds for
+you. On Windows, `install.ps1` adds the bin folder to your `PATH`. Either way, `ovenlight`
+works in terminal windows opened after that.
 
 ### Start and stop
 
