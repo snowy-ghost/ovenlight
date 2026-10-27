@@ -6,7 +6,10 @@
   "compatibility_date": "2026-10-01",
   // No request logs: the site promises no tracking.
   "observability": { "enabled": false },
-  "assets": { "directory": "site" },
+  "assets": { "directory": "site", "binding": "ASSETS", "run_worker_first": ["/images/*.mp4"] },
+  // Static assets serve files whole, so the videos go through a Worker that answers range
+  // requests, which Safari needs to play them.
+  "main": "scripts/siteworker/index.js",
   // Renders docs/ into site/ before each deploy and wrangler dev, and stops on a broken
   // doc link. Needs Go.
   "build": { "command": "go run .", "cwd": "scripts/sitedocs" },
