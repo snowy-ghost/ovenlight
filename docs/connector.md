@@ -1,11 +1,11 @@
 # The connector
 
 The connector, the `ovenlight` command, runs on the computer with your apps. It publishes
-each app as its own node (a device in your tailnet) with HTTPS, and manages guests. This
-page covers it in full: installing and updating it, publishing apps, connecting your
-coding agent (Claude Code, Codex and others), sharing apps, moving to a new computer and
-uninstalling. It ends with [Troubleshooting](#troubleshooting) and a list of
-[every command](#commands). The [README](../README.md#get-started) has the short version.
+each app as its own node (a device in your tailnet) with HTTPS, and manages guests.
+[Set up your computer](https://ovenlight.app/support#own-computer) has the short version.
+This page has the full one, from installing to uninstalling, then
+[Troubleshooting](#troubleshooting), [every command](#commands), and for reference,
+[installing by hand](#install-by-hand) and [what it installs](#what-it-installs).
 
 ## What the computer needs
 
@@ -28,6 +28,12 @@ serving with its lid closed once you change one setting
   with another account's password installs the connector for that account. Windows puts
   an idle computer to sleep by default: in Settings, under System > Power (Power &
   battery on a laptop), set sleep to Never. `ovenlight doctor` checks that too.
+
+You also need a Tailscale account with MagicDNS and HTTPS certificates turned on in the
+admin console, under [DNS](https://console.tailscale.com/admin/dns); `ovenlight doctor`
+checks both. The computer doesn't need the Tailscale app. Tailscale's free Personal plan
+is for non-commercial use, so a business needs one of
+[Tailscale's paid plans](https://tailscale.com/pricing).
 
 ### A laptop with its lid closed
 
@@ -54,12 +60,6 @@ and don't put it in a bag while it's on: it can overheat there.
   [A computer you have](always-on.md#a-computer-you-have) keep a laptop awake with its
   lid closed.
 
-You also need a Tailscale account with MagicDNS and HTTPS certificates turned on in the
-admin console, under [DNS](https://console.tailscale.com/admin/dns); `ovenlight doctor`
-checks both. The computer doesn't need the Tailscale app. Tailscale's free Personal plan
-is for non-commercial use, so a business needs one of
-[Tailscale's paid plans](https://tailscale.com/pricing).
-
 ## Install
 
 On a Mac or Linux, in a terminal:
@@ -77,24 +77,10 @@ irm https://ovenlight.app/install.ps1 | iex
 
 Never used a terminal? [Here's how to open one](#open-a-terminal).
 
-The script takes the [verified steps](#check-a-download-first) for you, all but comparing
-the index's serial with the one your connector holds. It fetches the index the connector
-updates from and checks the index's signature with the release keys. It downloads this
-computer's archive of the release the index names and checks it against the index. Then
-it unpacks the archive into `~/ovenlight-connector` (`$HOME\ovenlight-connector` on
-Windows) and runs its install script. If a check fails, it stops with nothing installed.
-On a Mac or Linux, when `~/.local/bin` isn't on your `PATH`, it adds
-`export PATH="$HOME/.local/bin:$PATH"` to your shell's profile: `~/.zshrc` for zsh, and for
-bash `~/.bashrc` on Linux and `~/.bash_profile` on a Mac (or the `~/.bash_login` or
-`~/.profile` bash reads in its place). For another shell, it prints the line to add.
-Running it again installs the release the index names over yours, keeping your apps, node
-state and update settings.
-
-Checking the signature needs an `ssh-keygen` that can read the release key: OpenSSH 8.2
-or later on Linux, 8.9 or later on Windows, and macOS 14 or later on a Mac. Without one,
-the script says so and checks the download against the index alone, so it trusts the
-HTTPS download, as the steps by hand do when you skip the check. On Windows it then also
-checks that Snowy Ghost LLC signed `ovenlight.exe`, `install.ps1` and `uninstall.ps1`.
+The script checks the download before it installs anything, and stops with nothing
+installed if a check fails ([Read the script first](#read-the-script-first) has what it
+checks and changes). To check a download yourself, install without the script or build
+from source, see [Install by hand](#install-by-hand).
 
 ### Open a terminal
 
@@ -120,276 +106,24 @@ it. On Windows, in an administrator PowerShell,
 `powershell -ExecutionPolicy Bypass -File $HOME\install.ps1` runs it. Reading it at its
 address in a browser isn't the same: the site could send your terminal another one.
 
-### Or install by hand
+The script takes the [verified steps](#check-a-download-first) for you, all but comparing
+the index's serial with the one your connector holds. It fetches the index the connector
+updates from and checks the index's signature with the release keys. It downloads this
+computer's archive of the release the index names and checks it against the index. Then
+it unpacks the archive into `~/ovenlight-connector` (`$HOME\ovenlight-connector` on
+Windows) and runs its install script. If a check fails, it stops with nothing installed.
+On a Mac or Linux, when `~/.local/bin` isn't on your `PATH`, it adds
+`export PATH="$HOME/.local/bin:$PATH"` to your shell's profile: `~/.zshrc` for zsh, and for
+bash `~/.bashrc` on Linux and `~/.bash_profile` on a Mac (or the `~/.bash_login` or
+`~/.profile` bash reads in its place). For another shell, it prints the line to add.
+Running it again installs the release the index names over yours, keeping your apps, node
+state and update settings.
 
-On a Mac, in Terminal:
-
-```sh
-mkdir -p ~/ovenlight-connector && cd ~/ovenlight-connector
-curl -fsSL https://downloads.ovenlight.app/connector/latest/ovenlight-connector-macos.tar.gz |
-  tar xz --strip-components 1
-./install.sh
-```
-
-On Linux, use `linux-amd64` or `linux-arm64` in place of `macos`.
-
-On Windows, signed in as the account that will own the apps, open PowerShell with Run as
-administrator and run:
-
-```powershell
-mkdir $HOME\ovenlight-connector -Force | Out-Null; cd $HOME\ovenlight-connector
-curl.exe -fsSL https://downloads.ovenlight.app/connector/latest/ovenlight-connector-windows-amd64.zip -o connector.zip
-tar -xf connector.zip --strip-components 1
-powershell -ExecutionPolicy Bypass -File .\install.ps1
-```
-
-On an Arm PC, use `windows-arm64` in place of `windows-amd64`. `ovenlight.exe`,
-`install.ps1` and `uninstall.ps1` are signed by Snowy Ghost LLC. To check one, open its
-Properties and look under Digital Signatures.
-
-To download in a browser instead, use these links:
-[macOS](https://downloads.ovenlight.app/connector/latest/ovenlight-connector-macos.tar.gz)
-(its binary is notarized), Linux
-[amd64](https://downloads.ovenlight.app/connector/latest/ovenlight-connector-linux-amd64.tar.gz)
-and
-[arm64](https://downloads.ovenlight.app/connector/latest/ovenlight-connector-linux-arm64.tar.gz),
-and Windows
-[x64](https://downloads.ovenlight.app/connector/latest/ovenlight-connector-windows-amd64.zip)
-and
-[Arm](https://downloads.ovenlight.app/connector/latest/ovenlight-connector-windows-arm64.zip).
-These links always point to the latest release. Unpack the archive if your browser
-hasn't, then run `./install.sh` in its `ovenlight-connector-<version>` folder. On Windows,
-right-click that folder in File Explorer and choose Copy as path. Then, in PowerShell
-opened with Run as administrator, type `cd` and a space, paste the path, press Enter, and
-run `powershell -ExecutionPolicy Bypass -File .\install.ps1`.
-
-#### Check a download first
-
-To check a download before installing it, fetch it with the index the connector updates
-from (`latest.json`), the index's signature (`latest.json.sig`) and the release keys from
-this repository ([allowed_signers](allowed_signers)). Then check that a release key signed
-the index, and that the index names the archive's SHA-256. On a Mac or Linux:
-
-```sh
-mkdir -p ~/ovenlight-connector && cd ~/ovenlight-connector
-archive=ovenlight-connector-macos.tar.gz
-base=https://downloads.ovenlight.app/connector
-curl -fsSL --remote-name-all "$base/latest.json" "$base/latest.json.sig" "$base/latest/$archive"
-curl -fsSLO https://raw.githubusercontent.com/snowy-ghost/ovenlight/master/docs/allowed_signers
-ssh-keygen -Y verify -f allowed_signers -I team@snowyghost.com -n ovenlight-latest \
-  -s latest.json.sig < latest.json
-grep -F "\"$archive\": \"$(shasum -a 256 "$archive" | cut -d ' ' -f 1)\"" latest.json
-```
-
-On Linux, put `linux-amd64` or `linux-arm64` in place of `macos`, and if `shasum` is
-missing, `sha256sum` in place of `shasum -a 256`. The first check prints
-`Good "ovenlight-latest" signature`. On macOS 13, or Linux with OpenSSH before 8.2, it
-says `unknown or unsupported key type` instead: check the download on a Mac with macOS 14
-or later, or Linux with OpenSSH 8.2 or later. The second check prints the index, which
-names the release after `"latest"` and its serial after `"serial"`. If both checks pass,
-and the serial is no lower than the one `ovenlight status` shows for the index your
-connector holds, unpack the archive and run its install script, in the same window:
-
-```sh
-tar xzf "$archive" --strip-components 1
-./install.sh
-```
-
-On Windows, in PowerShell opened with Run as administrator:
-
-```powershell
-mkdir $HOME\ovenlight-connector -Force | Out-Null; cd $HOME\ovenlight-connector
-$archive = 'ovenlight-connector-windows-amd64.zip'
-$base = 'https://downloads.ovenlight.app/connector'
-curl.exe -fsSL --remote-name-all "$base/latest.json" "$base/latest.json.sig" "$base/latest/$archive"
-curl.exe -fsSLO https://raw.githubusercontent.com/snowy-ghost/ovenlight/master/docs/allowed_signers
-cmd /c 'ssh-keygen -Y verify -f allowed_signers -I team@snowyghost.com -n ovenlight-latest -s latest.json.sig < latest.json'
-(Get-Content latest.json -Raw | ConvertFrom-Json).archives.$archive -eq (Get-FileHash $archive).Hash
-(Get-Content latest.json -Raw | ConvertFrom-Json).serial
-```
-
-On an Arm PC, use `windows-arm64` in place of `windows-amd64`. The first check needs
-OpenSSH 8.9 or later (`ssh -V` shows yours): an older one can't read the release key that
-signs with Touch ID, and says `unknown or unsupported key type`. If yours is older, check
-the download on a Mac with macOS 14 or later, or Linux with OpenSSH 8.2 or later. If the
-first check prints `Good "ovenlight-latest" signature`, the second `True`, and the last
-the index's serial, no lower than the one `ovenlight status` shows, unpack the archive and
-run its install script, in the same window:
-
-```powershell
-tar -xf $archive --strip-components 1
-powershell -ExecutionPolicy Bypass -File .\install.ps1
-```
-
-If a check fails, don't install the download. For five minutes after a release comes out,
-the server may still hand out some of the last release's files, so a check that fails
-then is worth trying again. A serial that stays lower than the one `ovenlight status`
-shows means the server is sending an older index than your connector holds, which the
-other checks pass too: report it to team@snowyghost.com.
-
-### From source
-
-This needs Git and Go 1.21 or later (`brew install go`, your package manager's `golang`,
-or [go.dev/dl](https://go.dev/dl/)); the `go` command fetches the version
-`connector/go.mod` asks for when yours is older. On macOS and Linux, clone this repository
-and run its install script:
-
-```sh
-git clone https://github.com/snowy-ghost/ovenlight
-cd ovenlight
-connector/install.sh
-```
-
-If `go env GOTOOLCHAIN` says `local`, as on Fedora and Red Hat Enterprise Linux, `go`
-won't fetch a newer one: run `GOTOOLCHAIN=auto connector/install.sh` instead.
-
-On Windows, signed in as the account that will own the apps, install Git and Go with
-`winget install Git.Git` and `winget install GoLang.Go`, open a new PowerShell window so
-it finds them, and run `git clone https://github.com/snowy-ghost/ovenlight $HOME\ovenlight`.
-Then open an administrator PowerShell (right-click it and choose Run as administrator)
-and run:
-
-```powershell
-cd $HOME\ovenlight
-powershell -ExecutionPolicy Bypass -File connector\install.ps1
-```
-
-A binary you build isn't code-signed, so Smart App Control, when it's on, may refuse to
-run it; `install.ps1` says so when the connector doesn't start.
-
-### What it installs
-
-Running the install script again installs the connector it came with, even an older one,
-and restarts it, keeping your apps, node state and update settings. It installs:
-
-| | macOS | Linux | Windows |
-|---|---|---|---|
-| Runs as | launchd agent `com.snowyghost.ovenlight.connector` | systemd user service `ovenlight` | scheduled task `ovenlight` |
-| Binary | `~/Library/Application Support/ovenlight/bin/ovenlight` | `~/.local/state/ovenlight/bin/ovenlight` | `%LOCALAPPDATA%\ovenlight\bin\ovenlight.exe` |
-| App list | `~/.config/ovenlight/config.json` | `~/.config/ovenlight/config.json` | `%LOCALAPPDATA%\ovenlight\config.json` |
-| State directory | `~/Library/Application Support/ovenlight/` | `~/.local/state/ovenlight/` | `%LOCALAPPDATA%\ovenlight\` |
-| Log | `~/Library/Logs/ovenlight.log` | `~/.local/state/ovenlight/ovenlight.log` | `%LOCALAPPDATA%\ovenlight\ovenlight.log` |
-
-On Linux, `$XDG_CONFIG_HOME` and `$XDG_STATE_HOME` take the place of `~/.config` and
-`~/.local/state` when set. At 20 MB the log moves to `ovenlight.log.1` beside it,
-replacing the one before. What bypasses the log, such as a crash, goes to
-`ovenlight.stderr.log` beside the log on macOS and Windows, and to the user journal on
-Linux (`journalctl --user -eu ovenlight`). The updater keeps a few files of its own in the
-state directory and the bin folder ([security.md](security.md#the-files-it-keeps)).
-
-On macOS and Linux, `install.sh` links `ovenlight` in `~/.local/bin`, but never replaces a
-file it didn't make. Run by hand, when `~/.local/bin` isn't on your `PATH`, it prints the
-`export PATH` line to add to your shell profile (the one-line installer adds it for you),
-and `ovenlight` works in terminal windows opened after that. On Windows, `install.ps1`
-adds the bin folder to your `PATH`, for PowerShell windows opened after it.
-
-### Start and stop
-
-`ovenlight status` says whether the connector runs. On macOS:
-
-- Start: `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.snowyghost.ovenlight.connector.plist || launchctl kickstart gui/$(id -u)/com.snowyghost.ovenlight.connector`
-  (when the connector is loaded already, `bootstrap` says it failed, and `kickstart`
-  starts it)
-- Stop, until you next log in: `launchctl bootout gui/$(id -u)/com.snowyghost.ovenlight.connector`
-- Restart: `launchctl kickstart -k gui/$(id -u)/com.snowyghost.ovenlight.connector`
-
-On Linux:
-
-- Start: `systemctl --user enable --now ovenlight`
-- Stop: `systemctl --user disable --now ovenlight`
-- Restart: `systemctl --user restart ovenlight`
-
-On Windows, in an administrator PowerShell. Stopping disables the task too, since a task
-that's only stopped starts again within a minute.
-
-- Start: `Enable-ScheduledTask ovenlight; Start-ScheduledTask ovenlight`
-- Stop: `Disable-ScheduledTask ovenlight; Stop-ScheduledTask ovenlight`
-- Restart: `Stop-ScheduledTask ovenlight; Start-ScheduledTask ovenlight`
-
-## Update
-
-The connector updates itself. Releases up to 1.0.9 don't: run the
-[install command](#install) once, and from then on it does. It checks once a day,
-and installs a new release two days after it first sees it, at a quiet moment in the
-night: once nothing has used your apps or the connector for 10 minutes. Each computer's
-night starts at a time of its own between 02:00 and 04:00, and ends at 05:00, its own
-time. A release that fixes a security problem in yours goes in at the first quiet 10
-minutes, day or night. On a computer that's never quiet, or asleep every night, it goes in
-anyway, busy or not, from the start of the next night, and any other update from the start
-of the first night a day after it was due. Either waits until the connector has been
-running and awake for 10 minutes. Installing restarts the connector, so the apps it runs
-stop and open connections drop for a few seconds (about 10 on Linux, up to a minute on
-Windows). If the new release doesn't serve your apps again within 10 minutes, the
-connector goes back to the one before. Unpublishing an app before the new release serves
-it again has the same effect. A restart of your computer in those 10 minutes starts them
-again. On Windows, the Stop or Restart command above in that time makes it go back too, as
-does shutting down or signing out of a work, school or domain account. An update that
-fails, whether it went back or its download broke off, is tried again at the start of the
-next night, busy or not.
-
-`ovenlight status` shows the last check, a release waiting its turn and when it installs,
-the last update, one that failed, and whether yours has a known security problem.
-[security.md](security.md#updates) has what the connector checks before it installs
-anything. Only a release updates itself: from source, pull and run the install script
-again.
-
-- `ovenlight update off` stops installing updates. The connector still checks daily.
-  `ovenlight doctor` warns while updates are off, says so when no check has worked for
-  seven days, and still fails when your release has a known security problem. Turn updates
-  back on at least once every four weeks, and leave them on until `ovenlight status` shows
-  no release waiting: a connector that misses a change of release keys can't verify updates
-  after that.
-- `ovenlight update on` turns them back on. A release already overdue then installs within
-  the hour, busy or not.
-
-### Install a release by hand
-
-A release that changes what the install script sets up can't come as an update: `status`
-and `doctor` say when yours needs its install script. To install it, or the latest
-release at any time, run the [install command](#install) again. To also check that the
-index is no older than the one your connector holds, take the
-[verified steps](#check-a-download-first) yourself instead. Either replaces the files in
-`~/ovenlight-connector`, and the install script reinstalls the connector.
-
-Each release from 1.0.1 on also stays in its own folder, such as
-`https://downloads.ovenlight.app/connector/1.0.9/`, with its checksums signed by the keys
-in `allowed_signers` as it was at that release's tag. The release you updated from is in
-`ovenlight status`'s Last update line. To install an older release and stay on it, first
-run `ovenlight update off`, or the connector may move to the newest again. Check it on a
-Mac or Linux with its version in place of `1.0.9`, and the Linux changes above:
-
-```sh
-mkdir -p ~/ovenlight-connector && cd ~/ovenlight-connector
-release=1.0.9
-archive=ovenlight-connector-macos.tar.gz
-base="https://downloads.ovenlight.app/connector/$release"
-curl -fsSL --remote-name-all "$base/$archive" "$base/SHA256SUMS" "$base/SHA256SUMS.sig"
-curl -fsSL -o allowed_signers "https://raw.githubusercontent.com/snowy-ghost/ovenlight/connector-v$release/docs/allowed_signers"
-ssh-keygen -Y verify -f allowed_signers -I team@snowyghost.com -n file \
-  -s SHA256SUMS.sig < SHA256SUMS
-shasum -a 256 -c --ignore-missing SHA256SUMS
-tar tzf "$archive" | cut -d / -f 1 | sort -u
-```
-
-On Windows, check it in an administrator PowerShell, with its version in place of `1.0.9`
-(a release after 1.0.9 needs OpenSSH 8.9 or later, as [above](#check-a-download-first)):
-
-```powershell
-mkdir $HOME\ovenlight-connector -Force | Out-Null; cd $HOME\ovenlight-connector
-$release = '1.0.9'
-$archive = 'ovenlight-connector-windows-amd64.zip'
-$base = "https://downloads.ovenlight.app/connector/$release"
-curl.exe -fsSL --remote-name-all "$base/$archive" "$base/SHA256SUMS" "$base/SHA256SUMS.sig"
-curl.exe -fsSL -o allowed_signers "https://raw.githubusercontent.com/snowy-ghost/ovenlight/connector-v$release/docs/allowed_signers"
-cmd /c 'ssh-keygen -Y verify -f allowed_signers -I team@snowyghost.com -n file -s SHA256SUMS.sig < SHA256SUMS'
-[bool](Select-String -SimpleMatch "$((Get-FileHash $archive).Hash.ToLower())  $archive" SHA256SUMS)
-tar -tf $archive | ForEach-Object { ($_ -split '/')[0] } | Sort-Object -Unique
-```
-
-If the first check prints `Good "file" signature`, the second the archive's name with `OK`
-(`True` on Windows), and the third only the release's own folder, such as
-`ovenlight-connector-1.0.9` (an archive's name carries no version), unpack and install it
-as the [verified steps](#check-a-download-first) do, in the same window.
+Checking the signature needs an `ssh-keygen` that can read the release key: OpenSSH 8.2
+or later on Linux, 8.9 or later on Windows, and macOS 14 or later on a Mac. Without one,
+the script says so and checks the download against the index alone, so it trusts the
+HTTPS download, as the steps by hand do when you skip the check. On Windows it then also
+checks that Snowy Ghost LLC signed `ovenlight.exe`, `install.ps1` and `uninstall.ps1`.
 
 ## Publish an app
 
@@ -659,6 +393,46 @@ existing HTTPS certificate) and offers to take its tags and guest rule out of yo
 policy. When any of that fails or has to wait, `unpublish` says what's left and what to
 run, and [security.md](security.md#later-changes) has the details.
 
+## Update
+
+The connector updates itself. Releases up to 1.0.9 don't: run the
+[install command](#install) once, and from then on it does. It checks once a day,
+and installs a new release two days after it first sees it, at a quiet moment in the
+night: once nothing has used your apps or the connector for 10 minutes. Each computer's
+night starts at a time of its own between 02:00 and 04:00, and ends at 05:00, its own
+time. A release that fixes a security problem in yours goes in at the first quiet 10
+minutes, day or night. On a computer that's never quiet, or asleep every night, it goes in
+anyway, busy or not, from the start of the next night, and any other update from the start
+of the first night a day after it was due. Either waits until the connector has been
+running and awake for 10 minutes. Installing restarts the connector, so the apps it runs
+stop and open connections drop for a few seconds (about 10 on Linux, up to a minute on
+Windows). If the new release doesn't serve your apps again within 10 minutes, the
+connector goes back to the one before. Unpublishing an app before the new release serves
+it again has the same effect. A restart of your computer in those 10 minutes starts them
+again. On Windows, the Stop or Restart command above in that time makes it go back too, as
+does shutting down or signing out of a work, school or domain account. An update that
+fails, whether it went back or its download broke off, is tried again at the start of the
+next night, busy or not.
+
+`ovenlight status` shows the last check, a release waiting its turn and when it installs,
+the last update, one that failed, and whether yours has a known security problem.
+[security.md](security.md#updates) has what the connector checks before it installs
+anything. Only a release updates itself: from source, pull and run the install script
+again.
+
+- `ovenlight update off` stops installing updates. The connector still checks daily.
+  `ovenlight doctor` warns while updates are off, says so when no check has worked for
+  seven days, and still fails when your release has a known security problem. Turn updates
+  back on at least once every four weeks, and leave them on until `ovenlight status` shows
+  no release waiting: a connector that misses a change of release keys can't verify updates
+  after that.
+- `ovenlight update on` turns them back on. A release already overdue then installs within
+  the hour, busy or not.
+
+When `status` or `doctor` says your release needs its install script, run the
+[install command](#install) again. [Install a release by hand](#install-a-release-by-hand)
+covers checking a release yourself and staying on an older one.
+
 ## Move to a new computer
 
 The connector keeps everything in two folders: its config (the app list, the commands it
@@ -861,3 +635,241 @@ to use an app list and state directory other than the installed connector's
   away. It's for testing a release ([development.md](development.md#releases)).
 - `ovenlight run`: runs the connector. Its background service does this, so use the
   commands in [Start and stop](#start-and-stop) instead.
+
+## Install by hand
+
+Without the one-line installer, download your computer's archive, unpack it and run its
+install script.
+
+On a Mac, in Terminal:
+
+```sh
+mkdir -p ~/ovenlight-connector && cd ~/ovenlight-connector
+curl -fsSL https://downloads.ovenlight.app/connector/latest/ovenlight-connector-macos.tar.gz |
+  tar xz --strip-components 1
+./install.sh
+```
+
+On Linux, use `linux-amd64` or `linux-arm64` in place of `macos`.
+
+On Windows, signed in as the account that will own the apps, open PowerShell with Run as
+administrator and run:
+
+```powershell
+mkdir $HOME\ovenlight-connector -Force | Out-Null; cd $HOME\ovenlight-connector
+curl.exe -fsSL https://downloads.ovenlight.app/connector/latest/ovenlight-connector-windows-amd64.zip -o connector.zip
+tar -xf connector.zip --strip-components 1
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+```
+
+On an Arm PC, use `windows-arm64` in place of `windows-amd64`. `ovenlight.exe`,
+`install.ps1` and `uninstall.ps1` are signed by Snowy Ghost LLC. To check one, open its
+Properties and look under Digital Signatures.
+
+To download in a browser instead, use these links:
+[macOS](https://downloads.ovenlight.app/connector/latest/ovenlight-connector-macos.tar.gz)
+(its binary is notarized), Linux
+[amd64](https://downloads.ovenlight.app/connector/latest/ovenlight-connector-linux-amd64.tar.gz)
+and
+[arm64](https://downloads.ovenlight.app/connector/latest/ovenlight-connector-linux-arm64.tar.gz),
+and Windows
+[x64](https://downloads.ovenlight.app/connector/latest/ovenlight-connector-windows-amd64.zip)
+and
+[Arm](https://downloads.ovenlight.app/connector/latest/ovenlight-connector-windows-arm64.zip).
+These links always point to the latest release. Unpack the archive if your browser
+hasn't, then run `./install.sh` in its `ovenlight-connector-<version>` folder. On Windows,
+right-click that folder in File Explorer and choose Copy as path. Then, in PowerShell
+opened with Run as administrator, type `cd` and a space, paste the path, press Enter, and
+run `powershell -ExecutionPolicy Bypass -File .\install.ps1`.
+
+### Check a download first
+
+To check a download before installing it, fetch it with the index the connector updates
+from (`latest.json`), the index's signature (`latest.json.sig`) and the release keys from
+this repository ([allowed_signers](allowed_signers)). Then check that a release key signed
+the index, and that the index names the archive's SHA-256. On a Mac or Linux:
+
+```sh
+mkdir -p ~/ovenlight-connector && cd ~/ovenlight-connector
+archive=ovenlight-connector-macos.tar.gz
+base=https://downloads.ovenlight.app/connector
+curl -fsSL --remote-name-all "$base/latest.json" "$base/latest.json.sig" "$base/latest/$archive"
+curl -fsSLO https://raw.githubusercontent.com/snowy-ghost/ovenlight/master/docs/allowed_signers
+ssh-keygen -Y verify -f allowed_signers -I team@snowyghost.com -n ovenlight-latest \
+  -s latest.json.sig < latest.json
+grep -F "\"$archive\": \"$(shasum -a 256 "$archive" | cut -d ' ' -f 1)\"" latest.json
+```
+
+On Linux, put `linux-amd64` or `linux-arm64` in place of `macos`, and if `shasum` is
+missing, `sha256sum` in place of `shasum -a 256`. The first check prints
+`Good "ovenlight-latest" signature`. On macOS 13, or Linux with OpenSSH before 8.2, it
+says `unknown or unsupported key type` instead: check the download on a Mac with macOS 14
+or later, or Linux with OpenSSH 8.2 or later. The second check prints the index, which
+names the release after `"latest"` and its serial after `"serial"`. If both checks pass,
+and the serial is no lower than the one `ovenlight status` shows for the index your
+connector holds, unpack the archive and run its install script, in the same window:
+
+```sh
+tar xzf "$archive" --strip-components 1
+./install.sh
+```
+
+On Windows, in PowerShell opened with Run as administrator:
+
+```powershell
+mkdir $HOME\ovenlight-connector -Force | Out-Null; cd $HOME\ovenlight-connector
+$archive = 'ovenlight-connector-windows-amd64.zip'
+$base = 'https://downloads.ovenlight.app/connector'
+curl.exe -fsSL --remote-name-all "$base/latest.json" "$base/latest.json.sig" "$base/latest/$archive"
+curl.exe -fsSLO https://raw.githubusercontent.com/snowy-ghost/ovenlight/master/docs/allowed_signers
+cmd /c 'ssh-keygen -Y verify -f allowed_signers -I team@snowyghost.com -n ovenlight-latest -s latest.json.sig < latest.json'
+(Get-Content latest.json -Raw | ConvertFrom-Json).archives.$archive -eq (Get-FileHash $archive).Hash
+(Get-Content latest.json -Raw | ConvertFrom-Json).serial
+```
+
+On an Arm PC, use `windows-arm64` in place of `windows-amd64`. The first check needs
+OpenSSH 8.9 or later (`ssh -V` shows yours): an older one can't read the release key that
+signs with Touch ID, and says `unknown or unsupported key type`. If yours is older, check
+the download on a Mac with macOS 14 or later, or Linux with OpenSSH 8.2 or later. If the
+first check prints `Good "ovenlight-latest" signature`, the second `True`, and the last
+the index's serial, no lower than the one `ovenlight status` shows, unpack the archive and
+run its install script, in the same window:
+
+```powershell
+tar -xf $archive --strip-components 1
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+```
+
+If a check fails, don't install the download. For five minutes after a release comes out,
+the server may still hand out some of the last release's files, so a check that fails
+then is worth trying again. A serial that stays lower than the one `ovenlight status`
+shows means the server is sending an older index than your connector holds, which the
+other checks pass too: report it to team@snowyghost.com.
+
+### Install a release by hand
+
+A release that changes what the install script sets up can't come as an update: `status`
+and `doctor` say when yours needs its install script. To install it, or the latest
+release at any time, run the [install command](#install) again. To also check that the
+index is no older than the one your connector holds, take the
+[verified steps](#check-a-download-first) yourself instead. Either replaces the files in
+`~/ovenlight-connector`, and the install script reinstalls the connector.
+
+Each release from 1.0.1 on also stays in its own folder, such as
+`https://downloads.ovenlight.app/connector/1.0.9/`, with its checksums signed by the keys
+in `allowed_signers` as it was at that release's tag. The release you updated from is in
+`ovenlight status`'s Last update line. To install an older release and stay on it, first
+run `ovenlight update off`, or the connector may move to the newest again. Check it on a
+Mac or Linux with its version in place of `1.0.9`, and the Linux changes above:
+
+```sh
+mkdir -p ~/ovenlight-connector && cd ~/ovenlight-connector
+release=1.0.9
+archive=ovenlight-connector-macos.tar.gz
+base="https://downloads.ovenlight.app/connector/$release"
+curl -fsSL --remote-name-all "$base/$archive" "$base/SHA256SUMS" "$base/SHA256SUMS.sig"
+curl -fsSL -o allowed_signers "https://raw.githubusercontent.com/snowy-ghost/ovenlight/connector-v$release/docs/allowed_signers"
+ssh-keygen -Y verify -f allowed_signers -I team@snowyghost.com -n file \
+  -s SHA256SUMS.sig < SHA256SUMS
+shasum -a 256 -c --ignore-missing SHA256SUMS
+tar tzf "$archive" | cut -d / -f 1 | sort -u
+```
+
+On Windows, check it in an administrator PowerShell, with its version in place of `1.0.9`
+(a release after 1.0.9 needs OpenSSH 8.9 or later, as [above](#check-a-download-first)):
+
+```powershell
+mkdir $HOME\ovenlight-connector -Force | Out-Null; cd $HOME\ovenlight-connector
+$release = '1.0.9'
+$archive = 'ovenlight-connector-windows-amd64.zip'
+$base = "https://downloads.ovenlight.app/connector/$release"
+curl.exe -fsSL --remote-name-all "$base/$archive" "$base/SHA256SUMS" "$base/SHA256SUMS.sig"
+curl.exe -fsSL -o allowed_signers "https://raw.githubusercontent.com/snowy-ghost/ovenlight/connector-v$release/docs/allowed_signers"
+cmd /c 'ssh-keygen -Y verify -f allowed_signers -I team@snowyghost.com -n file -s SHA256SUMS.sig < SHA256SUMS'
+[bool](Select-String -SimpleMatch "$((Get-FileHash $archive).Hash.ToLower())  $archive" SHA256SUMS)
+tar -tf $archive | ForEach-Object { ($_ -split '/')[0] } | Sort-Object -Unique
+```
+
+If the first check prints `Good "file" signature`, the second the archive's name with `OK`
+(`True` on Windows), and the third only the release's own folder, such as
+`ovenlight-connector-1.0.9` (an archive's name carries no version), unpack and install it
+as the [verified steps](#check-a-download-first) do, in the same window.
+
+### From source
+
+This needs Git and Go 1.21 or later (`brew install go`, your package manager's `golang`,
+or [go.dev/dl](https://go.dev/dl/)); the `go` command fetches the version
+`connector/go.mod` asks for when yours is older. On macOS and Linux, clone this repository
+and run its install script:
+
+```sh
+git clone https://github.com/snowy-ghost/ovenlight
+cd ovenlight
+connector/install.sh
+```
+
+If `go env GOTOOLCHAIN` says `local`, as on Fedora and Red Hat Enterprise Linux, `go`
+won't fetch a newer one: run `GOTOOLCHAIN=auto connector/install.sh` instead.
+
+On Windows, signed in as the account that will own the apps, install Git and Go with
+`winget install Git.Git` and `winget install GoLang.Go`, open a new PowerShell window so
+it finds them, and run `git clone https://github.com/snowy-ghost/ovenlight $HOME\ovenlight`.
+Then open an administrator PowerShell (right-click it and choose Run as administrator)
+and run:
+
+```powershell
+cd $HOME\ovenlight
+powershell -ExecutionPolicy Bypass -File connector\install.ps1
+```
+
+A binary you build isn't code-signed, so Smart App Control, when it's on, may refuse to
+run it; `install.ps1` says so when the connector doesn't start.
+
+## What it installs
+
+Running the install script again installs the connector it came with, even an older one,
+and restarts it, keeping your apps, node state and update settings. It installs:
+
+| | macOS | Linux | Windows |
+|---|---|---|---|
+| Runs as | launchd agent `com.snowyghost.ovenlight.connector` | systemd user service `ovenlight` | scheduled task `ovenlight` |
+| Binary | `~/Library/Application Support/ovenlight/bin/ovenlight` | `~/.local/state/ovenlight/bin/ovenlight` | `%LOCALAPPDATA%\ovenlight\bin\ovenlight.exe` |
+| App list | `~/.config/ovenlight/config.json` | `~/.config/ovenlight/config.json` | `%LOCALAPPDATA%\ovenlight\config.json` |
+| State directory | `~/Library/Application Support/ovenlight/` | `~/.local/state/ovenlight/` | `%LOCALAPPDATA%\ovenlight\` |
+| Log | `~/Library/Logs/ovenlight.log` | `~/.local/state/ovenlight/ovenlight.log` | `%LOCALAPPDATA%\ovenlight\ovenlight.log` |
+
+On Linux, `$XDG_CONFIG_HOME` and `$XDG_STATE_HOME` take the place of `~/.config` and
+`~/.local/state` when set. At 20 MB the log moves to `ovenlight.log.1` beside it,
+replacing the one before. What bypasses the log, such as a crash, goes to
+`ovenlight.stderr.log` beside the log on macOS and Windows, and to the user journal on
+Linux (`journalctl --user -eu ovenlight`). The updater keeps a few files of its own in the
+state directory and the bin folder ([security.md](security.md#the-files-it-keeps)).
+
+On macOS and Linux, `install.sh` links `ovenlight` in `~/.local/bin`, but never replaces a
+file it didn't make. Run by hand, when `~/.local/bin` isn't on your `PATH`, it prints the
+`export PATH` line to add to your shell profile (the one-line installer adds it for you),
+and `ovenlight` works in terminal windows opened after that. On Windows, `install.ps1`
+adds the bin folder to your `PATH`, for PowerShell windows opened after it.
+
+### Start and stop
+
+`ovenlight status` says whether the connector runs. On macOS:
+
+- Start: `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.snowyghost.ovenlight.connector.plist || launchctl kickstart gui/$(id -u)/com.snowyghost.ovenlight.connector`
+  (when the connector is loaded already, `bootstrap` says it failed, and `kickstart`
+  starts it)
+- Stop, until you next log in: `launchctl bootout gui/$(id -u)/com.snowyghost.ovenlight.connector`
+- Restart: `launchctl kickstart -k gui/$(id -u)/com.snowyghost.ovenlight.connector`
+
+On Linux:
+
+- Start: `systemctl --user enable --now ovenlight`
+- Stop: `systemctl --user disable --now ovenlight`
+- Restart: `systemctl --user restart ovenlight`
+
+On Windows, in an administrator PowerShell. Stopping disables the task too, since a task
+that's only stopped starts again within a minute.
+
+- Start: `Enable-ScheduledTask ovenlight; Start-ScheduledTask ovenlight`
+- Stop: `Disable-ScheduledTask ovenlight; Stop-ScheduledTask ovenlight`
+- Restart: `Stop-ScheduledTask ovenlight; Start-ScheduledTask ovenlight`
