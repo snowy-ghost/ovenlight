@@ -48,6 +48,7 @@ var docs = []struct{ name, summary string }{
 // The index's shortcuts to sections of the docs, checked like the docs' own links.
 var shortcuts = []shortcut{
 	{"Connect a coding agent", "connector", "connect-a-coding-agent"},
+	{"Share an app", "connector", "share-an-app"},
 	{"Who is calling", "building-apps", "who-is-calling"},
 	{"Commands", "connector", "commands"},
 	{"Troubleshooting", "connector", "troubleshooting"},
