@@ -26,7 +26,7 @@ request without identity headers as the owner, if at all, only with a `127.0.0.1
 `localhost` `Host` and from the app's own pages or from no page at all
 (`Sec-Fetch-Site` of `same-origin` or `none`, or, without it, no `Origin` or the app's
 own).
-[building-apps.md](building-apps.md#who-is-calling) has an example.
+[building-apps.md](building-apps.md#who-is-calling) has the code, in Node and Python.
 
 ### Read each request body
 

@@ -83,9 +83,9 @@ iterate on the phone, set Vite's `root` to a folder holding only the pages and
 
 **Django.** Set `DEBUG = False` in anything published, or guests see full debug pages,
 settings included. Remove `admin/` from `urls.py` (or allow it only when
-`Ovenlight-Role` is `owner`). A small middleware sets `request.caller` by the rules of the
-starter's `caller()` (below). Keep `CommonMiddleware`: its `ALLOWED_HOSTS` check answers
-a foreign `Host` with 400.
+`Ovenlight-Role` is `owner`). A small middleware sets `request.caller` with the Python
+`caller()` below. Keep `CommonMiddleware`: its `ALLOWED_HOSTS` check answers a foreign
+`Host` with 400.
 
 `GET /` must answer with a page, or a redirect to one, that loads even without identity
 headers, since the connector reads it (and the web manifest) to find the app's icon and
