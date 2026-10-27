@@ -35,24 +35,17 @@ Ovenlight on their phone.
   computer, checks the download, installs `ovenlight` at
   `~/Library/Application Support/ovenlight/bin/ovenlight` on a Mac,
   `~/.local/state/ovenlight/bin/ovenlight` on Linux and
-  `%LOCALAPPDATA%\ovenlight\bin\ovenlight.exe` on Windows, and keeps it running. On a Mac
-  or Linux, when `~/.local/bin` isn't on the PATH, it adds it in the profile of zsh or
-  bash, so `ovenlight` works by name in terminal windows opened afterwards (until then,
-  `~/.local/bin/ovenlight`). For another shell it prints the line to add.
-  To install by hand instead, download the archive for the computer:
-  - Mac: https://downloads.ovenlight.app/connector/latest/ovenlight-connector-macos.tar.gz
-  - Linux on amd64: https://downloads.ovenlight.app/connector/latest/ovenlight-connector-linux-amd64.tar.gz
-  - Linux on arm64: https://downloads.ovenlight.app/connector/latest/ovenlight-connector-linux-arm64.tar.gz
-  - Windows on x64: https://downloads.ovenlight.app/connector/latest/ovenlight-connector-windows-amd64.zip
-  - Windows on Arm: https://downloads.ovenlight.app/connector/latest/ovenlight-connector-windows-arm64.zip
+  `%LOCALAPPDATA%\ovenlight\bin\ovenlight.exe` on Windows, keeps it running and puts it on
+  the PATH for terminal windows opened afterwards. On a Mac or Linux, when `~/.local/bin`
+  isn't on the PATH, it adds it in the profile of zsh or bash, or prints the line to add
+  for another shell. In a window opened before the install, use `~/.local/bin/ovenlight`
+  on a Mac or Linux, or the full path above on Windows. To install by hand, or check a download's
+  signature first, follow https://ovenlight.app/docs/connector.md#install-by-hand.
 
-  Unpack it and run `./install.sh` in its folder, or on Windows
-  `powershell -ExecutionPolicy Bypass -File .\install.ps1` there, in PowerShell opened with
-  Run as administrator. If `install.sh` prints an `export PATH` line, the person adds it to
-  their shell profile and opens a new terminal window.
-
-Signing in to Tailscale, connecting the phone and sharing an app are steps only the
-person can do. Ask them, in plain words, rather than working around them.
+Some steps are only the person's: opening a login link, storing a Tailscale API token (in
+their own terminal, never pasted to you), connecting the phone and sharing an app. Ask for
+each in plain words rather than working around it.
+https://ovenlight.app/docs/building-apps.md#steps-only-the-person-can-do lists them all.
 
 ## Building and publishing an app
 
@@ -82,17 +75,21 @@ check, restart, read logs and read feedback. The MCP server has no tool to share
 set the command that runs one: an agent with a shell sets the command with
 `ovenlight publish --slug <slug> --dir '<folder>' --run '<command>'`, which the person
 approves, and sharing is the person's, in a terminal or in Ovenlight. Each tool and its
-arguments are listed at https://ovenlight.app/docs/connector.md#the-mcp-tools. For Claude
-Code on a Mac (on Linux, use the binary path above):
+arguments are listed at https://ovenlight.app/docs/connector.md#the-mcp-tools. Any agent
+connected to the MCP server gets these tools and the guide.
 
-```sh
-claude mcp add --scope user ovenlight -- ~/Library/Application\ Support/ovenlight/bin/ovenlight mcp
+In Claude Code, Ovenlight's plugin adds the MCP server and a skill that reads the guide
+whenever the person asks to put an app on their phone. The person types these in Claude
+Code:
+
+```
+/plugin marketplace add snowy-ghost/ovenlight
 ```
 
-On Windows, in PowerShell:
+then:
 
-```powershell
-claude mcp add --scope user ovenlight -- "$env:LOCALAPPDATA\ovenlight\bin\ovenlight.exe" mcp
+```
+/plugin install ovenlight@snowy-ghost
 ```
 
 For Codex on a Mac (on Linux, use the binary path above):
@@ -107,19 +104,17 @@ On Windows, in PowerShell:
 codex mcp add ovenlight -- "$env:LOCALAPPDATA\ovenlight\bin\ovenlight.exe" mcp
 ```
 
-Claude Code can install Ovenlight's plugin instead. It adds the same MCP server and a
-skill that reads the guide whenever the person asks to put an app on their phone. Any
-agent connected to the MCP server gets the same tools and the guide. In
-Claude Code, run:
+To add only the MCP server to Claude Code, without the plugin, on a Mac (on Linux, use
+the binary path above):
 
-```
-/plugin marketplace add snowy-ghost/ovenlight
+```sh
+claude mcp add --scope user ovenlight -- ~/Library/Application\ Support/ovenlight/bin/ovenlight mcp
 ```
 
-then:
+On Windows, in PowerShell:
 
-```
-/plugin install ovenlight@snowy-ghost
+```powershell
+claude mcp add --scope user ovenlight -- "$env:LOCALAPPDATA\ovenlight\bin\ovenlight.exe" mcp
 ```
 
 ## Links
@@ -132,8 +127,9 @@ then:
 - [The connector](https://ovenlight.app/docs/connector.md): installing and updating it,
   publishing apps, connecting a coding agent, sharing apps, moving to a new computer,
   uninstalling, troubleshooting and every command
-- [Your own server](https://ovenlight.app/docs/always-on.md): a Raspberry Pi, a spare PC
-  on Linux or a rented cloud server, set up and sent apps over SSH by an agent on the laptop
+- [Your own server](https://ovenlight.app/docs/always-on.md): a computer at home (a Mac
+  mini, a spare PC or a Raspberry Pi) or a rented server, for apps that open any time, and
+  how an agent on the laptop sends apps to a Linux one over SSH
 - [Apps you already run](https://ovenlight.app/docs/apps-you-run.md): recipes for apps
   people already self-host, such as Grafana or Home Assistant, and when guests can sign in
   by header
