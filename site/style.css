@@ -292,18 +292,20 @@ a:hover { text-decoration-thickness: 2px; }
 .store img.play { width: 12.125rem; }
 .store-note { margin-top: 0.85rem; color: var(--ink-soft); font-size: var(--step--1); }
 
-.hero-shot {
-  position: relative;
+/* The launch clip: dark in either theme, since it plays in the oven's own light. Its
+   controls let a visitor pause it, since the page runs no script. */
+.hero-clip {
+  max-width: 60rem;
   margin: clamp(3rem, 7vw, 4.5rem) auto 0;
-  width: min(76vw, 21rem);
-  height: min(118vw, 31rem);
+  border-radius: 0.875rem;
   overflow: hidden;
+  background: #0d0907;
+  box-shadow:
+    0 0 0 1px var(--bezel-ring),
+    0 2.5rem 4rem -1.5rem rgba(var(--shadow), 0.35),
+    0 0.75rem 1.5rem -0.75rem rgba(var(--shadow), 0.25);
 }
-.hero-shot .phone { --w: min(76vw, 21rem); }
-@media (min-width: 64em) {
-  .hero-shot { width: 23.5rem; height: 29.5rem; }
-  .hero-shot .phone { --w: 23.5rem; }
-}
+.hero-clip video { display: block; width: 100%; height: auto; }
 
 /* A drawn iPhone around a raw screenshot. --w is the outer width. */
 

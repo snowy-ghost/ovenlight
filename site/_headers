@@ -24,9 +24,9 @@
 
 # The home, support and privacy pages run no script and fetch nothing from elsewhere,
 # so nothing injected into them (Cloudflare's analytics beacon, say) can run either:
-# the site promises no analytics or tracking.
+# the site promises no analytics or tracking. The home page also plays the launch clip.
 /
-  Content-Security-Policy: default-src 'none'; script-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'none'; script-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self'; media-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'none'
 /support
   Content-Security-Policy: default-src 'none'; script-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'none'
 /privacy

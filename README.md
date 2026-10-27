@@ -25,18 +25,7 @@
 </p>
 
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="site/images/launcher-dark-480.jpg">
-    <img src="site/images/launcher-480.jpg" width="30%" alt="The Ovenlight launcher on an iPhone: apps such as Recipe Box, Trip Planner, Book Club and House Guide, laid out like a Home Screen in warm light falling from the Dynamic Island.">
-  </picture>&nbsp;
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="site/images/join-house-guide-dark-480.jpg">
-    <img src="site/images/join-house-guide-480.jpg" width="30%" alt="An invite in Ovenlight asking: Join Dimitri's House Guide? It says Dimitri invited you as Sam, that House Guide runs on Dimitri's computer and that you don't need an account, and offers Join and Not Now buttons.">
-  </picture>&nbsp;
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="site/images/house-guide-dark-480.jpg">
-    <img src="site/images/house-guide-480.jpg" width="30%" alt="House Guide on Sam's iPhone, open full screen in Ovenlight: a greeting to Sam, a search field, a drawing of the house at dusk, a welcome note from Dimitri, what's next for Biscuit the dog and the Wi-Fi password.">
-  </picture>
+  <img src="site/images/launch-clip.webp" width="100%" alt="An 85-second clip, sped up in places. It opens on Ovenlight's name and the line: Cooking up apps with AI? Serve them to the people you made them for, and no one else. Then, here's how it works, in six steps. 1, ask your coding agent for an app. Your computer is the server: Mac, Windows or Linux. In a terminal, Claude Code is asked to make a chore chart for Mia and Leo and put it on the phone, and it builds the app and publishes it with Ovenlight. 2, Ovenlight puts it on your phone, privately: your app isn't on the public internet. The Chore Chart icon arrives on an iPhone, and it opens. 3, share an invite link with a friend: they can be on iPhone or Android. From the iPhone, the chart is shared with Mia as an invite link. 4, your friend accepts the link. They don't need an account, just the Ovenlight app. On her Android phone, Mia joins and ticks Make bed. 5, they ask for a feature from inside the app, with Mia's note: Can there be confetti when I finish all my chores? 6, your agent applies the feedback, and your friend reloads to see it: Claude Code reads her note and adds confetti, and Mia reloads the chart, ticks her last two chores, and confetti falls. Then: your apps open only for you and the people you invite. It ends with: Get it for iPhone and Android at ovenlight.app.">
 </p>
 
 I've seen people use coding agents to build incredible things that make life better and
