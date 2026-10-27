@@ -559,11 +559,11 @@ Sign Ovenlight in to the first with `-authKey`, and open the second owner's invi
   at large text sizes). Long-press an icon for its menu, or empty space (or More, Edit
   Apps) to edit: icons jiggle, show a remove badge and drag to a new place among
   those on screen. VoiceOver gets Move Before and Move After actions on each icon. An app
-  that arrived on its own (shared with this iPhone, or discovered on your machines) has a
+  that arrived on its own (shared with this iPhone, or discovered on your computers) has a
   blue dot before its name until it's first opened (`WebApp.isNew`, saved in
   `apps.json`). Lock and More (Add App, Edit Apps, Join with Invite, People & Sharing
   for an owner, Settings) sit in the top corners.
-- **Apps** come from discovery: the owner's online machines serving `ovenlight.json`
+- **Apps** come from discovery: the owner's online devices serving `ovenlight.json`
   show up in the launcher, and Ovenlight looks again each time it comes to the front.
   Add App also takes an address, but only one on the owner's own tailnet (`AppAddress`,
   with `Routing.isOnOwnersTailnet`). Before the owner has signed in it says to sign in
@@ -621,8 +621,8 @@ Sign Ovenlight in to the first with `-authKey`, and open the second owner's invi
   `publish --shareable` on its computer) and People (guests, open invites, that app's
   feedback). A guest's long-press menu has Report a Problem and Leave instead.
 - **People & Sharing** (More menu) talks to each connector's admin API on port 8443
-  through the owner's own node, and asks the owner's online machines at once (after the
-  first answer, one app node per machine). It lists each app with whether it's online
+  through the owner's own node, and asks the owner's online devices at once (after the
+  first answer, one app node per computer). It lists each app with whether it's online
   and shareable, its guests (one row per person with a count of their devices and when
   they last opened it; swipe to add a device or remove them), open invites (swipe to
   cancel) and the feedback inbox with screenshots. People lists everyone across apps, those

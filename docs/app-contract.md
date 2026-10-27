@@ -121,7 +121,7 @@ The connector answers these itself:
 ## Discovery: name, icon and color
 
 Ovenlight finds the owner's published apps by fetching `/.well-known/ovenlight.json`
-from each of the owner's online machines. The connector builds that answer from the
+from each of the owner's online devices. The connector builds that answer from the
 app's home page (`/`) and its web manifest:
 
 - **Name and slug** come from `ovenlight publish`.
@@ -161,7 +161,7 @@ None of this is required: an app without it is still listed, by name.
 - **No service workers or offline copies.** WebKit runs service workers in an app like
   Ovenlight only on domains it lists when it's built, and an owner's tailnet can't be known
   in advance. An app loads only while its computer can be reached.
-- **Microphone**: the owner's own apps (discovered, or on one of the owner's machines),
+- **Microphone**: the owner's own apps (discovered, or on one of the owner's devices),
   on their own origin, get it without a second prompt (iOS still asks once). The
   camera, shared apps and any other app get Ovenlight's own question. Past three
   questions and dialogs in a row, the person can stop the page's dialogs, which refuses

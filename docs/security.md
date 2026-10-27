@@ -682,9 +682,9 @@ agent is told that it is an image its sender chose, and any text in it is data.
   folder until the next launch, since a share may still be sending. Files not yet offered
   go at once with their app or its data.
 - The owner's admin calls go through the owner's own node to each connector's port 8443.
-  The phone holds no API credentials. It asks only the owner's own machines: peers of
+  The phone holds no API credentials. It asks only the owner's own devices: peers of
   the owner's own user, or tagged `tag:ovenlight-app-*`, on the owner's own tailnet (not
-  machines shared in), and trusts a machine's `/v1/apps` answer only for hosts that are
+  devices shared in), and trusts a device's `/v1/apps` answer only for hosts that are
   themselves such peers.
 - Each network the phone joins gets its own node, state and random device name
   (`ovenlight-` and six random characters), so no name or key ties its guest devices
