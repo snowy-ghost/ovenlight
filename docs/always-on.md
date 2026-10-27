@@ -1,14 +1,12 @@
 # Your own server
 
-Ovenlight opens your apps only while the computer that runs them is on and awake. A laptop
-works while it's plugged in and awake, and once you change one setting it keeps serving
-with its lid closed ([how](connector.md#a-laptop-with-its-lid-closed)). On another network
-it still serves over Tailscale, and its apps go offline only while it's asleep or has no
-internet.
-For apps that open any time, run them on your own server: a computer you own that stays on
-at home, such as a Mac mini, a spare PC or a Raspberry Pi. The connector runs on it as
-[connector.md](connector.md) describes, over your own tailnet. If you can't keep a computer
-at home, a server you rent in the cloud works too.
+Ovenlight opens your apps only while the computer that runs them is on, awake and online.
+A laptop serves from any network while it's plugged in and awake, and once you change one
+setting it keeps serving with its lid closed
+([how](connector.md#a-laptop-with-its-lid-closed)). For apps that open any time, run them
+on your own server: a computer that stays on at home, such as a Mac mini, a spare PC or a
+Raspberry Pi. If you can't keep one at home, rent one in the cloud. The connector runs on
+it as [connector.md](connector.md) describes, over your own tailnet.
 
 ## Choose your setup
 
@@ -20,12 +18,12 @@ Mac or Windows PC you already have works too, if you build on it.
 |---|---|---|
 | [A spare PC or old laptop](#a-computer-you-have) on Ubuntu or Debian | Yes | Yes |
 | [A Raspberry Pi](#a-raspberry-pi) | Pi 5 or Pi 4 with 4 GB | Pi 5 with 8 GB |
-| [A Mac or Windows PC](#a-computer-you-have) | No | Yes, at the computer itself |
+| [A Mac or Windows PC](#a-mac-or-windows-pc) | No | Yes, at the computer itself |
 | [Rented on AWS Lightsail](#rented-in-the-cloud) | $12 a month (2 GB) | $24 a month (4 GB) |
 
 - **[Send apps from your laptop](#send-apps-from-your-laptop)** (most people): keep
-  building where you do now. Your coding agent copies each app to the server and publishes
-  it there, and the server only serves your apps.
+  building where you do now. Your coding agent (Claude Code, Codex and others) copies each
+  app to the server and publishes it there, and the server only serves your apps.
 - **[Build on it](#build-on-the-server):** your coding agent runs on the server, and you work there over SSH from
   your laptop. It needs more memory, since Claude Code and Codex each ask for 4 GB.
 
@@ -35,8 +33,8 @@ its disk, in its data center, under its terms, and it stays up while you keep pa
 Ovenlight still reaches it over your tailnet, and nothing passes through our servers.
 
 Either way, your laptop needs [Tailscale](https://tailscale.com/download), signed in with
-the account you use for Ovenlight, with MagicDNS and HTTPS certificates on (the README's
-[first step](../README.md#1-turn-on-https-certificates)).
+the account you use for Ovenlight, with MagicDNS and HTTPS certificates on (in the admin
+console, under [DNS](https://console.tailscale.com/admin/dns)).
 
 ## At home
 
@@ -60,27 +58,18 @@ printf '[Sleep]\nAllowSuspend=no\nAllowHibernation=no\n' | sudo tee /etc/systemd
 
 Then [set it up as a server](#set-up-the-server).
 
-**A Mac, such as a Mac mini, or a Windows PC**, even one you use every day, can run your
-apps too: build on it, and install the connector as the [README](../README.md#get-started)
-shows. Then keep it awake:
+### A Mac or Windows PC
 
-- **On a Mac:** in System Settings, under Energy, turn on Prevent automatic sleeping when
-  the display is off, and Start up automatically after a power failure. On a laptop, find
-  the first under Battery, Options instead. To keep a laptop serving with its lid closed,
-  also run `sudo pmset -a disablesleep 1` in Terminal, which turns off sleep altogether
-  ([details](connector.md#a-laptop-with-its-lid-closed)). The connector runs only while
-  you're logged in to the Mac's desktop, so a Mac without a display needs your account
-  chosen under Users & Groups, Automatically log in as. FileVault turns automatic login
-  off: with FileVault on, the connector waits for someone to log in after each restart.
-- **On Windows 11:** in Settings, under System > Power (Power & battery on a laptop), set
-  sleep to Never. On a laptop, also set what closing the lid does to Do nothing when
-  plugged in, in Control Panel under Power Options > Choose what closing the lid does (or,
-  on 24H2 or later, in Settings, under System > Power & battery). On a desktop, turn on Restore on AC
-  Power Loss in its BIOS, as above.
+A Mac or a Windows PC can run your apps too, even one you use every day: build on it and
+[install the connector](connector.md#install) there. Keep it awake and, on a Mac, logged
+in, as [What the computer needs](connector.md#what-the-computer-needs) says. A laptop also
+needs [one setting](connector.md#a-laptop-with-its-lid-closed) to serve with its lid
+closed. On a desktop, have it start again by itself after a power cut. On a Mac, that's
+Start up automatically after a power failure in System Settings, under Energy. On a PC,
+it's Restore on AC Power Loss in its BIOS, as above.
 
 `ovenlight doctor` then confirms that the computer won't sleep on its own. That's all the
-setup it needs: publish apps on it as the README's
-[Publish an app](../README.md#3-publish-an-app) shows, or
+setup it needs: [publish apps](connector.md#publish-an-app) on it yourself or
 [with your coding agent](connector.md#connect-a-coding-agent). The rest of this page is for
 Linux servers.
 
@@ -218,9 +207,9 @@ sudo systemctl disable --now ssh.service ssh.socket
 If it says a unit doesn't exist, SSH was never on and there's nothing to turn off.
 
 **On a cloud server, close the firewall.** Tailscale and the connector only dial out, so
-nothing needs to reach the server from the internet. In the Lightsail console, open the
-instance's Networking tab and delete every rule under IPv4 Firewall and IPv6 Firewall (SSH
-and HTTP). The browser terminal stops working, but `ssh ubuntu@oven` keeps working.
+nothing needs to reach the server from the public internet. In the Lightsail console, open
+the instance's Networking tab and delete every rule under IPv4 Firewall and IPv6 Firewall
+(SSH and HTTP). The browser terminal stops working, but `ssh ubuntu@oven` keeps working.
 
 ### 4. Turn on automatic updates
 
@@ -320,12 +309,12 @@ its folder, name, port and start command in their place.
    ```
 
 2. Copy the app's folder to `~/apps` on the server. The copy leaves out its top-level
-   `data`, `node_modules` and `.git`, so the server's data stays. An app keeps everything
-   people add in `data` ([the app contract](app-contract.md#keep-what-people-add-in-the-data-folder)),
-   so move a database or uploads kept anywhere else into it first (on the server too, for
-   an app already there). For a Node app with dependencies but no `package-lock.json`,
-   run `npm install` in its folder on your laptop first, so the copy carries the lockfile
-   (the starter has no dependencies and needs nothing).
+   `data`, `node_modules` and `.git`, so the server's data stays. First move a database or
+   uploads kept outside `data` into it, on the server too for an app already there
+   ([the app contract](app-contract.md#keep-what-people-add-in-the-data-folder)). For a
+   Node app with dependencies but no `package-lock.json`, first run `npm install` in its
+   folder on your laptop, so the copy carries the lockfile (the starter has no
+   dependencies).
 
    ```sh
    rsync -a --exclude /data --exclude /node_modules --exclude /.git ~/src/family-list/ pi@oven:apps/family-list/
@@ -349,7 +338,7 @@ its folder, name, port and start command in their place.
    choose Disable Key Expiry for `family-list` too, as `publish` reminds you, or the app
    goes offline after 180 days. (Once you store an API access token, as
    [Share an app](connector.md#share-an-app) shows, the connector does this for each app.)
-   Then [open the app on your phone](../README.md#4-open-it-on-your-phone).
+   Then [open the app on your phone](connector.md#open-it-on-your-phone).
 
 To send a new version, copy it, install its dependencies and restart it in one go:
 

@@ -13,11 +13,13 @@ The computer must stay on and awake while anyone uses your apps. A laptop can ke
 serving with its lid closed once you change one setting
 ([how](#a-laptop-with-its-lid-closed)). It must be one of these:
 
-- **A Mac with macOS 13 or later**, logged in to its desktop. The connector runs only
-  while you're logged in, so a Mac without a display needs automatic login. FileVault
-  turns automatic login off, so after any restart, such as a power cut or a macOS update,
-  the connector waits until someone logs in at the Mac. `ovenlight doctor` checks that
-  the Mac won't sleep.
+- **A Mac with macOS 13 or later**, logged in to its desktop and kept awake: in System
+  Settings, under Energy (Battery, Options on a laptop), turn on Prevent automatic
+  sleeping when the display is off. The connector runs only while you're logged in, so a
+  Mac without a display needs automatic login (Users & Groups, Automatically log in as).
+  FileVault turns automatic login off, so after any restart, such as a power cut or a
+  macOS update, the connector waits until someone logs in at the Mac. `ovenlight doctor`
+  checks that the Mac won't sleep.
 - **A Linux computer with systemd**, such as Ubuntu. The connector is a systemd user
   service, and with linger on, it runs from startup with nobody logged in. `install.sh`
   turns linger on, or prints the `sudo` command for it when it can't.
