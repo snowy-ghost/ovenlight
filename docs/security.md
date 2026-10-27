@@ -22,18 +22,29 @@ Ovenlight is built so that:
   `Host`, sends no CORS headers, and gives a request without identity headers the owner's
   rights only from its own pages
   ([app-contract.md](app-contract.md#guard-requests-that-come-straight-to-the-port)).
+- **The connector changes your tailnet policy only on your yes.** It edits the policy
+  only when you make an app shareable, unpublish a shareable one or run `setup-sharing`,
+  and only after it shows the exact change and you type `yes` in a terminal
+  ([The policy change](#the-policy-change)).
 - **Only a signed release updates the connector.** It installs only a release that an
   index signed with one of its built-in release keys names and checksums, so the download
-  server can hold updates back but can't choose what runs ([Updates](#updates)).
+  server can hold updates back but can't choose what runs. Whoever can sign a release,
+  or get code onto master and through the Mac that builds it, can still run code on your
+  computer ([The release keys](#the-release-keys)). `ovenlight update off` opts out
+  ([Update](connector.md#update) has what that means).
 
-Out of scope: anything running as you on the computer, a coding agent with a shell included,
-can do what you can. A tailnet admin can change the policy, and an app that listens on a
-LAN address can be reached around the connector. The computer's other accounts can
-reach an app on `127.0.0.1` directly too, so they must belong to people you trust. And
-every device signed in to Tailscale as you, such as a server you keep on or a NAS,
-reaches your apps as you, along with everything on it: its other accounts and its
+Out of scope: anything running as you on the computer, a coding agent with a shell
+included, can do what you can. On Windows, that includes administrator rights
+([On the computer](#on-the-computer)). A tailnet admin can change the policy, and an app
+that listens on a LAN address can be reached around the connector. The computer's other
+accounts can reach an app on `127.0.0.1` directly too, so they must belong to people you
+trust. And every device signed in to Tailscale as you, such as a server you keep on or a
+NAS, reaches your apps as you, along with everything on it: its other accounts and its
 containers included. Their other accounts must belong to people you trust too, and run
 only containers you trust on those devices.
+
+The connector's nodes send logs to Tailscale and may open a port mapping on your router:
+[What goes to Tailscale](#what-goes-to-tailscale) has the details.
 
 ## Two locks
 
