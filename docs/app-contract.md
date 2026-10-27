@@ -49,10 +49,10 @@ viewport, the icon and the color.
 
 ### Make GET change nothing
 
-The connector refuses most requests another website makes on a visitor's behalf (see
-[Cross-site requests](#cross-site-requests)), but a plain link from another site still
-reaches the app as a top-level GET or HEAD navigation. So a GET or HEAD must never
-change state: no "delete on GET", no one-click actions behind a link.
+A GET or HEAD must never change state: no "delete on GET", no one-click actions behind a
+link. The connector refuses most requests other websites make
+([Cross-site requests](#cross-site-requests)), but a plain link from another site still
+reaches the app as a top-level navigation.
 
 ### Key user data by Ovenlight-User-Id
 
@@ -155,25 +155,24 @@ None of this is required: an app without it is still listed, by name.
   `<a download>` link works in the app's own frames too, but not in a frame from another
   host. In a frame, an attachment or a type WebKit can't show loads as WebKit would, never
   raising the share sheet. Downloads come only from the app's own host, and are refused
-  while Ovenlight is locked. Past three share sheets in a row, Ovenlight asks before the
-  next, and the person can stop the page's dialogs, which refuses its downloads too until
-  the app is reloaded or opened again.
+  while Ovenlight is locked.
 - **No service workers or offline copies.** WebKit runs service workers in an app like
   Ovenlight only on domains it lists when it's built, and an owner's tailnet can't be known
   in advance. An app loads only while its computer can be reached.
-- **Microphone**: the owner's own apps (discovered, or on one of the owner's devices),
-  on their own origin, get it without a second prompt (iOS still asks once). The
-  camera, shared apps and any other app get Ovenlight's own question. Past three
-  questions and dialogs in a row, the person can stop the page's dialogs, which refuses
-  its camera and microphone too until the app is reloaded or opened again. While
-  Ovenlight is locked, no page gets either, and locking stops any stream already
-  running.
+- **Microphone**: the owner's own apps (discovered, or on one of the owner's devices), on
+  their own origin, get it without a second prompt (iOS still asks once). The camera,
+  shared apps and any other app get Ovenlight's own question. While Ovenlight is locked,
+  no page gets either, and locking stops any stream already running.
 - **Other websites**: a main-frame navigation to any other host opens in a Safari sheet,
   not in the app's view. `window.open` and `target=_blank` to the app's own host load in
   the same view; no second window opens. So sign-in flows that redirect through another
-  site, or rely on a popup and `window.opener`, don't return to the app. Past three Safari
-  sheets in a row, Ovenlight asks before the next, and the person can stop the page's
-  dialogs, which stops these too until the app is reloaded or opened again.
+  site, or rely on a popup and `window.opener`, don't return to the app.
+- **Dialogs in a row**: the page's alerts, confirms and prompts count together with what
+  it raises of Ovenlight's own (a camera or microphone question, a share sheet, a Safari
+  sheet), each within a second of the last one closing. Past three in a row, Ovenlight
+  offers to stop the page's dialogs. Once stopped, the page gets no more dialogs,
+  downloads, camera, microphone or Safari sheets until the app is reloaded or opened
+  again.
 - **Navigations**: a page's own (reloads, redirects, links it clicks itself) are capped at
   200 in 10 seconds, and refused past that until the 10 seconds are up, so a redirect loop
   stops instead of freezing the app. Back and the app menu's Reload always go.
@@ -207,6 +206,7 @@ None of this is required: an app without it is still listed, by name.
   browser. A form's POST to another site is already sent by the time Ovenlight sees it:
   the view goes back, and the address opens in the browser.
 - **Navigations**: capped as on iPhone.
+- **Dialogs in a row**: as on iPhone.
 - **Other apps**: as on iPhone, with `tel:` the only scheme that opens without the
   question, since the dialer waits for the person to call. `intent:` links are stripped of
   their component, selector, flags and any extra that names an address, and never reach
