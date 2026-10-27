@@ -367,6 +367,12 @@ codex mcp add ovenlight -- \
   ~/Library/Application\ Support/ovenlight/bin/ovenlight mcp
 ```
 
+On Windows, in PowerShell:
+
+```powershell
+codex mcp add ovenlight -- "$env:LOCALAPPDATA\ovenlight\bin\ovenlight.exe" mcp
+```
+
 For another agent, add a local MCP server whose command is the connector's full path, such
 as `/Users/you/Library/Application Support/ovenlight/bin/ovenlight` on a Mac, and whose
 argument is `mcp`. An agent with a shell can also run `ovenlight doctor --json` and
