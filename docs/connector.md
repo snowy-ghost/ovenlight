@@ -2,9 +2,10 @@
 
 The connector, the `ovenlight` command, runs on the computer with your apps. It publishes
 each app as its own node (a device in your tailnet) with HTTPS, and manages guests. This
-page covers it in full: installing and updating it, publishing and sharing apps, moving to
-a new computer and uninstalling. The [README](../README.md#get-started) has the short
-version.
+page covers it in full: installing and updating it, publishing apps, connecting your
+coding agent (Claude Code, Codex and others), sharing apps, moving to a new computer and
+uninstalling. It ends with [Troubleshooting](#troubleshooting) and a list of
+[every command](#commands). The [README](../README.md#get-started) has the short version.
 
 ## What the computer needs
 
@@ -411,7 +412,6 @@ way:
 - `ovenlight unpublish recipe-box`: stops serving it (see [Unpublish](#unpublish)).
 - `ovenlight new "Family List" --dir ~/src`: a starter app that suits Ovenlight, and how
   to publish it.
-- `ovenlight version`: the connector's version.
 
 Recipe Box becomes its own node, at `https://recipe-box.<your-tailnet>.ts.net/`.
 Once the node is signed in, it gets its HTTPS certificate, which can take up to a minute
@@ -434,8 +434,7 @@ there for approval too, listed by its slug. Ovenlight then finds your published 
 itself. Add App, under the More button, also takes an app's address, but only one on your
 own tailnet; apps on other people's computers come by invite.
 
-`ovenlight help` lists the commands, and most take `-h` for their flags. `status`,
-`doctor` and `check` also take `--json`. `publish` edits the app list (see the
+[Commands](#commands) lists every command. `publish` edits the app list (see the
 [table](#what-it-installs)) and reloads the connector.
 
 ### Keep an app running
@@ -722,3 +721,143 @@ uninstall script runs from. Afterwards, `rm -r ~/ovenlight-connector` deletes it
 Windows, `cd ~` and then `Remove-Item -Recurse -Force $HOME\ovenlight-connector`. The
 `PATH` line the one-line installer added stays in the profile it named, since other tools
 may use `~/.local/bin` too.
+
+## Troubleshooting
+
+Start with `ovenlight doctor`. It checks the computer's side and gives a fix for each
+problem it finds, such as an app that isn't listening or listens on the wrong address,
+another program on an app's port, a node waiting for its login, a missing HTTPS
+certificate, a Mac or Windows PC that sleeps, or sharing that isn't fully set up.
+`ovenlight check <slug>` looks at one app the way your phone will. When `ovenlight` isn't
+found, or neither finds the problem, look here.
+
+- **Your terminal says command not found for `ovenlight`** (on Windows, that it isn't
+  recognized). Open a new terminal window, since the install puts it on your `PATH` only
+  for windows opened after it. If it's still not found on a Mac or Linux, add
+  `export PATH="$HOME/.local/bin:$PATH"` to your shell's profile ([Install](#install)
+  names the file for zsh and bash) and open a new window. Until then, run
+  `~/.local/bin/ovenlight`. On Windows, run it by its full path:
+  `& "$env:LOCALAPPDATA\ovenlight\bin\ovenlight.exe"`.
+- **The connector isn't running.** `ovenlight status` gives the command that starts it,
+  the same as in [Start and stop](#start-and-stop). If it starts and then stops again,
+  the end of its log says why, or after a crash the stderr log beside it (the user
+  journal on Linux). [What it installs](#what-it-installs) says where each is.
+- **Your coding agent doesn't have Ovenlight's tools.** On a laptop that sends your apps to
+  a Linux server of your own, that's expected: the agent runs the connector over `ssh`, as
+  [Let your agent send your apps](always-on.md#let-your-agent-send-your-apps) sets up, so
+  don't install the connector on the laptop. Otherwise, install it and
+  [connect the agent](#connect-a-coding-agent) if you haven't, then start a new session
+  (in Claude Code, reconnecting `ovenlight` in `/mcp` also works). A setting you added by
+  hand has to name the binary at its installed path
+  ([What it installs](#what-it-installs)). `claude mcp list` checks each server Claude
+  Code has. In Codex, `/mcp` lists the tools it has.
+- **Your app doesn't appear on your phone.** The phone must be signed in to the same
+  Tailscale account as the computer. To check, tap the More button in Ovenlight, then
+  Settings, then Advanced, which shows the phone's account and tailnet. If it's another
+  account, choose Sign Out in Settings and connect again with the right one. With device
+  approval on in your tailnet, the phone and any app that signed in with a login link
+  wait for you to approve them ([Publish an app](#publish-an-app)). An app you removed
+  from the phone stays removed until you add it back ([Unpublish](#unpublish)).
+- **Ovenlight says it can't reach one of your apps.** The computer has to be on, awake
+  and online ([What the computer needs](#what-the-computer-needs) covers a Mac's login and
+  a laptop's lid). Once it is, `ovenlight status` says whether the connector is running.
+- **The phone shows an error page from the app, such as 400, 403 or Vite's "Blocked
+  request", though it works at `127.0.0.1`.** Usually the app turns away its tailnet name,
+  which the phone sends as `Host` with every request and as `Origin` with a form. Servers
+  that check hosts need to allow `.ts.net`, as
+  [the building guide](building-apps.md#serve-plain-http-on-127001) shows for Vite's dev
+  server and Django. `ovenlight check <slug>` tests `Host` but sends no form. An app you
+  already self-host may need more, which `check` can miss: Home Assistant answers 400
+  until it trusts the connector as a proxy. Follow the app's recipe in
+  [Apps you already run](apps-you-run.md), or [Any app](apps-you-run.md#any-app) for one
+  without a recipe.
+- **An app's output in `ovenlight logs <slug>` says command not found.** On a Mac or
+  Linux, the app's command doesn't get tools set up only in `~/.zshrc` or `~/.bashrc`,
+  such as nvm and pyenv. [Keep an app running](#keep-an-app-running) has the fix, and
+  what differs on Windows.
+- **A change doesn't show on the phone.** Choose Reload in the app's menu on the phone,
+  after `ovenlight restart <slug>` if the app's command doesn't reload when files change.
+  For a new icon or color, run `ovenlight publish --slug <slug>` again, then touch and hold
+  the app in Ovenlight and choose Refresh Icon
+  ([the building guide](building-apps.md#make-it-feel-native) has the details).
+- **Sharing fails with 401 Unauthorized, or `doctor` says the API credential doesn't
+  work.** Access tokens expire. `ovenlight auth status --check` tests the one you stored,
+  and `ovenlight auth set` replaces it ([Share an app](#share-an-app)).
+- **A friend can't open an app you shared.** See
+  [Support](https://ovenlight.app/support#friend-cant-open).
+
+For apps on your own server, [Your own server](always-on.md#troubleshooting) has more, for
+`ssh` and reaching the server.
+
+## Commands
+
+`ovenlight help` lists these. To see a command's flags, add `-h` after it, as in
+`ovenlight share -h`. For `auth` and `update`, add it after both words:
+`ovenlight auth set -h`. Every command also takes `--config <file>` and `--state <dir>`,
+to use an app list and state directory other than the installed connector's
+([What it installs](#what-it-installs)).
+
+### Apps
+
+- `ovenlight new "<App Name>" [--dir <parent>] [--port <n>]`: writes a starter app in a
+  new folder under `<parent>`, on a free port from 20000 to 29999 unless `--port` picks
+  one, and prints how to run and publish it.
+- `ovenlight publish --port <n> --name "<App>" [--slug <slug>]`: publishes an app, or
+  updates the one with that slug ([Publish an app](#publish-an-app)).
+- `ovenlight publish ... --run '<command>' [--dir <path>]`: has the connector run the app
+  and keep it running, and `--run=` stops that
+  ([Keep an app running](#keep-an-app-running)).
+- `ovenlight logs <slug> [-n <lines>] [-f]`: the last 100 lines of output of an app the
+  connector runs, or the last `-n`. With `-f`, it keeps printing new lines until Ctrl-C.
+- `ovenlight restart <slug>`: stops an app the connector runs and starts it again.
+- `ovenlight unpublish <slug>`: stops serving an app ([Unpublish](#unpublish)).
+- `ovenlight status [--json]`: whether the connector runs, each app's address and
+  whether it answers, any login link, sharing and updates.
+- `ovenlight doctor [--json]`: checks the whole setup, with a fix for each problem.
+- `ovenlight check <slug> [--json]`: checks how one app will look and work on the phone,
+  with a fix for each problem.
+- `ovenlight guide`: prints [the building guide](building-apps.md) for the installed
+  release.
+- `ovenlight mcp`: the MCP server for coding agents
+  ([Connect a coding agent](#connect-a-coding-agent)).
+
+### Sharing
+
+- `ovenlight auth set [--oauth-client-id <id>]`: stores a Tailscale API access token, or
+  an OAuth client's secret, asking for it with input hidden
+  ([Share an app](#share-an-app)).
+- `ovenlight auth status [--check]`: which credential is stored, and with `--check`,
+  whether Tailscale's API still accepts it.
+- `ovenlight auth remove`: deletes the stored credential. Revoke it in the admin console
+  too.
+- `ovenlight publish --slug <slug> --shareable [--owner <login>] [--owner-label <name>]`:
+  makes an app shareable once you've confirmed the owner and typed `yes` to the policy
+  change it shows ([Share an app](#share-an-app)).
+- `ovenlight share <slug> --to "<Name>"`: an invite link, a QR code and a message to
+  send. For someone you already share with, add `--existing`, or give `--person <ID>` in
+  place of `--to`. `--review` makes one for an app store's review.
+- `ovenlight share --cancel <id>`: withdraws an open invite.
+- `ovenlight guests [--all] [--sync] [--json]`: your guests, when each last opened each
+  app, and open invites. `--all` adds removed guests, and `--sync` checks the tailnet's
+  device list first.
+- `ovenlight revoke <name | device ID | invite ID> [--app <slug>]`: removes a guest from
+  every app, or from one with `--app`
+  ([If something goes wrong](security.md#if-something-goes-wrong) says when to use a
+  device or invite ID). `--person <ID>`, from `ovenlight guests`, in place of a name
+  removes every device and open invite of that person.
+- `ovenlight feedback [--app <slug>] [-n <count>] [--json]`: the last 20 notes and
+  screenshots people sent, or the last `-n` (0 for all).
+- `ovenlight setup-sharing --owner <login> [--owner-label <name>]`: changes the recorded
+  owner and how guests see you. `--rollback` in their place restores the policy saved
+  before the last change, and `--remove <slug>` takes an app you no longer share out of
+  the policy ([Later changes](security.md#later-changes)).
+
+### The connector itself
+
+- `ovenlight version`: the connector's version.
+- `ovenlight update off` and `ovenlight update on`: stop installing updates, and start
+  again ([Update](#update)).
+- `ovenlight update now --index <file>`: installs the release a canary index names right
+  away. It's for testing a release ([development.md](development.md#releases)).
+- `ovenlight run`: runs the connector. Its background service does this, so use the
+  commands in [Start and stop](#start-and-stop) instead.
