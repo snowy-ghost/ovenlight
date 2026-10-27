@@ -109,30 +109,15 @@
           <p>On Windows, sign in as the account that will own the apps, which must be an administrator. Open PowerShell with Run as administrator, then run:</p>
 <pre><code>irm https://ovenlight.app/install.ps1 | iex</code></pre>
           <p>Never used a terminal? <a href="/docs/connector#open-a-terminal">Here's how to open one</a>. When the script is done, open a new terminal window. On Linux, if it prints a <code>sudo loginctl enable-linger</code> command, run that too, so the connector keeps serving with nobody logged in and after a restart.</p>
-          <h3>Or install by hand</h3>
-          <p>On a Mac, run this in Terminal:</p>
-<pre><code>mkdir -p ~/ovenlight-connector &amp;&amp; cd ~/ovenlight-connector
-curl -fsSL https://downloads.ovenlight.app/connector/latest/ovenlight-connector-macos.tar.gz |
-  tar xz --strip-components 1
-./install.sh</code></pre>
-          <p>If the script prints a line for your shell profile, as it does on a new Mac, add it, then open a new Terminal window:</p>
-<pre><code>echo &gt;&gt; ~/.zshrc
-echo 'export PATH="$HOME/.local/bin:$PATH"' &gt;&gt; ~/.zshrc</code></pre>
-          <p>On Linux, run the same commands in a terminal, with <code>linux-amd64</code> (or <code>linux-arm64</code> on an Arm computer) in place of <code>macos</code>, and <code>~/.bashrc</code> in place of <code>~/.zshrc</code>. If the script prints a <code>sudo loginctl enable-linger</code> command, run that too.</p>
-          <p>On Windows, sign in as the account that will own the apps, which must be an administrator. Open PowerShell with Run as administrator, then run:</p>
-<pre><code>mkdir $HOME\ovenlight-connector -Force | Out-Null; cd $HOME\ovenlight-connector
-curl.exe -fsSL https://downloads.ovenlight.app/connector/latest/ovenlight-connector-windows-amd64.zip -o connector.zip
-tar -xf connector.zip --strip-components 1
-powershell -ExecutionPolicy Bypass -File .\install.ps1</code></pre>
-          <p>On an Arm PC, use <code>windows-arm64</code> in place of <code>windows-amd64</code>. The <code>ovenlight</code> command works in PowerShell windows opened after the install.</p>
+          <p>To check the download yourself first, or install without the script, see <a href="/docs/connector#install-by-hand">Install by hand</a>.</p>
         </li>
-        <li>Publish an app. With your coding agent (Claude Code, Codex and others), <a href="/docs/connector#connect-a-coding-agent">connect it</a> and ask it to put your app on your phone. To publish it yourself, run your app so it serves plain HTTP on <code>127.0.0.1</code>, and static files from a public folder only, never the project's folder with its data and code. Then publish it with its port, for example <code>ovenlight publish <span>--port 4317</span> <span>--name "Notes"</span></code>. No app yet? <code>ovenlight new <span>"Family List"</span> <span>--dir ~/src</span></code> writes a starter app and says how to run and publish it.</li>
+        <li>Publish an app. With your coding agent (Claude Code, Codex and others), <a href="/docs/connector#connect-a-coding-agent">connect it</a> and ask it to put your app on your phone. To publish it yourself, run your app so it serves plain HTTP on <code>127.0.0.1</code>, and static files from a public folder only, never the project's folder with its data and code. Then publish it with its port, for example <code>ovenlight publish <span>--port 4317</span> <span>--name "Notes"</span></code>. To have the connector <a href="/docs/connector#keep-an-app-running">keep it running</a> instead, stop your copy and publish again from the app's folder, adding <code>--run</code> with the command that starts it. No app yet? <code>ovenlight new <span>"Family List"</span> <span>--dir ~/src</span></code> writes a starter app and says how to run and publish it.</li>
         <li>Open the login link that <code>publish</code> prints, or that your agent passes on, and sign in with your Tailscale account. If your tailnet has device approval on, also approve the app, listed by its slug (such as <code>notes</code>), on the admin console's <a href="https://console.tailscale.com/admin/machines">Machines</a> page.</li>
         <li>Install Ovenlight on your phone from the <a href="https://apps.apple.com/app/id6817561066">App Store</a> or <a href="https://play.google.com/store/apps/details?id=com.snowyghost.ovenlight&amp;referrer=utm_source%3Dsite%26utm_campaign%3Dweb">Google Play</a>. In it, choose Use my own computers (if you've already joined someone's app, it's under the More button, then Settings), tap Connect, and sign in with the same account. If Tailscale or Ovenlight says the phone needs approval, approve the device it names on the Machines page too. Your apps then appear on their own.</li>
       </ol>
       <p>Signed in, but your apps don't appear? The phone must use the same Tailscale account as your computers. In Settings, Advanced shows which Tailscale account and tailnet the phone is on. If it's on another account, tap Sign out in Settings and follow step 5 again with the right account.</p>
-      <p><code>ovenlight doctor</code> checks the setup and gives a fix for each problem it finds. To share an app, store a Tailscale API access token with <code>ovenlight auth set</code>, make the app shareable with <code>ovenlight publish <span>--slug notes</span> <span>--shareable</span></code>, then touch and hold the app in Ovenlight and choose Share.</p>
-      <p>The <a href="/docs/connector">connector's documentation</a> covers downloading in a browser, checking a download's signature, updating, moving to a new computer and uninstalling. It ends with <a href="/docs/connector#troubleshooting">troubleshooting</a> and a list of every command.</p>
+      <p><code>ovenlight doctor</code> checks the setup and gives a fix for each problem it finds. To <a href="/docs/connector#share-an-app">share an app</a>, store a Tailscale API access token with <code>ovenlight auth set</code>, make the app shareable with <code>ovenlight publish <span>--slug notes</span> <span>--shareable</span></code>, then touch and hold the app in Ovenlight and choose Share.</p>
+      <p>The <a href="/docs/connector">connector's documentation</a> covers updating, moving to a new computer and uninstalling. It ends with <a href="/docs/connector#troubleshooting">troubleshooting</a> and a list of every command.</p>
 
       <h2 id="add-back"><a href="#add-back">I removed one of my own apps. How do I get it back?</a></h2>
       <p>An app you remove doesn't come back on its own. Tap the More button, then Add app, and enter its address. <code>ovenlight status</code> on its computer lists each app's address.</p>
