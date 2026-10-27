@@ -2,8 +2,8 @@
 
 Any web app that serves plain HTTP on `127.0.0.1` can sit behind Ovenlight, including the
 ones you already self-host. Publish its port, and it opens on your phone full screen, from
-its own icon, off the internet. This page has recipes for five apps, each tested with the
-connector's own proxy code and the app in Docker Engine on Linux.
+its own icon, off the public internet. This page has recipes for five apps, each tested
+with the connector's own proxy code and the app in Docker Engine on Linux.
 
 | App | You sign in | Guests sign in | Tested version |
 |---|---|---|---|

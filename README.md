@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>Cooking up apps with AI? Serve them to the people you made them for, and no one else.</strong><br>
-  Your web apps run on your own computer, stay off the internet and open on your phone, behind Face&nbsp;ID or your fingerprint.
+  Your web apps run on your own computer, stay off the public internet and open on your phone, behind Face&nbsp;ID or your fingerprint.
 </p>
 
 <p align="center">
@@ -34,12 +34,12 @@ I made Ovenlight so you'd have an easy way to share it with the people who'd ben
 puts the app on your phone and on the phone of anyone you invite, and it opens wherever
 the phone is online, at home or away.
 
-Your computer is the server. The app and its data stay on it and off the internet, and
-your apps open while it's on and awake. It can be your laptop or a computer at home that
-stays on. If you can't keep one at home, [a server you rent](#where-your-apps-run) works
-too. You install Ovenlight's connector on it and sign up for a Tailscale account, which
-is free for personal use. The people you share with only install Ovenlight on their phone.
-They don't need a computer, the connector or a Tailscale account.
+Your computer is the server. The app and its data stay on it and off the public internet,
+and your apps open while it's on and awake. It can be your laptop or a computer at home
+that stays on. If you can't keep one at home, [a server you rent](#where-your-apps-run)
+works too. You install Ovenlight's connector on it and sign up for a Tailscale account,
+which is free for personal use. The people you share with only install Ovenlight on their
+phone. They don't need a computer, the connector or a Tailscale account.
 
 Once your computer is [set up](#get-started) and your agent
 [connected](#with-a-coding-agent), ask it to put the app on your phone:
@@ -67,9 +67,9 @@ Once your computer is [set up](#get-started) and your agent
   with it, and none of your other devices. When you stop sharing, their access ends at
   once, and the app and its data leave their phone the next time Ovenlight connects.
 - **There's nothing to deploy and no login to build.** The app stays on your computer and
-  off the internet. Ovenlight's connector, a program that runs beside it, gives it an HTTPS
-  address in your Tailscale network and tells it who is calling. Any web app that serves
-  plain HTTP on `127.0.0.1` can sit behind it, whether AI built it or not.
+  off the public internet. Ovenlight's connector, a program that runs beside it, gives it
+  an HTTPS address in your Tailscale network and tells it who is calling. Any web app that
+  serves plain HTTP on `127.0.0.1` can sit behind it, whether AI built it or not.
 - **Your coding agent does the publishing.** Through the connector's MCP server, your agent
   can publish the app, check it, read its logs and read the notes and screenshots people
   send from inside it. Inviting people is up to you: Ovenlight doesn't give your agent a
@@ -91,12 +91,12 @@ Once your computer is [set up](#get-started) and your agent
   With Ovenlight they get one app with its own icon and nothing to set up, and Ovenlight
   drafts the rules for you to approve.
 - **A tunnel or an open port** works in any browser, on any phone, but puts the app on the
-  internet, where the app or the tunnel has to keep strangers out. Ovenlight keeps the app
-  off the internet and turns away anyone you didn't invite.
+  public internet, where the app or the tunnel has to keep strangers out. Ovenlight keeps
+  the app off the public internet and turns away anyone you didn't invite.
 - **A hosting service** keeps the app up while your computer is off, but puts the app on
-  the internet. Ovenlight keeps it off the internet, whether it runs on your own computer
-  or a [server you rent](#where-your-apps-run). Either way, that computer has to be on and
-  awake while people use the app.
+  the public internet. Ovenlight keeps it off the public internet, whether it runs on your
+  own computer or a [server you rent](#where-your-apps-run). Either way, that computer has
+  to be on and awake while people use the app.
 
 ## How it works
 
