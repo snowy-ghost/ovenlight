@@ -17,6 +17,8 @@ goes nowhere, and CI runs it on every push. `docs.js` adds the Copy buttons on c
 The home, support, privacy and docs pages share `style.css`; the join page keeps its styles
 inline, since its Content-Security-Policy loads nothing but `join.js` and same-origin
 images. Screenshots in `images/` come in WebP with a JPEG fallback, at 480 and 960 px wide.
+The repo's README uses the 480 px JPEGs, and `launcher-480.jpg` and `join-house-guide-480.jpg`
+(with their dark versions) are there for it alone.
 The launch clip's video goes through a small Worker, `scripts/siteworker`, which answers
 range requests: static assets serve a file whole, and Safari needs ranges to play a video. The link
 preview images, `og.jpg` for the site and `og-invite.jpg` for the join page's invite links,
