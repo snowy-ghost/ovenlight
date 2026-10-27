@@ -86,6 +86,14 @@
   </div>
 
   <div class="container doc">
+    <nav class="doc-start" aria-label="Start here">
+      <p>New to Ovenlight? <a href="/support#own-computer">Set up your computer</a> to go from nothing to an app on your phone. Or go straight to:</p>
+      <ul>
+      {{- range .Shortcuts}}
+        <li><a href="/docs/{{.Doc}}#{{.Heading}}">{{.Text}}</a></li>
+      {{- end}}
+      </ul>
+    </nav>
     <ul class="doc-list">
     {{- range .Docs}}
       <li>

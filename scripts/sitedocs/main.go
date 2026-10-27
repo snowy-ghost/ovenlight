@@ -35,7 +35,7 @@ const (
 
 // The docs, in the order the index lists them, each with its line there.
 var docs = []struct{ name, summary string }{
-	{"connector", "Installing and updating the connector, publishing and sharing apps, moving to a new computer and uninstalling."},
+	{"connector", "Installing and updating the connector, publishing apps, connecting a coding agent, sharing apps, moving to a new computer, uninstalling, troubleshooting and every command."},
 	{"always-on", "Your own server for your apps: at home (a Mac mini, a Raspberry Pi or a spare PC) or rented in the cloud."},
 	{"apps-you-run", "Apps you already self-host, such as Grafana or Home Assistant, behind Ovenlight, and when guests can sign in by header."},
 	{"building-apps", "Building an app that works and feels native in Ovenlight, for coding agents and people."},
@@ -44,6 +44,16 @@ var docs = []struct{ name, summary string }{
 	{"protocol", "How Ovenlight and the connector talk."},
 	{"development", "Building the iPhone and Android apps, tests, local development, shipping and forking."},
 }
+
+// The index's shortcuts to sections of the docs, checked like the docs' own links.
+var shortcuts = []shortcut{
+	{"Connect a coding agent", "connector", "connect-a-coding-agent"},
+	{"Who is calling", "building-apps", "who-is-calling"},
+	{"Commands", "connector", "commands"},
+	{"Troubleshooting", "connector", "troubleshooting"},
+}
+
+type shortcut struct{ Text, Doc, Heading string }
 
 var md = goldmark.New(goldmark.WithExtensions(extension.GFM))
 
@@ -110,6 +120,11 @@ func run() error {
 	for _, p := range all {
 		problems = append(problems, p.links(byName)...)
 	}
+	for _, s := range shortcuts {
+		if d := byName[s.Doc]; d == nil || !d.ids[s.Heading] {
+			problems = append(problems, fmt.Sprintf("scripts/sitedocs/main.go: the index's shortcut to %s#%s goes nowhere", s.Doc, s.Heading))
+		}
+	}
 	if len(problems) > 0 {
 		for _, s := range problems {
 			fmt.Fprintln(os.Stderr, s)
@@ -133,7 +148,7 @@ func run() error {
 		// need a script the pages don't allow.
 		body := strings.NewReplacer("<table>", `<div class="table"><table>`, "</table>", "</table></div>").Replace(b.String())
 		p.Body = template.HTML("<!--email_off-->\n" + body + "<!--/email_off-->")
-		if err := write(filepath.Join(out, p.Name+".html"), page{p.Title + " · Ovenlight docs", p.Summary, "/docs/" + p.Name, p, nil}); err != nil {
+		if err := write(filepath.Join(out, p.Name+".html"), page{p.Title + " · Ovenlight docs", p.Summary, "/docs/" + p.Name, p, nil, nil}); err != nil {
 			return err
 		}
 		if err := os.WriteFile(filepath.Join(out, p.Name+".md"), []byte(strings.NewReplacer(p.mdFixes...).Replace(string(p.src))), 0o644); err != nil {
@@ -143,7 +158,7 @@ func run() error {
 	if err := write(filepath.Join(root, "site", "docs.html"), page{
 		"Documentation · Ovenlight",
 		"How the Ovenlight connector works, how to build apps for it, and how Ovenlight keeps them private.",
-		"/docs", nil, all,
+		"/docs", nil, all, shortcuts,
 	}); err != nil {
 		return err
 	}
@@ -368,6 +383,7 @@ type page struct {
 	Title, Description, Path string
 	Doc                      *doc
 	Docs                     []*doc
+	Shortcuts                []shortcut
 }
 
 func write(file string, p page) error {

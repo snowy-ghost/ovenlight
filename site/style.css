@@ -815,3 +815,24 @@ a:hover { text-decoration-thickness: 2px; }
 /* The whole card is the link. */
 .doc-list h2 a::after { content: ""; position: absolute; inset: 0; border-radius: inherit; }
 .doc-list p { margin-top: 0.4rem; color: var(--ink-soft); font-size: 0.9375rem; }
+.doc-start { margin-bottom: 2rem; text-align: center; }
+.doc-start ul {
+  list-style: none;
+  margin: 0.85rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
+}
+.doc-start li a {
+  display: inline-block;
+  padding: 0.4rem 0.95rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 0.9375rem;
+  text-decoration: none;
+}
+.doc-start li a:hover { border-color: var(--ember); }
