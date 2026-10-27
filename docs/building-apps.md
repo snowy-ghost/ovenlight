@@ -251,9 +251,42 @@ function caller(req) {
 ```
 
 Copy `decodeWords` from the starter's `server.js`
-(`ovenlight new "Scratch" --dir <a scratch folder>` writes one) to decode RFC 2047. In
-Python, `str(email.header.make_header(email.header.decode_header(value)))` does the same;
-in Go, `new(mime.WordDecoder).DecodeHeader(value)`.
+(`ovenlight new "Scratch" --dir <a scratch folder>` writes one) to decode RFC 2047. In Go,
+`new(mime.WordDecoder).DecodeHeader(value)` does the same.
+
+In Python, the same `caller` takes `request.headers` in Flask, FastAPI and Django, since
+all three ignore case in header names:
+
+```python
+import email.header
+import getpass
+import re
+
+def decode_words(value):
+    return str(email.header.make_header(email.header.decode_header(value)))
+
+def caller(headers):
+    host = re.sub(r":\d+$", "", headers.get("Host", ""))
+    local = host in ("127.0.0.1", "localhost")
+    if not local and not host.endswith(".ts.net"):
+        return None
+    user_id = headers.get("Ovenlight-User-Id")
+    if user_id:
+        return {
+            "id": decode_words(user_id),
+            "name": decode_words(headers.get("Ovenlight-User") or user_id),
+            "owner": headers.get("Ovenlight-Role") == "owner",
+        }
+    site = headers.get("Sec-Fetch-Site")
+    origin = headers.get("Origin")
+    if site:
+        own_page = site in ("same-origin", "none")
+    else:
+        own_page = not origin or origin == "http://" + headers.get("Host", "")
+    if local and own_page:
+        return {"id": "local", "name": getpass.getuser(), "owner": True}
+    return None
+```
 
 To test as a guest, send the headers yourself, to a path that reads who is calling. These
 examples use 4317, the Recipes app's port from above:
