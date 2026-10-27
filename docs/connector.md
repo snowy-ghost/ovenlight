@@ -499,6 +499,90 @@ remove it (touch and hold it, then choose Remove App): discovery adds apps but n
 removes one. Once you remove an app, discovery doesn't add it back, even when you publish
 it again; Add App, under the More button, adds it by its address.
 
+## Connect a coding agent
+
+The connector is also an MCP server, `ovenlight mcp`, which speaks over stdio. Through it,
+your coding agent (Claude Code, Codex and others that support local MCP servers) reads the
+building guide, publishes your app, checks it, restarts it, and reads its logs and the
+feedback people send. [Install the connector](#install) first, then connect the agent on
+the same computer. If you build on your laptop and run your apps on a Linux server of
+your own, [set up the server](always-on.md#choose-your-setup) and give your agent the note
+in [Let your agent send your apps](always-on.md#let-your-agent-send-your-apps) instead.
+
+In Claude Code, install Ovenlight's plugin. It adds the MCP server and a skill that reads
+the guide whenever you ask to put an app on your phone:
+
+```
+/plugin marketplace add snowy-ghost/ovenlight
+```
+
+then:
+
+```
+/plugin install ovenlight@snowy-ghost
+```
+
+If you install the connector after the plugin, reconnect the `ovenlight` server in `/mcp`.
+To add only the MCP server to Claude Code instead, on a Mac:
+
+```sh
+claude mcp add --scope user ovenlight -- \
+  ~/Library/Application\ Support/ovenlight/bin/ovenlight mcp
+```
+
+On Linux, the path is `~/.local/state/ovenlight/bin/ovenlight` (under `$XDG_STATE_HOME`
+when that's set). On Windows, in PowerShell:
+
+```powershell
+claude mcp add --scope user ovenlight -- "$env:LOCALAPPDATA\ovenlight\bin\ovenlight.exe" mcp
+```
+
+In Codex, on a Mac (on Linux, with the path above):
+
+```sh
+codex mcp add ovenlight -- \
+  ~/Library/Application\ Support/ovenlight/bin/ovenlight mcp
+```
+
+On Windows, in PowerShell:
+
+```powershell
+codex mcp add ovenlight -- "$env:LOCALAPPDATA\ovenlight\bin\ovenlight.exe" mcp
+```
+
+For another agent, add a local MCP server whose command is the connector's binary and
+whose one argument is `mcp`. Write the binary's path out in full, with no `~` or
+`%LOCALAPPDATA%`, such as `/Users/you/Library/Application Support/ovenlight/bin/ovenlight`
+on a Mac ([What it installs](#what-it-installs) has the path on each system).
+
+### The MCP tools
+
+| Tool | Arguments | What it does |
+|---|---|---|
+| `guide` | none | The building guide, as `ovenlight guide` prints it |
+| `status` | none | What `ovenlight status --json` shows: your apps, their addresses, whether each answers, sharing and updates |
+| `doctor` | none | The checks `ovenlight doctor` runs, each problem with its fix |
+| `check_app` | `slug` | The checks `ovenlight check` runs: how one app will look and work on the phone |
+| `publish` | `name`, with `port` for a new app, and an existing app's `slug` to update it or change its name | Publishes an app or updates one, keeping the command the connector runs for it |
+| `unpublish` | `slug` | Stops serving an app that isn't shareable, and stops its command |
+| `restart_app` | `slug` | Restarts an app the connector runs, then lists the checks that fail or warn once it's back |
+| `logs` | `slug`, and `lines` (100 unless you say, up to 1000) | The last lines of an app's output, for an app the connector runs |
+| `feedback_list` | `app` (a slug) and `limit` (20 unless you say, up to 200), both optional | The notes and screenshots people sent from Ovenlight, newest first, each screenshot as the path of a PNG on the computer |
+
+The MCP server has no tool to share an app or invite anyone, or to set the command that
+runs an app. An agent with a shell sets an app's command with
+`ovenlight publish --slug <slug> --dir '<folder>' --run '<command>'`, which you approve.
+Once the app is shareable, you change its command yourself, in a terminal.
+[The MCP server](security.md#the-mcp-server) lists what else takes a terminal, and why.
+
+An agent with a shell can run the commands too. `ovenlight doctor --json` and
+`ovenlight check <slug> --json` print an object with `ok`, false when a check fails, and a
+list of `checks`. Each check has an `id`, the `app` it's about when there is one, a
+`status` of `ok`, `warn` or `fail`, and a `message`. Most problems also have a `fix` and an
+`actor`, which says who applies it: `agent` or `person`. A fix the person makes on a web
+page, such as the Tailscale admin console, comes with its `url`. Both commands exit 1 when
+a check fails.
+
 ## Share an app
 
 Your friend needs only Ovenlight. Their phone joins your tailnet as a guest device that
