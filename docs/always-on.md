@@ -81,7 +81,7 @@ shows. Then keep it awake:
 `ovenlight doctor` then confirms that the computer won't sleep on its own. That's all the
 setup it needs: publish apps on it as the README's
 [Publish an app](../README.md#3-publish-an-app) shows, or
-[with your coding agent](../README.md#with-a-coding-agent). The rest of this page is for
+[with your coding agent](connector.md#connect-a-coding-agent). The rest of this page is for
 Linux servers.
 
 ### A Raspberry Pi
@@ -428,7 +428,8 @@ To work on a Linux server itself, over SSH from your laptop:
    again, which adds it. Then run `tmux`.
 4. In tmux, sign your agent in and connect it to Ovenlight:
    - **Claude Code:** run `claude`, open the link it prints to sign in, and install
-     Ovenlight's plugin as the [README](../README.md#with-a-coding-agent) shows.
+     Ovenlight's plugin as
+     [Connect a coding agent](connector.md#connect-a-coding-agent) shows.
    - **Codex:** turn on device code login in ChatGPT's security settings (in a workspace,
      its admin allows it). Then run these. The first prints a link and a code to sign in
      with, and the last starts Codex:
@@ -506,3 +507,6 @@ over.
   `ovenlight logs family-list`, over `ssh` the same way, show how the app answers and what
   it printed. Your phone must be signed in to the same Tailscale account, under Use my own
   computers.
+
+For anything else, the connector's [Troubleshooting](connector.md#troubleshooting) applies
+on the server too, with each command run over `ssh` as above.

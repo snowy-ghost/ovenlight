@@ -298,7 +298,7 @@ Recipe Box becomes its own device in your tailnet, at
 link: open it and sign in with your Tailscale account. Once you store an API access token
 (see [Share an app](#share-an-app)), later apps sign in without a login link. `ovenlight
 doctor` checks the setup and gives a fix for each problem it finds, and `ovenlight help`
-lists every command.
+lists every command ([docs/connector.md](docs/connector.md#commands) explains each).
 
 To have the connector start the app and keep it running, stop your own copy (Ctrl-C in its
 terminal, never `pkill` by name). Then, in the app's folder, give `publish` the command
@@ -318,15 +318,19 @@ account. If you've already joined someone else's app, Use my own computers is in
 under the More button. If your tailnet has device approval on, approve the phone and the
 app (listed as `recipe-box`) in the
 [admin console](https://console.tailscale.com/admin/machines). Your apps then appear on
-their own. If one doesn't, run `ovenlight doctor` on the computer.
+their own. If one doesn't, run `ovenlight doctor` on the computer, and see
+[Troubleshooting](docs/connector.md#troubleshooting).
 
 ## With a coding agent
 
 The connector is also an MCP server, so your coding agent (Claude Code, Codex and others
 that support local MCP servers) can follow Ovenlight's building guide, publish your app, check it, restart
 it, read its logs and read the feedback people send. Through the MCP tools, what guests
-write and what apps print come marked as untrusted text. Once it's connected, ask it to
-put an app on your phone.
+write and what apps print come marked as untrusted text. Connect the agent on the computer
+that runs the connector, then ask it to put an app on your phone. If you build on your
+laptop and run your apps on a Linux server of your own,
+[set up the server](docs/always-on.md#choose-your-setup) and give your agent the note in
+[Let your agent send your apps](docs/always-on.md#let-your-agent-send-your-apps) instead.
 
 In Claude Code, install Ovenlight's plugin. It adds the MCP server and a skill that reads
 the guide whenever you ask to put an app on your phone. The skill is Claude Code's own:
@@ -366,7 +370,8 @@ codex mcp add ovenlight -- \
 For another agent, add a local MCP server whose command is the connector's full path, such
 as `/Users/you/Library/Application Support/ovenlight/bin/ovenlight` on a Mac, and whose
 argument is `mcp`. An agent with a shell can also run `ovenlight doctor --json` and
-`ovenlight check <slug> --json`.
+`ovenlight check <slug> --json`. [docs/connector.md](docs/connector.md#the-mcp-tools)
+lists each MCP tool and its arguments.
 
 ## Share an app
 
@@ -491,7 +496,8 @@ what an app must do to stay safe.
 ## Documentation
 
 - [docs/connector.md](docs/connector.md): installing and updating the connector,
-  publishing and sharing apps, moving to a new computer and uninstalling.
+  publishing apps, connecting a coding agent, sharing apps, moving to a new computer,
+  uninstalling, troubleshooting and every command.
 - [docs/always-on.md](docs/always-on.md): your own server for your apps, at home (a Mac
   mini, a Raspberry Pi or a spare PC) or rented.
 - [docs/apps-you-run.md](docs/apps-you-run.md): apps you already self-host, such as
