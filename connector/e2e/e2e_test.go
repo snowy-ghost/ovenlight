@@ -112,6 +112,26 @@ func (r *rig) sv(tty bool, input string, args ...string) (string, error) {
 	return string(out), err
 }
 
+// svJSON runs a command for the JSON on its stdout alone, since --json may put a notice
+// on stderr.
+func (r *rig) svJSON(args ...string) string {
+	r.t.Helper()
+	out, err := exec.Command(r.bin, append(args, "--config", r.config, "--state", r.state)...).Output()
+	if err != nil {
+		r.t.Fatalf("ovenlight %v: %v\n%s", args, err, out)
+	}
+	return string(out)
+}
+
+// unfence is what the connector fenced for agents, or "" when s isn't fenced.
+func unfence(s string) string {
+	m := regexp.MustCompile(`(?s)^<untrusted-([0-9a-f]+)>(.*)</untrusted-([0-9a-f]+)>$`).FindStringSubmatch(s)
+	if m == nil || m[1] != m[3] {
+		return ""
+	}
+	return m[2]
+}
+
 func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 
 func (r *rig) svOK(args ...string) string {
@@ -573,12 +593,13 @@ func TestSharingEndToEnd(t *testing.T) {
 	// 5. Feedback with a screenshot, read back by the owner.
 	fb := fmt.Sprintf(`{"note":"the button overlaps","pageUrl":"%s/page","screenshotPngBase64":%q}`, appURL, pngBase64())
 	sam.must(t, "POST", appURL+"/__ovenlight/feedback", fb, nil, 200)
-	out = r.svOK("feedback", "--json")
+	out = r.svJSON("feedback", "--json")
 	var items []struct {
-		ID, From, Note, ScreenshotPath string
+		ID, From, Note, PageURL, ScreenshotPath string
 	}
 	json.Unmarshal([]byte(out), &items)
-	if len(items) != 1 || items[0].From != "Sam" || items[0].ScreenshotPath == "" {
+	// The page's address, which the page chose, comes fenced for agents.
+	if len(items) != 1 || items[0].From != "Sam" || unfence(items[0].PageURL) != appURL+"/page" || items[0].ScreenshotPath == "" {
 		t.Fatalf("feedback: %s", out)
 	}
 	if shot := owner.must(t, "GET", adminURL+"/v1/feedback/"+items[0].ID+"/screenshot", "", nil, 200); !strings.HasPrefix(shot, "\x89PNG") {

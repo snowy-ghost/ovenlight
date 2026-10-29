@@ -806,14 +806,20 @@ if [[ $SCENARIO == chrome ]]; then
   # bottom it must be all the page's own white. In landscape or at the largest font the screen's
   # shape and the heading move, so only the note, the page and the PNG are checked there.
   python3 - "$size" "$OUT/chrome-feedback.json" "${pill[3]}" "${OVENLIGHT_E2E_CONDITION:-}" <<'PY' || fail "the connector's feedback isn't as sent: $inbox"
-import json, struct, sys, zlib
+import json, re, struct, sys, zlib
 width, height = map(int, sys.argv[1].split("x"))
 bottom = int(sys.argv[3])
 items = json.load(open(sys.argv[2]))
 assert len(items) == 1, items
 item = items[0]
-assert item["note"] == "e2e note from the app menu", item
-assert item["pageUrl"].startswith("https://recipes.e2e.ts.net/"), item
+def unfenced(s):
+    # What the connector fences for agents: fenced, and this is what's inside.
+    m = re.fullmatch(r"<untrusted-([0-9a-f]+)>(.*)</untrusted-\1>", s, re.S)
+    assert m, "not fenced: %r" % s
+    return m.group(2)
+note = item["note"] if item["role"] == "owner" else unfenced(item["note"])
+assert note == "e2e note from the app menu", item
+assert unfenced(item["pageUrl"]).startswith("https://recipes.e2e.ts.net/"), item
 data = open(item["screenshotPath"], "rb").read()
 assert data[:8] == b"\x89PNG\r\n\x1a\n", "not a PNG"
 if sys.argv[4] in ("landscape", "font"):
