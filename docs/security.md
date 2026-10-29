@@ -754,7 +754,9 @@ agent is told that it is an image its sender chose, and any text in it is data.
 - **Links.** On Android 12 and later, an invite link opens Ovenlight only when the site's
   `assetlinks.json` lists the key that signed it. On Android 10 and 11, an app that isn't
   listed can still be offered in the system's chooser. The join page's Open in Ovenlight
-  names Ovenlight's package, since another app can claim the `ovenlight://` scheme. A page
+  names Ovenlight's package, since another app can claim the `ovenlight://` scheme. On
+  iPhone the page never puts the key in a link another app can claim: the guest copies the
+  invite and pastes it into Ovenlight. A page
   can't hand Ovenlight an invite directly: an invite link opens the join page in the
   browser, where the person decides, and an `ovenlight://` link is refused. Nor can a page
   open `android-app:`, `file:` or `content:` links, and an `intent:` link is stripped of

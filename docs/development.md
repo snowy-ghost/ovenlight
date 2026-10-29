@@ -596,7 +596,7 @@ Sign Ovenlight in to the first with `-authKey`, and open the second owner's invi
   `https://ovenlight.app/.well-known/apple-app-site-association`, lists this app for
   `/join*` only. Without Ovenlight, the link opens the join page, `ovenlight.app/join`,
   served from this repo's `site/` directory, which reads the fragment in the browser,
-  sends nothing, and offers Open in Ovenlight and a way to get the app. Ovenlight also takes invite links pasted or typed under More, Join with
+  sends nothing, and offers a way to get the app, Open in Ovenlight on Android and Copy Invite on iPhone. Ovenlight also takes invite links pasted or typed under More, Join with
   Invite, or scanned there as a QR code (VisionKit, on devices with a camera). The join
   flow itself is in [protocol.md](protocol.md#joining-on-the-phone). The app then appears
   on the launcher labeled "from \<owner>". An invite for an app already here offers Join
@@ -709,9 +709,9 @@ Invite links point at `https://ovenlight.app/join`, set in
 `connector/invite.go` and `Ovenlight/Sources/InviteLink.swift`, and the app claims that
 domain with Associated Domains in `project.yml`. iOS opens a universal link only in the
 app the site lists, so in a fork's build, or one without the entitlement, an invite tapped
-in Messages or scanned with the Camera opens the join page, whose Open in Ovenlight hands
-it over as `ovenlight://join?...`. Pasted under More, Join with Invite, or scanned there,
-an invite opens in either form.
+in Messages or scanned with the Camera opens the join page, whose Copy Invite copies the
+link, which Join with Invite takes pasted. Pasted or scanned there, an invite opens in
+either form.
 
 ## The Android app
 

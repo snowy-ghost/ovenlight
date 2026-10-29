@@ -231,9 +231,10 @@ ovenlight://join?v=1&control=&key=&owner=&app=&invite=&host=&name=&to=
 
 The first is the one to send. Its fields ride in the fragment, which browsers never send
 to a server, so the key never reaches the website. It opens Ovenlight when it's
-installed; otherwise the page offers Open in Ovenlight (the second form) and a way to
-get the app. `ovenlight share` prints only the first, since any app on the phone may
-claim the `ovenlight://` scheme. `POST /v1/invites` answers both.
+installed; otherwise the page offers a way to get the app and, to a guest who has it,
+Open in Ovenlight on Android (the second form) or Copy Invite on iPhone, which copies the
+first to paste under Join with Invite. `ovenlight share` prints only the first, since any
+app on the phone may claim the `ovenlight://` scheme. `POST /v1/invites` answers both.
 On Android, Open in Ovenlight hands the fields over as
 `intent://join#<fields>#Intent;scheme=ovenlight;package=com.snowyghost.ovenlight;end`,
 which reaches Ovenlight as `ovenlight://join#<fields>`. Naming the package keeps any other

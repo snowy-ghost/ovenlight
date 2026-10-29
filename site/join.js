@@ -1,7 +1,9 @@
 // Reads the invite from the fragment (#v=1&control=...&key=...), the same fields as
 // ovenlight://join?..., and never sends it anywhere: no requests, no storage, no analytics
 // (the page's Content-Security-Policy blocks them too). Reaching this page means the link
-// didn't open Ovenlight, so it offers Open in Ovenlight and the way to get the app.
+// didn't open Ovenlight, so it offers the way to get the app and, for one who has it, Open in
+// Ovenlight on Android, or on iPhone Copy Invite to paste into Ovenlight (any app can claim
+// the ovenlight: scheme, so on iPhone the key never goes into a link of that kind).
 (function () {
   "use strict";
 
@@ -20,6 +22,30 @@
     return chars.slice(0, 64).join("");
   }
 
+  var inviteLink = "";
+
+  // Copies the invite link, with the clipboard API or else the selection copy older in-app
+  // browsers have. The button says Copied only when one worked.
+  function copy() {
+    var button = document.getElementById("copy");
+    function copied() { button.textContent = "Copied"; }
+    function selected() {
+      var box = document.createElement("textarea");
+      box.value = inviteLink;
+      box.setAttribute("readonly", "");
+      box.style.position = "fixed";
+      box.style.opacity = "0";
+      document.body.appendChild(box);
+      box.select();
+      box.setSelectionRange(0, inviteLink.length);
+      try { if (document.execCommand("copy")) copied(); } catch (e) { /* stays Copy Invite */ }
+      document.body.removeChild(box);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(inviteLink).then(copied, selected);
+    else selected();
+  }
+  document.getElementById("copy").addEventListener("click", copy);
+
   // Also on a fragment change, since a page already open in a tab doesn't reload for one.
   function render() {
     var params = new URLSearchParams(location.hash.slice(1));
@@ -35,12 +61,17 @@
       // Rebuilt from the parsed fields, so a "#" or anything else in a crafted link stays
       // inside a field's value. On Android, an intent: link names Ovenlight's package, since
       // any app can claim the ovenlight: scheme, and carries the fields in its fragment,
-      // which Android 10 to 12 leave out when they log the link.
+      // which Android 10 to 12 leave out when they log the link. On iPhone, the link to
+      // copy is the invite link as it came, on ovenlight.app, which Join with Invite takes
+      // as pasted and which still opens Ovenlight from a message.
       var fields = params.toString();
-      document.getElementById("open").href = onAndroid
-        ? "intent://join#" + fields + "#Intent;scheme=ovenlight;package=com.snowyghost.ovenlight;end"
-        : "ovenlight://join?" + fields;
+      if (onAndroid) document.getElementById("open").href = "intent://join#" + fields + "#Intent;scheme=ovenlight;package=com.snowyghost.ovenlight;end";
+      inviteLink = "https://ovenlight.app/join" + location.hash;
     }
+    document.getElementById("open").hidden = !onAndroid;
+    document.getElementById("copy").hidden = !onIPhone;
+    document.getElementById("copy").textContent = "Copy Invite";
+    document.getElementById("paste").hidden = !onIPhone;
     document.getElementById("title").textContent = title;
     document.title = isInvite ? title + " · Ovenlight" : title;
     // Ovenlight is for iPhone and Android; elsewhere the button would do nothing.

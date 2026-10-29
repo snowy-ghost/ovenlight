@@ -115,6 +115,7 @@
     display: block; width: 100%; margin: 1.75rem 0 0; padding: 0.95rem 1.25rem; border-radius: 999px;
     font-weight: 600; font-size: 1.0625rem; text-decoration: none; text-align: center;
   }
+  button.btn { font-family: inherit; cursor: pointer; }
   .store:active { transform: translateY(1px); }
   .secondary { background: var(--bg); color: var(--ink); border: 1px solid var(--line); margin-top: 0.6rem; }
   /* Apple's and Google's official badges, unmodified. Google's image carries its clear
@@ -165,6 +166,8 @@
         <p class="note">Once Ovenlight is installed, open the invite link again.</p>
         <p class="have">Already have Ovenlight?</p>
         <a class="btn secondary" id="open" href="#">Open in Ovenlight</a>
+        <button class="btn secondary" id="copy" type="button" aria-live="polite" hidden>Copy Invite</button>
+        <p class="note" id="paste" hidden>Then open Ovenlight, choose Join with Invite (under More, if you already use Ovenlight) and tap Paste.</p>
         <p class="note">The invite works once, on one phone, and expires, so open it as soon as you can. If it runs out, ask for a new one. This page doesn't send your invite anywhere.</p>
       </div>
     </div>
