@@ -218,9 +218,7 @@ jobs:
           cache-dependency-path: android/core/go.sum
       # The iPhone tests are the spec: each needs an Android twin of the same name.
       - name: Test parity with the iPhone app
-        run: |
-          git fetch --no-tags --depth=1 origin app-1.0.2:refs/remotes/origin/app-1.0.2
-          scripts/test-parity.sh
+        run: scripts/test-parity.sh
       - name: Gradle wrapper
         run: echo "7a9ce74cff467ca1bf60a4fcd9f05185acceda4d0f382434d393e17864262c5d  gradle/wrapper/gradle-wrapper.jar" | sha256sum -c
       # One NDK pin, read from gradle.properties as Gradle and the core's build read it.
