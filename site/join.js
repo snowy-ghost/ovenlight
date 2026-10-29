@@ -7,7 +7,9 @@
 (function () {
   "use strict";
 
-  var onIPhone = /iPhone/.test(navigator.userAgent);
+  // An iPad runs the iPhone app, and iPadOS Safari sends a Mac's user agent by default.
+  var onIPhone = /iPhone|iPad/.test(navigator.userAgent) ||
+    (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
   var onAndroid = /Android/.test(navigator.userAgent);
 
   // A display label, as Ovenlight shows it: no control or format characters (Swift's
