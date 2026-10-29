@@ -313,8 +313,8 @@ everyone can add to) and says how to run and publish it.
 
 ### 4. Open it on your phone
 
-In Ovenlight, choose Use my own computers, tap Connect and sign in with the same Tailscale
-account. If you've already joined someone else's app, Use my own computers is in Settings,
+In Ovenlight, choose Use My Own Computers, tap Connect and sign in with the same Tailscale
+account. If you've already joined someone else's app, Use My Own Computers is in Settings,
 under the More button. If your tailnet has device approval on, approve the phone and the
 app (listed as `recipe-box`) in the
 [admin console](https://console.tailscale.com/admin/machines). Your apps then appear on

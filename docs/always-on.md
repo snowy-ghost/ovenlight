@@ -494,8 +494,8 @@ over.
 - **An app doesn't appear on your phone.** Run `ssh pi@oven '~/.local/bin/ovenlight doctor'`
   and follow the fix it gives for each problem. `ovenlight check family-list` and
   `ovenlight logs family-list`, over `ssh` the same way, show how the app answers and what
-  it printed. Your phone must be signed in to the same Tailscale account, under Use my own
-  computers.
+  it printed. Your phone must be signed in to the same Tailscale account, under Use My Own
+  Computers.
 
 For anything else, the connector's [Troubleshooting](connector.md#troubleshooting) applies
 on the server too, with each command run over `ssh` as above.
