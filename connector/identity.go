@@ -58,7 +58,8 @@ func decideRole(caller Identity, ownerLogin string, guest *Guest, app string) Ro
 // before the request is proxied.
 var (
 	reservedPrefixes = []string{"tailscale-", "ovenlight-", "x-ovenlight-", "x-forwarded-"}
-	reservedNames    = []string{"forwarded", "x-real-ip"}
+	reservedNames    = []string{"forwarded", "x-real-ip", "true-client-ip", "client-ip", "cf-connecting-ip", "x-client-ip",
+		"x-cluster-client-ip", "fastly-client-ip"}
 )
 
 // isReservedHeader matches case-insensitively and treats "_" as "-", because some

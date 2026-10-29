@@ -108,6 +108,10 @@ func TestProxyRewriteSetsIdentityAndKeepsHost(t *testing.T) {
 	in.Header.Set("Forwarded", "for=10.0.0.1")
 	in.Header.Set("X-Forwarded-Prefix", "/evil")
 	in.Header["X_Forwarded_Host"] = []string{"evil.example.com"} // WSGI/CGI alias
+	addressed := []string{"True-Client-Ip", "Client-Ip", "Cf-Connecting-Ip", "X-Client-Ip", "X-Cluster-Client-Ip", "Fastly-Client-Ip"}
+	for _, name := range addressed {
+		in.Header.Set(name, "10.0.0.1")
+	}
 	in = in.WithContext(context.WithValue(in.Context(), callerKey{}, caller{Identity: Identity{Login: "d@example.com", Name: "D"}, Role: RoleOwner}))
 	out := in.Clone(in.Context())
 	n.rewrite(&httputil.ProxyRequest{In: in, Out: out})
@@ -123,6 +127,11 @@ func TestProxyRewriteSetsIdentityAndKeepsHost(t *testing.T) {
 	if out.Header.Get("X-Real-Ip") != "" || out.Header.Get("Forwarded") != "" ||
 		out.Header.Get("X-Forwarded-Prefix") != "" || out.Header["X_Forwarded_Host"] != nil {
 		t.Errorf("client-address headers passed through: %v", out.Header)
+	}
+	for _, name := range addressed {
+		if out.Header.Get(name) != "" {
+			t.Errorf("%s passed through", name)
+		}
 	}
 	if out.Header.Get("X-Forwarded-Proto") != "https" {
 		t.Errorf("X-Forwarded-Proto = %q", out.Header.Get("X-Forwarded-Proto"))
