@@ -336,6 +336,14 @@ func fenceGuestText(f feedbackView, fence string) feedbackView {
 	return f
 }
 
+// fenceFeedback fences status's latest feedback as feedback_list does, for the MCP status
+// and the CLI's JSON.
+func fenceFeedback(out *statusOut, fence string) {
+	for i, f := range out.Sharing.LatestFeedback {
+		out.Sharing.LatestFeedback[i] = fenceGuestText(f, fence)
+	}
+}
+
 // feedbackNotice says what fenceGuestText's fence holds, for feedback_list and the CLI's
 // JSON.
 func feedbackNotice(fence string) string {
@@ -410,10 +418,7 @@ func callTool(name string, raw json.RawMessage, p *paths) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		fence := newID()
-		for i, f := range out.Sharing.LatestFeedback {
-			out.Sharing.LatestFeedback[i] = fenceGuestText(f, fence)
-		}
+		fenceFeedback(out, newID())
 		return out, nil
 	case "doctor":
 		cfg, err := LoadConfig(p.config)

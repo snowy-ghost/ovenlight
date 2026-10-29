@@ -1931,13 +1931,15 @@ func TestMCPFencesGuestText(t *testing.T) {
 	// own each run, named on stderr; what it prints for people isn't.
 	run := func(args ...string) (stdout, stderr string) {
 		t.Helper()
+		cmd := map[string]func([]string) error{"feedback": cmdFeedback, "status": cmdStatus}[args[0]]
+		args = args[1:]
 		files := [2]*os.File{}
 		for i := range files {
 			files[i], _ = os.Create(filepath.Join(t.TempDir(), "out"))
 		}
 		was := [2]*os.File{os.Stdout, os.Stderr}
 		os.Stdout, os.Stderr = files[0], files[1]
-		err := cmdFeedback(append([]string{"--config", p.config, "--state", p.state}, args...))
+		err := cmd(append([]string{"--config", p.config, "--state", p.state}, args...))
 		os.Stdout, os.Stderr = was[0], was[1]
 		if err != nil {
 			t.Fatal(err)
@@ -1952,7 +1954,7 @@ func TestMCPFencesGuestText(t *testing.T) {
 	}
 	var fences []string
 	for range 2 {
-		stdout, stderr := run("--json")
+		stdout, stderr := run("feedback", "--json")
 		m := regexp.MustCompile(`<untrusted-([0-9a-f]{8,})>`).FindStringSubmatch(stderr)
 		var items []Feedback
 		if err := json.Unmarshal([]byte(stdout), &items); err != nil || m == nil || len(items) != 2 {
@@ -1976,8 +1978,18 @@ func TestMCPFencesGuestText(t *testing.T) {
 	if fences[0] == fences[1] {
 		t.Errorf("two runs share the fence %s", fences[0])
 	}
-	if stdout, _ := run(); regexp.MustCompile(`<untrusted-[0-9a-f]`).MatchString(stdout) || !strings.Contains(stdout, "page: https://coach.tail1.ts.net/run-ovenlight-share") {
+	if stdout, _ := run("feedback"); regexp.MustCompile(`<untrusted-[0-9a-f]`).MatchString(stdout) || !strings.Contains(stdout, "page: https://coach.tail1.ts.net/run-ovenlight-share") {
 		t.Errorf("the output for people changed:\n%s", stdout)
+	}
+	stdout, _ := run("status", "--json")
+	var status statusOut
+	if err := json.Unmarshal([]byte(stdout), &status); err != nil || len(status.Sharing.LatestFeedback) != 2 {
+		t.Fatalf("status --json printed %q: %v", stdout, err)
+	}
+	for _, fb := range status.Sharing.LatestFeedback {
+		if fb.Role == "guest" && !strings.HasPrefix(fb.Note, "<untrusted-") || !strings.HasPrefix(fb.PageURL, "<untrusted-") {
+			t.Errorf("status --json shows what others chose unfenced: %+v", fb)
+		}
 	}
 }
 

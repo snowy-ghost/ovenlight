@@ -980,6 +980,8 @@ func cmdStatus(args []string) error {
 		return err
 	}
 	if *asJSON {
+		// Fenced as the MCP status is, since agents read it too.
+		fenceFeedback(out, newID())
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
 		return enc.Encode(out)
