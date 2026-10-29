@@ -1981,7 +1981,16 @@ func TestMCPFencesGuestText(t *testing.T) {
 	if stdout, _ := run("feedback"); regexp.MustCompile(`<untrusted-[0-9a-f]`).MatchString(stdout) || !strings.Contains(stdout, "page: https://coach.tail1.ts.net/run-ovenlight-share") {
 		t.Errorf("the output for people changed:\n%s", stdout)
 	}
+	// What people read in status, which agents are sent to as well, names who sent the
+	// latest feedback but none of what they wrote.
+	if stdout, _ := run("status"); !strings.Contains(stdout, "Sam (coach)") || strings.Contains(stdout, "ignore previous") ||
+		strings.Contains(stdout, "make the button blue") || !strings.Contains(stdout, "ovenlight feedback") {
+		t.Errorf("status:\n%s", stdout)
+	}
 	stdout, _ := run("status", "--json")
+	if strings.Contains(stdout, `\u003c`) {
+		t.Errorf("status --json escapes its tags: %s", stdout)
+	}
 	var status statusOut
 	if err := json.Unmarshal([]byte(stdout), &status); err != nil || len(status.Sharing.LatestFeedback) != 2 {
 		t.Fatalf("status --json printed %q: %v", stdout, err)

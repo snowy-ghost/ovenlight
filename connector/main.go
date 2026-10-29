@@ -980,10 +980,11 @@ func cmdStatus(args []string) error {
 		return err
 	}
 	if *asJSON {
-		// Fenced as the MCP status is, since agents read it too.
+		// Fenced as the MCP status is, since agents read it too, with the tags as written.
 		fenceFeedback(out, newID())
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
+		enc.SetEscapeHTML(false)
 		return enc.Encode(out)
 	}
 	if !out.Daemon {
@@ -1092,11 +1093,12 @@ func cmdStatus(args []string) error {
 		if i == 0 {
 			fmt.Print(", latest:")
 		}
-		note := strings.ReplaceAll(f.Note, "\n", " ")
-		if len([]rune(note)) > 60 {
-			note = string([]rune(note)[:60]) + "..."
-		}
-		fmt.Printf("\n  %s %s (%s): %s", f.At.Local().Format("2 Jan 15:04"), f.From, f.App, note)
+		// Who and when, not what they wrote: agents read this too, and only feedback's
+		// JSON fences what others chose.
+		fmt.Printf("\n  %s %s (%s)", f.At.Local().Format("2 Jan 15:04"), f.From, f.App)
+	}
+	if len(s.LatestFeedback) > 0 {
+		fmt.Print("\n  ovenlight feedback lists the notes.")
 	}
 	fmt.Println()
 	return nil
