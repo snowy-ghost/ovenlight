@@ -658,7 +658,7 @@ func TestServeRefusesOtherHostsAndCrossSiteRequests(t *testing.T) {
 		{"another name for the node", "GET", whoamiPath, map[string]string{"Host": "evil.example.com"}, http.StatusMisdirectedRequest},
 		{"the node's address", "GET", whoamiPath, map[string]string{"Host": "100.64.0.1"}, http.StatusMisdirectedRequest},
 		{"Ovenlight's own POST", "POST", feedbackPath, nil, http.StatusOK},
-		{"same-origin fetch", "POST", feedbackPath, fetch("same-origin", "cors", "empty"), http.StatusOK},
+		{"same-origin fetch", "POST", whoamiPath, fetch("same-origin", "cors", "empty"), http.StatusOK},
 		{"typed into the address bar", "GET", whoamiPath, fetch("none", "navigate", "document"), http.StatusOK},
 		{"link from another site", "GET", whoamiPath, fetch("cross-site", "navigate", "document"), http.StatusOK},
 		{"HEAD navigation", "HEAD", whoamiPath, fetch("cross-site", "navigate", "document"), http.StatusOK},
@@ -696,6 +696,47 @@ func TestServeRefusesOtherHostsAndCrossSiteRequests(t *testing.T) {
 	n.ServeHTTP(rec, httptest.NewRequest("GET", self+"/", nil))
 	if rec.Code == http.StatusBadRequest {
 		t.Errorf("a plain request was refused as an upgrade: %s", rec.Body)
+	}
+}
+
+// Only Ovenlight sends feedback. A page on the app's own origin passes the cross-site
+// check, and its post would be filed in its viewer's name, the owner's included, for the
+// owner's agent to read.
+func TestFeedbackRefusesWebPages(t *testing.T) {
+	d, _ := testDaemon(t)
+	n := d.nodes["coach"]
+	n.setOwner(d.cfg.Owner)
+	whoIsAs(n, ownerID)
+	const self = "https://coach.tail1.ts.net"
+	post := func(header map[string]string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("POST", self+feedbackPath, strings.NewReader(`{"note": "hi"}`))
+		for k, v := range header {
+			req.Header.Set(k, v)
+		}
+		rec := httptest.NewRecorder()
+		n.ServeHTTP(rec, req)
+		return rec
+	}
+	stored := func() int {
+		items, err := readFeedback(d.stateDir, "coach", 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return len(items)
+	}
+	for _, h := range []map[string]string{
+		{"Origin": self},
+		{"Sec-Fetch-Site": "same-origin", "Sec-Fetch-Mode": "cors", "Sec-Fetch-Dest": "empty"},
+	} {
+		if rec := post(h); rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "only Ovenlight sends feedback") {
+			t.Errorf("%v: %d %s, want 403", h, rec.Code, rec.Body)
+		}
+	}
+	if got := stored(); got != 0 {
+		t.Fatalf("a web page's feedback was stored: %d items", got)
+	}
+	if rec := post(nil); rec.Code != http.StatusOK || stored() != 1 {
+		t.Errorf("Ovenlight's own feedback: %d %s, %d stored", rec.Code, rec.Body, stored())
 	}
 }
 
