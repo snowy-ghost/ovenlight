@@ -392,13 +392,18 @@ func cmdFeedback(args []string) error {
 			feedbackView
 			ScreenshotPath string `json:"screenshotPath,omitempty"`
 		}
+		// Fenced as feedback_list is, since agents read it too, with the notice on stderr so
+		// the output stays a list. The tags print as written, as the notice names them.
 		out := []item{}
+		fence := newID()
 		for _, f := range items {
 			path, _ := screenshotPath(p.state, f)
-			out = append(out, item{f.view(), path})
+			out = append(out, item{fenceGuestText(f.view(), fence), path})
 		}
+		fmt.Fprintln(os.Stderr, feedbackNotice(fence))
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
+		enc.SetEscapeHTML(false)
 		return enc.Encode(out)
 	}
 	if len(items) == 0 {
