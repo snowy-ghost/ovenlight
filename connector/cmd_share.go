@@ -387,20 +387,22 @@ func cmdFeedback(args []string) error {
 	if err != nil {
 		return err
 	}
+	// Both forms are fenced as feedback_list is, since agents read either, with the notice
+	// on stderr so the JSON stays a list. The tags print as written, as the notice names them.
+	fence := newID()
+	if len(items) > 0 {
+		fmt.Fprintln(os.Stderr, feedbackNotice(fence))
+	}
 	if *asJSON {
 		type item struct {
 			feedbackView
 			ScreenshotPath string `json:"screenshotPath,omitempty"`
 		}
-		// Fenced as feedback_list is, since agents read it too, with the notice on stderr so
-		// the output stays a list. The tags print as written, as the notice names them.
 		out := []item{}
-		fence := newID()
 		for _, f := range items {
 			path, _ := screenshotPath(p.state, f)
 			out = append(out, item{fenceGuestText(f.view(), fence), path})
 		}
-		fmt.Fprintln(os.Stderr, feedbackNotice(fence))
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
 		enc.SetEscapeHTML(false)
@@ -411,14 +413,15 @@ func cmdFeedback(args []string) error {
 		return nil
 	}
 	for _, f := range items {
-		fmt.Printf("%s  %s  %s (%s)  %s\n", f.At.Local().Format("2 Jan 15:04"), f.App, f.From, f.Role, f.ID)
-		if f.Note != "" {
-			for _, line := range strings.Split(f.Note, "\n") {
+		v := fenceGuestText(f.view(), fence)
+		fmt.Printf("%s  %s  %s (%s)  %s\n", v.At.Local().Format("2 Jan 15:04"), v.App, v.From, v.Role, v.ID)
+		if v.Note != "" {
+			for _, line := range strings.Split(v.Note, "\n") {
 				fmt.Printf("    %s\n", line)
 			}
 		}
-		if f.PageURL != "" {
-			fmt.Printf("    page: %s\n", f.PageURL)
+		if v.PageURL != "" {
+			fmt.Printf("    page: %s\n", v.PageURL)
 		}
 		if path, ok := screenshotPath(p.state, f); ok {
 			fmt.Printf("    screenshot: %s\n", path)
