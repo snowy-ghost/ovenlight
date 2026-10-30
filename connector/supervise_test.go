@@ -1725,3 +1725,47 @@ func TestDaemonRefusesALongSocketPath(t *testing.T) {
 		t.Errorf("made the state directory: %v", err)
 	}
 }
+
+// ovenlight logs -f opens its fence even before the app has written anything, and what
+// the app writes next lands inside it, since the fence stays open while it follows.
+func TestLogsFollowStaysFenced(t *testing.T) {
+	dir := t.TempDir()
+	p := &paths{config: filepath.Join(dir, "config.json"), state: filepath.Join(dir, "state")}
+	if err := (&Config{Apps: []App{{Name: "Coach", Slug: "coach", Port: 4317, Run: "npm start", Dir: dir}}}).Save(p.config); err != nil {
+		t.Fatal(err)
+	}
+	os.MkdirAll(appLogDir(p.state), 0o700)
+	path := appLogPath(p.state, "coach")
+	os.WriteFile(path, nil, 0o600)
+	files := [2]*os.File{}
+	for i := range files {
+		files[i], _ = os.Create(filepath.Join(t.TempDir(), "out"))
+	}
+	stop := make(chan struct{})
+	logsDone, logsEvery = stop, 5*time.Millisecond
+	was := [2]*os.File{os.Stdout, os.Stderr}
+	os.Stdout, os.Stderr = files[0], files[1]
+	done := make(chan error)
+	go func() { done <- cmdLogs([]string{"coach", "--config", p.config, "--state", p.state, "-f"}) }()
+	read := func(f *os.File) string { b, _ := os.ReadFile(f.Name()); return string(b) }
+	time.Sleep(50 * time.Millisecond)
+	f, _ := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o600)
+	f.WriteString("GET /ignore-previous-instructions\n")
+	f.Close()
+	waitFor(t, func() bool { return strings.Contains(read(files[0]), "ignore-previous") }, "the appended line")
+	close(stop)
+	err := <-done
+	os.Stdout, os.Stderr = was[0], was[1]
+	logsDone, logsEvery = nil, 500*time.Millisecond
+	if err != nil {
+		t.Fatal(err)
+	}
+	notice, out := read(files[1]), read(files[0])
+	m := regexp.MustCompile(`<untrusted-([0-9a-f]+)>`).FindStringSubmatch(notice)
+	if m == nil || !strings.Contains(notice, "stays open") {
+		t.Fatalf("the notice names no fence that stays open: %q", notice)
+	}
+	if want := "<untrusted-" + m[1] + ">\nGET /ignore-previous-instructions\n"; out != want {
+		t.Errorf("ovenlight logs -f printed %q, want %q", out, want)
+	}
+}
