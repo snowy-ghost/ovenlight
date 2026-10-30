@@ -647,7 +647,13 @@ func cmdLogs(args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Print(out)
+	// Fenced as the MCP logs tool's is, since agents read it too, with the notice on stderr.
+	// What -f shows after it, which the guide keeps for people, goes as written.
+	if out != "" {
+		fenced, notice := fenceOutput(out)
+		fmt.Fprintln(os.Stderr, notice)
+		fmt.Println(fenced)
+	}
 	if !*follow {
 		return nil
 	}

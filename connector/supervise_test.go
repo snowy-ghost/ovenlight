@@ -798,6 +798,28 @@ func TestMCPLogs(t *testing.T) {
 	if got := unfenced(out); strings.Count(got, "\n") != maxMCPLogLines {
 		t.Errorf("%d lines past the cap", strings.Count(got, "\n"))
 	}
+	// ovenlight logs, which the guide sends agents to, fences it the same way, with the
+	// notice on stderr.
+	files := [2]*os.File{}
+	for i := range files {
+		files[i], _ = os.Create(filepath.Join(t.TempDir(), "out"))
+	}
+	was := [2]*os.File{os.Stdout, os.Stderr}
+	os.Stdout, os.Stderr = files[0], files[1]
+	err = cmdLogs([]string{"coach", "--config", p.config, "--state", p.state, "-n", "5"})
+	os.Stdout, os.Stderr = was[0], was[1]
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got [2]string
+	for i, f := range files {
+		f.Close()
+		b, _ := os.ReadFile(f.Name())
+		got[i] = string(b)
+	}
+	if lines := unfenced(map[string]string{"notice": got[1], "output": strings.TrimSuffix(got[0], "\n")}); strings.Count(lines, "\n") != 5 || !strings.HasSuffix(lines, "line 1499\n") {
+		t.Errorf("ovenlight logs -n 5 printed %d lines", strings.Count(lines, "\n"))
+	}
 }
 
 // restart stops the app's process and starts a fresh one, whose count starts over; the
