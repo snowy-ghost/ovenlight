@@ -71,7 +71,7 @@ text with the header only.
 | `owner_only` | the admin API refused someone other than the owner; on port 443, a caller who is neither the owner nor a guest of this app |
 | `unknown_caller` | the node doesn't know the calling device yet; worth another try |
 | `not_found` | no such route, invite, guest or screenshot, or a guest name that matches several people |
-| `bad_request` | a malformed body, the wrong method, the wrong `Host`, a missing `X-Ovenlight-Request`, a cross-site request, an upgrade other than WebSocket, or a refused invite, a failed Tailscale API call included |
+| `bad_request` | a malformed body, the wrong method, the wrong `Host`, a missing `X-Ovenlight-Request`, a cross-site request, a web page's post to feedback, an upgrade other than WebSocket, or a refused invite, a failed Tailscale API call included |
 | `rate_limited` | feedback over its rate limit |
 | `too_large` | a feedback note or upload over its size limit |
 | `unavailable` | the app isn't answering on its computer (a 502), or the connector can't serve the request now |

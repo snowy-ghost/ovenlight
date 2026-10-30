@@ -92,7 +92,7 @@ the [iPhone app's tests](#tests-1).
 On the mini, in `~/src/ovenlight`:
 
 ```sh
-scripts/release-connector.sh 1.2.0 1.0.6
+scripts/release-connector.sh 1.2.0 1.1.3
 ```
 
 It takes the version, the oldest secure one, and optionally `reinstallBelow`, the oldest
