@@ -1999,9 +1999,13 @@ func TestMCPFencesGuestText(t *testing.T) {
 		strings.Contains(stdout, "make the button blue") || !strings.Contains(stdout, "ovenlight feedback") {
 		t.Errorf("status:\n%s", stdout)
 	}
-	stdout, _ = run("status", "--json")
+	stdout, stderr = run("status", "--json")
 	if strings.Contains(stdout, `\u003c`) {
 		t.Errorf("status --json escapes its tags: %s", stdout)
+	}
+	m = regexp.MustCompile(`<untrusted-([0-9a-f]{8,})>`).FindStringSubmatch(stderr)
+	if m == nil || !strings.Contains(stdout, "<untrusted-"+m[1]+">") {
+		t.Errorf("status --json's notice names no fence it used: %q", stderr)
 	}
 	var status statusOut
 	if err := json.Unmarshal([]byte(stdout), &status); err != nil || len(status.Sharing.LatestFeedback) != 2 {

@@ -467,7 +467,7 @@ func TestSharingEndToEnd(t *testing.T) {
 	r.start("connector", daemon)
 	var nodeUser string
 	eventually(t, 60*time.Second, "the echo node to serve", func() (bool, string) {
-		out, _ := r.sv(false, "", "status", "--json")
+		out := r.svJSON("status", "--json")
 		var st struct {
 			Apps []struct {
 				State    string `json:"state"`
