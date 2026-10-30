@@ -45,6 +45,9 @@ func TestApplyIdentityStripsForgedHeaders(t *testing.T) {
 	h.Set("X-Ovenlight-User", "mallory")
 	h["tailscale_user_login"] = []string{"mallory@example.com"} // WSGI/CGI alias
 	h["OVENLIGHT_ROLE"] = []string{"owner"}
+	h["Ovenlight.role"] = []string{"owner"} // PHP turns "." into "_" too
+	h["Tailscale.user-Login"] = []string{"mallory@example.com"}
+	h["X.forwarded.For"] = []string{"10.0.0.1"}
 	h.Set("Cookie", "session=1")
 	h.Set("X-Tailscale-Unrelated", "kept") // not a reserved prefix
 
