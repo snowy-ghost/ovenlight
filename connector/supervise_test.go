@@ -1748,11 +1748,13 @@ func TestLogsFollowStaysFenced(t *testing.T) {
 	done := make(chan error)
 	go func() { done <- cmdLogs([]string{"coach", "--config", p.config, "--state", p.state, "-f"}) }()
 	read := func(f *os.File) string { b, _ := os.ReadFile(f.Name()); return string(b) }
-	time.Sleep(50 * time.Millisecond)
-	f, _ := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o600)
-	f.WriteString("GET /ignore-previous-instructions\n")
-	f.Close()
-	waitFor(t, func() bool { return strings.Contains(read(files[0]), "ignore-previous") }, "the appended line")
+	// A line written before followLog seeks to the end isn't shown, so write until one is.
+	waitFor(t, func() bool {
+		f, _ := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o600)
+		f.WriteString("GET /ignore-previous-instructions\n")
+		f.Close()
+		return strings.Contains(read(files[0]), "ignore-previous")
+	}, "the appended line")
 	close(stop)
 	err := <-done
 	os.Stdout, os.Stderr = was[0], was[1]
@@ -1765,7 +1767,7 @@ func TestLogsFollowStaysFenced(t *testing.T) {
 	if m == nil || !strings.Contains(notice, "stays open") {
 		t.Fatalf("the notice names no fence that stays open: %q", notice)
 	}
-	if want := "<untrusted-" + m[1] + ">\nGET /ignore-previous-instructions\n"; out != want {
-		t.Errorf("ovenlight logs -f printed %q, want %q", out, want)
+	if rest, ok := strings.CutPrefix(out, "<untrusted-"+m[1]+">\n"); !ok || rest == "" || strings.ReplaceAll(rest, "GET /ignore-previous-instructions\n", "") != "" {
+		t.Errorf("ovenlight logs -f printed %q, not the open tag and then the appended lines", out)
 	}
 }

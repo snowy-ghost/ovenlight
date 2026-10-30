@@ -1094,7 +1094,7 @@ func cmdStatus(args []string) error {
 			fmt.Print(", latest:")
 		}
 		// Who and when, not what they wrote: agents read this too, and only ovenlight
-		// feedback fences what others chose.
+		// feedback and the JSON fence what others chose.
 		fmt.Printf("\n  %s %s (%s)", f.At.Local().Format("2 Jan 15:04"), f.From, f.App)
 	}
 	if len(s.LatestFeedback) > 0 {
