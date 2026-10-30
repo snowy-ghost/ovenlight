@@ -325,8 +325,9 @@ their own. If one doesn't, run `ovenlight doctor` on the computer, and see
 
 The connector is also an MCP server, so your coding agent (Claude Code, Codex and others
 that support local MCP servers) can follow Ovenlight's building guide, publish your app, check it, restart
-it, read its logs and read the feedback people send. Through the MCP tools, what guests
-write and what apps print come marked as untrusted text. Connect the agent on the computer
+it, read its logs and read the feedback people send. Through the MCP tools and the CLI,
+what guests write, the page each piece of feedback came from and what apps print come
+marked as untrusted text. Connect the agent on the computer
 that runs the connector, then ask it to put an app on your phone. If you build on your
 laptop and run your apps on a Linux server of your own,
 [set up the server](docs/always-on.md#choose-your-setup) and give your agent the note in

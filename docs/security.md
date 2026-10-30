@@ -306,7 +306,9 @@ A guest who leaves in Ovenlight stays in your guest list until you remove them
 
 ## Feedback
 
-Owner and guests can post feedback to `/__ovenlight/feedback`:
+Only Ovenlight itself posts feedback: the connector refuses a post with `Origin` or
+`Sec-Fetch-Site`, which a web page's requests carry, so an app's own page can't post in
+its viewer's name. Owner and guests can post to `/__ovenlight/feedback`:
 
 - a note of up to 4000 characters, with control characters other than newlines and
   tabs stripped;
@@ -318,7 +320,7 @@ Owner and guests can post feedback to `/__ovenlight/feedback`:
 
 When the inbox is full (1000 items or 500 MB), a new item replaces its sender's oldest,
 or the oldest overall if the sender has none there. `ovenlight feedback` lists it with
-the screenshot paths, and `status` shows the count and the latest notes.
+the screenshot paths, and `status` shows the count and who sent the latest three.
 
 ## On the computer
 
@@ -625,9 +627,11 @@ one macOS protects, and for an app without a folder they ask only `/.env` and
 `127.0.0.1` as a page in this computer's browser would. They read `/` a second time, and
 the web manifest, from `127.0.0.1` without identity headers too, as the connector reads
 them for the app's icon and color. The agent chooses none of them. What guests wrote in
-feedback, and the output of the apps the connector runs, reach the agent fenced as
-untrusted data: that output holds what requests sent the app, which a guest, or any
-website open in this computer's browser, can choose. A screenshot can't be fenced, so the
+feedback, and every feedback item's page address, which the page chose, reach the agent
+fenced as untrusted data, over MCP and in the CLI alike. The MCP `logs` tool and
+`ovenlight logs` fence the output of the apps the connector runs too, since it holds what
+requests sent the app, which a guest, or any website open in this computer's browser, can
+choose. A screenshot can't be fenced, so the
 agent is told that it is an image its sender chose, and any text in it is data.
 
 ## On the phone

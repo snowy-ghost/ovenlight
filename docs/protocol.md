@@ -152,7 +152,7 @@ does reach it gets 403 `owner_only`, "This app is private to its owner."
 
 ### `POST /__ovenlight/feedback`
 
-Owner and guests. Body:
+Owner and guests, from Ovenlight itself. Body:
 
 ```json
 {"note": "The timer skips a second", "pageUrl": "https://interview-coach.example.ts.net/q/3", "screenshotPngBase64": "..."}
@@ -160,7 +160,8 @@ Owner and guests. Body:
 
 A note, a screenshot or both. Answers `{"id"}` on success, 400 (`bad_request`, or
 `too_large` over a size limit) for a bad body, 405 `bad_request` for a method other
-than POST, 429 (`rate_limited`) over the rate limit or while the same person's previous
+than POST, 403 `bad_request` for a request with `Origin` or `Sec-Fetch-Site`, which a web
+page sends, 429 (`rate_limited`) over the rate limit or while the same person's previous
 upload is still running, and 500 `internal` when the screenshot can't be stored. There
 is no 507: a full inbox makes room instead. Limits: [security.md](security.md#feedback).
 
@@ -195,7 +196,7 @@ CORS preflight the API never grants.
 | `DELETE /v1/invites/{id}` | cancel an open invite: an unused one, or a review invite with places left (devices that claimed it keep the app) |
 | `GET /v1/guests` | `guests` (removed ones too, with `removedAt`; `lastOpened`, the day the device last opened the app, as `2026-10-13` on the computer's calendar, from `openedSince` on), `invites`, `unclaimed`, `openedSince`, `taggedDevices` (`apps`, `guests` and every tagged device in the tailnet, `tailnet`, as of `lastSync`), `lastSync`, `syncError`; `ovenlight guests --json` prints the same |
 | `DELETE /v1/guests/{ref}` | a device ID removes that one device; an invite ID removes the devices that claimed it (several, for a review invite) and cancels the invite if it is still open; a person ID or name removes every device and open invite of that person. `?app=<slug>` limits it to one app; `?by=person` reads `ref` only as a person ID |
-| `GET /v1/feedback` | the inbox, newest first; `?app=<slug>`, `?limit=<n>`. `ovenlight feedback --json`, the MCP server's `feedback_list` and `status --json` (`sharing.latestFeedback`) use the same view |
+| `GET /v1/feedback` | the inbox, newest first; `?app=<slug>`, `?limit=<n>`. `ovenlight feedback --json`, the MCP server's `feedback_list`, and `status` (MCP and `--json`, `sharing.latestFeedback`) use the same view, but fence what guests wrote and every `pageUrl` in `<untrusted-...>` tags. This API sends them unfenced |
 | `GET /v1/feedback/{id}/screenshot` | the PNG |
 
 Open invites are the `invites` of `GET /v1/guests`. A review invite stays among them,

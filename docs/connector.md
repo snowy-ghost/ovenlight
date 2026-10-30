@@ -577,7 +577,8 @@ to use an app list and state directory other than the installed connector's
   and keep it running, and `--run=` stops that
   ([Keep an app running](#keep-an-app-running)).
 - `ovenlight logs <slug> [-n <lines>] [-f]`: the last 100 lines of output of an app the
-  connector runs, or the last `-n`. With `-f`, it keeps printing new lines until Ctrl-C.
+  connector runs, or the last `-n`, fenced in `<untrusted-...>` tags for coding agents. With
+  `-f`, it keeps printing new lines, fenced too, until Ctrl-C.
 - `ovenlight restart <slug>`: stops an app the connector runs and starts it again.
 - `ovenlight unpublish <slug>`: stops serving an app ([Unpublish](#unpublish)).
 - `ovenlight status [--json]`: whether the connector runs, each app's address and
@@ -615,7 +616,8 @@ to use an app list and state directory other than the installed connector's
   device or invite ID). `--person <ID>`, from `ovenlight guests`, in place of a name
   removes every device and open invite of that person.
 - `ovenlight feedback [--app <slug>] [-n <count>] [--json]`: the last 20 notes and
-  screenshots people sent, or the last `-n` (0 for all).
+  screenshots people sent, or the last `-n` (0 for all), with what guests wrote and every
+  page address fenced in `<untrusted-...>` tags for coding agents.
 - `ovenlight setup-sharing --owner <login> [--owner-label <name>]`: changes the recorded
   owner and how guests see you. `--rollback` in their place restores the policy saved
   before the last change, and `--remove <slug>` takes an app you no longer share out of
