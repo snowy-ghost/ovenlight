@@ -798,6 +798,28 @@ func TestMCPLogs(t *testing.T) {
 	if got := unfenced(out); strings.Count(got, "\n") != maxMCPLogLines {
 		t.Errorf("%d lines past the cap", strings.Count(got, "\n"))
 	}
+	// ovenlight logs, which the guide sends agents to, fences it the same way, with the
+	// notice on stderr.
+	files := [2]*os.File{}
+	for i := range files {
+		files[i], _ = os.Create(filepath.Join(t.TempDir(), "out"))
+	}
+	was := [2]*os.File{os.Stdout, os.Stderr}
+	os.Stdout, os.Stderr = files[0], files[1]
+	err = cmdLogs([]string{"coach", "--config", p.config, "--state", p.state, "-n", "5"})
+	os.Stdout, os.Stderr = was[0], was[1]
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got [2]string
+	for i, f := range files {
+		f.Close()
+		b, _ := os.ReadFile(f.Name())
+		got[i] = string(b)
+	}
+	if lines := unfenced(map[string]string{"notice": got[1], "output": strings.TrimSuffix(got[0], "\n")}); strings.Count(lines, "\n") != 5 || !strings.HasSuffix(lines, "line 1499\n") {
+		t.Errorf("ovenlight logs -n 5 printed %d lines", strings.Count(lines, "\n"))
+	}
 }
 
 // restart stops the app's process and starts a fresh one, whose count starts over; the
@@ -1751,5 +1773,51 @@ func TestDaemonRefusesALongSocketPath(t *testing.T) {
 	}
 	if _, err := os.Stat(state); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("made the state directory: %v", err)
+	}
+}
+
+// ovenlight logs -f opens its fence even before the app has written anything, and what
+// the app writes next lands inside it, since the fence stays open while it follows.
+func TestLogsFollowStaysFenced(t *testing.T) {
+	dir := t.TempDir()
+	p := &paths{config: filepath.Join(dir, "config.json"), state: filepath.Join(dir, "state")}
+	if err := (&Config{Apps: []App{{Name: "Coach", Slug: "coach", Port: 4317, Run: "npm start", Dir: dir}}}).Save(p.config); err != nil {
+		t.Fatal(err)
+	}
+	os.MkdirAll(appLogDir(p.state), 0o700)
+	path := appLogPath(p.state, "coach")
+	os.WriteFile(path, nil, 0o600)
+	files := [2]*os.File{}
+	for i := range files {
+		files[i], _ = os.Create(filepath.Join(t.TempDir(), "out"))
+	}
+	stop := make(chan struct{})
+	logsDone, logsEvery = stop, 5*time.Millisecond
+	was := [2]*os.File{os.Stdout, os.Stderr}
+	os.Stdout, os.Stderr = files[0], files[1]
+	done := make(chan error)
+	go func() { done <- cmdLogs([]string{"coach", "--config", p.config, "--state", p.state, "-f"}) }()
+	read := func(f *os.File) string { b, _ := os.ReadFile(f.Name()); return string(b) }
+	// A line written before followLog seeks to the end isn't shown, so write until one is.
+	waitFor(t, func() bool {
+		f, _ := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o600)
+		f.WriteString("GET /ignore-previous-instructions\n")
+		f.Close()
+		return strings.Contains(read(files[0]), "ignore-previous")
+	}, "the appended line")
+	close(stop)
+	err := <-done
+	os.Stdout, os.Stderr = was[0], was[1]
+	logsDone, logsEvery = nil, 500*time.Millisecond
+	if err != nil {
+		t.Fatal(err)
+	}
+	notice, out := read(files[1]), read(files[0])
+	m := regexp.MustCompile(`<untrusted-([0-9a-f]+)>`).FindStringSubmatch(notice)
+	if m == nil || !strings.Contains(notice, "stays open") {
+		t.Fatalf("the notice names no fence that stays open: %q", notice)
+	}
+	if rest, ok := strings.CutPrefix(out, "<untrusted-"+m[1]+">\n"); !ok || rest == "" || strings.ReplaceAll(rest, "GET /ignore-previous-instructions\n", "") != "" {
+		t.Errorf("ovenlight logs -f printed %q, not the open tag and then the appended lines", out)
 	}
 }

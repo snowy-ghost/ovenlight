@@ -647,12 +647,27 @@ func cmdLogs(args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Print(out)
+	// Fenced as the MCP logs tool's is, since agents read it too, with the notice on stderr.
+	// Under -f the fence opens even before there is output, and stays open as it follows.
+	open, end, notice := fenceOutput()
 	if !*follow {
+		if out != "" {
+			fmt.Fprintln(os.Stderr, notice)
+			fmt.Println(open + out + end)
+		}
 		return nil
 	}
-	return followLog(appLogPath(p.state, pos[0]), os.Stdout, 500*time.Millisecond, nil)
+	fmt.Fprintln(os.Stderr, notice+" With -f the fence stays open until the stream ends.")
+	fmt.Print(open + out)
+	return followLog(appLogPath(p.state, pos[0]), os.Stdout, logsEvery, logsDone)
 }
+
+// logsEvery is how often ovenlight logs -f looks for more, and logsDone ends it, which
+// otherwise follows until Control-C. Vars for tests.
+var (
+	logsEvery = 500 * time.Millisecond
+	logsDone  <-chan struct{}
+)
 
 // processLine is a supervised app's process in a few words, for status.
 func processLine(app appStatus) string {

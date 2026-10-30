@@ -177,10 +177,17 @@ func (st *sharingState) makeRoomLocked(fb Feedback) []Feedback {
 
 func (f Feedback) size() int { return f.ScreenshotBytes + len(f.Note) + len(f.PageURL) }
 
-// handleFeedback stores a note and optional screenshot from the owner or a guest.
+// handleFeedback stores a note and optional screenshot from the owner or a guest. Only
+// Ovenlight itself sends feedback: a web page, even the app's own, sends Origin or
+// Sec-Fetch-Site, and one that could post would write in its viewer's name, the owner's
+// included, to the owner's agent.
 func (d *daemon) handleFeedback(w http.ResponseWriter, r *http.Request, c caller, app App) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, codeBadRequest, "POST only")
+		return
+	}
+	if r.Header.Get("Origin") != "" || r.Header.Get("Sec-Fetch-Site") != "" {
+		writeError(w, http.StatusForbidden, codeBadRequest, "only Ovenlight sends feedback")
 		return
 	}
 	// The person's slots are taken before the body is read, so neither repeated nor slow
