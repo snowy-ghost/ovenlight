@@ -67,6 +67,37 @@ func TestApplyIdentityStripsForgedHeaders(t *testing.T) {
 	}
 }
 
+func alternateCase(s string) string {
+	b := []byte(s)
+	for i := 0; i < len(b); i += 2 {
+		b[i] = byte(strings.ToUpper(string(b[i]))[0])
+	}
+	return string(b)
+}
+
+func TestIsReservedHeaderNormalizesEverySpelling(t *testing.T) {
+	var names []string
+	for _, p := range reservedPrefixes {
+		names = append(names, p+"user-login")
+	}
+	names = append(names, reservedNames...)
+	for _, name := range names {
+		for _, sep := range []string{"-", "_", ".", " "} {
+			spelled := strings.ReplaceAll(name, "-", sep)
+			for _, variant := range []string{spelled, strings.ToUpper(spelled), alternateCase(spelled)} {
+				if !isReservedHeader(variant) {
+					t.Errorf("isReservedHeader(%q) = false, want true", variant)
+				}
+			}
+		}
+	}
+	for _, name := range []string{"X-Tailscale-Unrelated", "X.Tailscale.Unrelated", "Cookie", "Ovenlight", "X-Forwarded", "Tailscale"} {
+		if isReservedHeader(name) {
+			t.Errorf("isReservedHeader(%q) = true, want false", name)
+		}
+	}
+}
+
 func TestApplyIdentityEncodesNonASCIIAndFallsBackToLogin(t *testing.T) {
 	h := http.Header{}
 	applyIdentity(h, caller{Identity: Identity{Login: "zoe@example.com", Name: "Zoë"}, Role: RoleOwner})
