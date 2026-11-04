@@ -72,9 +72,9 @@ replaced by the laptop's.
 ### Identity headers
 
 Every incoming `Tailscale-*`, `Ovenlight-*` and `X-Ovenlight-*` header is dropped,
-spelled with an underscore, a dot or other punctuation in place of a hyphen too, and then set by the connector from Tailscale's WhoIs for
-the calling device. Only the owner and invited guests reach the app; everyone else gets
-403 from the connector.
+spelled with an underscore, a dot or other punctuation in place of a hyphen too, and
+then set by the connector from Tailscale's WhoIs for the calling device. Only the owner
+and invited guests reach the app; everyone else gets 403 from the connector.
 
 | Header | Owner | Guest |
 | --- | --- | --- |
@@ -94,7 +94,8 @@ Values that aren't plain ASCII are RFC 2047 encoded, as `tailscale serve` does.
 
 Incoming `X-Forwarded-*`, `Forwarded`, `X-Real-IP`, `True-Client-IP`, `Client-IP`,
 `CF-Connecting-IP`, `X-Client-IP`, `X-Cluster-Client-IP` and `Fastly-Client-IP` are
-dropped (spelled with an underscore, a dot or other punctuation in place of a hyphen too), and the connector sets `X-Forwarded-For`, `X-Forwarded-Host` and
+dropped (spelled with an underscore, a dot or other punctuation in place of a hyphen
+too), and the connector sets `X-Forwarded-For`, `X-Forwarded-Host` and
 `X-Forwarded-Proto`. The request keeps its tailnet `Host`
 (`<slug>.<tailnet>.ts.net`).
 
