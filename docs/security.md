@@ -292,8 +292,9 @@ A guest who leaves in Ovenlight stays in your guest list until you remove them
 - **Cross-site requests** get 403, except top-level link navigations
   ([app-contract.md](app-contract.md#cross-site-requests) has the exact rule).
 - **Headers.** Every incoming `Tailscale-*`, `Ovenlight-*`, `X-Ovenlight-*`,
-  `X-Forwarded-*`, `X-Real-IP` and `Forwarded` header is dropped, underscore spellings
-  too, because some frameworks map both to the same variable. The connector then sets
+  `X-Forwarded-*`, `Forwarded`, `X-Real-IP`, `True-Client-IP`, `Client-IP`,
+  `CF-Connecting-IP`, `X-Client-IP`, `X-Cluster-Client-IP` and `Fastly-Client-IP` header
+  is dropped, spelled with an underscore, a dot or other punctuation in place of a hyphen too, because some frameworks map both to the same variable. The connector then sets
   identity and forwarding headers itself.
 - **Upgrades.** Only WebSocket upgrades pass; any other gets 400, since a protocol such as
   h2c would carry requests past these checks.

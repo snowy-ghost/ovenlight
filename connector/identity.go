@@ -58,13 +58,23 @@ func decideRole(caller Identity, ownerLogin string, guest *Guest, app string) Ro
 // before the request is proxied.
 var (
 	reservedPrefixes = []string{"tailscale-", "ovenlight-", "x-ovenlight-", "x-forwarded-"}
-	reservedNames    = []string{"forwarded", "x-real-ip"}
+	reservedNames    = []string{"forwarded", "x-real-ip", "true-client-ip", "client-ip", "cf-connecting-ip", "x-client-ip",
+		"x-cluster-client-ip", "fastly-client-ip"}
 )
 
-// isReservedHeader matches case-insensitively and treats "_" as "-", because some
-// frameworks (CGI, WSGI, PHP) map both to the same variable name.
+// isReservedHeader matches case-insensitively and treats any character other than an
+// ASCII letter or digit as "-", because frameworks (CGI, WSGI, PHP) map "_" and "."
+// to the same variable name as "-".
 func isReservedHeader(name string) bool {
-	n := strings.ToLower(strings.ReplaceAll(name, "_", "-"))
+	n := strings.Map(func(r rune) rune {
+		switch {
+		case 'a' <= r && r <= 'z', '0' <= r && r <= '9':
+			return r
+		case 'A' <= r && r <= 'Z':
+			return r + 'a' - 'A'
+		}
+		return '-'
+	}, name)
 	for _, prefix := range reservedPrefixes {
 		if strings.HasPrefix(n, prefix) {
 			return true

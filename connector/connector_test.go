@@ -45,6 +45,9 @@ func TestApplyIdentityStripsForgedHeaders(t *testing.T) {
 	h.Set("X-Ovenlight-User", "mallory")
 	h["tailscale_user_login"] = []string{"mallory@example.com"} // WSGI/CGI alias
 	h["OVENLIGHT_ROLE"] = []string{"owner"}
+	h["Ovenlight.role"] = []string{"owner"} // PHP turns "." into "_" too
+	h["Tailscale.user-Login"] = []string{"mallory@example.com"}
+	h["X.forwarded.For"] = []string{"10.0.0.1"}
 	h.Set("Cookie", "session=1")
 	h.Set("X-Tailscale-Unrelated", "kept") // not a reserved prefix
 
@@ -61,6 +64,37 @@ func TestApplyIdentityStripsForgedHeaders(t *testing.T) {
 	}
 	if !reflect.DeepEqual(h, want) {
 		t.Fatalf("headers = %v\nwant %v", h, want)
+	}
+}
+
+func alternateCase(s string) string {
+	b := []byte(s)
+	for i := 0; i < len(b); i += 2 {
+		b[i] = byte(strings.ToUpper(string(b[i]))[0])
+	}
+	return string(b)
+}
+
+func TestIsReservedHeaderNormalizesEverySpelling(t *testing.T) {
+	var names []string
+	for _, p := range reservedPrefixes {
+		names = append(names, p+"user-login")
+	}
+	names = append(names, reservedNames...)
+	for _, name := range names {
+		for _, sep := range []string{"-", "_", ".", " "} {
+			spelled := strings.ReplaceAll(name, "-", sep)
+			for _, variant := range []string{spelled, strings.ToUpper(spelled), alternateCase(spelled)} {
+				if !isReservedHeader(variant) {
+					t.Errorf("isReservedHeader(%q) = false, want true", variant)
+				}
+			}
+		}
+	}
+	for _, name := range []string{"X-Tailscale-Unrelated", "X.Tailscale.Unrelated", "Cookie", "Ovenlight", "X-Forwarded", "Tailscale"} {
+		if isReservedHeader(name) {
+			t.Errorf("isReservedHeader(%q) = true, want false", name)
+		}
 	}
 }
 
@@ -108,6 +142,10 @@ func TestProxyRewriteSetsIdentityAndKeepsHost(t *testing.T) {
 	in.Header.Set("Forwarded", "for=10.0.0.1")
 	in.Header.Set("X-Forwarded-Prefix", "/evil")
 	in.Header["X_Forwarded_Host"] = []string{"evil.example.com"} // WSGI/CGI alias
+	addressed := []string{"True-Client-Ip", "Client-Ip", "Cf-Connecting-Ip", "X-Client-Ip", "X-Cluster-Client-Ip", "Fastly-Client-Ip"}
+	for _, name := range addressed {
+		in.Header.Set(name, "10.0.0.1")
+	}
 	in = in.WithContext(context.WithValue(in.Context(), callerKey{}, caller{Identity: Identity{Login: "d@example.com", Name: "D"}, Role: RoleOwner}))
 	out := in.Clone(in.Context())
 	n.rewrite(&httputil.ProxyRequest{In: in, Out: out})
@@ -123,6 +161,11 @@ func TestProxyRewriteSetsIdentityAndKeepsHost(t *testing.T) {
 	if out.Header.Get("X-Real-Ip") != "" || out.Header.Get("Forwarded") != "" ||
 		out.Header.Get("X-Forwarded-Prefix") != "" || out.Header["X_Forwarded_Host"] != nil {
 		t.Errorf("client-address headers passed through: %v", out.Header)
+	}
+	for _, name := range addressed {
+		if out.Header.Get(name) != "" {
+			t.Errorf("%s passed through", name)
+		}
 	}
 	if out.Header.Get("X-Forwarded-Proto") != "https" {
 		t.Errorf("X-Forwarded-Proto = %q", out.Header.Get("X-Forwarded-Proto"))
