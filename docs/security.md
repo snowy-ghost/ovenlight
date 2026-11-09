@@ -283,6 +283,11 @@ and `sharing.stateError` when the guest records can't be read.
 A guest who leaves in Ovenlight stays in your guest list until you remove them
 ([development.md](development.md#guests)).
 
+Connector 1.1.4 and earlier run Tailscale's peer API server on each app's node. Through
+it, a guest's device could have the node look up names on your computer's own networks,
+such as your router's DNS or a company's. It reached no app and no data. Connector 1.1.5
+builds Tailscale without that server, as the phones do ([On the phone](#on-the-phone)).
+
 ## The proxy
 
 - HTTPS on port 443 with the node's real `ts.net` certificate, to `127.0.0.1:<port>`
