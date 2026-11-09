@@ -63,8 +63,9 @@ if (Test-Path $prebuilt) {
 } else {
   Write-Output "building $bin"
   Push-Location $PSScriptRoot
-  # Without Tailscale's peer API, as a release is: scripts/release-connector.sh says why.
-  try { go build -trimpath -tags ts_omit_peerapiserver -o $new . } finally { Pop-Location }
+  # Without Tailscale's saved network map and peer API, as a release is:
+  # scripts/release-connector.sh says why.
+  try { go build -trimpath -tags ts_omit_cachenetmap,ts_omit_peerapiserver -o $new . } finally { Pop-Location }
   if ($LASTEXITCODE) { Fail 'go build failed' }
 }
 

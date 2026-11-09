@@ -54,11 +54,13 @@ WIN_PROFILE=snowyghost/ovenlight
 # on them, so cached objects built for another target aren't reused.
 MACOS_MIN=13.0
 # ts_omit_webclient leaves out Tailscale's web client, which the connector doesn't use,
-# and the JavaScript bundle it embeds. ts_omit_peerapiserver leaves out the peer API,
-# through which a guest's device could have an app's node look up names on this computer's
-# own networks. The notices are listed with the same tags, and checkstamp refuses a build
-# without the second. The install scripts build from source with it too.
-BUILD_TAGS=ts_omit_webclient,ts_omit_peerapiserver
+# and the JavaScript bundle it embeds. ts_omit_cachenetmap keeps a node from starting on a
+# saved network map, which would hide a guest's removal from the tailnet.
+# ts_omit_peerapiserver leaves out the peer API, through which a guest's device could have
+# an app's node look up names on this computer's own networks. The notices are listed with
+# the same tags, and checkstamp refuses a build without the last two. The install scripts
+# build from source with those two as well.
+BUILD_TAGS=ts_omit_webclient,ts_omit_cachenetmap,ts_omit_peerapiserver
 
 unsigned=false
 while [[ "${1:-}" == --* ]]; do
@@ -185,15 +187,17 @@ pack() {
 }
 
 # checkstamp <binary>: refuses a binary that go didn't stamp as built from HEAD unchanged,
-# or without the tag that leaves out the peer API.
+# or without the tags that leave out the saved network map and the peer API.
 checkstamp() {
-  local info tags
+  local info tags tag
   info="$(go version -m "$1")"
   tags="$(awk '$1 == "build" && $2 ~ /^-tags=/ { print $2 }' <<< "$info")"
-  case ",${tags#-tags=}," in
-    *,ts_omit_peerapiserver,*) ;;
-    *) refuse "$1 was built without ts_omit_peerapiserver (tags: ${tags:-none})" ;;
-  esac
+  for tag in ts_omit_cachenetmap ts_omit_peerapiserver; do
+    case ",${tags#-tags=}," in
+      *,"$tag",*) ;;
+      *) refuse "$1 was built without $tag (tags: ${tags:-none})" ;;
+    esac
+  done
   if ! grep -qF "vcs.revision=$head" <<< "$info" || ! grep -qF vcs.modified=false <<< "$info"; then
     cat >&2 <<EOF
 go version -m doesn't show this build as $head with no changes.

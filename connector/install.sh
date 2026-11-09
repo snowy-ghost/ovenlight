@@ -75,8 +75,9 @@ if [ -f "$prebuilt" ]; then
   if [ "$os" = Darwin ]; then xattr -d com.apple.quarantine "$bin.new" 2>/dev/null || true; fi
 else
   echo "building $bin"
-  # Without Tailscale's peer API, as a release is: scripts/release-connector.sh says why.
-  (cd "$here" && go build -trimpath -tags ts_omit_peerapiserver -o "$bin.new" .)
+  # Without Tailscale's saved network map and peer API, as a release is:
+  # scripts/release-connector.sh says why.
+  (cd "$here" && go build -trimpath -tags ts_omit_cachenetmap,ts_omit_peerapiserver -o "$bin.new" .)
 fi
 # An update's trial and the binary it would roll back to go first, so the connector this
 # installs is never rolled back to it. update.json stays.
