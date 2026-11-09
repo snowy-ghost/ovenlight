@@ -443,7 +443,8 @@ func TestSharingEndToEnd(t *testing.T) {
 	r := &rig{t: t, dir: dir, hsBin: hsBin, config: filepath.Join(dir, "cfg", "config.json"), state: filepath.Join(dir, "st")}
 
 	r.bin = filepath.Join(dir, "ovenlight")
-	if out, err := exec.Command("go", "build", "-o", r.bin, "..").CombinedOutput(); err != nil {
+	// Built as a release is: scripts/release-connector.sh says why.
+	if out, err := exec.Command("go", "build", "-tags", "ts_omit_webclient,ts_omit_cachenetmap,ts_omit_peerapiserver", "-o", r.bin, "..").CombinedOutput(); err != nil {
 		t.Fatalf("build: %v\n%s", err, out)
 	}
 	certFile, keyFile := r.writeCerts()
@@ -564,6 +565,28 @@ func TestSharingEndToEnd(t *testing.T) {
 	}
 	if out := sam.must(t, "POST", appURL+"/__ovenlight/claim", fmt.Sprintf(`{"key":%q}`, samKey), nil, 200); !strings.Contains(out, `"name":"Sam"`) {
 		t.Fatalf("claim: %s", out)
+	}
+	// The app's node runs no peer API server, so a guest's device has nothing there to ask
+	// for a name on the owner's networks.
+	guestClient, err := sam.srv.LocalClient()
+	if err != nil {
+		t.Fatalf("guest's local client: %v", err)
+	}
+	guestStatus, err := guestClient.Status(context.Background())
+	if err != nil {
+		t.Fatalf("guest's status: %v", err)
+	}
+	guestSees := false
+	for _, peer := range guestStatus.Peer {
+		if strings.HasPrefix(peer.DNSName, "echo.") {
+			guestSees = true
+			if len(peer.PeerAPIURL) != 0 {
+				t.Fatalf("the app's node offers a guest's device its peer API: %v", peer.PeerAPIURL)
+			}
+		}
+	}
+	if !guestSees {
+		t.Fatal("the guest's device doesn't list the app's node")
 	}
 	h = headersOf(t, sam.must(t, "GET", appURL+"/page", "", map[string]string{"Ovenlight-Role": "owner", "Tailscale-User-Login": nodeUser, "ovenlight_user": "x"}, 200))
 	if h.Get("Ovenlight-Role") != "guest" || h.Get("Ovenlight-User") != "Sam" || !strings.HasPrefix(h.Get("Ovenlight-User-Id"), "guest:") || h.Get("Tailscale-User-Login") != "" {
