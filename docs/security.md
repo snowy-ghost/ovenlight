@@ -283,6 +283,13 @@ and `sharing.stateError` when the guest records can't be read.
 A guest who leaves in Ovenlight stays in your guest list until you remove them
 ([development.md](development.md#guests)).
 
+Connector 1.1.4 and earlier start an app's node on its last saved network map when your
+tailnet policy grants the `cache-network-maps` node attribute, which Tailscale enables only
+on request. Until Tailscale's servers answer (in moments, or for as long as they can't be
+reached), such a node still lets in a guest whose device you deleted in the admin console,
+or whose tag or access you took away there, while the computer was asleep or off. Removing
+a guest in Ovenlight isn't affected. Connector 1.1.5 never starts on a saved map.
+
 Connector 1.1.4 and earlier run Tailscale's peer API server on each app's node. Through
 it, a guest's device could have the node look up names on your computer's own networks,
 such as your router's DNS or a company's. It reached no app and no data. Connector 1.1.5
