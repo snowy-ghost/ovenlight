@@ -434,10 +434,10 @@ access at once. Know the limits first:
   logged in, and so does a Windows PC on a work, school or domain account
   ([details](docs/connector.md#what-the-computer-needs)).
 - **Sharing needs a Tailscale admin's credential.** It edits your tailnet's access rules and
-  deletes devices, so its API access token or OAuth client must come from the tailnet's
+  deletes devices, so its API access token must come from the tailnet's
   [Owner or an Admin](https://tailscale.com/kb/1138/user-roles). A token lasts at most 90
-  days. An OAuth client lasts until revoked but needs each shared app's tags
-  ([details](docs/security.md#the-api-credential)).
+  days. An OAuth client can't share apps
+  ([why](docs/security.md#the-api-credential)).
 - **Everything on that computer is trusted.** Anything that runs as you there, including
   your apps and coding agents, can read every app's data and that admin credential. The
   computer's other accounts can reach every app directly and claim to be anyone.

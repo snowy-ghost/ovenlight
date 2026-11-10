@@ -190,11 +190,13 @@ link, which would sign the node in untagged.
 ## The API credential
 
 `ovenlight auth set` reads the secret from standard input, never the command line. It
-takes a Tailscale API access token, or an OAuth client (`--oauth-client-id <id>`, then
-paste its secret) with the scopes `policy_file`, `devices:core` and `auth_keys`. A
-client that also has `feature_settings:read`, which Ovenlight no longer uses, works the
-same. An OAuth client can only apply the tags it was given, and every shareable app adds
-two, so a token is simpler.
+takes a Tailscale API access token, which is what sharing needs: an OAuth client can't
+share apps. Tailscale lets an OAuth client mint an auth key only for the exact full set
+of tags the client holds, or for tags its own tags own
+([Tailscale](https://tailscale.com/kb/1068/tags)). `autogroup:admin` alone owns each
+app's two tags ([What it adds](#what-it-adds)), and Ovenlight mints each of sharing's
+keys with one tag, the app's or its guests'. A client given both tags is refused each
+key, and no client can mint both kinds.
 
 The credential is checked against the API, and refused if its tailnet has none of the
 running connector's shareable apps (with none shareable, none of its apps), then stored

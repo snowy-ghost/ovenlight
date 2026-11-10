@@ -329,8 +329,7 @@ ovenlight auth set
 ```
 
 Tokens expire after at most 90 days; run `auth set` again with a new one. An OAuth client
-works too (`auth set --oauth-client-id <id>`);
-[security.md](security.md#the-api-credential) lists the scopes it needs.
+can't share apps ([why](security.md#the-api-credential)).
 
 Then make each app shareable:
 
@@ -593,9 +592,10 @@ to use an app list and state directory other than the installed connector's
 
 ### Sharing
 
-- `ovenlight auth set [--oauth-client-id <id>]`: stores a Tailscale API access token, or
-  an OAuth client's secret, asking for it with input hidden
-  ([Share an app](#share-an-app)).
+- `ovenlight auth set [--oauth-client-id <id>]`: stores a Tailscale API access token,
+  asking for it with input hidden ([Share an app](#share-an-app)). With
+  `--oauth-client-id` it stores an OAuth client's secret instead, which can't share apps
+  ([why](security.md#the-api-credential)).
 - `ovenlight auth status [--check]`: which credential is stored, and with `--check`,
   whether Tailscale's API still accepts it.
 - `ovenlight auth remove`: deletes the stored credential. Revoke it in the admin console
